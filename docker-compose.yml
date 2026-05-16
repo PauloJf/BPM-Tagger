@@ -1,0 +1,65 @@
+services:
+  bpm-tagger:
+    build: .
+    container_name: bpm-tagger
+    restart: unless-stopped
+
+    environment:
+      # -----------------------------------------------------------------------
+      # Operating mode (required)
+      #   scan_all       — re-analyze every file regardless of previous results
+      #   scan_unscanned — only analyze files not yet in the DB or that changed
+      #   watch          — scan_unscanned on start, then watch for new/changed files
+      # -----------------------------------------------------------------------
+      MODE: watch
+
+      # Path to the music directory inside the container (must match the volume below)
+      MUSIC_DIR: /music
+
+      # SQLite database path inside the container
+      DB_PATH: /data/bpm_tagger.db
+
+      # -----------------------------------------------------------------------
+      # ntfy notifications — leave NTFY_URL or NTFY_TOPIC empty to disable
+      # -----------------------------------------------------------------------
+      NTFY_URL: https://ntfy.sh
+      NTFY_TOPIC: ""            # set your topic here, e.g. my-bpm-alerts
+
+      # Minimum seconds between notifications (anti-spam, default 5 minutes)
+      NTFY_MIN_INTERVAL: "300"
+
+      # Number of tracks to batch into a single notification (default 10)
+      NTFY_BATCH_SIZE: "10"
+
+      # -----------------------------------------------------------------------
+      # Tag writing
+      # -----------------------------------------------------------------------
+      # Write the detected BPM back to the audio file's metadata tag
+      WRITE_TAGS: "true"
+
+      # -----------------------------------------------------------------------
+      # Watch mode options
+      # -----------------------------------------------------------------------
+      # Run scan_unscanned before starting the file watcher (default true)
+      SCAN_ON_START: "true"
+
+      # -----------------------------------------------------------------------
+      # File extensions to process (comma-separated, include the leading dot)
+      # -----------------------------------------------------------------------
+      AUDIO_EXTENSIONS: ".mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv"
+
+      # Log verbosity: DEBUG | INFO | WARNING | ERROR
+      LOG_LEVEL: INFO
+
+    volumes:
+      # Mount your Navidrome music directory (read-write so tags can be saved)
+      - /path/to/your/music:/music
+
+      # Persistent storage for the SQLite database
+      - bpm_tagger_data:/data
+
+    # Uncomment and set to match your Navidrome user/group to avoid permission issues
+    # user: "1000:1000"
+
+volumes:
+  bpm_tagger_data:
