@@ -16,6 +16,11 @@
 <div class="login-wrap">
   <h1>🎵 BPM Tagger</h1>
   <div class="card">
+    {% if lockout %}
+    <p style="color:var(--red); text-align:center; margin-bottom:1rem; font-size:.9rem;">
+      Too many failed attempts. Please wait a few minutes and try again.
+    </p>
+    {% else %}
     <form method="post">
       <div class="field">
         <label>Password</label>
@@ -23,6 +28,7 @@
       </div>
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
