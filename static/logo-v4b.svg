@@ -1,0 +1,48 @@
+<svg width="300" height="90" viewBox="0 0 300 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- V4b: Split panel — bold BPM left, EQ bar graph right (no gauge) -->
+  <defs>
+    <linearGradient id="v4b_bg" x1="0" y1="0" x2="115" y2="90">
+      <stop offset="0%" stop-color="#6d5ce7"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="v4b_glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Right dark panel -->
+  <rect x="108" width="192" height="90" rx="14" fill="#1a1d27"/>
+  <rect x="108.5" y="0.5" width="191" height="89" rx="13.5" stroke="#2a2d3a" stroke-width="1" fill="none"/>
+
+  <!-- Left purple panel -->
+  <rect width="128" height="90" rx="14" fill="url(#v4b_bg)"/>
+
+  <!-- BPM on left -->
+  <text x="64" y="56"
+        text-anchor="middle"
+        font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif"
+        font-size="42" font-weight="900" letter-spacing="-1"
+        fill="white">BPM</text>
+
+  <!-- EQ bar graph — 9 bars, bottom-aligned at y=70, centred in right panel -->
+  <!-- x: 134 to 274 (140px total), centred at x=204                        -->
+  <!-- heights chosen for a natural EQ curve                                 -->
+
+  <rect x="134" y="52" width="12" height="18" rx="3" fill="#7c6cf0" opacity="0.45"/>
+  <rect x="150" y="30" width="12" height="40" rx="3" fill="#7c6cf0" opacity="0.65"/>
+  <rect x="166" y="42" width="12" height="28" rx="3" fill="#9d8bf0" opacity="0.80"/>
+  <rect x="182" y="15" width="12" height="55" rx="3" fill="#a78bfa" filter="url(#v4b_glow)"/>
+  <rect x="198" y="34" width="12" height="36" rx="3" fill="#9d8bf0" opacity="0.85"/>
+  <rect x="214" y="12" width="12" height="58" rx="3" fill="#a78bfa" filter="url(#v4b_glow)"/>
+  <rect x="230" y="40" width="12" height="30" rx="3" fill="#9d8bf0" opacity="0.80"/>
+  <rect x="246" y="28" width="12" height="42" rx="3" fill="#7c6cf0" opacity="0.65"/>
+  <rect x="262" y="48" width="12" height="22" rx="3" fill="#7c6cf0" opacity="0.45"/>
+
+  <!-- TAGGER — centred in right panel -->
+  <text x="204" y="84"
+        text-anchor="middle"
+        font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif"
+        font-size="12" font-weight="500" letter-spacing="6"
+        fill="#7a7e99">TAGGER</text>
+</svg>
