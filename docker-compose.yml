@@ -108,6 +108,21 @@ services:
       # Log verbosity: DEBUG | INFO | WARNING | ERROR
       LOG_LEVEL: INFO
 
+      # -----------------------------------------------------------------------
+      # Web UI
+      # -----------------------------------------------------------------------
+      # Set ENABLE_UI to "true" to start the browser interface on UI_PORT.
+      # UI_PASSWORD is required — change it before exposing to a network.
+      ENABLE_UI: "false"
+      UI_PORT: "5000"
+      UI_PASSWORD: "changeme"     # CHANGE THIS
+      UI_SECRET_KEY: ""           # auto-generated each restart if empty
+      UI_SESSION_HOURS: "24"
+
+    ports:
+      # Expose the web UI (only active when ENABLE_UI=true)
+      - "5000:5000"
+
     volumes:
       # Mount your Navidrome music directory (read-write so tags can be written back)
       - /path/to/your/music:/music
