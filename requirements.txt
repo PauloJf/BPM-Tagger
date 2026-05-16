@@ -1,4 +1,4 @@
-deeprhythm>=0.1.6
+deeprhythm>=0.0.13
 librosa>=0.10.0
 numpy>=1.24.0
 mutagen>=1.47.0
