@@ -38,8 +38,8 @@ _local = threading.local()
 
 def _get_predictor():
     if not hasattr(_local, "predictor"):
-        from deeprhythm import BPMPredictor
-        _local.predictor = BPMPredictor()
+        from deeprhythm import DeepRhythmPredictor
+        _local.predictor = DeepRhythmPredictor()
     return _local.predictor
 
 
