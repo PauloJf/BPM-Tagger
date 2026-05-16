@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login — BPM Tagger{% endblock %}
+{% block content %}
+<style>
+  .login-wrap { max-width: 360px; margin: 6rem auto; }
+  .login-wrap h1 { text-align: center; margin-bottom: 1.8rem; font-size: 1.5rem; }
+  .login-wrap .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 2rem;
+  }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; margin-bottom: .4rem; color: var(--muted); font-size: .85rem; }
+  .field input { width: 100%; }
+  .login-wrap .btn-primary { width: 100%; padding: .6rem; font-size: .95rem; margin-top: .5rem; }
+</style>
+<div class="login-wrap">
+  <h1>🎵 BPM Tagger</h1>
+  <div class="card">
+    <form method="post">
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" autofocus autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

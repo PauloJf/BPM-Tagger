@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BPM Tagger{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3a;
+      --text:    #e2e4ed;
+      --muted:   #7a7e99;
+      --accent:  #7c6cf0;
+      --accent2: #a78bfa;
+      --green:   #34d399;
+      --yellow:  #fbbf24;
+      --red:     #f87171;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
+           font-size: 14px; min-height: 100vh; }
+
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0; padding: 0 1.5rem;
+    }
+    nav .brand { font-weight: 700; font-size: 1rem; color: var(--accent2);
+                 padding: 1rem 1.5rem 1rem 0; letter-spacing: .02em; }
+    nav a { color: var(--muted); text-decoration: none; padding: .9rem 1rem;
+            display: inline-block; transition: color .15s; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .logout { color: var(--red); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+    .flash { padding: .7rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .9rem; }
+    .flash.success { background: #14352a; border: 1px solid var(--green); color: var(--green); }
+    .flash.error   { background: #3b1a1a; border: 1px solid var(--red);   color: var(--red); }
+
+    h1 { font-size: 1.3rem; font-weight: 600; margin-bottom: 1.2rem; color: var(--text); }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th { background: var(--surface); padding: .6rem .8rem; text-align: left;
+               color: var(--muted); font-weight: 600; font-size: .8rem;
+               text-transform: uppercase; letter-spacing: .05em;
+               border-bottom: 1px solid var(--border); }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: var(--surface); }
+    tbody tr.flagged { background: #1e1a10; }
+    tbody tr.flagged:hover { background: #252015; }
+    td { padding: .55rem .8rem; vertical-align: middle; }
+
+    .badge {
+      display: inline-block; padding: .15rem .45rem; border-radius: 4px;
+      font-size: .75rem; font-weight: 600; line-height: 1.4;
+    }
+    .badge.review  { background: #3b2e00; color: var(--yellow); }
+    .badge.locked  { background: #1a2e3b; color: #60c8f5; }
+    .badge.error   { background: #3b1a1a; color: var(--red); }
+    .badge.ok      { background: #0e2a1e; color: var(--green); }
+
+    .btn {
+      display: inline-block; padding: .45rem .9rem; border-radius: 6px;
+      border: none; cursor: pointer; font-size: .85rem; font-weight: 500;
+      text-decoration: none; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary  { background: var(--accent);  color: #fff; }
+    .btn-ghost    { background: var(--surface);  color: var(--text); border: 1px solid var(--border); }
+    .btn-danger   { background: #7f1d1d;         color: var(--red); }
+    .btn-sm { padding: .3rem .65rem; font-size: .78rem; }
+
+    input[type=text], input[type=password], input[type=number] {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: .5rem .75rem; border-radius: 6px; font-size: .9rem; outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: var(--accent); }
+
+    .pagination { display: flex; gap: .4rem; align-items: center; margin-top: 1.2rem; }
+    .pagination a, .pagination span {
+      padding: .35rem .65rem; border-radius: 5px; border: 1px solid var(--border);
+      color: var(--muted); text-decoration: none; font-size: .82rem;
+    }
+    .pagination a:hover { border-color: var(--accent); color: var(--text); }
+    .pagination .current { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .conf-bar {
+      display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle;
+      background: var(--accent); min-width: 4px;
+    }
+  </style>
+</head>
+<body>
+{% if session.get('ok') %}
+<nav>
+  <span class="brand">🎵 BPM Tagger</span>
+  <a href="{{ url_for('tracks') }}" class="{{ 'active' if request.endpoint == 'tracks' }}">All Tracks</a>
+  <a href="{{ url_for('review') }}" class="{{ 'active' if request.endpoint == 'review' }}">Needs Review</a>
+  <span class="spacer"></span>
+  <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+</nav>
+{% endif %}
+<div class="container">
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
