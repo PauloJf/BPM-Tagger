@@ -9,6 +9,7 @@ services:
       # Operating mode
       #   scan_all       — re-analyze every file (ignores existing DB results)
       #   scan_unscanned — only analyze files that are new or have changed
+      #   scan_review    — re-analyze only flagged, errored, or librosa-only tracks
       #   watch          — scan_unscanned on start, then watch for new/changed files
       #   report         — print suspicious tracks to logs, write CSV, send ntfy
       #   lock           — lock a single file (requires LOCK_FILE; LOCK_BPM optional)
@@ -105,6 +106,22 @@ services:
       # LOCK_BPM: ""
       # UNLOCK_FILE: ""
 
+      # -----------------------------------------------------------------------
+      # Parallel processing
+      # -----------------------------------------------------------------------
+      # Number of worker threads for parallel BPM analysis. Each worker loads
+      # its own deeprhythm model instance. Higher values use more RAM and CPU.
+      WORKERS: "4"
+
+      # -----------------------------------------------------------------------
+      # Navidrome auto-rescan (leave NAVIDROME_URL empty to disable)
+      # -----------------------------------------------------------------------
+      # After each scan completes, trigger a Navidrome library rescan via the
+      # Subsonic-compatible API so your new BPM tags appear immediately.
+      NAVIDROME_URL: ""             # e.g. http://navidrome:4533
+      NAVIDROME_USER: ""            # Navidrome admin username
+      NAVIDROME_PASS: ""            # Navidrome admin password
+
       # Log verbosity: DEBUG | INFO | WARNING | ERROR
       LOG_LEVEL: INFO
 
@@ -118,6 +135,19 @@ services:
       UI_PASSWORD: "changeme"     # CHANGE THIS
       UI_SECRET_KEY: ""           # auto-generated each restart if empty
       UI_SESSION_HOURS: "24"
+
+      # Brute-force login protection
+      UI_MAX_LOGIN_ATTEMPTS: "5"  # failed attempts before lockout (per IP, per 60 s)
+      UI_LOCKOUT_SECONDS: "300"   # how long a locked-out IP must wait
+
+    # Uncomment when ENABLE_UI=true to let Docker monitor the health of the UI.
+    # healthcheck:
+    #   test: ["CMD", "python", "-c",
+    #          "import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 15s
 
     ports:
       # Expose the web UI (only active when ENABLE_UI=true)
