@@ -1,0 +1,40 @@
+<svg width="280" height="88" viewBox="0 0 280 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- V1: Pure gradient typography — no icon, strong type + beat bars -->
+  <defs>
+    <linearGradient id="v1g" x1="0" y1="0" x2="280" y2="0">
+      <stop offset="0%" stop-color="#7c6cf0"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+
+  <!-- BPM — huge gradient bold -->
+  <text x="140" y="52"
+        text-anchor="middle"
+        font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif"
+        font-size="52" font-weight="900" letter-spacing="-1"
+        fill="url(#v1g)">BPM</text>
+
+  <!-- Beat bar row — EQ visualiser accent -->
+  <rect x="72"  y="58" width="6" height="9"  rx="2" fill="#7c6cf0" opacity="0.35"/>
+  <rect x="81"  y="55" width="6" height="12" rx="2" fill="#7c6cf0" opacity="0.55"/>
+  <rect x="90"  y="52" width="6" height="15" rx="2" fill="#7c6cf0" opacity="0.70"/>
+  <rect x="99"  y="49" width="6" height="18" rx="2" fill="#9d8bf0" opacity="0.85"/>
+  <rect x="108" y="55" width="6" height="12" rx="2" fill="#7c6cf0" opacity="0.65"/>
+  <rect x="117" y="52" width="6" height="15" rx="2" fill="#a78bfa"/>
+  <rect x="126" y="49" width="6" height="18" rx="2" fill="#c084fc"/>
+  <rect x="135" y="46" width="6" height="21" rx="2" fill="#c084fc"/>
+  <rect x="144" y="49" width="6" height="18" rx="2" fill="#a78bfa"/>
+  <rect x="153" y="52" width="6" height="15" rx="2" fill="#a78bfa" opacity="0.9"/>
+  <rect x="162" y="55" width="6" height="12" rx="2" fill="#7c6cf0" opacity="0.65"/>
+  <rect x="171" y="52" width="6" height="15" rx="2" fill="#7c6cf0" opacity="0.70"/>
+  <rect x="180" y="50" width="6" height="17" rx="2" fill="#9d8bf0" opacity="0.80"/>
+  <rect x="189" y="54" width="6" height="13" rx="2" fill="#7c6cf0" opacity="0.55"/>
+  <rect x="198" y="57" width="6" height="10" rx="2" fill="#7c6cf0" opacity="0.40"/>
+
+  <!-- TAGGER — small, spaced, muted -->
+  <text x="140" y="83"
+        text-anchor="middle"
+        font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif"
+        font-size="11" font-weight="400" letter-spacing="9"
+        fill="#7a7e99">TAGGER</text>
+</svg>
