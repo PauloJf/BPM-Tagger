@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}All Tracks — BPM Tagger{% endblock %}
+{% block content %}
+<div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap;">
+  <h1 style="margin:0">All Tracks <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
+  <form method="get" style="display:flex; gap:.5rem; margin-left:auto;">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search filename…" style="width:220px;">
+    <button class="btn btn-ghost btn-sm" type="submit">Search</button>
+    {% if q %}<a href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+  </form>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Path</th>
+      <th>BPM</th>
+      <th>Conf</th>
+      <th>Detector</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tracks %}
+    <tr class="{{ 'flagged' if t.needs_review or t.status == 'error' }}">
+      <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
+           style="color:var(--accent2); text-decoration:none;">{{ t.file_path | basename }}</a>
+      </td>
+      <td style="color:var(--muted); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ t.file_path | dirname | basename }}
+      </td>
+      <td style="font-variant-numeric:tabular-nums; font-weight:600;">
+        {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
+      </td>
+      <td>
+        {% if t.bpm_confidence is not none %}
+          <span class="conf-bar" style="width:{{ (t.bpm_confidence * 48)|int }}px"></span>
+          <span style="color:var(--muted); font-size:.8rem; margin-left:.3rem;">{{ "%.2f"|format(t.bpm_confidence) }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td style="color:var(--muted); font-size:.82rem;">{{ t.detector or "—" }}</td>
+      <td>
+        {% if t.status == 'error' %}
+          <span class="badge error">error</span>
+        {% elif t.locked %}
+          <span class="badge locked">locked</span>
+        {% elif t.needs_review %}
+          <span class="badge review">review</span>
+        {% else %}
+          <span class="badge ok">ok</span>
+        {% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
+           class="btn btn-ghost btn-sm">Open</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="text-align:center; color:var(--muted); padding:2rem;">No tracks found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a href="{{ url_for('tracks', page=page-1, q=q) }}">← Prev</a>
+  {% endif %}
+  {% for p in range(1, pages+1) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('tracks', page=p, q=q) }}">{{ p }}</a>
+    {% elif p == 4 or p == pages-3 %}
+      <span>…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < pages %}
+    <a href="{{ url_for('tracks', page=page+1, q=q) }}">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
