@@ -644,12 +644,21 @@ def main():
         "review_confidence_threshold":float(os.environ.get("REVIEW_CONFIDENCE_THRESHOLD", "0.4")),
         "review_disagree_threshold":  float(os.environ.get("REVIEW_DISAGREE_THRESHOLD", "15")),
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
+        "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
+        "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
+        "ui_password":                os.environ.get("UI_PASSWORD", ""),
+        "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),
+        "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
     }
 
     mode = os.environ.get("MODE", "scan_unscanned").lower()
     scan_on_start = os.environ.get("SCAN_ON_START", "true").lower() == "true"
 
     log.info("BPM Tagger starting — mode=%s, music_dir=%s", mode, config["music_dir"])
+
+    if config["enable_ui"]:
+        import web_ui
+        threading.Thread(target=web_ui.start, args=(config,), daemon=True).start()
 
     tagger = BPMTagger(config)
 
@@ -693,6 +702,15 @@ def main():
     else:
         log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, watch, report, lock, unlock", mode)
         sys.exit(1)
+
+    # For non-blocking modes, keep the process alive so the UI thread stays up.
+    if config["enable_ui"] and mode != "watch":
+        log.info("Work complete. UI still available — press Ctrl+C to stop.")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            log.info("Shutting down.")
 
 
 if __name__ == "__main__":

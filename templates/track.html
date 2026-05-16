@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}{{ track.file_path | basename }} — BPM Tagger{% endblock %}
+{% block content %}
+<style>
+  .track-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; }
+  @media (max-width: 800px) { .track-layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.4rem;
+  }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem;
+              color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-bottom: 1rem; }
+  .meta-item label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: .15rem; }
+  .meta-item value { font-size: .95rem; font-variant-numeric: tabular-nums; }
+
+  .bpm-display {
+    font-size: 3.5rem; font-weight: 700; text-align: center;
+    color: var(--accent2); line-height: 1; margin: .5rem 0 1rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bpm-input-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+  .bpm-input-row input { width: 120px; font-size: 1.1rem; text-align: center; }
+
+  audio { width: 100%; margin-bottom: 1rem; accent-color: var(--accent); }
+
+  /* Tap section */
+  #tap-btn {
+    width: 100%; padding: 1.4rem; font-size: 1.4rem; font-weight: 700;
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    cursor: pointer; user-select: none; transition: opacity .1s, transform .08s;
+    letter-spacing: .05em;
+  }
+  #tap-btn:active { opacity: .8; transform: scale(.97); }
+  #tap-bpm-display {
+    font-size: 2.8rem; font-weight: 700; text-align: center;
+    color: var(--yellow); margin: .8rem 0; font-variant-numeric: tabular-nums;
+    min-height: 3.5rem; line-height: 1.2;
+  }
+  .tap-hint { text-align: center; color: var(--muted); font-size: .8rem; margin-bottom: .8rem; }
+  .tap-actions { display: flex; gap: .5rem; }
+  .tap-actions .btn { flex: 1; text-align: center; }
+
+  .danger-zone { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+</style>
+
+<div style="margin-bottom:1rem;">
+  <a href="{{ url_for(back) }}" style="color:var(--muted); text-decoration:none; font-size:.9rem;">← Back</a>
+</div>
+
+<h1 style="margin-bottom:.3rem; word-break:break-all;">{{ track.file_path | basename }}</h1>
+<p style="color:var(--muted); margin-bottom:1.4rem; font-size:.85rem;">{{ track.file_path | dirname }}</p>
+
+<div class="track-layout">
+  <!-- Left column -->
+  <div>
+    <!-- Audio player -->
+    <div class="card" style="margin-bottom:1rem;">
+      <h2>Playback</h2>
+      <audio controls preload="metadata"
+             src="{{ url_for('audio', path=track.file_path) }}">
+        Your browser does not support audio playback.
+      </audio>
+    </div>
+
+    <!-- BPM info + save -->
+    <div class="card">
+      <h2>BPM</h2>
+      <div class="bpm-display" id="current-bpm">
+        {{ "%.1f"|format(track.bpm) if track.bpm else "—" }}
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <label>deeprhythm</label>
+          <value>{{ "%.1f"|format(track.bpm_dr) if track.bpm_dr else "—" }}</value>
+        </div>
+        <div class="meta-item">
+          <label>librosa</label>
+          <value>{{ "%.1f"|format(track.bpm_lb) if track.bpm_lb else "—" }}</value>
+        </div>
+        <div class="meta-item">
+          <label>confidence</label>
+          <value>{{ "%.2f"|format(track.bpm_confidence) if track.bpm_confidence is not none else "—" }}</value>
+        </div>
+        <div class="meta-item">
+          <label>detector</label>
+          <value style="font-size:.85rem;">{{ track.detector or "—" }}</value>
+        </div>
+      </div>
+
+      <div style="margin-bottom:.5rem;">
+        {% if track.locked %}<span class="badge locked">locked</span>{% endif %}
+        {% if track.needs_review %}<span class="badge review">needs review</span>{% endif %}
+        {% if track.status == 'error' %}<span class="badge error">error</span>{% endif %}
+      </div>
+
+      <div class="bpm-input-row">
+        <input type="number" id="bpm-value" step="0.1" min="20" max="300"
+               value="{{ "%.1f"|format(track.bpm) if track.bpm else '' }}"
+               placeholder="BPM">
+        <button class="btn btn-primary" onclick="saveBpm()">Save &amp; Lock</button>
+      </div>
+      <div id="save-msg" style="font-size:.85rem; margin-top:.4rem; min-height:1.2rem;"></div>
+
+      {% if track.locked %}
+      <div class="danger-zone">
+        <button class="btn btn-danger btn-sm" onclick="unlockTrack()">Unlock for re-analysis</button>
+        <div id="unlock-msg" style="font-size:.82rem; margin-top:.4rem; color:var(--muted);"></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right column: tap tempo -->
+  <div>
+    <div class="card" style="position:sticky; top:1rem;">
+      <h2>Tap Tempo</h2>
+      <p class="tap-hint">Tap the button (or press <kbd style="background:var(--bg); padding:.1rem .35rem; border-radius:3px; border:1px solid var(--border);">Space</kbd>) to the beat</p>
+      <button id="tap-btn" onclick="onTap()">TAP</button>
+      <div id="tap-bpm-display">—</div>
+      <div class="tap-actions">
+        <button class="btn btn-ghost" onclick="resetTap()">Reset</button>
+        <button class="btn btn-primary" onclick="applyTap()">Apply →</button>
+      </div>
+      <p style="color:var(--muted); font-size:.78rem; text-align:center; margin-top:.7rem;">
+        Resets automatically after 3s of silence
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const FILE_PATH = {{ track.file_path | tojson }};
+  const intervals = [];
+  let lastTap = null;
+
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space" && !e.target.matches("input, button")) {
+      e.preventDefault();
+      onTap();
+    }
+  });
+
+  function onTap() {
+    const now = Date.now();
+    if (lastTap !== null) {
+      const gap = now - lastTap;
+      if (gap < 3000) {
+        if (intervals.length >= 8) intervals.shift();
+        intervals.push(gap);
+        const avg = intervals.reduce((a, b) => a + b) / intervals.length;
+        document.getElementById("tap-bpm-display").textContent = (60000 / avg).toFixed(1);
+      } else {
+        intervals.length = 0;
+        document.getElementById("tap-bpm-display").textContent = "—";
+      }
+    }
+    lastTap = now;
+    // Visual flash on the tap button
+    const btn = document.getElementById("tap-btn");
+    btn.style.background = "var(--accent2)";
+    setTimeout(() => btn.style.background = "var(--accent)", 80);
+  }
+
+  function resetTap() {
+    intervals.length = 0;
+    lastTap = null;
+    document.getElementById("tap-bpm-display").textContent = "—";
+  }
+
+  function applyTap() {
+    const val = document.getElementById("tap-bpm-display").textContent;
+    if (val !== "—") {
+      document.getElementById("bpm-value").value = parseFloat(val).toFixed(1);
+    }
+  }
+
+  function saveBpm() {
+    const bpm = parseFloat(document.getElementById("bpm-value").value);
+    const msg = document.getElementById("save-msg");
+    if (isNaN(bpm) || bpm < 20 || bpm > 300) {
+      msg.style.color = "var(--red)";
+      msg.textContent = "Enter a valid BPM (20–300).";
+      return;
+    }
+    fetch("/api/save_bpm", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_path: FILE_PATH, bpm: bpm})
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        msg.style.color = "var(--green)";
+        msg.textContent = "Saved & locked at " + bpm.toFixed(1) + " BPM.";
+        document.getElementById("current-bpm").textContent = bpm.toFixed(1);
+      } else {
+        msg.style.color = "var(--red)";
+        msg.textContent = "Error: " + (data.error || "unknown");
+      }
+    })
+    .catch(() => { msg.style.color = "var(--red)"; msg.textContent = "Request failed."; });
+  }
+
+  function unlockTrack() {
+    const msg = document.getElementById("unlock-msg");
+    fetch("/api/unlock", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_path: FILE_PATH})
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        msg.textContent = "Unlocked — will be re-analyzed on next scan.";
+      } else {
+        msg.textContent = "Error: " + (data.error || "unknown");
+      }
+    });
+  }
+</script>
+{% endblock %}

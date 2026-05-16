@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Needs Review — BPM Tagger{% endblock %}
+{% block content %}
+<h1>Needs Review <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ tracks|length }})</span></h1>
+
+{% if not tracks %}
+  <p style="color:var(--muted); margin-top:2rem; text-align:center;">
+    No tracks need review. 🎉
+  </p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Filename</th>
+      <th>Path</th>
+      <th>BPM</th>
+      <th>DR result</th>
+      <th>LB result</th>
+      <th>Conf</th>
+      <th>Reason</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tracks %}
+    <tr class="{{ 'flagged' if t.needs_review or t.status == 'error' }}">
+      <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
+           style="color:var(--accent2); text-decoration:none;">{{ t.file_path | basename }}</a>
+      </td>
+      <td style="color:var(--muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ t.file_path | dirname | basename }}
+      </td>
+      <td style="font-variant-numeric:tabular-nums; font-weight:600;">
+        {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
+      </td>
+      <td style="font-variant-numeric:tabular-nums; color:var(--muted);">
+        {{ "%.1f"|format(t.bpm_dr) if t.bpm_dr else "—" }}
+      </td>
+      <td style="font-variant-numeric:tabular-nums; color:var(--muted);">
+        {{ "%.1f"|format(t.bpm_lb) if t.bpm_lb else "—" }}
+      </td>
+      <td>
+        {% if t.bpm_confidence is not none %}
+          <span class="conf-bar" style="width:{{ (t.bpm_confidence * 40)|int }}px"></span>
+          <span style="color:var(--muted); font-size:.8rem; margin-left:.3rem;">{{ "%.2f"|format(t.bpm_confidence) }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td style="font-size:.8rem;">
+        {% if t.status == 'error' %}
+          <span class="badge error">error</span>
+        {% else %}
+          {% if t.needs_review %}<span class="badge review">disagreement</span> {% endif %}
+          {% if t.bpm_confidence is not none and t.bpm_confidence < conf_threshold %}
+            <span class="badge review">low conf</span>
+          {% endif %}
+          {% if t.detector == 'librosa' %}<span class="badge review">fallback</span>{% endif %}
+        {% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
+           class="btn btn-ghost btn-sm">Fix</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
