@@ -132,8 +132,8 @@ services:
       # UI_PASSWORD is required — change it before exposing to a network.
       ENABLE_UI: "false"
       UI_PORT: "5000"
-      UI_PASSWORD: "changeme"     # CHANGE THIS
-      UI_SECRET_KEY: ""           # auto-generated each restart if empty
+      UI_PASSWORD: ""               # REQUIRED — set a strong password before exposing port 5000
+      UI_SECRET_KEY: ""           # auto-generated each restart if empty; set explicitly to persist sessions
       UI_SESSION_HOURS: "24"
 
       # Brute-force login protection
@@ -150,7 +150,8 @@ services:
     #   start_period: 15s
 
     ports:
-      # Expose the web UI (only active when ENABLE_UI=true)
+      # Expose the web UI (only when ENABLE_UI=true).
+      # Bind to localhost only if you don't need external access: "127.0.0.1:5000:5000"
       - "5000:5000"
 
     volumes:

@@ -143,8 +143,8 @@ When all three are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/
 |---|---|---|
 | `ENABLE_UI` | `false` | Set to `true` to start the web interface. Runs as a thread inside the same container alongside the scanner/watcher. |
 | `UI_PORT` | `5000` | Port the web UI listens on inside the container |
-| `UI_PASSWORD` | `changeme` | Password for the web UI login page. **Change this before exposing port 5000 to any network.** |
-| `UI_SECRET_KEY` | _(empty)_ | Flask session secret key. Auto-generates a random key if empty — sessions are invalidated on each container restart. Set explicitly to persist sessions across restarts. |
+| `UI_PASSWORD` | _(empty)_ | **Required** — password for the web UI login page. The UI will not start if this is blank. |
+| `UI_SECRET_KEY` | _(empty)_ | Flask session secret key. Auto-generates a random key if empty — sessions are invalidated on each container restart. Set explicitly to persist sessions across restarts. Generate one with: `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
 | `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
 | `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
@@ -292,6 +292,38 @@ Notifications are batched to avoid flooding your channel:
 - In watch mode the buffer flushes every 60 seconds
 - `MODE=report` sends a dedicated `⚠️ warning`-priority message listing the suspicious tracks
 - Leave `NTFY_URL` or `NTFY_TOPIC` empty to disable all notifications
+
+---
+
+## Security
+
+### Web UI hardening
+
+The web UI implements multiple layers of protection:
+
+- **CSRF protection** — every state-changing request requires a per-session CSRF token. Forms include a hidden `csrf_token` field; JavaScript API calls include an `X-CSRF-Token` header. Requests without a valid token are rejected with HTTP 403.
+- **Login brute-force protection** — failed login attempts are tracked per source IP. After `UI_MAX_LOGIN_ATTEMPTS` failures within 60 seconds, that IP is locked out for `UI_LOCKOUT_SECONDS`. Counts reset only after the full lockout period expires.
+- **Open redirect prevention** — the `?next=` parameter accepted after login is validated to ensure it points to this host only; external URLs are silently ignored.
+- **Path traversal prevention** — the Save BPM and Unlock API endpoints validate that the supplied file path resolves within `MUSIC_DIR` before touching any file or database record.
+- **SameSite=Lax cookie** — session cookies are set with `SameSite=Lax` and `HttpOnly`, blocking cross-site POST forgery and JavaScript cookie theft.
+- **Security response headers** — every response includes `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, and a `Content-Security-Policy` that restricts resource loading to the same origin.
+- **Production WSGI server** — the UI runs on [Waitress](https://docs.pylonsproject.org/projects/waitress/) rather than Flask's development server, providing proper threading, signal handling, and no debug-mode risk.
+- **Logout via POST** — the logout button submits a POST form with a CSRF token, preventing one-click logout attacks from external pages.
+
+### Recommendations for production
+
+- Set a strong, unique `UI_PASSWORD` — the UI will refuse to start if this is blank.
+- Set `UI_SECRET_KEY` to a stable random value so sessions survive container restarts:
+  ```bash
+  python -c "import secrets; print(secrets.token_hex(32))"
+  ```
+- If you don't need external access to the UI, bind the port to localhost in `docker-compose.yml`:
+  ```yaml
+  ports:
+    - "127.0.0.1:5000:5000"
+  ```
+- Put a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it to the internet.
+- The Navidrome password is transmitted using Subsonic token authentication (MD5 hash + random salt) rather than as plaintext in the URL, keeping it out of server access logs.
 
 ---
 
