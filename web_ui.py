@@ -1,5 +1,6 @@
 """Flask web UI for BPM Tagger — runs as a daemon thread inside the main container."""
 
+import hmac
 import logging
 import os
 import secrets
@@ -9,6 +10,7 @@ from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 from threading import Lock
+from urllib.parse import urljoin, urlparse
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
@@ -25,6 +27,7 @@ _conf_threshold = 0.4
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
+_login_lockout_until: dict = defaultdict(float)
 _login_lock = Lock()
 _max_login_attempts = 5
 _lockout_seconds = 300
@@ -45,6 +48,50 @@ def _dirname(path):
 
 
 # ---------------------------------------------------------------------------
+# Security helpers
+# ---------------------------------------------------------------------------
+
+def _csrf_token() -> str:
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
+    return session["csrf_token"]
+
+def _check_csrf():
+    token = (request.form.get("csrf_token")
+             or request.headers.get("X-CSRF-Token", ""))
+    stored = session.get("csrf_token", "")
+    if not token or not stored or not hmac.compare_digest(token, stored):
+        abort(403)
+
+def _is_safe_redirect(url: str) -> bool:
+    ref = urlparse(request.host_url)
+    test = urlparse(urljoin(request.host_url, url))
+    return test.scheme in ("http", "https") and ref.netloc == test.netloc
+
+def _assert_in_music_dir(file_path: str):
+    real = os.path.realpath(file_path)
+    music_real = os.path.realpath(_music_dir)
+    if not (real == music_real or real.startswith(music_real + os.sep)):
+        abort(403)
+
+
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "same-origin"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; media-src 'self';"
+    )
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 
@@ -59,26 +106,35 @@ def login_required(f):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    _csrf_token()  # ensure token exists before rendering
     if request.method == "POST":
+        _check_csrf()
         ip = request.remote_addr or "unknown"
         now = time.time()
         with _login_lock:
-            attempts = _login_attempts[ip]
-            # Prune entries outside the rolling window
-            _login_attempts[ip] = [t for t in attempts if now - t < _attempt_window]
-            if len(_login_attempts[ip]) >= _max_login_attempts:
+            if now < _login_lockout_until[ip]:
+                return render_template("login.html", lockout=True), 429
+            attempts = [t for t in _login_attempts[ip] if now - t < _attempt_window]
+            _login_attempts[ip] = attempts
+            if len(attempts) >= _max_login_attempts:
+                _login_lockout_until[ip] = now + _lockout_seconds
+                _login_attempts[ip] = []
                 return render_template("login.html", lockout=True), 429
             if request.form.get("password") == app.config["UI_PASSWORD"]:
                 _login_attempts.pop(ip, None)
+                _login_lockout_until.pop(ip, None)
                 session["ok"] = True
-                return redirect(request.args.get("next") or url_for("tracks"))
+                next_url = request.args.get("next")
+                target = next_url if next_url and _is_safe_redirect(next_url) else url_for("tracks")
+                return redirect(target)
             _login_attempts[ip].append(now)
         flash("Wrong password.", "error")
     return render_template("login.html")
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
+    _check_csrf()
     session.clear()
     return redirect(url_for("login"))
 
@@ -96,8 +152,11 @@ def index():
 @app.route("/tracks")
 @login_required
 def tracks():
-    q       = request.args.get("q", "").strip()
-    page    = max(1, int(request.args.get("page", 1)))
+    q        = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
     per_page = 50
 
     with _db._connect() as conn:
@@ -133,6 +192,7 @@ def review():
 @app.route("/track")
 @login_required
 def track_detail():
+    _csrf_token()  # ensure token exists before rendering JS that needs it
     path = request.args.get("path", "")
     back = request.args.get("back", "tracks")
     if back not in ("tracks", "review"):
@@ -164,6 +224,7 @@ def track_detail():
 @app.route("/api/save_bpm", methods=["POST"])
 @login_required
 def api_save_bpm():
+    _check_csrf()
     from bpm_tagger import write_bpm_tag
     data = request.get_json(force=True, silent=True) or {}
     file_path = data.get("file_path", "")
@@ -174,6 +235,8 @@ def api_save_bpm():
 
     if not file_path:
         return jsonify(ok=False, error="file_path required")
+
+    _assert_in_music_dir(file_path)
 
     try:
         _db.lock_track(file_path, bpm)
@@ -189,10 +252,14 @@ def api_save_bpm():
 @app.route("/api/unlock", methods=["POST"])
 @login_required
 def api_unlock():
+    _check_csrf()
     data = request.get_json(force=True, silent=True) or {}
     file_path = data.get("file_path", "")
     if not file_path:
         return jsonify(ok=False, error="file_path required")
+
+    _assert_in_music_dir(file_path)
+
     try:
         _db.unlock_track(file_path)
         log.info("UI: unlocked %s", Path(file_path).name)
@@ -226,7 +293,6 @@ def audio():
         abort(400)
     real = os.path.realpath(file_path)
     music_real = os.path.realpath(_music_dir)
-    # Prevent path traversal outside the music directory
     if not (real == music_real or real.startswith(music_real + os.sep)):
         abort(403)
     if not os.path.isfile(real):
@@ -240,13 +306,13 @@ def audio():
 
 def start(config: dict):
     global _db, _music_dir, _write_tags, _conf_threshold
+    global _max_login_attempts, _lockout_seconds
 
     password = config.get("ui_password", "")
     if not password:
         log.error("UI: UI_PASSWORD is not set — web UI will not start")
         return
 
-    global _max_login_attempts, _lockout_seconds
     from bpm_tagger import BPMDatabase
     _db = BPMDatabase(config["db_path"])
     _music_dir = config["music_dir"]
@@ -262,7 +328,10 @@ def start(config: dict):
         hours=int(config.get("ui_session_hours", 24))
     )
     app.config["SESSION_PERMANENT"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
 
+    from waitress import serve
     port = int(config.get("ui_port", 5000))
     log.info("BPM UI running on http://0.0.0.0:%d", port)
-    app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
+    serve(app, host="0.0.0.0", port=port, threads=8)

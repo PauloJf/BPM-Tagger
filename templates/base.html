@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}BPM Tagger{% endblock %}</title>
+  {% if session.csrf_token %}<meta name="csrf-token" content="{{ session.csrf_token }}">{% endif %}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -130,7 +131,10 @@
   <a href="{{ url_for('tracks') }}" class="{{ 'active' if request.endpoint == 'tracks' }}">All Tracks</a>
   <a href="{{ url_for('review') }}" class="{{ 'active' if request.endpoint == 'review' }}">Needs Review</a>
   <span class="spacer"></span>
-  <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+  <form method="post" action="{{ url_for('logout') }}" style="display:inline; margin:0;">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="btn btn-ghost btn-sm logout" style="color:var(--red); border:none; background:none; cursor:pointer; padding:.9rem 1rem; font-size:inherit;">Logout</button>
+  </form>
 </nav>
 {% endif %}
 <div class="container">
