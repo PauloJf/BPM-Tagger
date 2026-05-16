@@ -6,10 +6,13 @@ services:
 
     environment:
       # -----------------------------------------------------------------------
-      # Operating mode (required)
-      #   scan_all       — re-analyze every file regardless of previous results
-      #   scan_unscanned — only analyze files not yet in the DB or that changed
+      # Operating mode
+      #   scan_all       — re-analyze every file (ignores existing DB results)
+      #   scan_unscanned — only analyze files that are new or have changed
       #   watch          — scan_unscanned on start, then watch for new/changed files
+      #   report         — print suspicious tracks to logs, write CSV, send ntfy
+      #   lock           — lock a single file (requires LOCK_FILE; LOCK_BPM optional)
+      #   unlock         — unlock a file so it will be re-analyzed (requires UNLOCK_FILE)
       # -----------------------------------------------------------------------
       MODE: watch
 
@@ -25,11 +28,14 @@ services:
       NTFY_URL: https://ntfy.sh
       NTFY_TOPIC: ""            # set your topic here, e.g. my-bpm-alerts
 
-      # Minimum seconds between notifications (anti-spam, default 5 minutes)
+      # Minimum seconds between batched tagging notifications (default 5 min)
       NTFY_MIN_INTERVAL: "300"
 
-      # Number of tracks to batch into a single notification (default 10)
+      # Number of tracks to batch into a single tagging notification
       NTFY_BATCH_SIZE: "10"
+
+      # Include "N need review" in the scan-complete summary notification
+      NTFY_NOTIFY_REVIEW: "true"
 
       # -----------------------------------------------------------------------
       # Tag writing
@@ -40,7 +46,7 @@ services:
       # -----------------------------------------------------------------------
       # Watch mode options
       # -----------------------------------------------------------------------
-      # Run scan_unscanned before starting the file watcher (default true)
+      # Run scan_unscanned before starting the file watcher (watch mode only)
       SCAN_ON_START: "true"
 
       # -----------------------------------------------------------------------
@@ -48,14 +54,65 @@ services:
       # -----------------------------------------------------------------------
       AUDIO_EXTENSIONS: ".mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv"
 
+      # -----------------------------------------------------------------------
+      # BPM accuracy: detection quality improvements
+      # -----------------------------------------------------------------------
+
+      # Plausibility range — BPM is doubled/halved until it falls in this range.
+      # Tip: narrow to 90-160 for pop/rock; widen to 60-220 for jazz/metal.
+      BPM_MIN: "60"
+      BPM_MAX: "200"
+
+      # Octave correction: when deeprhythm and librosa return values that are
+      # exactly double/half of each other, pick the one inside [BPM_MIN, BPM_MAX].
+      OCTAVE_CORRECTION: "true"
+
+      # Multi-segment librosa analysis: divide the song into N windows and take
+      # the median BPM. Reduces influence of quiet intros/outros.
+      MULTI_SEGMENT: "true"
+      MULTI_SEGMENT_COUNT: "3"    # number of windows
+      SEGMENT_DURATION: "45"      # seconds per window
+
+      # -----------------------------------------------------------------------
+      # Review / suspicious-track flagging
+      # -----------------------------------------------------------------------
+
+      # Confidence below this triggers "needs review" flag in the DB
+      REVIEW_CONFIDENCE_THRESHOLD: "0.4"
+
+      # BPM difference between deeprhythm and librosa (not octave-related)
+      # that triggers "needs review" flag
+      REVIEW_DISAGREE_THRESHOLD: "15"
+
+      # -----------------------------------------------------------------------
+      # Report mode (MODE=report)
+      # -----------------------------------------------------------------------
+      # Path for the CSV export of suspicious tracks
+      REPORT_PATH: "/data/review_report.csv"
+
+      # -----------------------------------------------------------------------
+      # Lock / unlock modes
+      # -----------------------------------------------------------------------
+      # MODE=lock  — set LOCK_FILE to the absolute path inside the container.
+      #              Optionally set LOCK_BPM to override the BPM value.
+      # MODE=unlock — set UNLOCK_FILE to the path to unlock.
+      #
+      # Example (run once, do not set in the long-running service):
+      #   docker compose run --rm --no-deps bpm-tagger \
+      #     env MODE=lock LOCK_FILE="/music/artist/track.mp3" LOCK_BPM=128 \
+      #     python bpm_tagger.py
+      # LOCK_FILE: ""
+      # LOCK_BPM: ""
+      # UNLOCK_FILE: ""
+
       # Log verbosity: DEBUG | INFO | WARNING | ERROR
       LOG_LEVEL: INFO
 
     volumes:
-      # Mount your Navidrome music directory (read-write so tags can be saved)
+      # Mount your Navidrome music directory (read-write so tags can be written back)
       - /path/to/your/music:/music
 
-      # Persistent storage for the SQLite database
+      # Persistent storage for the SQLite database and CSV reports
       - bpm_tagger_data:/data
 
     # Uncomment and set to match your Navidrome user/group to avoid permission issues
