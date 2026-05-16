@@ -16,7 +16,6 @@ import librosa
 import mutagen
 import numpy as np
 import requests
-import soundfile as sf
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, ID3NoHeaderError, TBPM
 from mutagen.mp4 import MP4
@@ -32,10 +31,24 @@ AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".
 # Low-level BPM helpers
 # ---------------------------------------------------------------------------
 
+_predictor = None  # BPMPredictor is expensive to load; reuse across files
+
+def _get_predictor():
+    global _predictor
+    if _predictor is None:
+        from deeprhythm import BPMPredictor
+        _predictor = BPMPredictor()
+    return _predictor
+
+
 def _detect_bpm_deeprhythm(file_path: str) -> float:
-    from deeprhythm import BPMPredictor
-    predictor = BPMPredictor()
-    return round(float(predictor.predict(file_path)), 1)
+    return round(float(_get_predictor().predict(file_path)), 1)
+
+
+def _track_duration(file_path: str) -> float:
+    """Return track length in seconds using mutagen (supports all audio formats)."""
+    audio = mutagen.File(file_path)
+    return audio.info.length if audio and hasattr(audio.info, "length") else 0.0
 
 
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
@@ -53,27 +66,16 @@ def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[flo
 
 
 def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int, seg_duration: float) -> tuple[float, float]:
-    try:
-        info = sf.info(file_path)
-        total = info.duration
-    except Exception:
-        total = 0.0
+    total = _track_duration(file_path)
 
     if total < seg_duration * 1.5:
         return _librosa_window(file_path, 0.0, 180.0)
 
-    offsets = []
-    for i in range(n_segments):
-        center = total * (i + 1) / (n_segments + 1)
-        o = max(0.0, min(center - seg_duration / 2, total - seg_duration))
-        offsets.append(o)
-
-    bpms, confs = [], []
-    for o in offsets:
-        b, c = _librosa_window(file_path, o, seg_duration)
-        bpms.append(b)
-        confs.append(c)
-
+    offsets = [
+        max(0.0, min(total * (i + 1) / (n_segments + 1) - seg_duration / 2, total - seg_duration))
+        for i in range(n_segments)
+    ]
+    bpms, confs = zip(*[_librosa_window(file_path, o, seg_duration) for o in offsets])
     return round(float(np.median(bpms)), 1), float(np.median(confs))
 
 
@@ -94,8 +96,7 @@ def _reconcile(bpm_dr: float, bpm_lb: float, config: dict) -> tuple[float, bool]
         center = (bpm_min + bpm_max) / 2
         return min(bpm_dr, bpm_lb, key=lambda x: abs(x - center)), False
 
-    needs_review = abs(bpm_dr - bpm_lb) > config["review_disagree_threshold"]
-    return bpm_dr, needs_review
+    return bpm_dr, abs(bpm_dr - bpm_lb) > config["review_disagree_threshold"]
 
 
 def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
@@ -119,24 +120,19 @@ def detect_bpm(file_path: str, config: dict) -> dict:
     n_seg = int(config.get("multi_segment_count", 3))
     seg_dur = float(config.get("segment_duration", 45))
 
-    # deeprhythm
     bpm_dr: Optional[float] = None
     try:
         bpm_dr = _detect_bpm_deeprhythm(file_path)
     except Exception as exc:
         log.debug("deeprhythm failed for %s: %s", Path(file_path).name, exc)
 
-    # librosa (always runs)
     if config.get("multi_segment", True):
         bpm_lb, conf_lb = _detect_bpm_librosa_multiseg(file_path, n_seg, seg_dur)
     else:
         bpm_lb, conf_lb = _librosa_window(file_path, 0.0, 180.0)
 
-    # decide final BPM
     if bpm_dr is None:
-        bpm_final = bpm_lb
-        detector = "librosa"
-        needs_review = False
+        bpm_final, detector, needs_review = bpm_lb, "librosa", False
     else:
         bpm_final, needs_review = _reconcile(bpm_dr, bpm_lb, config)
         detector = "deeprhythm+librosa"
@@ -245,13 +241,12 @@ class BPMDatabase:
     def _migrate(self, conn):
         """Add columns that may be absent in databases created before this version."""
         existing = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
-        additions = [
+        for col, coldef in [
             ("bpm_dr",       "REAL"),
             ("bpm_lb",       "REAL"),
             ("needs_review", "INTEGER DEFAULT 0"),
             ("locked",       "INTEGER DEFAULT 0"),
-        ]
-        for col, coldef in additions:
+        ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
 
@@ -288,8 +283,6 @@ class BPMDatabase:
 
     def lock_track(self, file_path: str, bpm: Optional[float]):
         now = datetime.now(timezone.utc).isoformat()
-        existing = self.get_track(file_path)
-        final_bpm = bpm if bpm is not None else (existing["bpm"] if existing else None)
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO tracks (file_path, bpm, analyzed_at, status, locked)
@@ -299,7 +292,7 @@ class BPMDatabase:
                     analyzed_at = excluded.analyzed_at,
                     status      = 'done',
                     locked      = 1
-            """, (file_path, final_bpm, now))
+            """, (file_path, bpm, now))
             conn.commit()
 
     def unlock_track(self, file_path: str):
@@ -334,13 +327,16 @@ class BPMDatabase:
 
     def get_stats(self) -> dict:
         with self._connect() as conn:
-            total        = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-            done         = conn.execute("SELECT COUNT(*) FROM tracks WHERE status='done'").fetchone()[0]
-            errors       = conn.execute("SELECT COUNT(*) FROM tracks WHERE status='error'").fetchone()[0]
-            needs_review = conn.execute("SELECT COUNT(*) FROM tracks WHERE needs_review=1 AND status='done'").fetchone()[0]
-            locked       = conn.execute("SELECT COUNT(*) FROM tracks WHERE locked=1").fetchone()[0]
-            return {"total": total, "done": done, "errors": errors,
-                    "needs_review": needs_review, "locked": locked}
+            row = conn.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(CASE WHEN status='done'  THEN 1 END) AS done,
+                    COUNT(CASE WHEN status='error' THEN 1 END) AS errors,
+                    COUNT(CASE WHEN needs_review=1 AND status='done' THEN 1 END) AS needs_review,
+                    COUNT(CASE WHEN locked=1       THEN 1 END) AS locked
+                FROM tracks
+            """).fetchone()
+            return dict(row)
 
 
 # ---------------------------------------------------------------------------
@@ -376,8 +372,7 @@ class NotificationManager:
         count = len(self._buffer)
         if count == 1:
             name, bpm = self._buffer[0]
-            title = "BPM Tagged"
-            body = f"{name}: {bpm:.1f} BPM"
+            title, body = "BPM Tagged", f"{name}: {bpm:.1f} BPM"
         else:
             title = f"BPM Tagged: {count} tracks"
             lines = [f"• {n}: {b:.1f} BPM" for n, b in self._buffer[:10]]
@@ -397,18 +392,16 @@ class NotificationManager:
 
     def send_report(self, suspicious: list[dict]):
         count = len(suspicious)
-        title = f"BPM Review Needed: {count} tracks"
         lines = []
         for t in suspicious[:15]:
             name = Path(t["file_path"]).name
             bpm = f"{t['bpm']:.1f}" if t["bpm"] is not None else "?"
-            dr = f"{t['bpm_dr']:.1f}" if t["bpm_dr"] is not None else "?"
-            lb = f"{t['bpm_lb']:.1f}" if t["bpm_lb"] is not None else "?"
+            dr  = f"{t['bpm_dr']:.1f}" if t["bpm_dr"] is not None else "?"
+            lb  = f"{t['bpm_lb']:.1f}" if t["bpm_lb"] is not None else "?"
             lines.append(f"• {name}: {bpm} BPM [dr={dr} lb={lb}]")
         if count > 15:
             lines.append(f"  …and {count - 15} more")
-        body = "\n".join(lines)
-        self._post(title, body, "warning")
+        self._post(f"BPM Review Needed: {count} tracks", "\n".join(lines), "warning")
 
     def _post(self, title: str, body: str, tag: str):
         try:
@@ -431,9 +424,7 @@ class NotificationManager:
 def _build_reasons(track: dict, conf_threshold: float, bpm_min: float, bpm_max: float) -> list[str]:
     reasons = []
     if track.get("needs_review"):
-        dr = track.get("bpm_dr")
-        lb = track.get("bpm_lb")
-        reasons.append(f"detector disagreement (dr={dr} lb={lb})")
+        reasons.append(f"detector disagreement (dr={track.get('bpm_dr')} lb={track.get('bpm_lb')})")
     conf = track.get("bpm_confidence")
     if conf is not None and conf < conf_threshold:
         reasons.append(f"low confidence ({conf:.2f})")
@@ -451,9 +442,6 @@ def _build_reasons(track: dict, conf_threshold: float, bpm_min: float, bpm_max: 
 
 class BPMTagger:
     def __init__(self, config: dict):
-        self.music_dir = config["music_dir"]
-        self.write_tags = config.get("write_tags", True)
-        self.extensions = {e.lower() for e in config.get("extensions", AUDIO_EXTENSIONS)}
         self.config = config
         self.db = BPMDatabase(config["db_path"])
         self.notifier: Optional[NotificationManager] = None
@@ -466,15 +454,15 @@ class BPMTagger:
                 notify_review=config.get("ntfy_notify_review", True),
             )
 
-    def process_file(self, file_path: str, force: bool = False) -> Optional[dict]:
-        """Analyze one file. Returns result dict if newly analyzed, None if skipped/locked."""
-        if Path(file_path).suffix.lower() not in self.extensions:
-            return None
+    def process_file(self, file_path: str, force: bool = False) -> dict:
+        """Analyze one file. Returns dict with 'status': tagged | skipped | error."""
+        if Path(file_path).suffix.lower() not in self.config["extensions"]:
+            return {"status": "skipped"}
 
         file_hash = get_file_hash(file_path)
         if not force and not self.db.needs_analysis(file_path, file_hash):
             log.debug("Skip (unchanged/locked): %s", Path(file_path).name)
-            return None
+            return {"status": "skipped"}
 
         log.info("Analyzing: %s", Path(file_path).name)
         try:
@@ -484,7 +472,7 @@ class BPMTagger:
             log.info("  %.1f BPM (conf %.2f, %s)%s",
                      bpm, result["confidence"], result["detector"], review_flag)
 
-            if self.write_tags:
+            if self.config["write_tags"]:
                 write_bpm_tag(file_path, bpm)
 
             self.db.upsert_track(
@@ -497,34 +485,30 @@ class BPMTagger:
             if self.notifier:
                 self.notifier.add(file_path, bpm)
 
-            return result
+            return {"status": "tagged", **result}
         except Exception as exc:
             log.error("Error analyzing %s: %s", file_path, exc)
             self.db.upsert_track(
                 file_path, file_hash,
-                None, None, None, None, None,
-                "error", error=str(exc),
+                None, None, None, None, None, "error", error=str(exc),
             )
-            return None
+            return {"status": "error"}
 
     def scan_directory(self, force: bool = False) -> dict:
         tagged = errors = skipped = needs_review_count = 0
-        for root, _, files in os.walk(self.music_dir):
+        for root, _, files in os.walk(self.config["music_dir"]):
             for fname in sorted(files):
-                if Path(fname).suffix.lower() not in self.extensions:
+                if Path(fname).suffix.lower() not in self.config["extensions"]:
                     continue
-                file_path = os.path.join(root, fname)
-                result = self.process_file(file_path, force=force)
-                if result is not None:
+                result = self.process_file(os.path.join(root, fname), force=force)
+                if result["status"] == "tagged":
                     tagged += 1
                     if result["needs_review"]:
                         needs_review_count += 1
+                elif result["status"] == "error":
+                    errors += 1
                 else:
-                    track = self.db.get_track(file_path)
-                    if track and track["status"] == "error":
-                        errors += 1
-                    else:
-                        skipped += 1
+                    skipped += 1
 
         if self.notifier:
             self.notifier.flush()
@@ -544,14 +528,9 @@ class BPMTagger:
         suspicious = self.db.get_suspicious(conf_thr, bpm_min, bpm_max)
         log.info("Report: %d suspicious tracks found", len(suspicious))
 
-        for t in suspicious:
-            reasons = _build_reasons(t, conf_thr, bpm_min, bpm_max)
-            bpm_str = f"{t['bpm']:.1f} BPM" if t["bpm"] is not None else "no BPM"
-            log.info("  [%s] %s — %s", "; ".join(reasons), Path(t["file_path"]).name, bpm_str)
-
-        # CSV export
         report_path = self.config.get("report_path", "/data/review_report.csv")
         os.makedirs(os.path.dirname(os.path.abspath(report_path)), exist_ok=True)
+
         with open(report_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=[
                 "file_path", "bpm", "bpm_dr", "bpm_lb",
@@ -560,6 +539,8 @@ class BPMTagger:
             writer.writeheader()
             for t in suspicious:
                 reasons = _build_reasons(t, conf_thr, bpm_min, bpm_max)
+                bpm_str = f"{t['bpm']:.1f} BPM" if t["bpm"] is not None else "no BPM"
+                log.info("  [%s] %s — %s", "; ".join(reasons), Path(t["file_path"]).name, bpm_str)
                 writer.writerow({
                     "file_path":      t["file_path"],
                     "bpm":            t["bpm"],
@@ -570,20 +551,19 @@ class BPMTagger:
                     "needs_review":   t["needs_review"],
                     "reasons":        "; ".join(reasons),
                 })
-        log.info("Report written to %s", report_path)
 
+        log.info("Report written to %s", report_path)
         if self.notifier and suspicious:
             self.notifier.send_report(suspicious)
 
         return {"suspicious": len(suspicious), "report_path": report_path}
 
     def watch(self):
-        log.info("Watching %s for new/updated files...", self.music_dir)
-
-        tagger = self
+        log.info("Watching %s for new/updated files...", self.config["music_dir"])
 
         class _Handler(FileSystemEventHandler):
-            def __init__(self):
+            def __init__(self, tagger: "BPMTagger"):
+                self._tagger = tagger
                 self._pending: dict[str, float] = {}
                 self._lock = threading.Lock()
 
@@ -608,17 +588,17 @@ class BPMTagger:
                     time.sleep(2)
                     with self._lock:
                         now = time.monotonic()
-                        ready = [p for p, t in self._pending.items() if t <= now]
+                        ready = [p for p, deadline in self._pending.items() if deadline <= now]
                         for p in ready:
                             del self._pending[p]
                     for path in ready:
-                        tagger.process_file(path, force=True)
+                        self._tagger.process_file(path, force=True)
 
-        handler = _Handler()
+        handler = _Handler(self)
         threading.Thread(target=handler.drain_pending, daemon=True).start()
 
         observer = Observer()
-        observer.schedule(handler, self.music_dir, recursive=True)
+        observer.schedule(handler, self.config["music_dir"], recursive=True)
         observer.start()
 
         try:
