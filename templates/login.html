@@ -3,7 +3,6 @@
 {% block content %}
 <style>
   .login-wrap { max-width: 360px; margin: 6rem auto; }
-  .login-wrap h1 { text-align: center; margin-bottom: 1.8rem; font-size: 1.5rem; }
   .login-wrap .card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 2rem;
@@ -14,7 +13,11 @@
   .login-wrap .btn-primary { width: 100%; padding: .6rem; font-size: .95rem; margin-top: .5rem; }
 </style>
 <div class="login-wrap">
-  <h1>🎵 BPM Tagger</h1>
+  <div style="text-align:center; margin-bottom:1.8rem;">
+    <img src="{{ url_for('static', filename='logo-wordmark.svg') }}"
+         alt="BPM Tagger"
+         style="height:72px; width:auto; display:inline-block;">
+  </div>
   <div class="card">
     {% if lockout %}
     <p style="color:var(--red); text-align:center; margin-bottom:1rem; font-size:.9rem;">
