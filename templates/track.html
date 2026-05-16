@@ -153,6 +153,7 @@
 
 <script>
   const FILE_PATH = {{ track.file_path | tojson }};
+  const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const intervals = [];
   let lastTap = null;
 
@@ -207,7 +208,7 @@
     }
     fetch("/api/save_bpm", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": CSRF_TOKEN},
       body: JSON.stringify({file_path: FILE_PATH, bpm: bpm})
     })
     .then(r => r.json())
@@ -228,7 +229,7 @@
     const msg = document.getElementById("unlock-msg");
     fetch("/api/unlock", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": CSRF_TOKEN},
       body: JSON.stringify({file_path: FILE_PATH})
     })
     .then(r => r.json())

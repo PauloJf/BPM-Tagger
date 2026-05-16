@@ -22,6 +22,7 @@
     </p>
     {% else %}
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
       <div class="field">
         <label>Password</label>
         <input type="password" name="password" autofocus autocomplete="current-password">

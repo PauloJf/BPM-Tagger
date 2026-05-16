@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download the deeprhythm model weights so the container works offline
 RUN python -c "from deeprhythm import BPMPredictor; BPMPredictor()"
 
-COPY bpm_tagger.py .
+COPY bpm_tagger.py web_ui.py ./
+COPY templates/ templates/
+COPY static/ static/
 
 RUN mkdir -p /data
 
