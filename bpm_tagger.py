@@ -2,8 +2,10 @@
 """BPM Tagger for Navidrome — detects BPM, writes tags, tracks results in SQLite."""
 
 import csv
+import hashlib
 import logging
 import os
+import secrets
 import sqlite3
 import sys
 import threading
@@ -45,10 +47,12 @@ def _detect_bpm_deeprhythm(file_path: str) -> float:
     return round(float(_get_predictor().predict(file_path)), 1)
 
 
-def _track_duration(file_path: str) -> float:
-    """Return track length in seconds using mutagen (supports all audio formats)."""
+def _track_duration(file_path: str) -> Optional[float]:
+    """Return track length in seconds, or None if the format is unsupported."""
     audio = mutagen.File(file_path)
-    return audio.info.length if audio and hasattr(audio.info, "length") else 0.0
+    if audio and hasattr(audio.info, "length") and audio.info.length > 0:
+        return audio.info.length
+    return None
 
 
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
@@ -68,7 +72,7 @@ def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[flo
 def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int, seg_duration: float) -> tuple[float, float]:
     total = _track_duration(file_path)
 
-    if total < seg_duration * 1.5:
+    if total is None or total < seg_duration * 1.5:
         return _librosa_window(file_path, 0.0, 180.0)
 
     offsets = [
@@ -85,7 +89,11 @@ def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int, seg_duration: 
 
 def _reconcile(bpm_dr: float, bpm_lb: float, config: dict) -> tuple[float, bool]:
     """Return (final_bpm, needs_review). Prefers deeprhythm; corrects octave errors."""
-    ratio = max(bpm_dr, bpm_lb) / (min(bpm_dr, bpm_lb) + 1e-9)
+    if bpm_lb <= 0:
+        return bpm_dr, True
+    if bpm_dr <= 0:
+        return bpm_lb, True
+    ratio = max(bpm_dr, bpm_lb) / min(bpm_dr, bpm_lb)
     is_octave = 1.9 < ratio < 2.1
 
     if is_octave and config["octave_correction"]:
@@ -101,9 +109,15 @@ def _reconcile(bpm_dr: float, bpm_lb: float, config: dict) -> tuple[float, bool]
 
 def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
     """Halve/double until BPM is inside [bpm_min, bpm_max]."""
-    while bpm > 0 and bpm < bpm_min:
+    if bpm <= 0 or bpm_min <= 0 or bpm_max <= 0 or bpm_min >= bpm_max:
+        return round(bpm, 1)
+    for _ in range(64):
+        if bpm >= bpm_min:
+            break
         bpm *= 2
-    while bpm > bpm_max:
+    for _ in range(64):
+        if bpm <= bpm_max:
+            break
         bpm /= 2
     return round(bpm, 1)
 
@@ -124,7 +138,7 @@ def detect_bpm(file_path: str, config: dict) -> dict:
     try:
         bpm_dr = _detect_bpm_deeprhythm(file_path)
     except Exception as exc:
-        log.debug("deeprhythm failed for %s: %s", Path(file_path).name, exc)
+        log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
 
     if config.get("multi_segment", True):
         bpm_lb, conf_lb = _detect_bpm_librosa_multiseg(file_path, n_seg, seg_dur)
@@ -214,6 +228,7 @@ class BPMDatabase:
 
     def _init_db(self):
         with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tracks (
                     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -461,9 +476,11 @@ def _trigger_navidrome_rescan(config: dict):
     if not (url and user and pwd):
         return
     try:
+        salt = secrets.token_hex(6)
+        token = hashlib.md5((pwd + salt).encode()).hexdigest()
         resp = requests.get(
             f"{url}/rest/startScan",
-            params={"u": user, "p": pwd, "v": "1.8.0", "c": "bpm-tagger", "f": "json"},
+            params={"u": user, "t": token, "s": salt, "v": "1.8.0", "c": "bpm-tagger", "f": "json"},
             timeout=10,
         )
         resp.raise_for_status()
@@ -656,18 +673,23 @@ class BPMTagger:
 
             def on_moved(self, event):
                 if not event.is_directory:
-                    self._schedule(event.dest_path)
+                    with self._lock:
+                        self._pending.pop(event.src_path, None)
+                        self._pending[event.dest_path] = time.monotonic() + 10
 
             def drain_pending(self):
                 while True:
                     time.sleep(2)
-                    with self._lock:
-                        now = time.monotonic()
-                        ready = [p for p, deadline in self._pending.items() if deadline <= now]
-                        for p in ready:
-                            del self._pending[p]
-                    for path in ready:
-                        self._tagger.process_file(path, force=True)
+                    try:
+                        with self._lock:
+                            now = time.monotonic()
+                            ready = [p for p, deadline in self._pending.items() if deadline <= now]
+                            for p in ready:
+                                del self._pending[p]
+                        for path in ready:
+                            self._tagger.process_file(path, force=True)
+                    except Exception as exc:
+                        log.error("drain_pending error: %s", exc)
 
         handler = _Handler(self)
         threading.Thread(target=handler.drain_pending, daemon=True).start()
