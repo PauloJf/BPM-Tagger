@@ -8,6 +8,7 @@ import sqlite3
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -31,14 +32,13 @@ AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".
 # Low-level BPM helpers
 # ---------------------------------------------------------------------------
 
-_predictor = None  # BPMPredictor is expensive to load; reuse across files
+_local = threading.local()
 
 def _get_predictor():
-    global _predictor
-    if _predictor is None:
+    if not hasattr(_local, "predictor"):
         from deeprhythm import BPMPredictor
-        _predictor = BPMPredictor()
-    return _predictor
+        _local.predictor = BPMPredictor()
+    return _local.predictor
 
 
 def _detect_bpm_deeprhythm(file_path: str) -> float:
@@ -325,6 +325,20 @@ class BPMDatabase:
             """, (conf_threshold, bpm_min, bpm_max)).fetchall()
             return [dict(r) for r in rows]
 
+    def get_reanalysis_queue(self) -> list[str]:
+        """Return file paths of unlocked tracks that are candidates for re-analysis."""
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT file_path FROM tracks
+                WHERE locked = 0 AND (
+                    needs_review = 1
+                    OR status = 'error'
+                    OR detector = 'librosa'
+                )
+                ORDER BY file_path
+            """).fetchall()
+            return [r[0] for r in rows]
+
     def get_stats(self) -> dict:
         with self._connect() as conn:
             row = conn.execute("""
@@ -437,6 +451,28 @@ def _build_reasons(track: dict, conf_threshold: float, bpm_min: float, bpm_max: 
 
 
 # ---------------------------------------------------------------------------
+# Navidrome rescan trigger
+# ---------------------------------------------------------------------------
+
+def _trigger_navidrome_rescan(config: dict):
+    url  = config.get("navidrome_url", "").rstrip("/")
+    user = config.get("navidrome_user", "")
+    pwd  = config.get("navidrome_pass", "")
+    if not (url and user and pwd):
+        return
+    try:
+        resp = requests.get(
+            f"{url}/rest/startScan",
+            params={"u": user, "p": pwd, "v": "1.8.0", "c": "bpm-tagger", "f": "json"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        log.info("Navidrome rescan triggered")
+    except Exception as exc:
+        log.warning("Navidrome rescan request failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # Core tagger
 # ---------------------------------------------------------------------------
 
@@ -494,31 +530,70 @@ class BPMTagger:
             )
             return {"status": "error"}
 
-    def scan_directory(self, force: bool = False) -> dict:
+    def _count_results(self, futures) -> dict:
+        """Drain a dict of futures and return tallied counts."""
         tagged = errors = skipped = needs_review_count = 0
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as exc:
+                log.error("Worker exception: %s", exc)
+                errors += 1
+                continue
+            if result["status"] == "tagged":
+                tagged += 1
+                if result.get("needs_review"):
+                    needs_review_count += 1
+            elif result["status"] == "error":
+                errors += 1
+            else:
+                skipped += 1
+        return {"tagged": tagged, "skipped": skipped, "errors": errors,
+                "needs_review": needs_review_count}
+
+    def scan_directory(self, force: bool = False) -> dict:
+        audio_files = []
         for root, _, files in os.walk(self.config["music_dir"]):
             for fname in sorted(files):
-                if Path(fname).suffix.lower() not in self.config["extensions"]:
-                    continue
-                result = self.process_file(os.path.join(root, fname), force=force)
-                if result["status"] == "tagged":
-                    tagged += 1
-                    if result["needs_review"]:
-                        needs_review_count += 1
-                elif result["status"] == "error":
-                    errors += 1
-                else:
-                    skipped += 1
+                if Path(fname).suffix.lower() in self.config["extensions"]:
+                    audio_files.append(os.path.join(root, fname))
+
+        workers = int(self.config.get("workers", 4))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(self.process_file, fp, force): fp for fp in audio_files}
+            counts = self._count_results(futures)
 
         if self.notifier:
             self.notifier.flush()
             stats = self.db.get_stats()
-            self.notifier.send_summary(stats["total"], tagged, errors, needs_review_count)
+            self.notifier.send_summary(stats["total"], counts["tagged"], counts["errors"],
+                                       counts["needs_review"])
 
+        _trigger_navidrome_rescan(self.config)
         log.info("Scan done — %d tagged (%d need review), %d skipped, %d errors",
-                 tagged, needs_review_count, skipped, errors)
-        return {"tagged": tagged, "skipped": skipped, "errors": errors,
-                "needs_review": needs_review_count}
+                 counts["tagged"], counts["needs_review"], counts["skipped"], counts["errors"])
+        return counts
+
+    def scan_review(self) -> dict:
+        """Re-analyze only flagged, errored, or librosa-only tracks."""
+        queue = self.db.get_reanalysis_queue()
+        log.info("scan_review: %d tracks queued for re-analysis", len(queue))
+
+        workers = int(self.config.get("workers", 4))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(self.process_file, fp, True): fp for fp in queue}
+            counts = self._count_results(futures)
+
+        if self.notifier:
+            self.notifier.flush()
+            stats = self.db.get_stats()
+            self.notifier.send_summary(stats["total"], counts["tagged"], counts["errors"],
+                                       counts["needs_review"])
+
+        _trigger_navidrome_rescan(self.config)
+        log.info("scan_review done — %d tagged (%d need review), %d skipped, %d errors",
+                 counts["tagged"], counts["needs_review"], counts["skipped"], counts["errors"])
+        return counts
 
     def report(self) -> dict:
         conf_thr = self.config["review_confidence_threshold"]
@@ -649,6 +724,12 @@ def main():
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
+        "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
+        "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),
+        "workers":                    int(os.environ.get("WORKERS", "4")),
+        "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
+        "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),
+        "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
     }
 
     mode = os.environ.get("MODE", "scan_unscanned").lower()
@@ -699,8 +780,11 @@ def main():
         tagger.db.unlock_track(file_path)
         log.info("Unlocked %s — will be re-analyzed on next scan", file_path)
 
+    elif mode == "scan_review":
+        tagger.scan_review()
+
     else:
-        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, watch, report, lock, unlock", mode)
+        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, scan_review, watch, report, lock, unlock", mode)
         sys.exit(1)
 
     # For non-blocking modes, keep the process alive so the UI thread stays up.
