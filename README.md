@@ -7,10 +7,14 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Dual-detector BPM analysis** — [deeprhythm](https://github.com/Auto-Janus/DeepRhythm) (deep learning CNN) runs first; [librosa](https://librosa.org/) multi-segment analysis always runs in parallel for cross-validation
 - **Octave error correction** — when the two detectors return a 2× discrepancy, the value inside your configured BPM range wins automatically
 - **Plausibility normalization** — BPM is halved/doubled until it falls inside `[BPM_MIN, BPM_MAX]`
+- **Parallel processing** — configurable worker thread pool; each thread maintains its own model instance for safe concurrent analysis
 - **Tag writing** — writes the `BPM` tag to MP3 (ID3 `TBPM`), FLAC, OGG/Opus (Vorbis comment), M4A/AAC (MP4 `tmpo`), and any other format via mutagen
 - **SQLite tracking** — records every file's path, hash, both raw detector values, final BPM, confidence, and timestamp; re-analyzes only files that are new or changed
 - **Review flagging** — tracks where detectors genuinely disagree, confidence is low, or only the fallback was used are flagged `needs_review` in the DB
-- **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button
+- **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button; Prev/Next navigation moves through the review queue without returning to the list
+- **Login brute-force protection** — IP-based rate limiting locks out repeated failed login attempts
+- **Navidrome auto-rescan** — optionally triggers a Navidrome library rescan via the Subsonic API after every scan so new BPM tags appear immediately
+- **Health check endpoint** — `/healthz` returns DB statistics as JSON; no login required, suitable for Docker/k8s probes
 - **ntfy notifications** — batched and rate-limited; scan summaries include a "N need review" count
 - **Manual lock** — pin a track's BPM so future scans never overwrite it
 - **Fully Docker-native** — all settings via environment variables in `docker-compose.yml`
@@ -50,6 +54,7 @@ Set the `MODE` environment variable to one of the following:
 |---|---|
 | `scan_all` | Re-analyze every audio file, overwriting all existing results regardless of whether the file has changed |
 | `scan_unscanned` | Only analyze files not yet in the database, files whose content has changed (detected via size+mtime hash), and files with `status='error'`. Locked tracks are always skipped. |
+| `scan_review` | Re-analyze only tracks that are flagged for review (`needs_review=1`), have `status='error'`, or were only analyzed by the librosa fallback. Useful for a quick follow-up pass after you've tuned detection settings. |
 | `watch` | Runs `scan_unscanned` on startup (if `SCAN_ON_START=true`), then watches the music directory for new or modified files using filesystem events. A 10-second debounce prevents processing files that are still being copied. |
 | `report` | Queries the database for suspicious tracks (detector disagreement, low confidence, fallback-only, out-of-range BPM), logs them, writes a CSV to `REPORT_PATH`, and sends an ntfy summary if configured. Does not analyze any files. |
 | `lock` | Locks a single track so it is never re-analyzed. Requires `LOCK_FILE` (absolute path inside the container). Optionally provide `LOCK_BPM` to set a corrected BPM value and write it to the file tag at the same time. |
@@ -90,6 +95,7 @@ All settings are environment variables. Every variable has a default and is docu
 | `WRITE_TAGS` | `true` | Write the detected BPM back to each audio file's metadata tag |
 | `SCAN_ON_START` | `true` | Run `scan_unscanned` before entering watch mode (watch mode only) |
 | `AUDIO_EXTENSIONS` | `.mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv` | Comma-separated list of file extensions to process |
+| `WORKERS` | `4` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance. Higher values increase throughput at the cost of RAM and CPU. |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ### BPM Detection Quality
@@ -121,6 +127,16 @@ All settings are environment variables. Every variable has a default and is docu
 | `NTFY_MIN_INTERVAL` | `300` | Minimum seconds between batched tagging notifications (anti-spam) |
 | `NTFY_NOTIFY_REVIEW` | `true` | Include a "N need review" count in the scan-complete summary notification |
 
+### Navidrome Auto-Rescan
+
+| Variable | Default | Description |
+|---|---|---|
+| `NAVIDROME_URL` | _(empty)_ | Base URL of your Navidrome instance, e.g. `http://navidrome:4533`. Leave empty to disable. |
+| `NAVIDROME_USER` | _(empty)_ | Navidrome admin username |
+| `NAVIDROME_PASS` | _(empty)_ | Navidrome admin password |
+
+When all three are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/startScan` endpoint at the end of every `scan_all`, `scan_unscanned`, and `scan_review` run. This triggers a Navidrome library rescan automatically so the new BPM tags appear in your music player without a manual rescan step.
+
 ### Web UI
 
 | Variable | Default | Description |
@@ -130,6 +146,8 @@ All settings are environment variables. Every variable has a default and is docu
 | `UI_PASSWORD` | `your-password-here` | Password for the web UI login page. **Change this before exposing port 5000 to any network.** |
 | `UI_SECRET_KEY` | _(empty)_ | Flask session secret key. Auto-generates a random key if empty — sessions are invalidated on each container restart. Set explicitly to persist sessions across restarts. |
 | `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
+| `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
+| `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
 
 ---
 
@@ -157,9 +175,19 @@ Full detail page for a single track with:
 
 - **Audio player** — streams the file directly from the container; supports seeking
 - **BPM metadata** — current final BPM, raw deeprhythm and librosa results, confidence score, detector used, and status badges
+- **Prev / Next navigation** — when arriving from the review queue, a navigation bar at the top shows your position (e.g. `3 / 47`) and lets you step through the queue without returning to the list. Saving or skipping a track and clicking Next moves you to the next flagged track in order.
 - **Tap-tempo** — tap the large TAP button (or press **Space**) to the beat while the track is playing. The app keeps the last 8 intervals and shows a live BPM estimate that updates on every tap. Press **Apply** to copy the tap BPM into the edit field, then **Save & Lock** to write it to the file tag and lock the DB record.
 - **Save & Lock** — manually enter any BPM value, click Save & Lock to write the tag and prevent future scans from overwriting it
 - **Unlock** — removes the lock so the track is re-analyzed on the next scan
+
+#### Health Check (`/healthz`)
+A lightweight JSON endpoint with no authentication required, suitable for Docker or Kubernetes probes:
+
+```json
+{"status": "ok", "total": 3124, "done": 3118, "errors": 4, "needs_review": 12, "locked": 8}
+```
+
+To wire it up as a Docker health check, uncomment the `healthcheck` block in `docker-compose.yml`.
 
 ### Tap-Tempo Workflow
 
@@ -297,5 +325,6 @@ volumes:
 
 **Tips:**
 - Set `user:` in `docker-compose.yml` to match Navidrome's user/group so both containers can read and write the same files without permission conflicts
-- After BPM Tagger writes tags, trigger a Navidrome library rescan from *Administration → Rescan Library* to pick up the new BPM values
+- Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan, so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
 - Use `MODE=watch` with `SCAN_ON_START=true` (the default) so newly added albums are tagged automatically within seconds of being added to the library
+- After adjusting detection settings, run `MODE=scan_review` to re-analyze only the flagged and error tracks instead of the full library
