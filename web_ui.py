@@ -3,9 +3,12 @@
 import logging
 import os
 import secrets
+import time
+from collections import defaultdict
 from datetime import timedelta
 from functools import wraps
 from pathlib import Path
+from threading import Lock
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
@@ -19,6 +22,13 @@ _db = None
 _music_dir = ""
 _write_tags = True
 _conf_threshold = 0.4
+
+# Brute-force login protection
+_login_attempts: dict = defaultdict(list)
+_login_lock = Lock()
+_max_login_attempts = 5
+_lockout_seconds = 300
+_attempt_window = 60
 
 
 # ---------------------------------------------------------------------------
@@ -50,9 +60,19 @@ def login_required(f):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form.get("password") == app.config["UI_PASSWORD"]:
-            session["ok"] = True
-            return redirect(request.args.get("next") or url_for("tracks"))
+        ip = request.remote_addr or "unknown"
+        now = time.time()
+        with _login_lock:
+            attempts = _login_attempts[ip]
+            # Prune entries outside the rolling window
+            _login_attempts[ip] = [t for t in attempts if now - t < _attempt_window]
+            if len(_login_attempts[ip]) >= _max_login_attempts:
+                return render_template("login.html", lockout=True), 429
+            if request.form.get("password") == app.config["UI_PASSWORD"]:
+                _login_attempts.pop(ip, None)
+                session["ok"] = True
+                return redirect(request.args.get("next") or url_for("tracks"))
+            _login_attempts[ip].append(now)
         flash("Wrong password.", "error")
     return render_template("login.html")
 
@@ -120,7 +140,21 @@ def track_detail():
     track = _db.get_track(path)
     if not track:
         abort(404)
-    return render_template("track.html", track=track, back=back)
+
+    prev_path = next_path = None
+    queue_pos = queue_total = None
+    if back == "review":
+        queue = [t["file_path"] for t in _db.get_suspicious(_conf_threshold, 0, float("inf"))]
+        queue_total = len(queue)
+        if path in queue:
+            idx = queue.index(path)
+            queue_pos = idx + 1
+            prev_path = queue[idx - 1] if idx > 0 else None
+            next_path = queue[idx + 1] if idx < len(queue) - 1 else None
+
+    return render_template("track.html", track=track, back=back,
+                           prev_path=prev_path, next_path=next_path,
+                           queue_pos=queue_pos, queue_total=queue_total)
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +202,19 @@ def api_unlock():
 
 
 # ---------------------------------------------------------------------------
+# Health check (no auth — safe for Docker/k8s probes)
+# ---------------------------------------------------------------------------
+
+@app.route("/healthz")
+def healthz():
+    try:
+        stats = _db.get_stats() if _db else {}
+        return jsonify(status="ok", **stats)
+    except Exception as exc:
+        return jsonify(status="error", error=str(exc)), 500
+
+
+# ---------------------------------------------------------------------------
 # Audio streaming
 # ---------------------------------------------------------------------------
 
@@ -199,11 +246,14 @@ def start(config: dict):
         log.error("UI: UI_PASSWORD is not set — web UI will not start")
         return
 
+    global _max_login_attempts, _lockout_seconds
     from bpm_tagger import BPMDatabase
     _db = BPMDatabase(config["db_path"])
     _music_dir = config["music_dir"]
     _write_tags = config.get("write_tags", True)
     _conf_threshold = config.get("review_confidence_threshold", 0.4)
+    _max_login_attempts = int(config.get("ui_max_login_attempts", 5))
+    _lockout_seconds = int(config.get("ui_lockout_seconds", 300))
 
     secret = config.get("ui_secret_key") or secrets.token_hex(32)
     app.secret_key = secret
