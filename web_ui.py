@@ -71,11 +71,12 @@ def _is_safe_redirect(url: str) -> bool:
     test = urlparse(urljoin(request.host_url, url))
     return test.scheme in ("http", "https") and ref.netloc == test.netloc
 
-def _assert_in_music_dir(file_path: str):
+def _assert_in_music_dir(file_path: str) -> str:
     real = os.path.realpath(file_path)
     music_real = os.path.realpath(_music_dir)
     if not (real == music_real or real.startswith(music_real + os.sep)):
         abort(403)
+    return real
 
 
 # ---------------------------------------------------------------------------
@@ -201,11 +202,13 @@ def track_detail():
     if back == "review":
         queue = [t["file_path"] for t in _db.get_suspicious(_conf_threshold, 0, float("inf"))]
         queue_total = len(queue)
-        if path in queue:
+        try:
             idx = queue.index(path)
             queue_pos = idx + 1
             prev_path = queue[idx - 1] if idx > 0 else None
             next_path = queue[idx + 1] if idx < len(queue) - 1 else None
+        except ValueError:
+            pass
 
     return render_template("track.html", track=track, back=back,
                            prev_path=prev_path, next_path=next_path,
@@ -310,8 +313,7 @@ def audio():
     file_path = request.args.get("path", "")
     if not file_path:
         abort(400)
-    _assert_in_music_dir(file_path)
-    real = os.path.realpath(file_path)
+    real = _assert_in_music_dir(file_path)
     if not os.path.isfile(real):
         abort(404)
     return send_file(real, conditional=True)
