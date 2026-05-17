@@ -292,6 +292,38 @@ def api_progress():
     return jsonify(**_progress.snapshot())
 
 
+@app.route("/api/tracks")
+@login_required
+def api_tracks():
+    q = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 50
+
+    with _db._connect() as conn:
+        if q:
+            like = f"%{q}%"
+            total = conn.execute(
+                "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE file_path LIKE ? "
+                "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                (like, per_page, (page - 1) * per_page)
+            ).fetchall()
+        else:
+            total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                (per_page, (page - 1) * per_page)
+            ).fetchall()
+
+    pages = max(1, (total + per_page - 1) // per_page)
+    return jsonify(tracks=[dict(r) for r in rows], total=total, page=page, pages=pages)
+
+
 # ---------------------------------------------------------------------------
 # Health check (no auth — safe for Docker/k8s probes)
 # ---------------------------------------------------------------------------
