@@ -114,3 +114,16 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Supported Formats
 
 `.mp3` · `.flac` · `.ogg` · `.opus` · `.m4a` · `.aac` · `.wav` · `.wv`
+
+---
+
+## Memory Requirements
+
+| Configuration | Peak RAM | Notes |
+|---|---|---|
+| `USE_DEEPRHYTHM=false` (default) | ~390 MB | essentia + librosa only; no PyTorch |
+| `USE_DEEPRHYTHM=true`, `WORKERS=1` | ~870 MB | adds PyTorch CNN (~500 MB) |
+| `USE_DEEPRHYTHM=true`, `WORKERS=2` | ~1 350 MB | each worker loads its own model copy |
+| `USE_DEEPRHYTHM=true`, `WORKERS=4` | ~2 300 MB | only for high-RAM servers |
+
+Set `deploy.resources.limits.memory` to at least the peak for your config. The defaults (`USE_DEEPRHYTHM=false`, limit `800M`) are sized for NAS devices. Re-enable deeprhythm for maximum accuracy if your host has enough RAM.
