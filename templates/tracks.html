@@ -1,6 +1,27 @@
 {% extends "base.html" %}
 {% block title %}All Tracks — BPM Tagger{% endblock %}
 {% block content %}
+<div id="scan-card" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; margin-bottom:1.4rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem;">
+    <span style="font-weight:600; font-size:.9rem; color:var(--accent2);">Scanning in progress…</span>
+    <span id="scan-counts" style="color:var(--muted); font-size:.82rem;"></span>
+  </div>
+  <div style="font-size:.85rem; color:var(--muted); margin-bottom:.5rem;">
+    Analyzing: <span id="scan-file" style="color:var(--text); font-family:monospace;"></span>
+  </div>
+  <div style="display:flex; gap:.4rem; margin-bottom:.6rem;">
+    <span id="step-deeprhythm" class="badge">deeprhythm</span>
+    <span id="step-essentia"   class="badge">essentia</span>
+    <span id="step-librosa"    class="badge">librosa</span>
+  </div>
+  <div style="background:var(--border); border-radius:3px; height:6px; overflow:hidden; margin-bottom:.5rem;">
+    <div id="scan-bar" style="background:var(--accent); height:100%; width:0%; transition:width .4s;"></div>
+  </div>
+  <div style="font-size:.8rem; color:var(--muted);">
+    Last: <span id="scan-last" style="color:var(--text);"></span>
+  </div>
+</div>
+
 <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap;">
   <h1 style="margin:0">All Tracks <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
   <form method="get" style="display:flex; gap:.5rem; margin-left:auto;">
@@ -83,4 +104,48 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+(function() {
+  var card = document.getElementById('scan-card');
+  var steps = ['deeprhythm','essentia','librosa'];
+  var wasScanning = false;
+
+  function updateSteps(active) {
+    var ai = steps.indexOf(active);
+    steps.forEach(function(s, i) {
+      var el = document.getElementById('step-' + s);
+      el.style.background = i < ai ? '#0e2a1e' : i === ai ? '#3b2e00' : 'var(--surface)';
+      el.style.color      = i < ai ? 'var(--green)' : i === ai ? 'var(--yellow)' : 'var(--muted)';
+    });
+  }
+
+  function poll() {
+    fetch('/api/progress')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.is_scanning) {
+          card.style.display = 'block';
+          document.getElementById('scan-file').textContent   = d.current_file || '…';
+          document.getElementById('scan-counts').textContent = d.completed + ' / ' + d.total + ' files';
+          document.getElementById('scan-bar').style.width    =
+            (d.total > 0 ? Math.round(d.completed / d.total * 100) : 0) + '%';
+          updateSteps(d.current_step);
+          if (d.last_file) {
+            var b = d.last_bpm != null ? ' — ' + d.last_bpm.toFixed(1) + ' BPM' : '';
+            document.getElementById('scan-last').textContent = d.last_file + b;
+          }
+          wasScanning = true;
+        } else {
+          if (wasScanning) { window.location.reload(); return; }
+          card.style.display = 'none';
+        }
+      })
+      .catch(function() {});
+  }
+
+  poll();
+  setInterval(poll, 1500);
+})();
+</script>
 {% endblock %}
