@@ -1,18 +1,28 @@
 FROM python:3.12-slim
 
-# System deps required by librosa / soundfile
+# System deps for librosa / soundfile / essentia
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libsndfile1 \
+        libgomp1 \
+        libsamplerate0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Install CPU-only PyTorch first — avoids the default ~2 GB CUDA build
+RUN pip install --no-cache-dir \
+        torch torchaudio \
+        --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
+RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
+
 # Pre-download the deeprhythm model weights so the container works offline
-RUN python -c "from deeprhythm import BPMPredictor; BPMPredictor()"
+RUN python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"
 
 COPY bpm_tagger.py web_ui.py ./
 COPY templates/ templates/
