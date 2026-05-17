@@ -1,0 +1,10 @@
+.git
+.github
+*.md
+*.csv
+*.db
+static/logo-v*.svg
+__pycache__
+*.pyc
+*.pyo
+.env
