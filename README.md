@@ -15,8 +15,8 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 ## Features
 
-- **Dual-detector BPM analysis** — [deeprhythm](https://github.com/Auto-Janus/DeepRhythm) (deep learning CNN) runs first; [librosa](https://librosa.org/) multi-segment analysis always runs in parallel for cross-validation
-- **Octave error correction** — when the two detectors return a 2× discrepancy, the value inside your configured BPM range wins automatically
+- **Three-detector BPM analysis** — [deeprhythm](https://github.com/bleugreen/deeprhythm) (CNN) and [essentia](https://essentia.upf.edu/) `RhythmExtractor2013` run as dual primary detectors; [librosa](https://librosa.org/) multi-segment analysis always runs as confidence scorer and tiebreaker
+- **Octave error correction** — when any two detectors return a 2× discrepancy, the value inside your configured BPM range wins automatically
 - **Plausibility normalization** — BPM is halved/doubled until it falls inside `[BPM_MIN, BPM_MAX]`
 - **Parallel processing** — configurable worker thread pool; each thread maintains its own model instance for safe concurrent analysis
 - **Tag writing** — writes the `BPM` tag to MP3 (ID3 `TBPM`), FLAC, OGG/Opus (Vorbis comment), M4A/AAC (MP4 `tmpo`), and any other format via mutagen
@@ -115,7 +115,8 @@ All settings are environment variables. Every variable has a default and is docu
 |---|---|---|
 | `BPM_MIN` | `60` | Plausibility floor — BPM values below this are doubled until in range. Narrow to `90` for pop/rock; widen to `40` for very slow music. |
 | `BPM_MAX` | `200` | Plausibility ceiling — BPM values above this are halved until in range. Raise to `220` for fast electronic music. |
-| `OCTAVE_CORRECTION` | `true` | When the two detectors return a value that is approximately double/half the other, pick the one inside `[BPM_MIN, BPM_MAX]`. Fixes the most common class of detection errors. |
+| `OCTAVE_CORRECTION` | `true` | When any two detectors return a value that is approximately double/half the other, pick the one inside `[BPM_MIN, BPM_MAX]`. Fixes the most common class of detection errors. |
+| `USE_ESSENTIA` | `true` | Enable essentia `RhythmExtractor2013` as the second primary detector. Set to `false` to revert to the previous deeprhythm + librosa behaviour. |
 | `MULTI_SEGMENT` | `true` | Run librosa on N evenly-spaced windows across the track instead of a single 180s block. Reduces the influence of quiet intros and outros. |
 | `MULTI_SEGMENT_COUNT` | `3` | Number of windows for multi-segment librosa analysis |
 | `SEGMENT_DURATION` | `45` | Duration in seconds of each analysis window |
@@ -125,7 +126,7 @@ All settings are environment variables. Every variable has a default and is docu
 | Variable | Default | Description |
 |---|---|---|
 | `REVIEW_CONFIDENCE_THRESHOLD` | `0.4` | Tracks with a librosa confidence score below this value are flagged `needs_review` in the database |
-| `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM difference between deeprhythm and librosa (after octave correction) that triggers a `needs_review` flag |
+| `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM difference between the two primary detectors (after octave correction) that triggers a `needs_review` flag |
 | `REPORT_PATH` | `/data/review_report.csv` | Path where `MODE=report` writes the CSV export of suspicious tracks |
 
 ### ntfy Notifications
@@ -173,19 +174,19 @@ Paginated table of every analyzed track, sorted by most-recently analyzed. Colum
 
 #### Needs Review (`/review`)
 Filtered view showing only tracks that meet one or more of these criteria:
-- `needs_review = 1` — the two detectors disagreed beyond the threshold
+- `needs_review = 1` — the primary detectors disagreed beyond the threshold
 - Librosa confidence below `REVIEW_CONFIDENCE_THRESHOLD`
 - Only the fallback detector (`librosa`) was used
 - BPM is outside `[BPM_MIN, BPM_MAX]` after normalization
 - `status = 'error'`
 
-The raw `bpm_dr` (deeprhythm) and `bpm_lb` (librosa) values are shown so you can see exactly what each detector returned.
+The raw `bpm_dr` (deeprhythm), `bpm_es` (essentia), and `bpm_lb` (librosa) values are shown so you can see exactly what each detector returned.
 
 #### Track Detail (`/track`)
 Full detail page for a single track with:
 
 - **Audio player** — streams the file directly from the container; supports seeking
-- **BPM metadata** — current final BPM, raw deeprhythm and librosa results, confidence score, detector used, and status badges
+- **BPM metadata** — current final BPM, raw deeprhythm, essentia, and librosa results, confidence score, detector used, and status badges
 - **Prev / Next navigation** — when arriving from the review queue, a navigation bar at the top shows your position (e.g. `3 / 47`) and lets you step through the queue without returning to the list. Saving or skipping a track and clicking Next moves you to the next flagged track in order.
 - **Tap-tempo** — tap the large TAP button (or press **Space**) to the beat while the track is playing. The app keeps the last 8 intervals and shows a live BPM estimate that updates on every tap. Press **Apply** to copy the tap BPM into the edit field, then **Save & Lock** to write it to the file tag and lock the DB record.
 - **Save & Lock** — manually enter any BPM value, click Save & Lock to write the tag and prevent future scans from overwriting it
@@ -217,18 +218,81 @@ The tap timer resets automatically after 3 seconds of silence so you can restart
 Every file goes through this pipeline:
 
 ```
-deeprhythm ──────────────────────────────┐
-                                          ├─► reconcile ─► normalize ─► final BPM
-librosa (multi-segment or single-pass) ──┘
+deeprhythm (CNN) ────────────────────────────┐
+                                              ├─► reconcile ─► normalize ─► final BPM
+essentia RhythmExtractor2013 ────────────────┤
+                                              │
+librosa multi-segment (confidence/tiebreaker)─┘
 ```
 
-1. **deeprhythm** — loads the pre-trained CNN model (baked into the Docker image at build time; no internet needed at runtime) and returns a BPM estimate
-2. **librosa** — always runs, regardless of whether deeprhythm succeeded. In multi-segment mode, N evenly-spaced windows are analyzed and the median BPM and confidence are returned
-3. **Reconciliation** — if deeprhythm succeeded, the two results are compared:
-   - If the ratio is ≈ 2.0 (octave error), the value inside `[BPM_MIN, BPM_MAX]` is chosen
-   - Otherwise, deeprhythm wins; if the difference exceeds `REVIEW_DISAGREE_THRESHOLD`, the track is flagged `needs_review`
-   - If deeprhythm failed, only the librosa result is used (`detector = 'librosa'`)
-4. **Normalization** — the chosen BPM is halved/doubled until it lands inside `[BPM_MIN, BPM_MAX]`
+1. **deeprhythm** — a CNN trained on HCQM (Harmonic Constant-Q Modulation) features. Loads its pre-trained weights on first use per worker thread; fast at inference time.
+2. **essentia** — calls `RhythmExtractor2013(method="multifeature")` at 44 100 Hz. A DSP multifeature beat tracker from the MTG Barcelona research group; gives an independent second opinion with no shared assumptions with deeprhythm.
+3. **librosa** — always runs regardless of the above. In multi-segment mode N evenly-spaced windows are analyzed and the median BPM and a beat-consistency confidence score are returned. Used as confidence metric and as tiebreaker when the primary detectors disagree.
+4. **Reconciliation** — the three values are compared:
+   - deeprhythm and essentia agree (within `REVIEW_DISAGREE_THRESHOLD`) → average of the two, no review flag
+   - Ratio ≈ 2.0 between any pair → octave correction picks the value inside `[BPM_MIN, BPM_MAX]`
+   - Primary detectors disagree → librosa acts as tiebreaker; the winner is chosen but the track is flagged `needs_review`
+   - One primary detector failed → remaining one is reconciled against librosa using the same rules
+   - Both primary detectors failed → librosa result used alone, track flagged `needs_review`
+5. **Normalization** — the chosen BPM is halved/doubled until it lands inside `[BPM_MIN, BPM_MAX]`
+
+### Detector strings stored in the database
+
+| `detector` value | Meaning |
+|---|---|
+| `deeprhythm+essentia` | Both primary detectors succeeded and agreed (or octave-corrected) |
+| `deeprhythm+librosa` | essentia failed; deeprhythm reconciled against librosa |
+| `essentia+librosa` | deeprhythm failed; essentia reconciled against librosa |
+| `librosa` | Both primary detectors failed; librosa fallback only |
+
+---
+
+## Library Evaluation
+
+Six Python BPM detection libraries were considered before choosing this stack. The goal was maximum accuracy for a diverse music library with clean Docker deployment and active maintenance.
+
+| Library | Algorithm | ~Accuracy | Last release | pip install | Verdict |
+|---|---|---|---|---|---|
+| **deeprhythm** | CNN (HCQM features) | Excellent | Dec 2024 | Clean | ✅ Primary detector |
+| **essentia** | DSP multifeature | ~70 % | Sep 2024 | Clean wheels | ✅ Second primary detector |
+| **librosa** | DSP (onset strength) | ~71 % | Mar 2025 | Clean | ✅ Confidence + tiebreaker |
+| **madmom** | RNN beat tracking | ~71 % | Nov 2017 | Needs C compiler | ❌ Stale, build fragile |
+| **TempoCNN** | CNN | Very good | Oct 2024 | Pulls TensorFlow (~500 MB) | ❌ Too heavy |
+| **aubio** | Causal beat tracking | OK | Feb 2019 | Needs system libaubio | ❌ Dead project, 2× BPM errors |
+
+### Why deeprhythm
+
+- Fast CNN inference using HCQM features — designed specifically for tempo estimation in modern music
+- Lightweight: PyTorch only, ~5 MB weight file downloaded once on first run
+- `DeepRhythmPredictor.predict(filename)` is a single-line call
+- No system-level dependencies beyond PyTorch
+
+### Why essentia
+
+- Produced by the Music Technology Group (MTG) at Universitat Pompeu Fabra — one of the leading MIR research labs; `RhythmExtractor2013(method="multifeature")` is a well-validated algorithm with a long publication record
+- Completely independent algorithmic approach from deeprhythm (no shared CNN, no shared feature extraction) — when both agree, confidence is genuinely high
+- Returns confidence-per-beat, making it a natural complement to librosa's beat-consistency score
+- Active maintenance (September 2024 beta release), pre-built manylinux wheels on PyPI — `pip install essentia` works cleanly inside Docker on Linux x86_64
+- Requires 44 100 Hz audio — handled automatically via `EasyLoader`
+
+### Why librosa (kept as third detector)
+
+- Already present in the stack for multi-segment confidence scoring
+- Pure Python after install — always available even if the other two fail
+- Its multi-segment median approach is resilient to quiet intros/outros
+- Serves as an independent tiebreaker when deeprhythm and essentia disagree
+
+### Why madmom was rejected
+
+madmom has excellent academic benchmarks (RNN beat tracking, consistently top-ranked in MIREX evaluations) but has not had a release since November 2017. It requires Cython and a C++ compiler at install time, making Docker builds fragile. Its license (CC BY-NC-SA for the pre-trained models) also restricts commercial use.
+
+### Why TempoCNN was rejected
+
+TempoCNN is a modern CNN alternative with a clean pip install, but it pulls in TensorFlow as a dependency (~500 MB image size increase). That overhead is unjustified when deeprhythm already provides the CNN perspective with only PyTorch.
+
+### Why aubio was rejected
+
+aubio has not been released since February 2019, requires `libaubio` system packages, and is known to return BPM values that are double or half the true tempo without reliable correction.
 
 ---
 
@@ -256,9 +320,10 @@ Default path: `/data/bpm_tagger.db`. Mount the `/data` volume to persist it acro
 | `file_hash` | TEXT | `size:mtime` fingerprint — used to detect file changes without hashing content |
 | `bpm` | REAL | Final reconciled and normalized BPM (1 decimal place) |
 | `bpm_dr` | REAL | Raw deeprhythm result before reconciliation (`NULL` if deeprhythm failed) |
+| `bpm_es` | REAL | Raw essentia result before reconciliation (`NULL` if essentia failed or disabled) |
 | `bpm_lb` | REAL | Raw librosa result before reconciliation |
 | `bpm_confidence` | REAL | librosa beat-interval consistency score (0–1) |
-| `detector` | TEXT | `deeprhythm+librosa`, `librosa` |
+| `detector` | TEXT | `deeprhythm+essentia`, `deeprhythm+librosa`, `essentia+librosa`, or `librosa` |
 | `analyzed_at` | TEXT | ISO-8601 UTC timestamp of last analysis |
 | `status` | TEXT | `done`, `error`, or `pending` |
 | `needs_review` | INTEGER | `1` if flagged for manual review, `0` otherwise |
@@ -269,11 +334,15 @@ Default path: `/data/bpm_tagger.db`. Mount the `/data` volume to persist it acro
 
 ```sql
 -- All tracks that need review
-SELECT file_path, bpm, bpm_dr, bpm_lb, bpm_confidence, detector
+SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector
 FROM tracks WHERE needs_review = 1 AND status = 'done';
 
--- Tracks that used only the fallback detector
+-- Tracks where only the fallback detector worked (both primary detectors failed)
 SELECT file_path, bpm, bpm_confidence FROM tracks WHERE detector = 'librosa';
+
+-- Tracks where the two primary detectors disagreed (tiebreaker was used)
+SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb
+FROM tracks WHERE needs_review = 1 AND detector = 'deeprhythm+essentia';
 
 -- Tracks with errors
 SELECT file_path, error_message FROM tracks WHERE status = 'error';
