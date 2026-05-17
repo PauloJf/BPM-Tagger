@@ -10,10 +10,18 @@ import sqlite3
 import sys
 import threading
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# Suppress noisy but harmless third-party warnings:
+# - libsndfile can't decode MP3; librosa falls back to audioread (ffmpeg) automatically
+# - audioread fallback is deprecated in librosa 0.10 but still works until 1.0
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
+warnings.filterwarnings("ignore", message="Using padding='same' with even kernel lengths")
 
 import librosa
 import mutagen
@@ -36,15 +44,76 @@ AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".
 
 _local = threading.local()
 
+
+class ScanProgress:
+    STEPS = ("deeprhythm", "essentia", "librosa")
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._reset()
+
+    def _reset(self):
+        self.is_scanning  = False
+        self.current_file = ""
+        self.current_step = ""
+        self.completed    = 0
+        self.total        = 0
+        self.last_file    = ""
+        self.last_bpm     = None
+
+    def start(self, total: int):
+        with self._lock:
+            self._reset(); self.is_scanning = True; self.total = total
+
+    def set_file(self, path: str):
+        with self._lock:
+            self.current_file = Path(path).name; self.current_step = ""
+
+    def set_step(self, step: str):
+        with self._lock:
+            self.current_step = step
+
+    def finish_file(self, path: str, bpm: Optional[float]):
+        with self._lock:
+            self.completed += 1
+            self.last_file = Path(path).name; self.last_bpm = bpm
+            self.current_file = ""; self.current_step = ""
+
+    def finish(self):
+        with self._lock:
+            self.is_scanning = False; self.current_file = ""; self.current_step = ""
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            si = (self.STEPS.index(self.current_step) + 1
+                  if self.current_step in self.STEPS else 0)
+            return dict(is_scanning=self.is_scanning, current_file=self.current_file,
+                        current_step=self.current_step, step_index=si,
+                        step_total=len(self.STEPS), completed=self.completed,
+                        total=self.total, last_file=self.last_file, last_bpm=self.last_bpm)
+
+
 def _get_predictor():
     if not hasattr(_local, "predictor"):
-        from deeprhythm import BPMPredictor
-        _local.predictor = BPMPredictor()
+        from deeprhythm import DeepRhythmPredictor
+        _local.predictor = DeepRhythmPredictor()
     return _local.predictor
 
 
 def _detect_bpm_deeprhythm(file_path: str) -> float:
     return round(float(_get_predictor().predict(file_path)), 1)
+
+
+def _detect_bpm_essentia(file_path: str) -> Optional[float]:
+    """Return BPM from essentia RhythmExtractor2013 (multifeature), or None on failure."""
+    try:
+        import essentia.standard as es
+        audio = es.EasyLoader(filename=file_path, sampleRate=44100)()
+        bpm, _, _, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
+        return round(float(bpm), 1)
+    except Exception as exc:
+        log.warning("essentia failed for %s: %s", Path(file_path).name, exc)
+        return None
 
 
 def _track_duration(file_path: str) -> Optional[float]:
@@ -58,7 +127,7 @@ def _track_duration(file_path: str) -> Optional[float]:
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
     y, sr = librosa.load(file_path, offset=offset, duration=duration, sr=None, mono=True)
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
-    candidates = librosa.feature.rhythm.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
+    candidates = librosa.feature.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
     bpm = float(np.median(candidates)) if len(candidates) > 0 else 0.0
     _, beats = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, trim=False)
     if len(beats) > 2:
@@ -87,24 +156,58 @@ def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int, seg_duration: 
 # Reconciliation + plausibility
 # ---------------------------------------------------------------------------
 
-def _reconcile(bpm_dr: float, bpm_lb: float, config: dict) -> tuple[float, bool]:
-    """Return (final_bpm, needs_review). Prefers deeprhythm; corrects octave errors."""
-    if bpm_lb <= 0:
-        return bpm_dr, True
-    if bpm_dr <= 0:
-        return bpm_lb, True
-    ratio = max(bpm_dr, bpm_lb) / min(bpm_dr, bpm_lb)
-    is_octave = 1.9 < ratio < 2.1
+def _reconcile(bpm_dr: Optional[float], bpm_es: Optional[float],
+               bpm_lb: float, config: dict) -> tuple[float, bool]:
+    """Return (final_bpm, needs_review) from deeprhythm, essentia, and librosa values."""
+    threshold = config["review_disagree_threshold"]
+    bpm_min, bpm_max = config["bpm_min"], config["bpm_max"]
+    center = (bpm_min + bpm_max) / 2
 
-    if is_octave and config["octave_correction"]:
-        bpm_min, bpm_max = config["bpm_min"], config["bpm_max"]
-        for candidate in (bpm_dr, bpm_lb):
-            if bpm_min <= candidate <= bpm_max:
-                return candidate, False
-        center = (bpm_min + bpm_max) / 2
-        return min(bpm_dr, bpm_lb, key=lambda x: abs(x - center)), False
+    def _close(a: float, b: float) -> bool:
+        return abs(a - b) <= threshold
 
-    return bpm_dr, abs(bpm_dr - bpm_lb) > config["review_disagree_threshold"]
+    def _is_octave(a: float, b: float) -> bool:
+        if a <= 0 or b <= 0:
+            return False
+        return 1.9 < max(a, b) / min(a, b) < 2.1
+
+    def _fix_octave(a: float, b: float) -> float:
+        for v in (a, b):
+            if bpm_min <= v <= bpm_max:
+                return v
+        return min(a, b, key=lambda x: abs(x - center))
+
+    # Both neural detectors available — primary path
+    if bpm_dr is not None and bpm_es is not None:
+        if config["octave_correction"] and _is_octave(bpm_dr, bpm_es):
+            return _fix_octave(bpm_dr, bpm_es), False
+        if _close(bpm_dr, bpm_es):
+            return round((bpm_dr + bpm_es) / 2, 1), False
+        # Detectors disagree — use librosa as tiebreaker, flag for review
+        if bpm_lb > 0:
+            chosen = bpm_dr if abs(bpm_dr - bpm_lb) <= abs(bpm_es - bpm_lb) else bpm_es
+        else:
+            chosen = bpm_dr
+        return chosen, True
+
+    # Only deeprhythm
+    if bpm_dr is not None:
+        if bpm_lb <= 0:
+            return bpm_dr, True
+        if config["octave_correction"] and _is_octave(bpm_dr, bpm_lb):
+            return _fix_octave(bpm_dr, bpm_lb), False
+        return bpm_dr, not _close(bpm_dr, bpm_lb)
+
+    # Only essentia
+    if bpm_es is not None:
+        if bpm_lb <= 0:
+            return bpm_es, True
+        if config["octave_correction"] and _is_octave(bpm_es, bpm_lb):
+            return _fix_octave(bpm_es, bpm_lb), False
+        return bpm_es, not _close(bpm_es, bpm_lb)
+
+    # Librosa only — both neural detectors failed
+    return bpm_lb, True
 
 
 def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
@@ -126,36 +229,50 @@ def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
 # Public BPM detection entry point
 # ---------------------------------------------------------------------------
 
-def detect_bpm(file_path: str, config: dict) -> dict:
+def detect_bpm(file_path: str, config: dict, progress: Optional[ScanProgress] = None) -> dict:
     """
-    Return dict with keys: bpm, bpm_dr, bpm_lb, confidence, detector, needs_review.
-    Always runs both detectors; reconciles octave errors; normalizes to BPM range.
+    Return dict with keys: bpm, bpm_dr, bpm_es, bpm_lb, confidence, detector, needs_review.
+    Runs deeprhythm + essentia as primary detectors; librosa as confidence/tiebreaker.
     """
     n_seg = int(config.get("multi_segment_count", 3))
     seg_dur = float(config.get("segment_duration", 45))
 
     bpm_dr: Optional[float] = None
-    try:
-        bpm_dr = _detect_bpm_deeprhythm(file_path)
-    except Exception as exc:
-        log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
+    if config.get("use_deeprhythm", True):
+        if progress: progress.set_step("deeprhythm")
+        try:
+            bpm_dr = _detect_bpm_deeprhythm(file_path)
+        except Exception as exc:
+            log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
 
+    bpm_es: Optional[float] = None
+    if config.get("use_essentia", True):
+        if progress: progress.set_step("essentia")
+        bpm_es = _detect_bpm_essentia(file_path)  # handles exceptions internally
+
+    if progress: progress.set_step("librosa")
     if config.get("multi_segment", True):
         bpm_lb, conf_lb = _detect_bpm_librosa_multiseg(file_path, n_seg, seg_dur)
     else:
         bpm_lb, conf_lb = _librosa_window(file_path, 0.0, 180.0)
 
-    if bpm_dr is None:
-        bpm_final, detector, needs_review = bpm_lb, "librosa", False
-    else:
-        bpm_final, needs_review = _reconcile(bpm_dr, bpm_lb, config)
+    bpm_final, needs_review = _reconcile(bpm_dr, bpm_es, bpm_lb, config)
+
+    if bpm_dr is not None and bpm_es is not None:
+        detector = "deeprhythm+essentia"
+    elif bpm_dr is not None:
         detector = "deeprhythm+librosa"
+    elif bpm_es is not None:
+        detector = "essentia+librosa"
+    else:
+        detector = "librosa"
 
     bpm_final = _normalize_bpm(bpm_final, config["bpm_min"], config["bpm_max"])
 
     return {
         "bpm":          bpm_final,
         "bpm_dr":       bpm_dr,
+        "bpm_es":       bpm_es,
         "bpm_lb":       bpm_lb,
         "confidence":   conf_lb,
         "detector":     detector,
@@ -236,6 +353,7 @@ class BPMDatabase:
                     file_hash      TEXT,
                     bpm            REAL,
                     bpm_dr         REAL,
+                    bpm_es         REAL,
                     bpm_lb         REAL,
                     bpm_confidence REAL,
                     detector       TEXT,
@@ -258,6 +376,7 @@ class BPMDatabase:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
         for col, coldef in [
             ("bpm_dr",       "REAL"),
+            ("bpm_es",       "REAL"),
             ("bpm_lb",       "REAL"),
             ("needs_review", "INTEGER DEFAULT 0"),
             ("locked",       "INTEGER DEFAULT 0"),
@@ -271,20 +390,22 @@ class BPMDatabase:
             return dict(row) if row else None
 
     def upsert_track(self, file_path: str, file_hash: str,
-                     bpm: Optional[float], bpm_dr: Optional[float], bpm_lb: Optional[float],
+                     bpm: Optional[float], bpm_dr: Optional[float],
+                     bpm_es: Optional[float], bpm_lb: Optional[float],
                      confidence: Optional[float], detector: Optional[str],
                      status: str, needs_review: bool = False, error: Optional[str] = None):
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO tracks
-                    (file_path, file_hash, bpm, bpm_dr, bpm_lb, bpm_confidence,
+                    (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence,
                      detector, analyzed_at, status, needs_review, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     file_hash      = excluded.file_hash,
                     bpm            = excluded.bpm,
                     bpm_dr         = excluded.bpm_dr,
+                    bpm_es         = excluded.bpm_es,
                     bpm_lb         = excluded.bpm_lb,
                     bpm_confidence = excluded.bpm_confidence,
                     detector       = excluded.detector,
@@ -292,7 +413,7 @@ class BPMDatabase:
                     status         = excluded.status,
                     needs_review   = excluded.needs_review,
                     error_message  = excluded.error_message
-            """, (file_path, file_hash, bpm, bpm_dr, bpm_lb, confidence,
+            """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence,
                   detector, now, status, int(needs_review), error))
             conn.commit()
 
@@ -325,10 +446,40 @@ class BPMDatabase:
             return True
         return track["file_hash"] != file_hash
 
+    def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT COUNT(*) FROM tracks
+                WHERE status = 'done' AND locked = 0 AND (
+                    needs_review = 1
+                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
+                    OR detector = 'librosa'
+                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
+                )
+            """, (conf_threshold, bpm_min, bpm_max)).fetchone()
+            return row[0]
+
+    def get_suspicious_page(self, conf_threshold: float, bpm_min: float, bpm_max: float,
+                            limit: int, offset: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review
+                FROM tracks
+                WHERE status = 'done' AND locked = 0 AND (
+                    needs_review = 1
+                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
+                    OR detector = 'librosa'
+                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
+                )
+                ORDER BY bpm_confidence ASC NULLS LAST
+                LIMIT ? OFFSET ?
+            """, (conf_threshold, bpm_min, bpm_max, limit, offset)).fetchall()
+            return [dict(r) for r in rows]
+
     def get_suspicious(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT file_path, bpm, bpm_dr, bpm_lb, bpm_confidence, detector, needs_review
+                SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review
                 FROM tracks
                 WHERE status = 'done' AND locked = 0 AND (
                     needs_review = 1
@@ -426,8 +577,9 @@ class NotificationManager:
             name = Path(t["file_path"]).name
             bpm = f"{t['bpm']:.1f}" if t["bpm"] is not None else "?"
             dr  = f"{t['bpm_dr']:.1f}" if t["bpm_dr"] is not None else "?"
+            es  = f"{t['bpm_es']:.1f}" if t.get("bpm_es") is not None else "?"
             lb  = f"{t['bpm_lb']:.1f}" if t["bpm_lb"] is not None else "?"
-            lines.append(f"• {name}: {bpm} BPM [dr={dr} lb={lb}]")
+            lines.append(f"• {name}: {bpm} BPM [dr={dr} es={es} lb={lb}]")
         if count > 15:
             lines.append(f"  …and {count - 15} more")
         self._post(f"BPM Review Needed: {count} tracks", "\n".join(lines), "warning")
@@ -453,7 +605,7 @@ class NotificationManager:
 def _build_reasons(track: dict, conf_threshold: float, bpm_min: float, bpm_max: float) -> list[str]:
     reasons = []
     if track.get("needs_review"):
-        reasons.append(f"detector disagreement (dr={track.get('bpm_dr')} lb={track.get('bpm_lb')})")
+        reasons.append(f"detector disagreement (dr={track.get('bpm_dr')} es={track.get('bpm_es')} lb={track.get('bpm_lb')})")
     conf = track.get("bpm_confidence")
     if conf is not None and conf < conf_threshold:
         reasons.append(f"low confidence ({conf:.2f})")
@@ -494,8 +646,9 @@ def _trigger_navidrome_rescan(config: dict):
 # ---------------------------------------------------------------------------
 
 class BPMTagger:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, progress: Optional[ScanProgress] = None):
         self.config = config
+        self.progress = progress or ScanProgress()
         self.db = BPMDatabase(config["db_path"])
         self.notifier: Optional[NotificationManager] = None
         if config.get("ntfy_url") and config.get("ntfy_topic"):
@@ -518,8 +671,9 @@ class BPMTagger:
             return {"status": "skipped"}
 
         log.info("Analyzing: %s", Path(file_path).name)
+        self.progress.set_file(file_path)
         try:
-            result = detect_bpm(file_path, self.config)
+            result = detect_bpm(file_path, self.config, self.progress)
             bpm = result["bpm"]
             review_flag = " [needs review]" if result["needs_review"] else ""
             log.info("  %.1f BPM (conf %.2f, %s)%s",
@@ -530,7 +684,7 @@ class BPMTagger:
 
             self.db.upsert_track(
                 file_path, file_hash,
-                bpm, result["bpm_dr"], result["bpm_lb"],
+                bpm, result["bpm_dr"], result["bpm_es"], result["bpm_lb"],
                 result["confidence"], result["detector"],
                 "done", needs_review=result["needs_review"],
             )
@@ -538,13 +692,15 @@ class BPMTagger:
             if self.notifier:
                 self.notifier.add(file_path, bpm)
 
+            self.progress.finish_file(file_path, bpm)
             return {"status": "tagged", **result}
         except Exception as exc:
             log.error("Error analyzing %s: %s", file_path, exc)
             self.db.upsert_track(
                 file_path, file_hash,
-                None, None, None, None, None, "error", error=str(exc),
+                None, None, None, None, None, None, "error", error=str(exc),
             )
+            self.progress.finish_file(file_path, None)
             return {"status": "error"}
 
     def _count_results(self, futures) -> dict:
@@ -575,10 +731,12 @@ class BPMTagger:
                 if Path(fname).suffix.lower() in self.config["extensions"]:
                     audio_files.append(os.path.join(root, fname))
 
+        self.progress.start(len(audio_files))
         workers = int(self.config.get("workers", 4))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(self.process_file, fp, force): fp for fp in audio_files}
             counts = self._count_results(futures)
+        self.progress.finish()
 
         if self.notifier:
             self.notifier.flush()
@@ -596,10 +754,12 @@ class BPMTagger:
         queue = self.db.get_reanalysis_queue()
         log.info("scan_review: %d tracks queued for re-analysis", len(queue))
 
+        self.progress.start(len(queue))
         workers = int(self.config.get("workers", 4))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(self.process_file, fp, True): fp for fp in queue}
             counts = self._count_results(futures)
+        self.progress.finish()
 
         if self.notifier:
             self.notifier.flush()
@@ -625,7 +785,7 @@ class BPMTagger:
 
         with open(report_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=[
-                "file_path", "bpm", "bpm_dr", "bpm_lb",
+                "file_path", "bpm", "bpm_dr", "bpm_es", "bpm_lb",
                 "bpm_confidence", "detector", "needs_review", "reasons",
             ])
             writer.writeheader()
@@ -637,6 +797,7 @@ class BPMTagger:
                     "file_path":      t["file_path"],
                     "bpm":            t["bpm"],
                     "bpm_dr":         t["bpm_dr"],
+                    "bpm_es":         t.get("bpm_es"),
                     "bpm_lb":         t["bpm_lb"],
                     "bpm_confidence": t["bpm_confidence"],
                     "detector":       t["detector"],
@@ -740,6 +901,8 @@ def main():
         "segment_duration":           float(os.environ.get("SEGMENT_DURATION", "45")),
         "review_confidence_threshold":float(os.environ.get("REVIEW_CONFIDENCE_THRESHOLD", "0.4")),
         "review_disagree_threshold":  float(os.environ.get("REVIEW_DISAGREE_THRESHOLD", "15")),
+        "use_deeprhythm":             os.environ.get("USE_DEEPRHYTHM", "true").lower() == "true",
+        "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
@@ -748,7 +911,7 @@ def main():
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
         "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
         "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),
-        "workers":                    int(os.environ.get("WORKERS", "4")),
+        "workers":                    int(os.environ.get("WORKERS", "1")),
         "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
         "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),
         "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
@@ -759,11 +922,13 @@ def main():
 
     log.info("BPM Tagger starting — mode=%s, music_dir=%s", mode, config["music_dir"])
 
+    progress = ScanProgress()
+
     if config["enable_ui"]:
         import web_ui
-        threading.Thread(target=web_ui.start, args=(config,), daemon=True).start()
+        threading.Thread(target=web_ui.start, args=(config, progress), daemon=True).start()
 
-    tagger = BPMTagger(config)
+    tagger = BPMTagger(config, progress)
 
     if mode == "scan_all":
         tagger.scan_directory(force=True)
