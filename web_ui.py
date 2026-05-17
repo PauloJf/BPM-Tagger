@@ -24,6 +24,9 @@ _db = None
 _music_dir = ""
 _write_tags = True
 _conf_threshold = 0.4
+_progress = None
+_bpm_min = 60.0
+_bpm_max = 200.0
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -185,8 +188,19 @@ def tracks():
 @app.route("/review")
 @login_required
 def review():
-    rows = _db.get_suspicious(_conf_threshold, 0, float("inf"))
-    return render_template("review.html", tracks=rows, conf_threshold=_conf_threshold)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 50
+
+    total = _db.get_suspicious_count(_conf_threshold, _bpm_min, _bpm_max)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = _db.get_suspicious_page(_conf_threshold, _bpm_min, _bpm_max,
+                                   per_page, (page - 1) * per_page)
+    return render_template("review.html", tracks=rows, conf_threshold=_conf_threshold,
+                           total=total, page=page, pages=pages)
 
 
 @app.route("/track")
@@ -268,6 +282,48 @@ def api_unlock():
         return jsonify(ok=False, error=str(exc))
 
 
+@app.route("/api/progress")
+@login_required
+def api_progress():
+    if _progress is None:
+        return jsonify(is_scanning=False, completed=0, total=0,
+                       current_file="", current_step="", step_index=0,
+                       step_total=3, last_file="", last_bpm=None)
+    return jsonify(**_progress.snapshot())
+
+
+@app.route("/api/tracks")
+@login_required
+def api_tracks():
+    q = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 50
+
+    with _db._connect() as conn:
+        if q:
+            like = f"%{q}%"
+            total = conn.execute(
+                "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE file_path LIKE ? "
+                "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                (like, per_page, (page - 1) * per_page)
+            ).fetchall()
+        else:
+            total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                (per_page, (page - 1) * per_page)
+            ).fetchall()
+
+    pages = max(1, (total + per_page - 1) // per_page)
+    return jsonify(tracks=[dict(r) for r in rows], total=total, page=page, pages=pages)
+
+
 # ---------------------------------------------------------------------------
 # Health check (no auth — safe for Docker/k8s probes)
 # ---------------------------------------------------------------------------
@@ -304,8 +360,8 @@ def audio():
 # Entry point (called from bpm_tagger.main as a daemon thread)
 # ---------------------------------------------------------------------------
 
-def start(config: dict):
-    global _db, _music_dir, _write_tags, _conf_threshold
+def start(config: dict, progress=None):
+    global _db, _music_dir, _write_tags, _conf_threshold, _progress, _bpm_min, _bpm_max
     global _max_login_attempts, _lockout_seconds
 
     password = config.get("ui_password", "")
@@ -318,6 +374,9 @@ def start(config: dict):
     _music_dir = config["music_dir"]
     _write_tags = config.get("write_tags", True)
     _conf_threshold = config.get("review_confidence_threshold", 0.4)
+    _progress = progress
+    _bpm_min = float(config.get("bpm_min", 60.0))
+    _bpm_max = float(config.get("bpm_max", 200.0))
     _max_login_attempts = int(config.get("ui_max_login_attempts", 5))
     _lockout_seconds = int(config.get("ui_lockout_seconds", 300))
 

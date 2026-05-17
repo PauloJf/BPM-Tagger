@@ -44,6 +44,55 @@ AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".
 
 _local = threading.local()
 
+
+class ScanProgress:
+    STEPS = ("deeprhythm", "essentia", "librosa")
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._reset()
+
+    def _reset(self):
+        self.is_scanning  = False
+        self.current_file = ""
+        self.current_step = ""
+        self.completed    = 0
+        self.total        = 0
+        self.last_file    = ""
+        self.last_bpm     = None
+
+    def start(self, total: int):
+        with self._lock:
+            self._reset(); self.is_scanning = True; self.total = total
+
+    def set_file(self, path: str):
+        with self._lock:
+            self.current_file = Path(path).name; self.current_step = ""
+
+    def set_step(self, step: str):
+        with self._lock:
+            self.current_step = step
+
+    def finish_file(self, path: str, bpm: Optional[float]):
+        with self._lock:
+            self.completed += 1
+            self.last_file = Path(path).name; self.last_bpm = bpm
+            self.current_file = ""; self.current_step = ""
+
+    def finish(self):
+        with self._lock:
+            self.is_scanning = False; self.current_file = ""; self.current_step = ""
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            si = (self.STEPS.index(self.current_step) + 1
+                  if self.current_step in self.STEPS else 0)
+            return dict(is_scanning=self.is_scanning, current_file=self.current_file,
+                        current_step=self.current_step, step_index=si,
+                        step_total=len(self.STEPS), completed=self.completed,
+                        total=self.total, last_file=self.last_file, last_bpm=self.last_bpm)
+
+
 def _get_predictor():
     if not hasattr(_local, "predictor"):
         from deeprhythm import DeepRhythmPredictor
@@ -180,7 +229,7 @@ def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
 # Public BPM detection entry point
 # ---------------------------------------------------------------------------
 
-def detect_bpm(file_path: str, config: dict) -> dict:
+def detect_bpm(file_path: str, config: dict, progress: Optional[ScanProgress] = None) -> dict:
     """
     Return dict with keys: bpm, bpm_dr, bpm_es, bpm_lb, confidence, detector, needs_review.
     Runs deeprhythm + essentia as primary detectors; librosa as confidence/tiebreaker.
@@ -190,6 +239,7 @@ def detect_bpm(file_path: str, config: dict) -> dict:
 
     bpm_dr: Optional[float] = None
     if config.get("use_deeprhythm", True):
+        if progress: progress.set_step("deeprhythm")
         try:
             bpm_dr = _detect_bpm_deeprhythm(file_path)
         except Exception as exc:
@@ -197,8 +247,10 @@ def detect_bpm(file_path: str, config: dict) -> dict:
 
     bpm_es: Optional[float] = None
     if config.get("use_essentia", True):
+        if progress: progress.set_step("essentia")
         bpm_es = _detect_bpm_essentia(file_path)  # handles exceptions internally
 
+    if progress: progress.set_step("librosa")
     if config.get("multi_segment", True):
         bpm_lb, conf_lb = _detect_bpm_librosa_multiseg(file_path, n_seg, seg_dur)
     else:
@@ -394,6 +446,36 @@ class BPMDatabase:
             return True
         return track["file_hash"] != file_hash
 
+    def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
+        with self._connect() as conn:
+            row = conn.execute("""
+                SELECT COUNT(*) FROM tracks
+                WHERE status = 'done' AND locked = 0 AND (
+                    needs_review = 1
+                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
+                    OR detector = 'librosa'
+                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
+                )
+            """, (conf_threshold, bpm_min, bpm_max)).fetchone()
+            return row[0]
+
+    def get_suspicious_page(self, conf_threshold: float, bpm_min: float, bpm_max: float,
+                            limit: int, offset: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review
+                FROM tracks
+                WHERE status = 'done' AND locked = 0 AND (
+                    needs_review = 1
+                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
+                    OR detector = 'librosa'
+                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
+                )
+                ORDER BY bpm_confidence ASC NULLS LAST
+                LIMIT ? OFFSET ?
+            """, (conf_threshold, bpm_min, bpm_max, limit, offset)).fetchall()
+            return [dict(r) for r in rows]
+
     def get_suspicious(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute("""
@@ -564,8 +646,9 @@ def _trigger_navidrome_rescan(config: dict):
 # ---------------------------------------------------------------------------
 
 class BPMTagger:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, progress: Optional[ScanProgress] = None):
         self.config = config
+        self.progress = progress or ScanProgress()
         self.db = BPMDatabase(config["db_path"])
         self.notifier: Optional[NotificationManager] = None
         if config.get("ntfy_url") and config.get("ntfy_topic"):
@@ -588,8 +671,9 @@ class BPMTagger:
             return {"status": "skipped"}
 
         log.info("Analyzing: %s", Path(file_path).name)
+        self.progress.set_file(file_path)
         try:
-            result = detect_bpm(file_path, self.config)
+            result = detect_bpm(file_path, self.config, self.progress)
             bpm = result["bpm"]
             review_flag = " [needs review]" if result["needs_review"] else ""
             log.info("  %.1f BPM (conf %.2f, %s)%s",
@@ -608,6 +692,7 @@ class BPMTagger:
             if self.notifier:
                 self.notifier.add(file_path, bpm)
 
+            self.progress.finish_file(file_path, bpm)
             return {"status": "tagged", **result}
         except Exception as exc:
             log.error("Error analyzing %s: %s", file_path, exc)
@@ -615,6 +700,7 @@ class BPMTagger:
                 file_path, file_hash,
                 None, None, None, None, None, None, "error", error=str(exc),
             )
+            self.progress.finish_file(file_path, None)
             return {"status": "error"}
 
     def _count_results(self, futures) -> dict:
@@ -645,10 +731,12 @@ class BPMTagger:
                 if Path(fname).suffix.lower() in self.config["extensions"]:
                     audio_files.append(os.path.join(root, fname))
 
+        self.progress.start(len(audio_files))
         workers = int(self.config.get("workers", 4))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(self.process_file, fp, force): fp for fp in audio_files}
             counts = self._count_results(futures)
+        self.progress.finish()
 
         if self.notifier:
             self.notifier.flush()
@@ -666,10 +754,12 @@ class BPMTagger:
         queue = self.db.get_reanalysis_queue()
         log.info("scan_review: %d tracks queued for re-analysis", len(queue))
 
+        self.progress.start(len(queue))
         workers = int(self.config.get("workers", 4))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(self.process_file, fp, True): fp for fp in queue}
             counts = self._count_results(futures)
+        self.progress.finish()
 
         if self.notifier:
             self.notifier.flush()
@@ -832,11 +922,13 @@ def main():
 
     log.info("BPM Tagger starting — mode=%s, music_dir=%s", mode, config["music_dir"])
 
+    progress = ScanProgress()
+
     if config["enable_ui"]:
         import web_ui
-        threading.Thread(target=web_ui.start, args=(config,), daemon=True).start()
+        threading.Thread(target=web_ui.start, args=(config, progress), daemon=True).start()
 
-    tagger = BPMTagger(config)
+    tagger = BPMTagger(config, progress)
 
     if mode == "scan_all":
         tagger.scan_directory(force=True)
