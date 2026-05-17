@@ -113,10 +113,10 @@ services:
       # -----------------------------------------------------------------------
       # Detector selection
       # -----------------------------------------------------------------------
-      # Disable deeprhythm (PyTorch CNN) on low-memory devices such as NAS boxes.
-      # With USE_DEEPRHYTHM=false the image still works: essentia + librosa run instead.
-      # Saves ~500 MB RAM per worker and avoids loading PyTorch at all.
-      USE_DEEPRHYTHM: "true"
+      # deeprhythm is a PyTorch CNN that costs ~500 MB RAM per worker.
+      # Set to "false" to run essentia + librosa only (~300 MB total peak).
+      # Set to "true" for maximum accuracy (requires raising memory limit to 1500M+).
+      USE_DEEPRHYTHM: "false"
 
       # -----------------------------------------------------------------------
       # Parallel processing
@@ -153,13 +153,13 @@ services:
       UI_MAX_LOGIN_ATTEMPTS: "5"  # failed attempts before lockout (per IP, per 60 s)
       UI_LOCKOUT_SECONDS: "300"   # how long a locked-out IP must wait
 
-    # Memory limit — prevents a single runaway container from crashing Docker on
-    # a NAS or low-memory host. 1.5 GB covers WORKERS=1 with all detectors enabled.
-    # Raise to 3 GB if you set WORKERS > 1, lower to 800 MB if USE_DEEPRHYTHM=false.
+    # Memory limit — prevents a runaway container from crashing Docker on a NAS.
+    # 800 MB covers essentia+librosa (USE_DEEPRHYTHM=false).
+    # Raise to 1500M if you enable USE_DEEPRHYTHM=true; 3 GB for WORKERS > 1.
     deploy:
       resources:
         limits:
-          memory: 1500M
+          memory: 800M
 
     # Uncomment when ENABLE_UI=true to let Docker monitor the health of the UI.
     # healthcheck:

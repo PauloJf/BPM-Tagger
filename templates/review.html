@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Needs Review — BPM Tagger{% endblock %}
 {% block content %}
-<h1>Needs Review <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ tracks|length }})</span></h1>
+<h1>Needs Review <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
 
 {% if not tracks %}
   <p style="color:var(--muted); margin-top:2rem; text-align:center;">
@@ -65,5 +65,25 @@
     {% endfor %}
   </tbody>
 </table>
+
+{% if pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+    <a href="{{ url_for('review', page=page-1) }}">← Prev</a>
+  {% endif %}
+  {% for p in range(1, pages+1) %}
+    {% if p == page %}
+      <span class="current">{{ p }}</span>
+    {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('review', page=p) }}">{{ p }}</a>
+    {% elif p == 4 or p == pages-3 %}
+      <span>…</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < pages %}
+    <a href="{{ url_for('review', page=page+1) }}">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}
