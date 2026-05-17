@@ -10,10 +10,17 @@ import sqlite3
 import sys
 import threading
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# Suppress noisy but harmless third-party warnings:
+# - libsndfile can't decode MP3; librosa falls back to audioread (ffmpeg) automatically
+# - audioread fallback is deprecated in librosa 0.10 but still works until 1.0
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
 
 import librosa
 import mutagen
