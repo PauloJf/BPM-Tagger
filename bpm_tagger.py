@@ -333,6 +333,16 @@ def get_file_hash(file_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 class BPMDatabase:
+    _SUSPICIOUS_WHERE = """status = 'done' AND locked = 0 AND (
+        needs_review = 1
+        OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
+        OR detector = 'librosa'
+        OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
+    )"""
+    _SUSPICIOUS_COLS = (
+        "file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review"
+    )
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
@@ -446,50 +456,51 @@ class BPMDatabase:
             return True
         return track["file_hash"] != file_hash
 
+    def get_tracks_page(self, q: str, limit: int, offset: int) -> tuple[list[dict], int]:
+        with self._connect() as conn:
+            if q:
+                like = f"%{q}%"
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
+                ).fetchone()[0]
+                rows = conn.execute(
+                    "SELECT * FROM tracks WHERE file_path LIKE ? "
+                    "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                    (like, limit, offset)
+                ).fetchall()
+            else:
+                total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+                rows = conn.execute(
+                    "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset)
+                ).fetchall()
+        return [dict(r) for r in rows], total
+
     def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
         with self._connect() as conn:
-            row = conn.execute("""
-                SELECT COUNT(*) FROM tracks
-                WHERE status = 'done' AND locked = 0 AND (
-                    needs_review = 1
-                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
-                    OR detector = 'librosa'
-                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
-                )
-            """, (conf_threshold, bpm_min, bpm_max)).fetchone()
-            return row[0]
+            return conn.execute(
+                f"SELECT COUNT(*) FROM tracks WHERE {self._SUSPICIOUS_WHERE}",
+                (conf_threshold, bpm_min, bpm_max)
+            ).fetchone()[0]
 
     def get_suspicious_page(self, conf_threshold: float, bpm_min: float, bpm_max: float,
                             limit: int, offset: int) -> list[dict]:
         with self._connect() as conn:
-            rows = conn.execute("""
-                SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review
-                FROM tracks
-                WHERE status = 'done' AND locked = 0 AND (
-                    needs_review = 1
-                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
-                    OR detector = 'librosa'
-                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
-                )
-                ORDER BY bpm_confidence ASC NULLS LAST
-                LIMIT ? OFFSET ?
-            """, (conf_threshold, bpm_min, bpm_max, limit, offset)).fetchall()
-            return [dict(r) for r in rows]
+            rows = conn.execute(
+                f"SELECT {self._SUSPICIOUS_COLS} FROM tracks WHERE {self._SUSPICIOUS_WHERE}"
+                " ORDER BY bpm_confidence ASC NULLS LAST LIMIT ? OFFSET ?",
+                (conf_threshold, bpm_min, bpm_max, limit, offset)
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_suspicious(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> list[dict]:
         with self._connect() as conn:
-            rows = conn.execute("""
-                SELECT file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review
-                FROM tracks
-                WHERE status = 'done' AND locked = 0 AND (
-                    needs_review = 1
-                    OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
-                    OR detector = 'librosa'
-                    OR (bpm IS NOT NULL AND (bpm < ? OR bpm > ?))
-                )
-                ORDER BY bpm_confidence ASC NULLS LAST
-            """, (conf_threshold, bpm_min, bpm_max)).fetchall()
-            return [dict(r) for r in rows]
+            rows = conn.execute(
+                f"SELECT {self._SUSPICIOUS_COLS} FROM tracks WHERE {self._SUSPICIOUS_WHERE}"
+                " ORDER BY bpm_confidence ASC NULLS LAST",
+                (conf_threshold, bpm_min, bpm_max)
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_reanalysis_queue(self) -> list[str]:
         """Return file paths of unlocked tracks that are candidates for re-analysis."""
@@ -703,6 +714,24 @@ class BPMTagger:
             self.progress.finish_file(file_path, None)
             return {"status": "error"}
 
+    def _process_files_parallel(self, file_paths: list[str], force: bool) -> dict:
+        workers = int(self.config.get("workers", 1))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(self.process_file, fp, force): fp
+                       for fp in file_paths}
+            return self._count_results(futures)
+
+    def _finish_scan(self, counts: dict, label: str):
+        if self.notifier:
+            self.notifier.flush()
+            stats = self.db.get_stats()
+            self.notifier.send_summary(stats["total"], counts["tagged"],
+                                       counts["errors"], counts["needs_review"])
+        _trigger_navidrome_rescan(self.config)
+        log.info("%s done — %d tagged (%d need review), %d skipped, %d errors",
+                 label, counts["tagged"], counts["needs_review"],
+                 counts["skipped"], counts["errors"])
+
     def _count_results(self, futures) -> dict:
         """Drain a dict of futures and return tallied counts."""
         tagged = errors = skipped = needs_review_count = 0
@@ -732,21 +761,9 @@ class BPMTagger:
                     audio_files.append(os.path.join(root, fname))
 
         self.progress.start(len(audio_files))
-        workers = int(self.config.get("workers", 4))
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(self.process_file, fp, force): fp for fp in audio_files}
-            counts = self._count_results(futures)
+        counts = self._process_files_parallel(audio_files, force=force)
         self.progress.finish()
-
-        if self.notifier:
-            self.notifier.flush()
-            stats = self.db.get_stats()
-            self.notifier.send_summary(stats["total"], counts["tagged"], counts["errors"],
-                                       counts["needs_review"])
-
-        _trigger_navidrome_rescan(self.config)
-        log.info("Scan done — %d tagged (%d need review), %d skipped, %d errors",
-                 counts["tagged"], counts["needs_review"], counts["skipped"], counts["errors"])
+        self._finish_scan(counts, "Scan")
         return counts
 
     def scan_review(self) -> dict:
@@ -755,21 +772,9 @@ class BPMTagger:
         log.info("scan_review: %d tracks queued for re-analysis", len(queue))
 
         self.progress.start(len(queue))
-        workers = int(self.config.get("workers", 4))
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(self.process_file, fp, True): fp for fp in queue}
-            counts = self._count_results(futures)
+        counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
-
-        if self.notifier:
-            self.notifier.flush()
-            stats = self.db.get_stats()
-            self.notifier.send_summary(stats["total"], counts["tagged"], counts["errors"],
-                                       counts["needs_review"])
-
-        _trigger_navidrome_rescan(self.config)
-        log.info("scan_review done — %d tagged (%d need review), %d skipped, %d errors",
-                 counts["tagged"], counts["needs_review"], counts["skipped"], counts["errors"])
+        self._finish_scan(counts, "scan_review")
         return counts
 
     def report(self) -> dict:
