@@ -64,9 +64,13 @@ services:
       BPM_MIN: "60"
       BPM_MAX: "200"
 
-      # Octave correction: when deeprhythm and librosa return values that are
-      # exactly double/half of each other, pick the one inside [BPM_MIN, BPM_MAX].
+      # Octave correction: when detectors return values that are exactly double/half
+      # of each other, pick the one inside [BPM_MIN, BPM_MAX].
       OCTAVE_CORRECTION: "true"
+
+      # Enable essentia RhythmExtractor2013 as a second neural-style detector.
+      # Set to "false" to fall back to the previous deeprhythm+librosa behaviour.
+      USE_ESSENTIA: "true"
 
       # Multi-segment librosa analysis: divide the song into N windows and take
       # the median BPM. Reduces influence of quiet intros/outros.
