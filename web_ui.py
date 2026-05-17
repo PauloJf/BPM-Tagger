@@ -155,34 +155,15 @@ def index():
 @app.route("/tracks")
 @login_required
 def tracks():
-    q        = request.args.get("q", "").strip()
+    q = request.args.get("q", "").strip()
     try:
         page = max(1, int(request.args.get("page", 1)))
     except (ValueError, TypeError):
         page = 1
     per_page = 50
-
-    with _db._connect() as conn:
-        if q:
-            like = f"%{q}%"
-            total = conn.execute(
-                "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
-            ).fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM tracks WHERE file_path LIKE ? "
-                "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                (like, per_page, (page - 1) * per_page)
-            ).fetchall()
-        else:
-            total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                (per_page, (page - 1) * per_page)
-            ).fetchall()
-
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
-    return render_template("tracks.html", tracks=[dict(r) for r in rows],
-                           total=total, page=page, pages=pages, q=q)
+    return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages, q=q)
 
 
 @app.route("/review")
@@ -301,27 +282,9 @@ def api_tracks():
     except (ValueError, TypeError):
         page = 1
     per_page = 50
-
-    with _db._connect() as conn:
-        if q:
-            like = f"%{q}%"
-            total = conn.execute(
-                "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
-            ).fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM tracks WHERE file_path LIKE ? "
-                "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                (like, per_page, (page - 1) * per_page)
-            ).fetchall()
-        else:
-            total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-            rows = conn.execute(
-                "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                (per_page, (page - 1) * per_page)
-            ).fetchall()
-
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
-    return jsonify(tracks=[dict(r) for r in rows], total=total, page=page, pages=pages)
+    return jsonify(tracks=rows, total=total, page=page, pages=pages)
 
 
 # ---------------------------------------------------------------------------
@@ -347,10 +310,8 @@ def audio():
     file_path = request.args.get("path", "")
     if not file_path:
         abort(400)
+    _assert_in_music_dir(file_path)
     real = os.path.realpath(file_path)
-    music_real = os.path.realpath(_music_dir)
-    if not (real == music_real or real.startswith(music_real + os.sep)):
-        abort(403)
     if not os.path.isfile(real):
         abort(404)
     return send_file(real, conditional=True)
