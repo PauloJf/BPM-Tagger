@@ -57,6 +57,19 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 ---
 
+## Hardware / Memory
+
+| Configuration | Peak RAM | Notes |
+|---|---|---|
+| `USE_DEEPRHYTHM=false` (default) | ~390 MB | essentia + librosa only; no PyTorch |
+| `USE_DEEPRHYTHM=true`, `WORKERS=1` | ~870 MB | adds PyTorch CNN (~500 MB) |
+| `USE_DEEPRHYTHM=true`, `WORKERS=2` | ~1 350 MB | each worker loads its own model copy |
+| `USE_DEEPRHYTHM=true`, `WORKERS=4` | ~2 300 MB | only for high-RAM servers |
+
+Set `deploy.resources.limits.memory` in `docker-compose.yml` to at least the peak RAM for your configuration. The defaults (`USE_DEEPRHYTHM=false`, limit `800M`) are sized for NAS devices with 2–4 GB total RAM. Re-enable deeprhythm for maximum accuracy if your host has enough headroom.
+
+---
+
 ## Operating Modes
 
 Set the `MODE` environment variable to one of the following:
