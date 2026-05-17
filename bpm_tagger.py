@@ -188,10 +188,11 @@ def detect_bpm(file_path: str, config: dict) -> dict:
     seg_dur = float(config.get("segment_duration", 45))
 
     bpm_dr: Optional[float] = None
-    try:
-        bpm_dr = _detect_bpm_deeprhythm(file_path)
-    except Exception as exc:
-        log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
+    if config.get("use_deeprhythm", True):
+        try:
+            bpm_dr = _detect_bpm_deeprhythm(file_path)
+        except Exception as exc:
+            log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
 
     bpm_es: Optional[float] = None
     if config.get("use_essentia", True):
@@ -809,6 +810,7 @@ def main():
         "segment_duration":           float(os.environ.get("SEGMENT_DURATION", "45")),
         "review_confidence_threshold":float(os.environ.get("REVIEW_CONFIDENCE_THRESHOLD", "0.4")),
         "review_disagree_threshold":  float(os.environ.get("REVIEW_DISAGREE_THRESHOLD", "15")),
+        "use_deeprhythm":             os.environ.get("USE_DEEPRHYTHM", "true").lower() == "true",
         "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
@@ -818,7 +820,7 @@ def main():
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
         "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
         "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),
-        "workers":                    int(os.environ.get("WORKERS", "4")),
+        "workers":                    int(os.environ.get("WORKERS", "1")),
         "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
         "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),
         "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
