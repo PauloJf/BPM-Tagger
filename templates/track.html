@@ -97,6 +97,10 @@
           <value>{{ "%.1f"|format(track.bpm_dr) if track.bpm_dr else "—" }}</value>
         </div>
         <div class="meta-item">
+          <label>essentia</label>
+          <value>{{ "%.1f"|format(track.bpm_es) if track.bpm_es else "—" }}</value>
+        </div>
+        <div class="meta-item">
           <label>librosa</label>
           <value>{{ "%.1f"|format(track.bpm_lb) if track.bpm_lb else "—" }}</value>
         </div>
