@@ -23,7 +23,7 @@
 </div>
 
 <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap;">
-  <h1 style="margin:0">All Tracks <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
+  <h1 style="margin:0">All Tracks <span id="tracks-total" style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
   <form method="get" style="display:flex; gap:.5rem; margin-left:auto;">
     <input type="text" name="q" value="{{ q }}" placeholder="Search filename…" style="width:220px;">
     <button class="btn btn-ghost btn-sm" type="submit">Search</button>
@@ -43,7 +43,7 @@
       <th></th>
     </tr>
   </thead>
-  <tbody>
+  <tbody id="tracks-body">
     {% for t in tracks %}
     <tr class="{{ 'flagged' if t.needs_review or t.status == 'error' }}">
       <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
@@ -85,8 +85,7 @@
   </tbody>
 </table>
 
-{% if pages > 1 %}
-<div class="pagination">
+<div class="pagination" id="tracks-pagination" style="{{ '' if pages > 1 else 'display:none' }}">
   {% if page > 1 %}
     <a href="{{ url_for('tracks', page=page-1, q=q) }}">← Prev</a>
   {% endif %}
@@ -103,20 +102,84 @@
     <a href="{{ url_for('tracks', page=page+1, q=q) }}">Next →</a>
   {% endif %}
 </div>
-{% endif %}
 
 <script>
 (function() {
-  var card = document.getElementById('scan-card');
-  var steps = ['deeprhythm','essentia','librosa'];
+  var card    = document.getElementById('scan-card');
+  var tbody   = document.getElementById('tracks-body');
+  var totalEl = document.getElementById('tracks-total');
+  var paginEl = document.getElementById('tracks-pagination');
+  var steps   = ['deeprhythm','essentia','librosa'];
   var wasScanning = false;
+  var lastFile    = '';
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function basename(p) { return p.split('/').pop(); }
+  function parentName(p) { var a = p.split('/'); return a.length >= 2 ? a[a.length-2] : ''; }
+
+  function buildRow(t) {
+    var bpm  = t.bpm  != null ? t.bpm.toFixed(1) : '—';
+    var conf = t.bpm_confidence != null
+      ? '<span class="conf-bar" style="width:' + Math.round(t.bpm_confidence*48) + 'px"></span>'
+        + '<span style="color:var(--muted);font-size:.8rem;margin-left:.3rem;">'
+        + t.bpm_confidence.toFixed(2) + '</span>'
+      : '—';
+    var bc, bt;
+    if      (t.status==='error') { bc='error';  bt='error'; }
+    else if (t.locked)           { bc='locked'; bt='locked'; }
+    else if (t.needs_review)     { bc='review'; bt='review'; }
+    else                         { bc='ok';     bt='ok'; }
+    var fc = (t.needs_review||t.status==='error') ? ' class="flagged"' : '';
+    var u  = '/track?path='+encodeURIComponent(t.file_path)+'&back=tracks';
+    return '<tr'+fc+'>'
+      +'<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+        +'<a href="'+u+'" style="color:var(--accent2);text-decoration:none;">'+esc(basename(t.file_path))+'</a></td>'
+      +'<td style="color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(parentName(t.file_path))+'</td>'
+      +'<td style="font-variant-numeric:tabular-nums;font-weight:600;">'+bpm+'</td>'
+      +'<td>'+conf+'</td>'
+      +'<td style="color:var(--muted);font-size:.82rem;">'+esc(t.detector||'—')+'</td>'
+      +'<td><span class="badge '+bc+'">'+bt+'</span></td>'
+      +'<td><a href="'+u+'" class="btn btn-ghost btn-sm">Open</a></td>'
+      +'</tr>';
+  }
+
+  function buildPagination(page, pages) {
+    if (pages <= 1) { paginEl.style.display='none'; return; }
+    paginEl.style.display='';
+    var q = new URLSearchParams(window.location.search).get('q')||'';
+    var qp = q ? '&q='+encodeURIComponent(q) : '';
+    var h = '';
+    if (page > 1) h += '<a href="?page='+(page-1)+qp+'">← Prev</a>';
+    for (var p=1; p<=pages; p++) {
+      if      (p===page)                                           h += '<span class="current">'+p+'</span>';
+      else if (p<=3||p>pages-3||(p>=page-2&&p<=page+2))           h += '<a href="?page='+p+qp+'">'+p+'</a>';
+      else if (p===4||p===pages-3)                                 h += '<span>…</span>';
+    }
+    if (page < pages) h += '<a href="?page='+(page+1)+qp+'">Next →</a>';
+    paginEl.innerHTML = h;
+  }
+
+  function refreshTable() {
+    fetch('/api/tracks'+window.location.search)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        tbody.innerHTML = d.tracks.length
+          ? d.tracks.map(buildRow).join('')
+          : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No tracks found.</td></tr>';
+        totalEl.textContent = '('+d.total+')';
+        buildPagination(d.page, d.pages);
+      }).catch(function() {});
+  }
 
   function updateSteps(active) {
     var ai = steps.indexOf(active);
     steps.forEach(function(s, i) {
-      var el = document.getElementById('step-' + s);
-      el.style.background = i < ai ? '#0e2a1e' : i === ai ? '#3b2e00' : 'var(--surface)';
-      el.style.color      = i < ai ? 'var(--green)' : i === ai ? 'var(--yellow)' : 'var(--muted)';
+      var el = document.getElementById('step-'+s);
+      el.style.background = i<ai ? '#0e2a1e' : i===ai ? '#3b2e00' : 'var(--surface)';
+      el.style.color      = i<ai ? 'var(--green)' : i===ai ? 'var(--yellow)' : 'var(--muted)';
     });
   }
 
@@ -135,13 +198,16 @@
             var b = d.last_bpm != null ? ' — ' + d.last_bpm.toFixed(1) + ' BPM' : '';
             document.getElementById('scan-last').textContent = d.last_file + b;
           }
+          if (d.last_file && d.last_file !== lastFile) {
+            lastFile = d.last_file;
+            refreshTable();
+          }
           wasScanning = true;
         } else {
-          if (wasScanning) { window.location.reload(); return; }
           card.style.display = 'none';
+          if (wasScanning) { wasScanning = false; refreshTable(); }
         }
-      })
-      .catch(function() {});
+      }).catch(function() {});
   }
 
   poll();
