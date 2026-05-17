@@ -724,9 +724,10 @@ class BPMTagger:
     def _finish_scan(self, counts: dict, label: str):
         if self.notifier:
             self.notifier.flush()
-            stats = self.db.get_stats()
-            self.notifier.send_summary(stats["total"], counts["tagged"],
-                                       counts["errors"], counts["needs_review"])
+            if counts["tagged"] or counts["needs_review"]:
+                stats = self.db.get_stats()
+                self.notifier.send_summary(stats["total"], counts["tagged"],
+                                           counts["errors"], counts["needs_review"])
         _trigger_navidrome_rescan(self.config)
         log.info("%s done — %d tagged (%d need review), %d skipped, %d errors",
                  label, counts["tagged"], counts["needs_review"],
