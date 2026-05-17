@@ -106,7 +106,7 @@ All settings are environment variables. Every variable has a default and is docu
 | `WRITE_TAGS` | `true` | Write the detected BPM back to each audio file's metadata tag |
 | `SCAN_ON_START` | `true` | Run `scan_unscanned` before entering watch mode (watch mode only) |
 | `AUDIO_EXTENSIONS` | `.mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv` | Comma-separated list of file extensions to process |
-| `WORKERS` | `4` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance. Higher values increase throughput at the cost of RAM and CPU. |
+| `WORKERS` | `1` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance (~500 MB RAM each). Keep at `1` on NAS/low-memory devices; raise to `2`–`4` on a server with ample RAM. |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ### BPM Detection Quality
@@ -116,7 +116,8 @@ All settings are environment variables. Every variable has a default and is docu
 | `BPM_MIN` | `60` | Plausibility floor — BPM values below this are doubled until in range. Narrow to `90` for pop/rock; widen to `40` for very slow music. |
 | `BPM_MAX` | `200` | Plausibility ceiling — BPM values above this are halved until in range. Raise to `220` for fast electronic music. |
 | `OCTAVE_CORRECTION` | `true` | When any two detectors return a value that is approximately double/half the other, pick the one inside `[BPM_MIN, BPM_MAX]`. Fixes the most common class of detection errors. |
-| `USE_ESSENTIA` | `true` | Enable essentia `RhythmExtractor2013` as the second primary detector. Set to `false` to revert to the previous deeprhythm + librosa behaviour. |
+| `USE_DEEPRHYTHM` | `true` | Enable deeprhythm (PyTorch CNN) as a primary detector. Set to `false` on low-memory devices (NAS, small VMs) — essentia + librosa still run without loading PyTorch, saving ~500 MB RAM per worker. |
+| `USE_ESSENTIA` | `true` | Enable essentia `RhythmExtractor2013` as the second primary detector. Set to `false` to revert to librosa-only mode. |
 | `MULTI_SEGMENT` | `true` | Run librosa on N evenly-spaced windows across the track instead of a single 180s block. Reduces the influence of quiet intros and outros. |
 | `MULTI_SEGMENT_COUNT` | `3` | Number of windows for multi-segment librosa analysis |
 | `SEGMENT_DURATION` | `45` | Duration in seconds of each analysis window |
