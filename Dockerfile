@@ -13,6 +13,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
+RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
+
 # Pre-download the deeprhythm model weights so the container works offline
 RUN python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"
 
