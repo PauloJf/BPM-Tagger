@@ -21,6 +21,7 @@ from typing import Optional
 # - audioread fallback is deprecated in librosa 0.10 but still works until 1.0
 warnings.filterwarnings("ignore", message="PySoundFile failed")
 warnings.filterwarnings("ignore", category=FutureWarning, module="librosa")
+warnings.filterwarnings("ignore", message="Using padding='same' with even kernel lengths")
 
 import librosa
 import mutagen
@@ -77,7 +78,7 @@ def _track_duration(file_path: str) -> Optional[float]:
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
     y, sr = librosa.load(file_path, offset=offset, duration=duration, sr=None, mono=True)
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
-    candidates = librosa.feature.rhythm.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
+    candidates = librosa.feature.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
     bpm = float(np.median(candidates)) if len(candidates) > 0 else 0.0
     _, beats = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, trim=False)
     if len(beats) > 2:
