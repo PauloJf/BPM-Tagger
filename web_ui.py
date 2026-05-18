@@ -506,7 +506,7 @@ def settings_scan():
 @login_required
 def settings_mode():
     _check_csrf()
-    valid_modes = ("scan_all", "scan_unscanned", "scan_review", "watch", "report")
+    valid_modes = ("watch", "watch_all", "scan_all", "scan_unscanned", "scan_review", "report")
     mode = request.form.get("mode", "watch")
     if mode not in valid_modes:
         flash("Invalid mode.", "error")

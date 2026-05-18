@@ -137,7 +137,7 @@
     <div class="field-row">
       <label>Mode</label>
       <select name="mode">
-        {% for m in ['watch','scan_unscanned','scan_all','scan_review','report'] %}
+        {% for m in ['watch','watch_all','scan_unscanned','scan_all','scan_review','report'] %}
           <option value="{{ m }}" {% if cfg.get('mode', 'watch') == m %}selected{% endif %}>{{ m }}</option>
         {% endfor %}
       </select>
@@ -145,9 +145,10 @@
     <div class="field-row">
       <label></label>
       <span style="color:var(--muted); font-size:.82rem;">
-        <strong>watch</strong> — scan on start, then watch for new files (recommended) ·
-        <strong>scan_unscanned</strong> — one-shot scan of new/changed files ·
-        <strong>scan_all</strong> — re-analyze every file
+        <strong>watch</strong> — scan new/unscanned tracks on start, then watch (recommended) ·
+        <strong>watch_all</strong> — re-analyze every track on start, then watch ·
+        <strong>scan_unscanned</strong> — one-shot: new/changed files only ·
+        <strong>scan_all</strong> — one-shot: re-analyze everything
       </span>
     </div>
     <div class="form-actions">
