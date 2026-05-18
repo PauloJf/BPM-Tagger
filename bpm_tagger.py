@@ -857,15 +857,19 @@ class BPMTagger:
             except Exception as exc:
                 log.error("Worker exception: %s", exc)
                 errors += 1
-                continue
-            if result["status"] == "tagged":
-                tagged += 1
-                if result.get("needs_review"):
-                    needs_review_count += 1
-            elif result["status"] == "error":
-                errors += 1
             else:
-                skipped += 1
+                if result["status"] == "tagged":
+                    tagged += 1
+                    if result.get("needs_review"):
+                        needs_review_count += 1
+                elif result["status"] == "error":
+                    errors += 1
+                else:
+                    skipped += 1
+            if self._stop_event.is_set():
+                for f in futures:
+                    f.cancel()
+                break
         return {"tagged": tagged, "skipped": skipped, "errors": errors,
                 "needs_review": needs_review_count}
 
