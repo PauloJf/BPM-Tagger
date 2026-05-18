@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Settings — BPM Tagger{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<style>
+  .settings-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.4rem; margin-bottom: 1.4rem;
+  }
+  .settings-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: var(--accent2); }
+  .field-row { display: flex; align-items: center; gap: .8rem; margin-bottom: .75rem; flex-wrap: wrap; }
+  .field-row label { width: 220px; flex-shrink: 0; color: var(--muted); font-size: .88rem; }
+  .field-row input[type=text], .field-row input[type=password], .field-row input[type=number],
+  .field-row select { flex: 1; min-width: 180px; max-width: 340px; }
+  .field-row .note { color: var(--muted); font-size: .78rem; margin-top: .25rem; width: 100%; padding-left: 228px; }
+  .warning-badge { background: #3b2e00; color: var(--yellow); padding: .2rem .5rem;
+                   border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .info-badge    { background: #1a2e3b; color: #60c8f5;    padding: .2rem .5rem;
+                   border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .restart-badge { background: #1a1d27; color: var(--muted); border: 1px solid var(--border);
+                   padding: .15rem .45rem; border-radius: 4px; font-size: .72rem; }
+  .toggle-row { display: flex; align-items: center; gap: .8rem; margin-bottom: .75rem; }
+  .toggle-row label.main { width: 220px; flex-shrink: 0; color: var(--muted); font-size: .88rem; }
+  .form-actions { margin-top: 1rem; }
+  .version-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .version-tag { background: var(--accent); color: #fff; padding: .2rem .6rem;
+                 border-radius: 4px; font-size: .85rem; font-weight: 600; font-family: monospace; }
+</style>
+
+<!-- Password -->
+<div class="settings-card">
+  <h2>Password</h2>
+  <form method="post" action="{{ url_for('settings_password') }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field-row">
+      <label>Current password</label>
+      <input type="password" name="current_password" required autocomplete="current-password">
+    </div>
+    <div class="field-row">
+      <label>New password</label>
+      <input type="password" name="new_password" required autocomplete="new-password">
+    </div>
+    <div class="field-row">
+      <label>Confirm new password</label>
+      <input type="password" name="confirm_password" required autocomplete="new-password">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Update Password</button>
+    </div>
+  </form>
+</div>
+
+<!-- ntfy notifications -->
+<div class="settings-card">
+  <h2>Notifications (ntfy)</h2>
+  <form method="post" action="{{ url_for('settings_ntfy') }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field-row">
+      <label>ntfy server URL</label>
+      <input type="text" name="ntfy_url" value="{{ cfg.get('ntfy_url','') }}" placeholder="https://ntfy.sh">
+    </div>
+    <div class="field-row">
+      <label>ntfy topic</label>
+      <input type="text" name="ntfy_topic" value="{{ cfg.get('ntfy_topic','') }}" placeholder="my-bpm-alerts">
+    </div>
+    <div class="field-row">
+      <label>Batch size</label>
+      <input type="number" name="ntfy_batch_size" value="{{ cfg.get('ntfy_batch_size', 10) }}" min="1" max="100" style="width:90px; flex:none;">
+      <span style="color:var(--muted); font-size:.82rem;">tracks per notification</span>
+    </div>
+    <div class="field-row">
+      <label>Min interval (seconds)</label>
+      <input type="number" name="ntfy_min_interval" value="{{ cfg.get('ntfy_min_interval', 300) }}" min="10" max="86400" style="width:100px; flex:none;">
+      <span style="color:var(--muted); font-size:.82rem;">between batch notifications</span>
+    </div>
+    <div class="toggle-row">
+      <label class="main">Notify on review</label>
+      <input type="checkbox" name="ntfy_notify_review" {% if cfg.get('ntfy_notify_review', True) %}checked{% endif %}>
+      <span style="color:var(--muted); font-size:.82rem;">include "N need review" in scan summary</span>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Save Notification Settings</button>
+    </div>
+  </form>
+</div>
+
+<!-- Scan behavior -->
+<div class="settings-card">
+  <h2>Scan Behavior</h2>
+  <form method="post" action="{{ url_for('settings_scan') }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field-row">
+      <label>Workers <span class="warning-badge">⚠ Memory</span></label>
+      <input type="number" name="workers" value="{{ cfg.get('workers', 1) }}" min="1" max="8" style="width:70px; flex:none;">
+      <span style="color:var(--muted); font-size:.82rem;">threads (each deeprhythm worker adds ~500 MB RAM)</span>
+    </div>
+    <div class="toggle-row">
+      <label class="main">Use deeprhythm <span class="warning-badge">+500 MB</span></label>
+      <input type="checkbox" name="use_deeprhythm" {% if cfg.get('use_deeprhythm', True) %}checked{% endif %}>
+      <span style="color:var(--muted); font-size:.82rem;">PyTorch CNN — most accurate; disable on low-memory NAS</span>
+    </div>
+    <div class="toggle-row">
+      <label class="main">Use essentia</label>
+      <input type="checkbox" name="use_essentia" {% if cfg.get('use_essentia', True) %}checked{% endif %}>
+      <span style="color:var(--muted); font-size:.82rem;">RhythmExtractor2013 — second neural detector</span>
+    </div>
+    <div class="toggle-row">
+      <label class="main">Write BPM tags</label>
+      <input type="checkbox" name="write_tags" {% if cfg.get('write_tags', True) %}checked{% endif %}>
+      <span style="color:var(--muted); font-size:.82rem;">write BPM back to audio file metadata</span>
+    </div>
+    <div class="field-row">
+      <label>BPM range min</label>
+      <input type="number" name="bpm_min" value="{{ cfg.get('bpm_min', 60)|int }}" min="20" max="300" step="1" style="width:80px; flex:none;">
+    </div>
+    <div class="field-row">
+      <label>BPM range max</label>
+      <input type="number" name="bpm_max" value="{{ cfg.get('bpm_max', 200)|int }}" min="20" max="400" step="1" style="width:80px; flex:none;">
+    </div>
+    <div class="field-row">
+      <label>Review threshold</label>
+      <input type="number" name="review_confidence_threshold" value="{{ cfg.get('review_confidence_threshold', 0.4) }}" min="0" max="1" step="0.01" style="width:80px; flex:none;">
+      <span style="color:var(--muted); font-size:.82rem;">confidence below this flags a track for review (0–1)</span>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Save Scan Settings</button>
+    </div>
+  </form>
+</div>
+
+<!-- Mode -->
+<div class="settings-card">
+  <h2>Operating Mode <span class="restart-badge">restart required</span></h2>
+  <form method="post" action="{{ url_for('settings_mode') }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field-row">
+      <label>Mode</label>
+      <select name="mode">
+        {% for m in ['watch','scan_unscanned','scan_all','scan_review','report'] %}
+          <option value="{{ m }}" {% if cfg.get('mode', 'watch') == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label></label>
+      <span style="color:var(--muted); font-size:.82rem;">
+        <strong>watch</strong> — scan on start, then watch for new files (recommended) ·
+        <strong>scan_unscanned</strong> — one-shot scan of new/changed files ·
+        <strong>scan_all</strong> — re-analyze every file
+      </span>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-ghost btn-sm">Save Mode</button>
+    </div>
+  </form>
+</div>
+
+<!-- Navidrome -->
+<div class="settings-card">
+  <h2>Navidrome Integration</h2>
+  <form method="post" action="{{ url_for('settings_navidrome') }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field-row">
+      <label>Navidrome URL</label>
+      <input type="text" name="navidrome_url" value="{{ cfg.get('navidrome_url','') }}" placeholder="http://navidrome:4533">
+    </div>
+    <div class="field-row">
+      <label>Username</label>
+      <input type="text" name="navidrome_user" value="{{ cfg.get('navidrome_user','') }}" autocomplete="off">
+    </div>
+    <div class="field-row">
+      <label>Password</label>
+      <input type="password" name="navidrome_pass" value="{{ cfg.get('navidrome_pass','') }}" autocomplete="off">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-sm">Save Navidrome Settings</button>
+    </div>
+  </form>
+</div>
+
+<!-- Version -->
+<div class="settings-card">
+  <h2>Version</h2>
+  <div class="version-row">
+    <span style="color:var(--muted); font-size:.88rem;">Current version</span>
+    <span class="version-tag">v{{ version }}</span>
+    <button id="check-update-btn" class="btn btn-ghost btn-sm" type="button" onclick="checkLatest()">Check for latest</button>
+    <span id="latest-result" style="font-size:.85rem; color:var(--muted);"></span>
+  </div>
+</div>
+
+<script>
+function checkLatest() {
+  var btn = document.getElementById('check-update-btn');
+  var res = document.getElementById('latest-result');
+  btn.disabled = true;
+  res.textContent = 'Checking…';
+  fetch('/api/version/check')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        res.textContent = 'Error: ' + d.error;
+        res.style.color = 'var(--red)';
+      } else {
+        var current = 'v{{ version }}';
+        var latest  = d.latest || 'unknown';
+        if (latest === current) {
+          res.textContent = '✓ Up to date (' + latest + ')';
+          res.style.color = 'var(--green)';
+        } else {
+          res.textContent = 'Latest: ' + latest + ' (you have ' + current + ')';
+          res.style.color = 'var(--yellow)';
+        }
+      }
+    })
+    .catch(function(e) {
+      res.textContent = 'Network error';
+      res.style.color = 'var(--red)';
+    })
+    .finally(function() { btn.disabled = false; });
+}
+</script>
+{% endblock %}

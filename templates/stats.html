@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Statistics — BPM Tagger{% endblock %}
+{% block content %}
+<h1>Statistics</h1>
+
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .8rem; margin-bottom: 1.6rem; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+               padding: 1rem 1.1rem; }
+  .stat-card .label { font-size: .78rem; color: var(--muted); text-transform: uppercase;
+                      letter-spacing: .05em; margin-bottom: .35rem; }
+  .stat-card .value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-card .value.green  { color: var(--green); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.red    { color: var(--red); }
+  .stat-card .value.cyan   { color: #60c8f5; }
+
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                padding: 1.2rem 1.4rem; margin-bottom: 1.4rem; }
+  .chart-card h2 { font-size: .95rem; font-weight: 600; color: var(--accent2); margin-bottom: 1rem; }
+
+  .desc-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: .8rem; margin-bottom: 1.6rem; }
+  .desc-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+               padding: .8rem 1rem; text-align: center; }
+  .desc-card .dlabel { font-size: .75rem; color: var(--muted); text-transform: uppercase;
+                       letter-spacing: .05em; margin-bottom: .25rem; }
+  .desc-card .dvalue { font-size: 1.2rem; font-weight: 700; color: var(--accent2);
+                       font-variant-numeric: tabular-nums; }
+
+  .det-bar-row { display: flex; align-items: center; gap: .7rem; margin-bottom: .55rem; }
+  .det-bar-label { width: 160px; flex-shrink: 0; font-size: .82rem; color: var(--muted);
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .det-bar-track { flex: 1; background: var(--border); border-radius: 3px; height: 12px; overflow: hidden; }
+  .det-bar-fill  { background: var(--accent); height: 100%; border-radius: 3px; transition: width .4s; }
+  .det-bar-count { width: 50px; text-align: right; font-size: .82rem;
+                   color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  #loading { color: var(--muted); padding: 2rem 0; text-align: center; font-size: .9rem; }
+</style>
+
+<div id="loading">Loading statistics…</div>
+<div id="stats-content" style="display:none;">
+
+  <!-- Summary cards -->
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">Total Tracks</div><div class="value" id="s-total">—</div></div>
+    <div class="stat-card"><div class="label">Done</div><div class="value green" id="s-done">—</div></div>
+    <div class="stat-card"><div class="label">Needs Review</div><div class="value yellow" id="s-review">—</div></div>
+    <div class="stat-card"><div class="label">Errors</div><div class="value red" id="s-errors">—</div></div>
+    <div class="stat-card"><div class="label">Locked</div><div class="value cyan" id="s-locked">—</div></div>
+    <div class="stat-card"><div class="label">Unscanned</div><div class="value" id="s-unscanned">—</div></div>
+  </div>
+
+  <!-- Descriptive BPM stats -->
+  <div class="desc-grid">
+    <div class="desc-card"><div class="dlabel">Mean BPM</div><div class="dvalue" id="d-avg">—</div></div>
+    <div class="desc-card"><div class="dlabel">Median BPM</div><div class="dvalue" id="d-med">—</div></div>
+    <div class="desc-card"><div class="dlabel">Min BPM</div><div class="dvalue" id="d-min">—</div></div>
+    <div class="desc-card"><div class="dlabel">Max BPM</div><div class="dvalue" id="d-max">—</div></div>
+  </div>
+
+  <!-- BPM distribution histogram -->
+  <div class="chart-card">
+    <h2>BPM Distribution</h2>
+    <canvas id="bpm-chart" height="220"></canvas>
+  </div>
+
+  <!-- Detector breakdown -->
+  <div class="chart-card">
+    <h2>Detector Breakdown</h2>
+    <div id="det-bars"></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  function fmt(v, dec){ return v==null ? '—' : Number(v).toFixed(dec||0); }
+
+  function drawBarChart(canvas, labels, values, color) {
+    var dpr = window.devicePixelRatio || 1;
+    var W = canvas.parentElement.clientWidth - 2;
+    canvas.style.width  = W + 'px';
+    canvas.width  = W * dpr;
+    canvas.height = parseInt(canvas.getAttribute('height')) * dpr;
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    var H = parseInt(canvas.getAttribute('height'));
+    var padL = 38, padR = 16, padT = 12, padB = 30;
+    var cW = W - padL - padR, cH = H - padT - padB;
+    var n = labels.length;
+    var maxV = Math.max.apply(null, values.concat([1]));
+    var barW = cW / n;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Gridlines
+    ctx.strokeStyle = '#2a2d3a'; ctx.lineWidth = 1;
+    for (var g = 1; g <= 4; g++) {
+      var gy = padT + cH * (1 - g/4);
+      ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(padL+cW, gy); ctx.stroke();
+      ctx.fillStyle = '#7a7e99'; ctx.font = '10px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxV*g/4), padL-4, gy+4);
+    }
+
+    // Bars
+    for (var i = 0; i < n; i++) {
+      var bh = (values[i] / maxV) * cH;
+      var bx = padL + i * barW + 1;
+      var by = padT + cH - bh;
+      ctx.fillStyle = color;
+      ctx.fillRect(bx, by, barW - 2, bh);
+    }
+
+    // X axis labels (every 5th label to avoid crowding)
+    ctx.fillStyle = '#7a7e99'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    var step = Math.max(1, Math.ceil(n / 20));
+    for (var i = 0; i < n; i += step) {
+      ctx.fillText(labels[i], padL + (i + 0.5) * barW, H - padB + 14);
+    }
+
+    // Axis line
+    ctx.strokeStyle = '#2a2d3a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT+cH); ctx.lineTo(padL+cW, padT+cH); ctx.stroke();
+  }
+
+  fetch('/api/stats')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('stats-content').style.display = '';
+
+      var s = data.summary;
+      document.getElementById('s-total').textContent    = s.total || 0;
+      document.getElementById('s-done').textContent     = s.done  || 0;
+      document.getElementById('s-review').textContent   = s.needs_review || 0;
+      document.getElementById('s-errors').textContent   = s.errors || 0;
+      document.getElementById('s-locked').textContent   = s.locked || 0;
+      document.getElementById('s-unscanned').textContent = Math.max(0, (s.total||0)-(s.done||0)-(s.errors||0));
+
+      var d = data.bpm_descriptive;
+      document.getElementById('d-avg').textContent = fmt(d.avg, 1);
+      document.getElementById('d-med').textContent = fmt(d.median, 1);
+      document.getElementById('d-min').textContent = fmt(d.min, 1);
+      document.getElementById('d-max').textContent = fmt(d.max, 1);
+
+      // BPM histogram
+      var dist = data.bpm_distribution;
+      if (dist && dist.length) {
+        var labels = dist.map(function(x){ return x.bpm; });
+        var values = dist.map(function(x){ return x.count; });
+        drawBarChart(document.getElementById('bpm-chart'), labels, values, '#7c6cf0');
+      } else {
+        document.getElementById('bpm-chart').parentElement.innerHTML += '<p style="color:var(--muted);font-size:.85rem;">No data yet.</p>';
+      }
+
+      // Detector breakdown
+      var dets = data.detector_distribution;
+      var detEl = document.getElementById('det-bars');
+      if (dets && dets.length) {
+        var maxDet = dets[0].count || 1;
+        var html = '';
+        dets.forEach(function(d){
+          var pct = Math.round(d.count / maxDet * 100);
+          html += '<div class="det-bar-row">'
+            + '<div class="det-bar-label" title="'+d.detector+'">'+d.detector+'</div>'
+            + '<div class="det-bar-track"><div class="det-bar-fill" style="width:'+pct+'%"></div></div>'
+            + '<div class="det-bar-count">'+d.count+'</div>'
+            + '</div>';
+        });
+        detEl.innerHTML = html;
+      } else {
+        detEl.innerHTML = '<p style="color:var(--muted);font-size:.85rem;">No data yet.</p>';
+      }
+    })
+    .catch(function(e){
+      document.getElementById('loading').textContent = 'Failed to load statistics.';
+    });
+})();
+</script>
+{% endblock %}
