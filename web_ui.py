@@ -37,6 +37,7 @@ _tagger = None
 _config: dict = {}
 _settings_path = ""
 _restarting = False
+_waveform_cache: dict = {}
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -314,6 +315,37 @@ def api_unlock():
         return jsonify(ok=True)
     except Exception as exc:
         return jsonify(ok=False, error=str(exc))
+
+
+@app.route("/api/waveform")
+@login_required
+def api_waveform():
+    path = request.args.get("path", "")
+    if not path:
+        abort(400)
+    _assert_in_music_dir(path)
+
+    if path in _waveform_cache:
+        return jsonify(_waveform_cache[path])
+
+    try:
+        import librosa
+        import numpy as np
+        y, sr = librosa.load(path, sr=2000, mono=True)
+        n_bars = 300
+        chunk = max(1, len(y) // n_bars)
+        peaks = []
+        for i in range(n_bars):
+            seg = y[i * chunk: (i + 1) * chunk]
+            peaks.append(float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0)
+        mx = max(peaks) or 1.0
+        peaks = [p / mx for p in peaks]
+        result = {"peaks": peaks, "duration": float(len(y) / sr)}
+        _waveform_cache[path] = result
+        return jsonify(result)
+    except Exception as exc:
+        log.warning("Waveform generation failed for %s: %s", Path(path).name, exc)
+        return jsonify(error=str(exc)), 500
 
 
 @app.route("/api/progress")
