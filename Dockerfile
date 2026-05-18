@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not ava
 # Pre-download the deeprhythm model weights so the container works offline
 RUN python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"
 
-COPY bpm_tagger.py web_ui.py ./
+COPY VERSION bpm_tagger.py web_ui.py ./
 COPY templates/ templates/
 COPY static/ static/
 
