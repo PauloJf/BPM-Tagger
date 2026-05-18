@@ -22,6 +22,8 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template,
 log = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder="templates")
+app.jinja_env.filters['basename'] = lambda p: os.path.basename(p) if p else ''
+app.jinja_env.filters['dirname']  = lambda p: os.path.dirname(p)  if p else ''
 
 # Populated by start()
 _db = None
