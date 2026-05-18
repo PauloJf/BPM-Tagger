@@ -6,16 +6,20 @@
   .track-layout { display: grid; grid-template-columns: 1fr 340px; gap: 18px; }
   @media (max-width: 820px) { .track-layout { grid-template-columns: 1fr; } }
 
-  /* Waveform decorative bars */
-  .waveform-bars {
-    width: 100%; height: 88px; display: flex; align-items: center;
-    gap: 1.5px; overflow: hidden; border-radius: 6px; margin-bottom: 14px;
+  /* Waveform canvas container */
+  .waveform-wrap {
+    position: relative; height: 88px; margin-bottom: 14px;
   }
-  .waveform-bar {
-    flex: 1; border-radius: 1px;
-    background: var(--wave);
-    transform-origin: center;
+  #waveform-canvas {
+    width: 100%; height: 88px; border-radius: 6px;
+    display: block; cursor: crosshair;
   }
+  #waveform-loading {
+    position: absolute; inset: 0; border-radius: 6px;
+    background: var(--surface-2); pointer-events: none;
+    animation: wf-shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes wf-shimmer { 0%,100%{opacity:0.5} 50%{opacity:0.25} }
 
   /* Tap button */
   #tap-btn {
@@ -158,13 +162,10 @@
         </span>
       </div>
 
-      {# Decorative waveform — 96 bars with simple repeating wave pattern #}
-      <div class="waveform-bars" id="waveform-wrap">
-        {% set wave_heights = [20,35,55,72,88,96,100,96,88,72,55,35,20,28,48,65,80,92,98,92,80,65,48,28] %}
-        {% for i in range(96) %}
-        {% set h = wave_heights[i % wave_heights|length] %}
-        <div class="waveform-bar" style="height:{{ h }}%;"></div>
-        {% endfor %}
+      {# Real waveform — loaded from /api/waveform, scrubbing supported #}
+      <div class="waveform-wrap">
+        <canvas id="waveform-canvas"></canvas>
+        <div id="waveform-loading"></div>
       </div>
 
       {# Native audio element (hidden, controlled by the play button) #}
@@ -475,6 +476,7 @@
     if (audio.paused) {
       audio.play();
       icon.innerHTML = '<g fill="white"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></g>';
+      startRaf();
     } else {
       audio.pause();
       icon.innerHTML = '<polygon points="6,4 20,12 6,20" fill="white"/>';
@@ -492,16 +494,136 @@
     });
   }
 
-  // ── Waveform coloring (played portion) ──────────────────────────────────
+  // ── Waveform (real peaks, canvas, scrubbing) ────────────────────────────
+  var wfCanvas  = document.getElementById("waveform-canvas");
+  var wfCtx     = wfCanvas.getContext("2d");
+  var wfLoading = document.getElementById("waveform-loading");
+  var wfPeaks   = null;
+  var isDragging = false;
+  var rafId      = null;
+  var logicalW   = 0;
+  var logicalH   = 88;
+
+  // Resolve CSS vars to canvas-compatible color strings via DOM color computation
+  var WF_ACCENT, WF_WAVE;
+  (function() {
+    var el = document.createElement("b");
+    el.style.cssText = "display:none;";
+    document.body.appendChild(el);
+    el.style.color = "var(--accent)";
+    WF_ACCENT = getComputedStyle(el).color;
+    el.style.color = "var(--wave)";
+    WF_WAVE = getComputedStyle(el).color;
+    document.body.removeChild(el);
+  }());
+
+  function initCanvas() {
+    var dpr = window.devicePixelRatio || 1;
+    logicalW = wfCanvas.offsetWidth;
+    logicalH = wfCanvas.offsetHeight || 88;
+    wfCanvas.width  = Math.round(logicalW * dpr);
+    wfCanvas.height = Math.round(logicalH * dpr);
+    wfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function renderWaveform(currentTime, duration) {
+    wfCtx.clearRect(0, 0, logicalW, logicalH);
+    if (!wfPeaks) return;
+    var n        = wfPeaks.length;
+    var barW     = logicalW / n;
+    var progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+    var midY     = logicalH / 2;
+    var accent   = WF_ACCENT;
+    var wave     = WF_WAVE;
+    for (var i = 0; i < n; i++) {
+      var h  = Math.max(2, wfPeaks[i] * logicalH * 0.85);
+      var y  = midY - h / 2;
+      var x  = i * barW;
+      var bw = Math.max(1, barW - 1.5);
+      wfCtx.fillStyle = (i / n) < progress ? accent : wave;
+      wfCtx.beginPath();
+      if (wfCtx.roundRect) {
+        wfCtx.roundRect(x + 0.5, y, bw, h, Math.min(1, bw * 0.3));
+      } else {
+        wfCtx.rect(x + 0.5, y, bw, h);
+      }
+      wfCtx.fill();
+    }
+    // Playhead
+    if (duration > 0) {
+      var headX = progress * logicalW;
+      wfCtx.fillStyle = "rgba(255,255,255,0.75)";
+      wfCtx.fillRect(headX - 0.75, 0, 1.5, logicalH);
+    }
+  }
+
+  function startRaf() {
+    if (rafId) return;
+    function tick() {
+      if (!audio.paused && wfPeaks) {
+        renderWaveform(audio.currentTime, audio.duration || 0);
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = null;
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Update waveform when paused (seeking, end of track)
   if (audio) {
     audio.addEventListener("timeupdate", function() {
-      var pct = audio.duration ? audio.currentTime / audio.duration : 0;
-      var bars = document.querySelectorAll(".waveform-bar");
-      var n = bars.length;
-      bars.forEach(function(b, i) {
-        b.style.background = (i / n) < pct ? "var(--accent)" : "var(--wave)";
-      });
+      if (audio.paused) renderWaveform(audio.currentTime, audio.duration || 0);
+    });
+    audio.addEventListener("play",  startRaf);
+    audio.addEventListener("ended", function() {
+      renderWaveform(audio.duration || 0, audio.duration || 0);
     });
   }
+
+  // Scrubbing
+  function seekFromX(clientX) {
+    var rect  = wfCanvas.getBoundingClientRect();
+    var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    if (audio && audio.duration) {
+      audio.currentTime = ratio * audio.duration;
+      renderWaveform(audio.currentTime, audio.duration);
+    }
+  }
+  wfCanvas.addEventListener("mousedown", function(e) {
+    isDragging = true; seekFromX(e.clientX);
+  });
+  document.addEventListener("mousemove", function(e) {
+    if (isDragging) seekFromX(e.clientX);
+  });
+  document.addEventListener("mouseup",  function() { isDragging = false; });
+  wfCanvas.addEventListener("touchstart", function(e) {
+    e.preventDefault(); isDragging = true; seekFromX(e.touches[0].clientX);
+  }, { passive: false });
+  wfCanvas.addEventListener("touchmove", function(e) {
+    e.preventDefault(); if (isDragging) seekFromX(e.touches[0].clientX);
+  }, { passive: false });
+  wfCanvas.addEventListener("touchend", function() { isDragging = false; });
+
+  // Resize
+  window.addEventListener("resize", function() {
+    initCanvas();
+    renderWaveform(audio ? audio.currentTime : 0, audio ? (audio.duration || 0) : 0);
+  });
+
+  // Fetch waveform peaks from server
+  initCanvas();
+  fetch("/api/waveform?path=" + encodeURIComponent(FILE_PATH))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (wfLoading) wfLoading.style.display = "none";
+      if (d.error) { console.warn("Waveform:", d.error); return; }
+      wfPeaks = d.peaks;
+      renderWaveform(audio ? audio.currentTime : 0, audio ? (audio.duration || 0) : 0);
+    })
+    .catch(function(e) {
+      if (wfLoading) wfLoading.style.display = "none";
+      console.warn("Waveform fetch failed:", e);
+    });
 </script>
 {% endblock %}
