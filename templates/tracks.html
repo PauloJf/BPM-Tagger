@@ -114,7 +114,7 @@
     <a href="{{ url_for('tracks', q=q, per_page=per_page) }}"
        class="filter-pill {% if not request.args.get('filter') %}active{% endif %}">
       All
-      <span class="pill-count" id="pill-count-all">{{ total }}</span>
+      <span class="pill-count" id="pill-count-all">{{ all_count }}</span>
     </a>
     <a href="{{ url_for('tracks', q=q, per_page=per_page, filter='review') }}"
        class="filter-pill {% if request.args.get('filter') == 'review' %}active{% endif %}">
@@ -351,7 +351,7 @@
           ? d.tracks.map(buildRow).join('')
           : '<div class="tracks-row-empty">No tracks found.</div>';
         totalEl.textContent = d.total;
-        if (pillAll)    pillAll.textContent    = d.total;
+        if (pillAll)    pillAll.textContent    = d.all_count !== undefined ? d.all_count : d.total;
         if (pillReview) pillReview.textContent = d.review_count;
         if (pillLocked) pillLocked.textContent = d.locked_count;
         buildPagination(d.page, d.pages, d.per_page);
