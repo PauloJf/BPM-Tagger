@@ -444,6 +444,14 @@ class BPMDatabase:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
 
+    def get_all_file_hashes(self) -> dict:
+        """Return {file_path: (file_hash, status, locked)} in one query for bulk filtering."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, file_hash, status, locked FROM tracks"
+            ).fetchall()
+        return {r["file_path"]: (r["file_hash"], r["status"], bool(r["locked"])) for r in rows}
+
     def get_track(self, file_path: str) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM tracks WHERE file_path = ?", (file_path,)).fetchone()
@@ -850,6 +858,18 @@ class BPMTagger:
         return {"tagged": tagged, "skipped": skipped, "errors": errors,
                 "needs_review": needs_review_count}
 
+    def _needs_analysis_fast(self, fp: str, tracked: dict) -> bool:
+        """Check if a file needs analysis against bulk-loaded DB data."""
+        rec = tracked.get(fp)
+        if rec is None:
+            return True
+        file_hash, status, locked = rec
+        if locked:
+            return False
+        if status != "done":
+            return True
+        return file_hash != get_file_hash(fp)
+
     def scan_directory(self, force: bool = False) -> dict:
         self._stop_event.clear()
         self._pause_event.set()
@@ -860,6 +880,13 @@ class BPMTagger:
             for fname in sorted(files):
                 if Path(fname).suffix.lower() in self.config["extensions"]:
                     audio_files.append(os.path.join(root, fname))
+
+        if not force:
+            # Bulk-load all tracked records (one query) and filter to files that
+            # genuinely need analysis, so progress.total and the thread pool only
+            # reflect real work rather than the entire library.
+            tracked = self.db.get_all_file_hashes()
+            audio_files = [fp for fp in audio_files if self._needs_analysis_fast(fp, tracked)]
 
         self.progress.start(len(audio_files))
         counts = self._process_files_parallel(audio_files, force=force)
