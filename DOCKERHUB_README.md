@@ -69,6 +69,7 @@ Set `MODE` to control what the container does on startup:
 | `MUSIC_DIR` | `/music` | Music directory path inside the container |
 | `WRITE_TAGS` | `true` | Write BPM back to audio file metadata |
 | `WORKERS` | `1` | Parallel analysis threads (each deeprhythm worker adds ~500 MB RAM) |
+| `REFRESH_HASHES` | `false` | Recompute stored hashes for all done tracks before scanning; set `true` after upgrading from a version that stored pre-tag hashes |
 | `BPM_MIN` | `60` | BPM range floor (values below are doubled) |
 | `BPM_MAX` | `200` | BPM range ceiling (values above are halved) |
 | `USE_DEEPRHYTHM` | `false` | Enable deeprhythm CNN detector (~500 MB RAM per worker); disable on NAS/low-memory devices |

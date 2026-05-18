@@ -130,6 +130,16 @@ services:
       NAVIDROME_USER: ""            # Navidrome admin username
       NAVIDROME_PASS: ""            # Navidrome admin password
 
+      # -----------------------------------------------------------------------
+      # Hash refresh (run once after upgrading from an older version)
+      # -----------------------------------------------------------------------
+      # Set to "true" to recompute stored size:mtime hashes for all already-
+      # analyzed tracks before the scan starts. Useful if tags were written by
+      # a previous version that saved the pre-tag hash, causing every tagged
+      # file to be re-analyzed on every restart. Safe to leave enabled — it
+      # adds a few seconds on large libraries but causes no re-analysis.
+      REFRESH_HASHES: "false"
+
       # Log verbosity: DEBUG | INFO | WARNING | ERROR
       LOG_LEVEL: INFO
 

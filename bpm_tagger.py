@@ -511,6 +511,34 @@ class BPMDatabase:
             conn.execute("UPDATE tracks SET locked = 0 WHERE file_path = ?", (file_path,))
             conn.commit()
 
+    def refresh_hashes(self) -> tuple[int, int]:
+        """Recompute size:mtime for every done/locked track that exists on disk.
+
+        Returns (updated, missing) counts. Tracks whose files are gone are left
+        untouched so they show up normally on the next scan.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, file_hash FROM tracks WHERE status = 'done' OR locked = 1"
+            ).fetchall()
+
+        updated = missing = 0
+        with self._connect() as conn:
+            for row in rows:
+                fp = row["file_path"]
+                if not os.path.exists(fp):
+                    missing += 1
+                    continue
+                new_hash = get_file_hash(fp)
+                if new_hash != row["file_hash"]:
+                    conn.execute(
+                        "UPDATE tracks SET file_hash = ? WHERE file_path = ?",
+                        (new_hash, fp),
+                    )
+                    updated += 1
+            conn.commit()
+        return updated, missing
+
     def needs_analysis(self, file_path: str, file_hash: str) -> bool:
         track = self.get_track(file_path)
         if not track:
@@ -1087,6 +1115,11 @@ def main():
     if config["enable_ui"]:
         import web_ui
         threading.Thread(target=web_ui.start, args=(config, progress, tagger), daemon=True).start()
+
+    if os.environ.get("REFRESH_HASHES", "false").lower() == "true":
+        log.info("REFRESH_HASHES: updating stored hashes for all done/locked tracks…")
+        updated, missing = tagger.db.refresh_hashes()
+        log.info("REFRESH_HASHES: %d updated, %d files not found on disk", updated, missing)
 
     if mode == "scan_all":
         tagger.scan_directory(force=True)
