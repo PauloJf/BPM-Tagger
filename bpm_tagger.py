@@ -793,6 +793,10 @@ class BPMTagger:
 
             if self.config["write_tags"]:
                 write_bpm_tag(file_path, bpm)
+                # Re-read hash after tagging so the stored value matches the
+                # post-tag file state; otherwise the next scan sees a mismatch
+                # and re-analyzes an already-tagged file.
+                file_hash = get_file_hash(file_path)
 
             self.db.upsert_track(
                 file_path, file_hash,
