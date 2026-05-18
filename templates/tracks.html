@@ -1,111 +1,257 @@
 {% extends "base.html" %}
-{% block title %}All Tracks — BPM Tagger{% endblock %}
+{% block title %}Library — BPM Tagger{% endblock %}
 {% block content %}
-<div id="scan-card" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; margin-bottom:1.4rem;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem;">
-    <span style="font-weight:600; font-size:.9rem; color:var(--accent2);">Scanning in progress…</span>
-    <span id="scan-counts" style="color:var(--muted); font-size:.82rem;"></span>
+<style>
+  /* Scan banner */
+  #scan-card {
+    display: none;
+    background: var(--surface-2); border: 1px solid var(--accent-border);
+    border-radius: 14px; padding: 14px 18px; margin-bottom: 22px;
+    position: relative; overflow: hidden;
+  }
+  .scan-banner-glow {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(600px circle at 20% 0%, var(--accent-glow), transparent 60%);
+  }
+  .scan-banner-top {
+    position: relative; display: flex; align-items: center; gap: 14px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .scan-banner-file {
+    position: relative; display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px;
+  }
+  .scan-progress-track {
+    position: relative; height: 3px; background: var(--border);
+    border-radius: 2px; overflow: hidden;
+  }
+  #scan-bar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.6s ease;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .scan-step {
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    padding: 3px 8px; border-radius: 999px; letter-spacing: 0.02em;
+    border: 1px solid var(--border); background: var(--chip-bg); color: var(--muted);
+  }
+  .scan-step.done   { background: var(--ok-bg);       color: var(--ok-fg);    border-color: var(--ok-bd); }
+  .scan-step.active { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+
+  /* Filter pill row */
+  .filter-pills {
+    display: flex; gap: 4px; padding: 4px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .filter-pill {
+    padding: 6px 12px; border-radius: 7px; border: none; cursor: pointer;
+    background: transparent; color: var(--muted);
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+  }
+  .filter-pill:hover { color: var(--text); }
+  .filter-pill.active { background: var(--surface-2); color: var(--text); }
+  .pill-count {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 6px; border-radius: 6px;
+    background: var(--chip-bg); color: var(--muted);
+  }
+  .filter-pill.active .pill-count { background: var(--accent-soft); color: var(--accent-2); }
+
+  /* Search input */
+  .search-wrap { position: relative; }
+  .search-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none;
+  }
+  .search-input {
+    padding: 8px 12px 8px 30px !important; width: 260px;
+  }
+  .search-input:focus { border-color: var(--accent-border) !important; }
+</style>
+
+{# ── Scan banner ────────────────────────────────────────────────────────── #}
+<div id="scan-card">
+  <div class="scan-banner-glow"></div>
+  <div class="scan-banner-top">
+    <span class="scan-dot pulsing" style="background:var(--accent); box-shadow:0 0 0 4px var(--accent-glow);"></span>
+    <span style="font-size:12px; font-weight:600; color:var(--accent-2); letter-spacing:0.02em;">ANALYZING</span>
+    <span id="scan-counts" style="font-family:var(--mono); font-size:11px; color:var(--muted);"></span>
+    <div style="flex:1;"></div>
+    <div style="display:flex; gap:6px;">
+      <span id="step-deeprhythm" class="scan-step">deeprhythm</span>
+      <span id="step-essentia"   class="scan-step">essentia</span>
+      <span id="step-librosa"    class="scan-step">librosa</span>
+    </div>
   </div>
-  <div style="font-size:.85rem; color:var(--muted); margin-bottom:.5rem;">
-    Analyzing: <span id="scan-file" style="color:var(--text); font-family:monospace;"></span>
+  <div class="scan-banner-file">
+    <span id="scan-file" style="font-family:var(--mono); font-size:13px; color:var(--text);"></span>
   </div>
-  <div style="display:flex; gap:.4rem; margin-bottom:.6rem;">
-    <span id="step-deeprhythm" class="badge">deeprhythm</span>
-    <span id="step-essentia"   class="badge">essentia</span>
-    <span id="step-librosa"    class="badge">librosa</span>
+  <div class="scan-progress-track" style="margin-bottom:10px;">
+    <div id="scan-bar"></div>
   </div>
-  <div style="background:var(--border); border-radius:3px; height:6px; overflow:hidden; margin-bottom:.5rem;">
-    <div id="scan-bar" style="background:var(--accent); height:100%; width:0%; transition:width .4s;"></div>
-  </div>
-  <div style="font-size:.8rem; color:var(--muted);">
-    Last: <span id="scan-last" style="color:var(--text);"></span>
+  <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between;">
+    <span>Last · <span id="scan-last" style="color:var(--text); font-family:var(--mono);"></span></span>
+    <span id="scan-last-bpm" style="font-family:var(--mono); color:var(--accent-2);"></span>
   </div>
 </div>
 
-<div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap;">
-  <h1 style="margin:0">All Tracks <span id="tracks-total" style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
-  <form method="get" style="display:flex; gap:.5rem; margin-left:auto; align-items:center;">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search filename…" style="width:220px;">
-    <button class="btn btn-ghost btn-sm" type="submit">Search</button>
+{# ── Page header ────────────────────────────────────────────────────────── #}
+<div style="display:flex; align-items:flex-end; gap:18px; margin-bottom:20px; flex-wrap:wrap;">
+  <div>
+    <h1 style="font-size:28px; font-weight:600; letter-spacing:-0.02em; margin-bottom:4px;">Library</h1>
+    <p style="font-size:13px; color:var(--muted);">
+      <span id="tracks-total" style="font-family:var(--mono); color:var(--text);">{{ total }}</span>
+      <span> tracks</span>
+    </p>
+  </div>
+
+  <div style="flex:1;"></div>
+
+  {# Filter pills — link-based so they work server-side #}
+  <div class="filter-pills">
+    <a href="{{ url_for('tracks', q=q, per_page=per_page) }}"
+       class="filter-pill {% if not request.args.get('filter') %}active{% endif %}">
+      All
+      <span class="pill-count">{{ total }}</span>
+    </a>
+  </div>
+
+  {# Search #}
+  <form method="get" style="display:flex; gap:8px; align-items:center;">
+    <div class="search-wrap">
+      <span class="search-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <circle cx="11" cy="11" r="6"/>
+          <path d="M16 16 L21 21"/>
+        </svg>
+      </span>
+      <input type="text" name="q" value="{{ q }}"
+             placeholder="Search filename or artist…"
+             class="search-input">
+    </div>
     {% if q %}<a href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
-    <select name="_pp" onchange="var u=new URLSearchParams(window.location.search);u.set('per_page',this.value);u.set('page','1');window.location.search=u.toString();" style="margin-left:.25rem;">
-      <option value="10"  {% if per_page==10  %}selected{% endif %}>10 / page</option>
-      <option value="50"  {% if per_page==50  %}selected{% endif %}>50 / page</option>
-      <option value="100" {% if per_page==100 %}selected{% endif %}>100 / page</option>
+    <select name="_pp"
+            onchange="var u=new URLSearchParams(window.location.search);u.set('per_page',this.value);u.set('page','1');window.location.search=u.toString();"
+            style="font-size:12px;">
+      <option value="10"  {% if per_page==10  %}selected{% endif %}>10/page</option>
+      <option value="50"  {% if per_page==50  %}selected{% endif %}>50/page</option>
+      <option value="100" {% if per_page==100 %}selected{% endif %}>100/page</option>
     </select>
   </form>
 </div>
 
-<table>
-  <thead>
-    <tr>
-      <th>Filename</th>
-      <th>Path</th>
-      <th>BPM</th>
-      <th>Conf</th>
-      <th>Detector</th>
-      <th>Status</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody id="tracks-body">
+{# ── Tracks table ───────────────────────────────────────────────────────── #}
+<div class="tracks-table">
+  <div class="tracks-header">
+    <span>Track</span>
+    <span style="text-align:right;">BPM</span>
+    <span>Conf.</span>
+    <span>Detector</span>
+    <span>Status</span>
+    <span></span>
+  </div>
+  <div id="tracks-body">
     {% for t in tracks %}
-    <tr class="{{ 'flagged' if t.needs_review or t.status == 'error' }}">
-      <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
-           style="color:var(--accent2); text-decoration:none;">{{ t.file_path | basename }}</a>
-      </td>
-      <td style="color:var(--muted); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        {{ t.file_path | dirname | basename }}
-      </td>
-      <td style="font-variant-numeric:tabular-nums; font-weight:600;">
-        {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
-      </td>
-      <td>
-        {% if t.bpm_confidence is not none %}
-          <span class="conf-bar" style="width:{{ (t.bpm_confidence * 48)|int }}px"></span>
-          <span style="color:var(--muted); font-size:.8rem; margin-left:.3rem;">{{ "%.2f"|format(t.bpm_confidence) }}</span>
-        {% else %}—{% endif %}
-      </td>
-      <td style="color:var(--muted); font-size:.82rem;">{{ t.detector or "—" }}</td>
-      <td>
-        {% if t.status == 'error' %}
-          <span class="badge error">error</span>
-        {% elif t.locked %}
-          <span class="badge locked">locked</span>
-        {% elif t.needs_review %}
-          <span class="badge review">review</span>
-        {% else %}
-          <span class="badge ok">ok</span>
-        {% endif %}
-      </td>
-      <td>
-        <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
-           class="btn btn-ghost btn-sm">Open</a>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="7" style="text-align:center; color:var(--muted); padding:2rem;">No tracks found.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+    <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
+       class="tracks-row {{ 'flagged' if t.needs_review or t.status == 'error' }}"
+       style="display:grid; grid-template-columns:1fr 130px 90px 130px 110px 70px; padding:12px 18px; gap:14px; align-items:center; text-decoration:none; color:inherit; border-bottom:1px solid var(--border);">
+      <div style="min-width:0;">
+        <div style="font-size:13px; color:var(--text); font-weight:500;
+                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:3px;">
+          {{ t.file_path | basename }}
+        </div>
+        <div style="font-size:11px; color:var(--muted); display:flex; align-items:center; gap:6px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+            <path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/>
+          </svg>
+          <span style="font-family:var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            {{ t.file_path | dirname | basename }}
+          </span>
+        </div>
+      </div>
 
-<div class="pagination" id="tracks-pagination" style="{{ '' if pages > 1 else 'display:none' }}">
-  {% if page > 1 %}
-    <a href="{{ url_for('tracks', page=page-1, q=q, per_page=per_page) }}">← Prev</a>
-  {% endif %}
-  {% for p in range(1, pages+1) %}
-    {% if p == page %}
-      <span class="current">{{ p }}</span>
-    {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
-      <a href="{{ url_for('tracks', page=p, q=q, per_page=per_page) }}">{{ p }}</a>
-    {% elif p == 4 or p == pages-3 %}
-      <span>…</span>
+      <div style="text-align:right;">
+        <span style="font-family:var(--mono); font-size:16px; font-weight:600;
+                     color:{% if t.bpm %}var(--text){% else %}var(--muted){% endif %};
+                     font-variant-numeric:tabular-nums;">
+          {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
+        </span>
+      </div>
+
+      <div>
+        {% if t.bpm_confidence is not none %}
+        {% set pct = (t.bpm_confidence * 100)|int %}
+        {% set ccolor = 'var(--ok-fg)' if t.bpm_confidence >= 0.7 else ('var(--accent-2)' if t.bpm_confidence >= 0.4 else 'var(--warn-fg)') %}
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill" style="width:{{ pct }}%; background:{{ ccolor }};"></div>
+          </div>
+          <span style="font-family:var(--mono); font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums;">
+            {{ "%.2f"|format(t.bpm_confidence) }}
+          </span>
+        </div>
+        {% else %}
+        <span style="color:var(--muted);">—</span>
+        {% endif %}
+      </div>
+
+      <div style="font-family:var(--mono); font-size:11px; color:var(--muted);
+                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ t.detector or "—" }}
+      </div>
+
+      <div>
+        {% if t.status == 'error' %}
+          <span class="badge badge--error"><span class="badge-dot"></span>error</span>
+        {% elif t.needs_review %}
+          <span class="badge badge--review"><span class="badge-dot"></span>review</span>
+        {% elif t.locked %}
+          <span class="badge badge--locked"><span class="badge-dot"></span>locked</span>
+        {% else %}
+          <span class="badge badge--ok">ok</span>
+        {% endif %}
+      </div>
+
+      <div style="text-align:right; color:var(--muted);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12 H19 M13 6 L19 12 L13 18"/>
+        </svg>
+      </div>
+    </a>
+    {% else %}
+    <div class="tracks-row-empty">No tracks found.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Footer / pagination ────────────────────────────────────────────────── #}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; font-size:12px; color:var(--muted);">
+  <span>
+    Showing <span style="color:var(--text); font-family:var(--mono);">{{ tracks | length }}</span>
+    of <span style="font-family:var(--mono);">{{ total }}</span> total
+  </span>
+  <div class="pagination" id="tracks-pagination" style="{{ '' if pages > 1 else 'display:none' }}; margin-top:0;">
+    {% if page > 1 %}
+      <a href="{{ url_for('tracks', page=page-1, q=q, per_page=per_page) }}">← Prev</a>
     {% endif %}
-  {% endfor %}
-  {% if page < pages %}
-    <a href="{{ url_for('tracks', page=page+1, q=q, per_page=per_page) }}">Next →</a>
-  {% endif %}
+    {% for p in range(1, pages+1) %}
+      {% if p == page %}
+        <span class="current">{{ p }}</span>
+      {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
+        <a href="{{ url_for('tracks', page=p, q=q, per_page=per_page) }}">{{ p }}</a>
+      {% elif p == 4 or p == pages-3 %}
+        <span>…</span>
+      {% endif %}
+    {% endfor %}
+    {% if page < pages %}
+      <a href="{{ url_for('tracks', page=page+1, q=q, per_page=per_page) }}">Next →</a>
+    {% endif %}
+  </div>
 </div>
 
 <script>
@@ -125,30 +271,46 @@
   function basename(p) { return p.split('/').pop(); }
   function parentName(p) { var a = p.split('/'); return a.length >= 2 ? a[a.length-2] : ''; }
 
+  function confColor(v) {
+    if (v == null) return 'var(--muted)';
+    return v >= 0.7 ? 'var(--ok-fg)' : v >= 0.4 ? 'var(--accent-2)' : 'var(--warn-fg)';
+  }
+
   function buildRow(t) {
     var bpm  = t.bpm  != null ? t.bpm.toFixed(1) : '—';
     var conf = t.bpm_confidence != null
-      ? '<span class="conf-bar" style="width:' + Math.round(t.bpm_confidence*48) + 'px"></span>'
-        + '<span style="color:var(--muted);font-size:.8rem;margin-left:.3rem;">'
-        + t.bpm_confidence.toFixed(2) + '</span>'
-      : '—';
-    var bc, bt;
-    if      (t.status==='error') { bc='error';  bt='error'; }
-    else if (t.locked)           { bc='locked'; bt='locked'; }
-    else if (t.needs_review)     { bc='review'; bt='review'; }
-    else                         { bc='ok';     bt='ok'; }
-    var fc = (t.needs_review||t.status==='error') ? ' class="flagged"' : '';
-    var u  = '/track?path='+encodeURIComponent(t.file_path)+'&back=tracks';
-    return '<tr'+fc+'>'
-      +'<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-        +'<a href="'+u+'" style="color:var(--accent2);text-decoration:none;">'+esc(basename(t.file_path))+'</a></td>'
-      +'<td style="color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(parentName(t.file_path))+'</td>'
-      +'<td style="font-variant-numeric:tabular-nums;font-weight:600;">'+bpm+'</td>'
-      +'<td>'+conf+'</td>'
-      +'<td style="color:var(--muted);font-size:.82rem;">'+esc(t.detector||'—')+'</td>'
-      +'<td><span class="badge '+bc+'">'+bt+'</span></td>'
-      +'<td><a href="'+u+'" class="btn btn-ghost btn-sm">Open</a></td>'
-      +'</tr>';
+      ? '<div class="conf-bar-wrap">'
+          + '<div class="conf-bar-track"><div class="conf-bar-fill" style="width:' + Math.round(t.bpm_confidence*100) + '%; background:' + confColor(t.bpm_confidence) + ';"></div></div>'
+          + '<span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;">' + t.bpm_confidence.toFixed(2) + '</span>'
+          + '</div>'
+      : '<span style="color:var(--muted);">—</span>';
+
+    var badge;
+    if      (t.status==='error') badge = '<span class="badge badge--error"><span class="badge-dot"></span>error</span>';
+    else if (t.needs_review)     badge = '<span class="badge badge--review"><span class="badge-dot"></span>review</span>';
+    else if (t.locked)           badge = '<span class="badge badge--locked"><span class="badge-dot"></span>locked</span>';
+    else                         badge = '<span class="badge badge--ok">ok</span>';
+
+    var flagged = (t.needs_review || t.status === 'error');
+    var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks';
+    var folderIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/></svg>';
+    var arrowIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg>';
+
+    return '<a href="' + u + '" class="tracks-row' + (flagged ? ' flagged' : '')
+      + '" style="display:grid;grid-template-columns:1fr 130px 90px 130px 110px 70px;padding:12px 18px;gap:14px;align-items:center;text-decoration:none;color:inherit;border-bottom:1px solid var(--border);">'
+      + '<div style="min-width:0;">'
+        + '<div style="font-size:13px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px;">' + esc(basename(t.file_path)) + '</div>'
+        + '<div style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;">'
+          + folderIcon
+          + '<span style="font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(parentName(t.file_path)) + '</span>'
+        + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;"><span style="font-family:var(--mono);font-size:16px;font-weight:600;color:' + (t.bpm ? 'var(--text)' : 'var(--muted)') + ';font-variant-numeric:tabular-nums;">' + bpm + '</span></div>'
+      + '<div>' + conf + '</div>'
+      + '<div style="font-family:var(--mono);font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(t.detector||'—') + '</div>'
+      + '<div>' + badge + '</div>'
+      + '<div style="text-align:right;color:var(--muted);">' + arrowIcon + '</div>'
+      + '</a>';
   }
 
   function buildPagination(page, pages, perPage) {
@@ -173,8 +335,8 @@
       .then(function(d) {
         tbody.innerHTML = d.tracks.length
           ? d.tracks.map(buildRow).join('')
-          : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No tracks found.</td></tr>';
-        totalEl.textContent = '('+d.total+')';
+          : '<div class="tracks-row-empty">No tracks found.</div>';
+        totalEl.textContent = d.total;
         buildPagination(d.page, d.pages, d.per_page);
       }).catch(function() {});
   }
@@ -183,8 +345,8 @@
     var ai = steps.indexOf(active);
     steps.forEach(function(s, i) {
       var el = document.getElementById('step-'+s);
-      el.style.background = i<ai ? '#0e2a1e' : i===ai ? '#3b2e00' : 'var(--surface)';
-      el.style.color      = i<ai ? 'var(--green)' : i===ai ? 'var(--yellow)' : 'var(--muted)';
+      if (!el) return;
+      el.className = 'scan-step' + (i < ai ? ' done' : i === ai ? ' active' : '');
     });
   }
 
@@ -194,17 +356,19 @@
       .then(function(d) {
         if (d.is_scanning) {
           card.style.display = 'block';
-          document.getElementById('scan-file').textContent   = d.current_file || '…';
+          document.getElementById('scan-file').textContent   = d.current_file ? d.current_file.split('/').pop() : '…';
           var cumText = d.cumulative_completed > d.completed
             ? ' · ' + d.cumulative_completed + ' total' : '';
           document.getElementById('scan-counts').textContent =
-            d.completed + ' / ' + d.total + ' in batch' + cumText;
-          document.getElementById('scan-bar').style.width    =
+            'batch · ' + d.completed + ' / ' + d.total
+            + ' · ' + (d.total > 0 ? Math.round(d.completed / d.total * 100) : 0) + '%' + cumText;
+          document.getElementById('scan-bar').style.width =
             (d.total > 0 ? Math.round(d.completed / d.total * 100) : 0) + '%';
           updateSteps(d.current_step);
           if (d.last_file) {
-            var b = d.last_bpm != null ? ' — ' + d.last_bpm.toFixed(1) + ' BPM' : '';
-            document.getElementById('scan-last').textContent = d.last_file + b;
+            document.getElementById('scan-last').textContent = d.last_file.split('/').pop();
+            document.getElementById('scan-last-bpm').textContent =
+              d.last_bpm != null ? d.last_bpm.toFixed(1) + ' BPM' : '';
           }
           if (d.last_file && d.last_file !== lastFile) {
             lastFile = d.last_file;

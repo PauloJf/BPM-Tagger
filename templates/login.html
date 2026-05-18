@@ -115,15 +115,14 @@
 <div class="login-page">
   <div class="login-glow"></div>
 
-  {# Decorative animated bars #}
+  {# Decorative animated bars — heights use a simple repeating pattern (no sin filter needed) #}
+  {# pattern approximates sin(pi*x) envelope for 40 bars #}
+  {%- set bar_heights = [14,18,26,36,46,58,70,80,88,96,100,100,96,88,80,70,58,46,36,26,18,14,10,16,28,44,60,74,86,94,98,94,86,74,60,44,28,16,10,12] %}
   <div class="login-bars">
-    {% for i in range(80) %}
-    {# Simple envelope: sin curve × pseudo-noise based on index #}
-    {% set env = ((i / 80.0 * 3.14159) | sin) * 0.6 + 0.4 %}
-    {% set noise_raw = ((i * 41) % 97) / 97.0 * 0.6 + 0.4 %}
-    {% set h = (env * noise_raw * 130) | round(0) | int %}
+    {% for i in range(40) %}
+    {%- set h = bar_heights[i % bar_heights|length] %}
     <div class="login-bar"
-         style="height:{{ h }}px; animation:scan-bar 2.4s ease-in-out {{ ((i * 0.04) % 2)|round(2) }}s infinite;"></div>
+         style="height:{{ h }}px; animation:scan-bar 2.4s ease-in-out {{ ((i * 0.08) % 2)|round(2) }}s infinite;"></div>
     {% endfor %}
   </div>
 

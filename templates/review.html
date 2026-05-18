@@ -1,73 +1,164 @@
 {% extends "base.html" %}
+{% from '_macros.html' import detector_bar %}
 {% block title %}Needs Review — BPM Tagger{% endblock %}
 {% block content %}
-<h1>Needs Review <span style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
+<style>
+  .review-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .review-card:hover { border-color: var(--border-strong); }
+  .review-card-grid {
+    display: grid; grid-template-columns: 1fr 320px;
+  }
+  .review-left {
+    padding: 18px 22px; border-right: 1px solid var(--border);
+  }
+  .review-right {
+    padding: 18px 22px; background: var(--surface-2);
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .review-legend {
+    display: flex; gap: 18px; margin-top: 6px;
+    font-family: var(--mono); font-size: 11px; flex-wrap: wrap;
+  }
+  @media (max-width: 700px) {
+    .review-card-grid { grid-template-columns: 1fr; }
+    .review-left { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
 
-{% if not tracks %}
-  <p style="color:var(--muted); margin-top:2rem; text-align:center;">
-    No tracks need review. 🎉
+{# ── Page header ────────────────────────────────────────────────────────── #}
+<div style="margin-bottom:24px;">
+  <h1 style="font-size:28px; font-weight:600; letter-spacing:-0.02em; margin-bottom:4px;">
+    Needs review
+  </h1>
+  <p style="font-size:13px; color:var(--muted);">
+    <span style="font-family:var(--mono); color:var(--warn-fg);">{{ total }}</span>
+    tracks flagged · review them one by one or open directly
   </p>
-{% else %}
-<table>
-  <thead>
-    <tr>
-      <th>Filename</th>
-      <th>Path</th>
-      <th>BPM</th>
-      <th>DR result</th>
-      <th>LB result</th>
-      <th>Conf</th>
-      <th>Reason</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in tracks %}
-    <tr class="{{ 'flagged' if t.needs_review or t.status == 'error' }}">
-      <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
-           style="color:var(--accent2); text-decoration:none;">{{ t.file_path | basename }}</a>
-      </td>
-      <td style="color:var(--muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        {{ t.file_path | dirname | basename }}
-      </td>
-      <td style="font-variant-numeric:tabular-nums; font-weight:600;">
-        {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
-      </td>
-      <td style="font-variant-numeric:tabular-nums; color:var(--muted);">
-        {{ "%.1f"|format(t.bpm_dr) if t.bpm_dr else "—" }}
-      </td>
-      <td style="font-variant-numeric:tabular-nums; color:var(--muted);">
-        {{ "%.1f"|format(t.bpm_lb) if t.bpm_lb else "—" }}
-      </td>
-      <td>
-        {% if t.bpm_confidence is not none %}
-          <span class="conf-bar" style="width:{{ (t.bpm_confidence * 40)|int }}px"></span>
-          <span style="color:var(--muted); font-size:.8rem; margin-left:.3rem;">{{ "%.2f"|format(t.bpm_confidence) }}</span>
-        {% else %}—{% endif %}
-      </td>
-      <td style="font-size:.8rem;">
-        {% if t.status == 'error' %}
-          <span class="badge error">error</span>
-        {% else %}
-          {% if t.needs_review %}<span class="badge review">disagreement</span> {% endif %}
-          {% if t.bpm_confidence is not none and t.bpm_confidence < conf_threshold %}
-            <span class="badge review">low conf</span>
-          {% endif %}
-          {% if t.detector == 'librosa' %}<span class="badge review">fallback</span>{% endif %}
-        {% endif %}
-      </td>
-      <td>
-        <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
-           class="btn btn-ghost btn-sm">Fix</a>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+</div>
 
+{# ── Card list ──────────────────────────────────────────────────────────── #}
+<div style="display:flex; flex-direction:column; gap:14px;">
+  {% if not tracks %}
+    <div style="padding:60px 20px; text-align:center;
+                background:var(--surface); border:1px solid var(--border); border-radius:14px;">
+      <div style="font-size:32px; margin-bottom:12px; color:var(--ok-fg);">✓</div>
+      <div style="font-size:14px; color:var(--muted);">No tracks need review.</div>
+    </div>
+  {% else %}
+    {% for t in tracks %}
+    {# Compute display parts #}
+    {%- set parts = t.file_path.split('/') %}
+    {%- set fname  = parts[-1] %}
+    {%- set album  = parts[-2] if parts|length >= 2 else '' %}
+    {%- set artist = parts[-3] if parts|length >= 3 else '' %}
+    {%- set idx = loop.index %}
+
+    <div class="review-card">
+      <div class="review-card-grid">
+        {# Left panel #}
+        <div class="review-left">
+          {# Queue position + badges #}
+          <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:6px; flex-wrap:wrap;">
+            <span style="font-family:var(--mono); font-size:11px; color:var(--muted);">
+              {{ "%02d"|format(idx) }} / {{ "%02d"|format(total) }}
+            </span>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              {% if t.status == 'error' %}
+                <span class="badge badge--error"><span class="badge-dot"></span>error</span>
+              {% else %}
+                {% if t.needs_review %}
+                  <span class="badge badge--review"><span class="badge-dot"></span>disagreement</span>
+                {% endif %}
+                {% if t.bpm_confidence is not none and t.bpm_confidence < conf_threshold %}
+                  <span class="badge badge--review">low confidence</span>
+                {% endif %}
+                {% if t.detector == 'librosa' %}
+                  <span class="badge badge--neutral">fallback only</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+
+          {# Filename + path #}
+          <div style="font-size:16px; font-weight:500; margin-bottom:4px; color:var(--text);
+                      word-break:break-word;">{{ fname }}</div>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:18px;
+                      display:flex; align-items:center; gap:6px;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+              <path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/>
+            </svg>
+            <span style="font-family:var(--mono);">{{ artist }}{% if artist and album %} / {% endif %}{{ album }}</span>
+          </div>
+
+          {# Detector visualization or error block #}
+          {% if t.status == 'error' %}
+            <div style="padding:12px 14px; background:var(--err-bg);
+                        border:1px solid var(--err-bd); border-radius:10px;
+                        font-size:12px; color:var(--err-fg); font-family:var(--mono);">
+              {{ t.error_message or 'Unknown error' }}
+            </div>
+          {% else %}
+            {{ detector_bar(t) }}
+            <div class="review-legend">
+              <span style="color:var(--accent);">●
+                DR <span style="color:var(--text);">{{ "%.1f"|format(t.bpm_dr) if t.bpm_dr else "—" }}</span>
+              </span>
+              <span style="color:var(--accent-2);">●
+                ES <span style="color:var(--text);">{{ "%.1f"|format(t.bpm_es) if t.bpm_es else "—" }}</span>
+              </span>
+              <span style="color:var(--info-fg);">●
+                LB <span style="color:var(--text);">{{ "%.1f"|format(t.bpm_lb) if t.bpm_lb else "—" }}</span>
+              </span>
+              <span style="margin-left:auto; color:var(--muted);">
+                conf <span style="color:var(--text);">
+                  {{ "%.2f"|format(t.bpm_confidence) if t.bpm_confidence is not none else "—" }}
+                </span>
+              </span>
+            </div>
+          {% endif %}
+        </div>
+
+        {# Right panel #}
+        <div class="review-right">
+          <div>
+            <div style="font-family:var(--mono); font-size:10px; font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.1em;
+                        color:var(--muted); margin-bottom:6px;">Detected BPM</div>
+            <span style="font-family:var(--mono); font-size:38px; font-weight:600;
+                         letter-spacing:-0.03em; line-height:1; font-variant-numeric:tabular-nums;
+                         color:{% if t.status == 'error' %}var(--muted){% else %}var(--text){% endif %};">
+              {{ "%.1f"|format(t.bpm) if t.bpm else "—" }}
+            </span>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
+               class="btn btn-ghost btn-sm" style="flex:1; text-align:center;">Skip</a>
+            <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
+               class="btn btn-primary btn-sm" style="flex:1; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">
+              Review
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12 H19 M13 6 L19 12 L13 18"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+{# ── Pagination ─────────────────────────────────────────────────────────── #}
 {% if pages > 1 %}
-<div class="pagination">
+<div class="pagination" style="margin-top:20px;">
   {% if page > 1 %}
     <a href="{{ url_for('review', page=page-1) }}">← Prev</a>
   {% endif %}
@@ -84,6 +175,5 @@
     <a href="{{ url_for('review', page=page+1) }}">Next →</a>
   {% endif %}
 </div>
-{% endif %}
 {% endif %}
 {% endblock %}
