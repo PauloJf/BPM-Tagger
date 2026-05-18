@@ -95,6 +95,7 @@
       display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle;
       background: var(--accent); min-width: 4px;
     }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   </style>
 </head>
 <body>
@@ -111,6 +112,7 @@
   <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' }}">Settings</a>
   <span class="spacer"></span>
   <span id="nav-scan-controls" style="display:flex; gap:.4rem; align-items:center; margin-right:.6rem;">
+    <span id="nav-status" style="font-size:.78rem; display:flex; align-items:center;"></span>
     <button id="nav-start-btn"  class="btn btn-ghost btn-sm" style="display:none; color:var(--green);">&#9654; Start Scan</button>
     <button id="nav-pause-btn"  class="btn btn-ghost btn-sm" style="display:none;">&#9646;&#9646; Pause</button>
     <button id="nav-resume-btn" class="btn btn-ghost btn-sm" style="display:none; color:var(--green);">&#9654; Resume</button>
@@ -125,17 +127,34 @@
 (function(){
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
   function el(id){ return document.getElementById('nav-'+id+'-btn'); }
-  function show(ids){ ['start','pause','resume','stop'].forEach(function(i){ el(i).style.display = ids.indexOf(i)>=0 ? '' : 'none'; }); }
+  var statusEl = document.getElementById('nav-status');
+  var dot = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:.35rem;';
+
+  function setState(state){
+    ['start','pause','resume','stop'].forEach(function(i){ el(i).style.display='none'; });
+    if(state==='analysing'){
+      el('pause').style.display=''; el('stop').style.display='';
+      statusEl.innerHTML = dot+'background:var(--green);animation:pulse 1.2s infinite;"></span><span style="color:var(--green);">Analysing</span>';
+    } else if(state==='paused'){
+      el('resume').style.display='';
+      statusEl.innerHTML = dot+'background:var(--yellow);"></span><span style="color:var(--yellow);">Paused</span>';
+    } else {
+      el('start').style.display='';
+      statusEl.innerHTML = dot+'background:var(--red);"></span><span style="color:var(--muted);">Stopped</span>';
+    }
+  }
+
   function act(action){
     fetch('/api/scan/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:'{}'})
       .then(function(r){return r.json();}).then(poll).catch(function(){});
   }
   ['start','pause','resume','stop'].forEach(function(a){ el(a).onclick=function(){act(a);}; });
+
   function poll(){
     fetch('/api/progress').then(function(r){return r.json();}).then(function(d){
-      if(!d.is_scanning)          show(['start']);
-      else if(d.is_paused)        show(['resume','stop']);
-      else                        show(['pause','stop']);
+      if(!d.is_scanning)   setState('idle');
+      else if(d.is_paused) setState('paused');
+      else                 setState('analysing');
     }).catch(function(){});
   }
   poll(); setInterval(poll,2000);
