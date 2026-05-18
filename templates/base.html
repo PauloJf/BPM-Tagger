@@ -107,12 +107,40 @@
   </span>
   <a href="{{ url_for('tracks') }}" class="{{ 'active' if request.endpoint == 'tracks' }}">All Tracks</a>
   <a href="{{ url_for('review') }}" class="{{ 'active' if request.endpoint == 'review' }}">Needs Review</a>
+  <a href="{{ url_for('stats') }}" class="{{ 'active' if request.endpoint == 'stats' }}">Stats</a>
+  <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' }}">Settings</a>
   <span class="spacer"></span>
+  <span id="nav-scan-controls" style="display:flex; gap:.4rem; align-items:center; margin-right:.6rem;">
+    <button id="nav-start-btn"  class="btn btn-ghost btn-sm" style="display:none; color:var(--green);">&#9654; Start Scan</button>
+    <button id="nav-pause-btn"  class="btn btn-ghost btn-sm" style="display:none;">&#9646;&#9646; Pause</button>
+    <button id="nav-resume-btn" class="btn btn-ghost btn-sm" style="display:none; color:var(--green);">&#9654; Resume</button>
+    <button id="nav-stop-btn"   class="btn btn-ghost btn-sm" style="display:none; color:var(--red);">&#9632; Stop</button>
+  </span>
   <form method="post" action="{{ url_for('logout') }}" style="display:inline; margin:0;">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <button type="submit" class="btn btn-ghost btn-sm logout" style="color:var(--red); border:none; background:none; cursor:pointer; padding:.9rem 1rem; font-size:inherit;">Logout</button>
   </form>
 </nav>
+<script>
+(function(){
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  function el(id){ return document.getElementById('nav-'+id+'-btn'); }
+  function show(ids){ ['start','pause','resume','stop'].forEach(function(i){ el(i).style.display = ids.indexOf(i)>=0 ? '' : 'none'; }); }
+  function act(action){
+    fetch('/api/scan/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:'{}'})
+      .then(function(r){return r.json();}).then(poll).catch(function(){});
+  }
+  ['start','pause','resume','stop'].forEach(function(a){ el(a).onclick=function(){act(a);}; });
+  function poll(){
+    fetch('/api/progress').then(function(r){return r.json();}).then(function(d){
+      if(!d.is_scanning)          show(['start']);
+      else if(d.is_paused)        show(['resume','stop']);
+      else                        show(['pause','stop']);
+    }).catch(function(){});
+  }
+  poll(); setInterval(poll,2000);
+})();
+</script>
 {% endif %}
 <div class="container">
   {% for cat, msg in get_flashed_messages(with_categories=True) %}

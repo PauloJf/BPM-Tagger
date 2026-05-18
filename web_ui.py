@@ -1,10 +1,13 @@
 """Flask web UI for BPM Tagger — runs as a daemon thread inside the main container."""
 
 import hmac
+import json
 import logging
 import os
 import secrets
+import threading
 import time
+import urllib.request
 from collections import defaultdict
 from datetime import timedelta
 from functools import wraps
@@ -27,6 +30,9 @@ _conf_threshold = 0.4
 _progress = None
 _bpm_min = 60.0
 _bpm_max = 200.0
+_tagger = None
+_config: dict = {}
+_settings_path = ""
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -78,6 +84,18 @@ def _assert_in_music_dir(file_path: str) -> str:
         abort(403)
     return real
 
+def _save_settings(updates: dict):
+    existing = {}
+    if os.path.isfile(_settings_path):
+        try:
+            with open(_settings_path) as f:
+                existing = json.load(f)
+        except Exception:
+            pass
+    existing.update(updates)
+    with open(_settings_path, "w") as f:
+        json.dump(existing, f, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # Security headers
@@ -93,6 +111,11 @@ def _security_headers(resp):
         "script-src 'self' 'unsafe-inline'; media-src 'self';"
     )
     return resp
+
+@app.before_request
+def _ensure_csrf():
+    if request.endpoint not in (None, "static", "healthz", "login"):
+        _csrf_token()
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +217,6 @@ def review():
 @app.route("/track")
 @login_required
 def track_detail():
-    _csrf_token()  # ensure token exists before rendering JS that needs it
     path = request.args.get("path", "")
     back = request.args.get("back", "tracks")
     if back not in ("tracks", "review"):
@@ -219,6 +241,19 @@ def track_detail():
     return render_template("track.html", track=track, back=back,
                            prev_path=prev_path, next_path=next_path,
                            queue_pos=queue_pos, queue_total=queue_total)
+
+
+@app.route("/stats")
+@login_required
+def stats():
+    return render_template("stats.html")
+
+
+@app.route("/settings")
+@login_required
+def settings():
+    from bpm_tagger import __version__
+    return render_template("settings.html", cfg=_config, version=__version__)
 
 
 # ---------------------------------------------------------------------------
@@ -276,9 +311,9 @@ def api_unlock():
 @login_required
 def api_progress():
     if _progress is None:
-        return jsonify(is_scanning=False, completed=0, total=0,
-                       current_file="", current_step="", step_index=0,
-                       step_total=3, last_file="", last_bpm=None)
+        return jsonify(is_scanning=False, is_paused=False, completed=0, total=0,
+                       cumulative_completed=0, current_file="", current_step="",
+                       step_index=0, step_total=3, last_file="", last_bpm=None)
     return jsonify(**_progress.snapshot())
 
 
@@ -299,6 +334,224 @@ def api_tracks():
     rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page)
+
+
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    try:
+        summary = _db.get_stats()
+        return jsonify(
+            summary=summary,
+            bpm_distribution=_db.get_bpm_distribution(),
+            detector_distribution=_db.get_detector_distribution(),
+            bpm_descriptive=_db.get_bpm_descriptive(),
+        )
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+# ---------------------------------------------------------------------------
+# Scan control API
+# ---------------------------------------------------------------------------
+
+@app.route("/api/scan/start", methods=["POST"])
+@login_required
+def api_scan_start():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    if _progress and _progress.is_scanning:
+        return jsonify(ok=False, error="scan already running")
+    t = threading.Thread(target=_tagger.scan_directory, args=(False,), daemon=True)
+    t.start()
+    return jsonify(ok=True)
+
+
+@app.route("/api/scan/pause", methods=["POST"])
+@login_required
+def api_scan_pause():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    _tagger._pause_event.clear()
+    if _progress:
+        _progress.set_paused(True)
+    return jsonify(ok=True)
+
+
+@app.route("/api/scan/resume", methods=["POST"])
+@login_required
+def api_scan_resume():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    _tagger._pause_event.set()
+    if _progress:
+        _progress.set_paused(False)
+    return jsonify(ok=True)
+
+
+@app.route("/api/scan/stop", methods=["POST"])
+@login_required
+def api_scan_stop():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    _tagger._stop_event.set()
+    _tagger._pause_event.set()  # unblock if currently paused
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Settings save endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/settings/password", methods=["POST"])
+@login_required
+def settings_password():
+    _check_csrf()
+    current = request.form.get("current_password", "")
+    new_pw  = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+    if not hmac.compare_digest(current, app.config["UI_PASSWORD"]):
+        flash("Current password is incorrect.", "error")
+        return redirect(url_for("settings"))
+    if not new_pw:
+        flash("New password cannot be empty.", "error")
+        return redirect(url_for("settings"))
+    if new_pw != confirm:
+        flash("New passwords do not match.", "error")
+        return redirect(url_for("settings"))
+    app.config["UI_PASSWORD"] = new_pw
+    _config["ui_password"] = new_pw
+    _save_settings({"ui_password": new_pw})
+    flash("Password updated.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/ntfy", methods=["POST"])
+@login_required
+def settings_ntfy():
+    _check_csrf()
+    global _config
+    updates = {
+        "ntfy_url":           request.form.get("ntfy_url", "").strip(),
+        "ntfy_topic":         request.form.get("ntfy_topic", "").strip(),
+        "ntfy_batch_size":    int(request.form.get("ntfy_batch_size", 10) or 10),
+        "ntfy_min_interval":  int(request.form.get("ntfy_min_interval", 300) or 300),
+        "ntfy_notify_review": request.form.get("ntfy_notify_review") == "on",
+    }
+    _config.update(updates)
+    _save_settings(updates)
+    # Rebuild notifier in-memory if tagger is available
+    if _tagger is not None:
+        from bpm_tagger import NotificationManager
+        if updates["ntfy_url"] and updates["ntfy_topic"]:
+            _tagger.notifier = NotificationManager(
+                ntfy_url=updates["ntfy_url"],
+                topic=updates["ntfy_topic"],
+                batch_size=updates["ntfy_batch_size"],
+                min_interval=updates["ntfy_min_interval"],
+                notify_review=updates["ntfy_notify_review"],
+            )
+        else:
+            _tagger.notifier = None
+    flash("Notification settings saved.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/scan", methods=["POST"])
+@login_required
+def settings_scan():
+    _check_csrf()
+    global _conf_threshold, _bpm_min, _bpm_max, _write_tags
+    try:
+        workers = max(1, min(8, int(request.form.get("workers", 1) or 1)))
+    except (ValueError, TypeError):
+        workers = 1
+    try:
+        conf_thr = float(request.form.get("review_confidence_threshold", 0.4) or 0.4)
+        conf_thr = max(0.0, min(1.0, conf_thr))
+    except (ValueError, TypeError):
+        conf_thr = 0.4
+    try:
+        bpm_min = float(request.form.get("bpm_min", 60.0) or 60.0)
+        bpm_max = float(request.form.get("bpm_max", 200.0) or 200.0)
+    except (ValueError, TypeError):
+        bpm_min, bpm_max = 60.0, 200.0
+
+    updates = {
+        "workers":                    workers,
+        "use_deeprhythm":             request.form.get("use_deeprhythm") == "on",
+        "use_essentia":               request.form.get("use_essentia") == "on",
+        "write_tags":                 request.form.get("write_tags") == "on",
+        "review_confidence_threshold": conf_thr,
+        "bpm_min":                    bpm_min,
+        "bpm_max":                    bpm_max,
+    }
+    _config.update(updates)
+    if _tagger is not None:
+        _tagger.config.update(updates)
+    _conf_threshold = conf_thr
+    _bpm_min = bpm_min
+    _bpm_max = bpm_max
+    _write_tags = updates["write_tags"]
+    _save_settings(updates)
+    flash("Scan settings saved.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/mode", methods=["POST"])
+@login_required
+def settings_mode():
+    _check_csrf()
+    valid_modes = ("scan_all", "scan_unscanned", "scan_review", "watch", "report")
+    mode = request.form.get("mode", "watch")
+    if mode not in valid_modes:
+        flash("Invalid mode.", "error")
+        return redirect(url_for("settings"))
+    _config["mode"] = mode
+    _save_settings({"mode": mode})
+    flash(f"Mode set to '{mode}'. Restart required to take effect.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/navidrome", methods=["POST"])
+@login_required
+def settings_navidrome():
+    _check_csrf()
+    updates = {
+        "navidrome_url":  request.form.get("navidrome_url", "").strip(),
+        "navidrome_user": request.form.get("navidrome_user", "").strip(),
+        "navidrome_pass": request.form.get("navidrome_pass", "").strip(),
+    }
+    _config.update(updates)
+    if _tagger is not None:
+        _tagger.config.update(updates)
+    _save_settings(updates)
+    flash("Navidrome settings saved.", "success")
+    return redirect(url_for("settings"))
+
+
+# ---------------------------------------------------------------------------
+# Version check
+# ---------------------------------------------------------------------------
+
+@app.route("/api/version/check")
+@login_required
+def api_version_check():
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/paulojf/bpm-tagger/releases/latest",
+            headers={"Accept": "application/vnd.github+json",
+                     "User-Agent": "bpm-tagger-ui"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        return jsonify(latest=data.get("tag_name", "unknown"))
+    except Exception as exc:
+        return jsonify(error=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -334,9 +587,9 @@ def audio():
 # Entry point (called from bpm_tagger.main as a daemon thread)
 # ---------------------------------------------------------------------------
 
-def start(config: dict, progress=None):
+def start(config: dict, progress=None, tagger=None):
     global _db, _music_dir, _write_tags, _conf_threshold, _progress, _bpm_min, _bpm_max
-    global _max_login_attempts, _lockout_seconds
+    global _max_login_attempts, _lockout_seconds, _tagger, _config, _settings_path
 
     password = config.get("ui_password", "")
     if not password:
@@ -353,6 +606,9 @@ def start(config: dict, progress=None):
     _bpm_max = float(config.get("bpm_max", 200.0))
     _max_login_attempts = int(config.get("ui_max_login_attempts", 5))
     _lockout_seconds = int(config.get("ui_lockout_seconds", 300))
+    _tagger = tagger
+    _config = config
+    _settings_path = str(Path(config["db_path"]).parent / "settings.json")
 
     secret = config.get("ui_secret_key") or secrets.token_hex(32)
     app.secret_key = secret
