@@ -11,6 +11,8 @@
            automatic bpm detection & tagging for navidrome
 ```
 
+**v1.0.0** · [Changelog](#changelog)
+
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected web UI for reviewing and correcting results.
 
 ## Features
@@ -487,3 +489,32 @@ volumes:
 - Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan, so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
 - Use `MODE=watch` (the default) so newly added albums are tagged automatically within seconds of being added to the library; it scans all unprocessed files on startup before entering watch mode
 - After adjusting detection settings, run `MODE=scan_review` to re-analyze only the flagged and error tracks instead of the full library
+
+---
+
+## Changelog
+
+### v1.0.0 — 2026-05-18
+
+First stable release.
+
+**UI redesign (all screens)**
+- New design system: oklch colour tokens, Inter Tight + JetBrains Mono (self-hosted), card layouts, animated scan banner, detector-bar visualisation
+- Login page: shake animation on wrong password, decorative waveform bars, lockout state
+- Library: CSS grid table, confidence bars, filter pills (All / Review / Locked) with live counts during scan
+- Review queue: card-based layout with two-column grid and DetectorBar SVG showing all three detector values
+- Track detail: real waveform computed server-side and stored in the database; click/drag scrubbing with touch support; redesigned tap-tempo button with ripple animation
+- Stats: CSS flex histogram replacing canvas, six-card summary grid
+- Settings: two-column layout with sidebar nav, toggle switches, number steppers, segmented controls
+- About page with project story, authors, and tech stack
+
+**Scanner improvements**
+- Fixed hash capture after tag write — prevents re-analysing already-tagged files on every restart
+- Stop button now cancels in-flight futures immediately instead of waiting for the full batch
+- `REFRESH_HASHES=true` option to recompute stored hashes before scanning (migration path for libraries processed by older versions)
+- Waveform peaks computed during BPM analysis (while audio is in OS page cache) and stored in SQLite — track detail page loads waveform instantly on subsequent visits; concurrent waveform requests for the same file are deduplicated
+
+**Other**
+- Restart button in Settings — replaces the process in-place via `os.execv`; browser reconnects automatically
+- `bpm_confidence` column added to the database
+- Duplicate Jinja filter registration cleaned up
