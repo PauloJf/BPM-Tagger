@@ -7,10 +7,11 @@ services:
     environment:
       # -----------------------------------------------------------------------
       # Operating mode
-      #   scan_all       — re-analyze every file (ignores existing DB results)
-      #   scan_unscanned — only analyze files that are new or have changed
-      #   scan_review    — re-analyze only flagged, errored, or librosa-only tracks
-      #   watch          — scan_unscanned on start, then watch for new/changed files
+      #   watch          — scan new/unscanned tracks on start, then watch for new/changed files
+      #   watch_all      — re-analyze every track on start, then watch for new/changed files
+      #   scan_all       — one-shot: re-analyze every file (ignores existing DB results)
+      #   scan_unscanned — one-shot: only analyze files that are new or have changed
+      #   scan_review    — one-shot: re-analyze only flagged, errored, or librosa-only tracks
       #   report         — print suspicious tracks to logs, write CSV, send ntfy
       #   lock           — lock a single file (requires LOCK_FILE; LOCK_BPM optional)
       #   unlock         — unlock a file so it will be re-analyzed (requires UNLOCK_FILE)
@@ -43,12 +44,6 @@ services:
       # -----------------------------------------------------------------------
       # Write the detected BPM back to the audio file's metadata tag
       WRITE_TAGS: "true"
-
-      # -----------------------------------------------------------------------
-      # Watch mode options
-      # -----------------------------------------------------------------------
-      # Run scan_unscanned before starting the file watcher (watch mode only)
-      SCAN_ON_START: "true"
 
       # -----------------------------------------------------------------------
       # File extensions to process (comma-separated, include the leading dot)

@@ -1033,10 +1033,9 @@ def main():
 
     config = load_settings_override(config)
 
-    mode = os.environ.get("MODE", "scan_unscanned").lower()
+    mode = os.environ.get("MODE", "watch").lower()
     # settings file may override mode
     mode = config.get("mode", mode)
-    scan_on_start = os.environ.get("SCAN_ON_START", "true").lower() == "true"
 
     log.info("BPM Tagger starting — mode=%s, music_dir=%s", mode, config["music_dir"])
 
@@ -1054,8 +1053,11 @@ def main():
         tagger.scan_directory(force=False)
 
     elif mode == "watch":
-        if scan_on_start:
-            tagger.scan_directory(force=False)
+        tagger.scan_directory(force=False)
+        tagger.watch()
+
+    elif mode == "watch_all":
+        tagger.scan_directory(force=True)
         tagger.watch()
 
     elif mode == "report":
@@ -1088,11 +1090,11 @@ def main():
         tagger.scan_review()
 
     else:
-        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, scan_review, watch, report, lock, unlock", mode)
+        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, scan_review, watch, watch_all, report, lock, unlock", mode)
         sys.exit(1)
 
     # For non-blocking modes, keep the process alive so the UI thread stays up.
-    if config["enable_ui"] and mode != "watch":
+    if config["enable_ui"] and mode not in ("watch", "watch_all"):
         log.info("Work complete. UI still available — press Ctrl+C to stop.")
         try:
             while True:
