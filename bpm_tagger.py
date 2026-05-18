@@ -17,7 +17,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-__version__ = "0.1.3"
+def _read_version() -> str:
+    # VERSION file is present in Docker images and source checkouts
+    vf = Path(__file__).parent / "VERSION"
+    if vf.is_file():
+        v = vf.read_text().strip()
+        if v:
+            return v.lstrip("v")
+    # Fall back to git tag when running directly from a git checkout
+    try:
+        import subprocess
+        v = subprocess.check_output(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=str(Path(__file__).parent),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if v:
+            return v.lstrip("v")
+    except Exception:
+        pass
+    return "dev"
+
+__version__ = _read_version()
 
 # Suppress noisy but harmless third-party warnings:
 # - libsndfile can't decode MP3; librosa falls back to audioread (ffmpeg) automatically
