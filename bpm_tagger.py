@@ -50,6 +50,7 @@ class ScanProgress:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self.cumulative_completed = 0
         self._reset()
 
     def _reset(self):
@@ -76,6 +77,7 @@ class ScanProgress:
     def finish_file(self, path: str, bpm: Optional[float]):
         with self._lock:
             self.completed += 1
+            self.cumulative_completed += 1
             self.last_file = Path(path).name; self.last_bpm = bpm
             self.current_file = ""; self.current_step = ""
 
@@ -90,7 +92,8 @@ class ScanProgress:
             return dict(is_scanning=self.is_scanning, current_file=self.current_file,
                         current_step=self.current_step, step_index=si,
                         step_total=len(self.STEPS), completed=self.completed,
-                        total=self.total, last_file=self.last_file, last_bpm=self.last_bpm)
+                        total=self.total, cumulative_completed=self.cumulative_completed,
+                        last_file=self.last_file, last_bpm=self.last_bpm)
 
 
 def _get_predictor():

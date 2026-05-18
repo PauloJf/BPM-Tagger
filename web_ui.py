@@ -161,10 +161,16 @@ def tracks():
         page = max(1, int(request.args.get("page", 1)))
     except (ValueError, TypeError):
         page = 1
-    per_page = 50
+    try:
+        per_page = int(request.args.get("per_page", 50))
+        if per_page not in (10, 50, 100):
+            per_page = 50
+    except (ValueError, TypeError):
+        per_page = 50
     rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
-    return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages, q=q)
+    return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages,
+                           q=q, per_page=per_page)
 
 
 @app.route("/review")
@@ -284,10 +290,15 @@ def api_tracks():
         page = max(1, int(request.args.get("page", 1)))
     except (ValueError, TypeError):
         page = 1
-    per_page = 50
+    try:
+        per_page = int(request.args.get("per_page", 50))
+        if per_page not in (10, 50, 100):
+            per_page = 50
+    except (ValueError, TypeError):
+        per_page = 50
     rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
-    return jsonify(tracks=rows, total=total, page=page, pages=pages)
+    return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page)
 
 
 # ---------------------------------------------------------------------------

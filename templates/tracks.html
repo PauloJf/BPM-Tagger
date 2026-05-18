@@ -24,10 +24,15 @@
 
 <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap;">
   <h1 style="margin:0">All Tracks <span id="tracks-total" style="color:var(--muted); font-weight:400; font-size:.9rem">({{ total }})</span></h1>
-  <form method="get" style="display:flex; gap:.5rem; margin-left:auto;">
+  <form method="get" style="display:flex; gap:.5rem; margin-left:auto; align-items:center;">
     <input type="text" name="q" value="{{ q }}" placeholder="Search filename…" style="width:220px;">
     <button class="btn btn-ghost btn-sm" type="submit">Search</button>
     {% if q %}<a href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    <select name="_pp" onchange="var u=new URLSearchParams(window.location.search);u.set('per_page',this.value);u.set('page','1');window.location.search=u.toString();" style="margin-left:.25rem;">
+      <option value="10"  {% if per_page==10  %}selected{% endif %}>10 / page</option>
+      <option value="50"  {% if per_page==50  %}selected{% endif %}>50 / page</option>
+      <option value="100" {% if per_page==100 %}selected{% endif %}>100 / page</option>
+    </select>
   </form>
 </div>
 
@@ -87,19 +92,19 @@
 
 <div class="pagination" id="tracks-pagination" style="{{ '' if pages > 1 else 'display:none' }}">
   {% if page > 1 %}
-    <a href="{{ url_for('tracks', page=page-1, q=q) }}">← Prev</a>
+    <a href="{{ url_for('tracks', page=page-1, q=q, per_page=per_page) }}">← Prev</a>
   {% endif %}
   {% for p in range(1, pages+1) %}
     {% if p == page %}
       <span class="current">{{ p }}</span>
     {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
-      <a href="{{ url_for('tracks', page=p, q=q) }}">{{ p }}</a>
+      <a href="{{ url_for('tracks', page=p, q=q, per_page=per_page) }}">{{ p }}</a>
     {% elif p == 4 or p == pages-3 %}
       <span>…</span>
     {% endif %}
   {% endfor %}
   {% if page < pages %}
-    <a href="{{ url_for('tracks', page=page+1, q=q) }}">Next →</a>
+    <a href="{{ url_for('tracks', page=page+1, q=q, per_page=per_page) }}">Next →</a>
   {% endif %}
 </div>
 
@@ -146,11 +151,11 @@
       +'</tr>';
   }
 
-  function buildPagination(page, pages) {
+  function buildPagination(page, pages, perPage) {
     if (pages <= 1) { paginEl.style.display='none'; return; }
     paginEl.style.display='';
-    var q = new URLSearchParams(window.location.search).get('q')||'';
-    var qp = q ? '&q='+encodeURIComponent(q) : '';
+    var q  = new URLSearchParams(window.location.search).get('q') || '';
+    var qp = (q ? '&q='+encodeURIComponent(q) : '') + '&per_page='+perPage;
     var h = '';
     if (page > 1) h += '<a href="?page='+(page-1)+qp+'">← Prev</a>';
     for (var p=1; p<=pages; p++) {
@@ -170,7 +175,7 @@
           ? d.tracks.map(buildRow).join('')
           : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No tracks found.</td></tr>';
         totalEl.textContent = '('+d.total+')';
-        buildPagination(d.page, d.pages);
+        buildPagination(d.page, d.pages, d.per_page);
       }).catch(function() {});
   }
 
@@ -190,7 +195,10 @@
         if (d.is_scanning) {
           card.style.display = 'block';
           document.getElementById('scan-file').textContent   = d.current_file || '…';
-          document.getElementById('scan-counts').textContent = d.completed + ' / ' + d.total + ' files';
+          var cumText = d.cumulative_completed > d.completed
+            ? ' · ' + d.cumulative_completed + ' total' : '';
+          document.getElementById('scan-counts').textContent =
+            d.completed + ' / ' + d.total + ' in batch' + cumText;
           document.getElementById('scan-bar').style.width    =
             (d.total > 0 ? Math.round(d.completed / d.total * 100) : 0) + '%';
           updateSteps(d.current_step);
