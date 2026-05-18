@@ -138,6 +138,8 @@
     } else if(state==='paused'){
       el('resume').style.display='';
       statusEl.innerHTML = dot+'background:var(--yellow);"></span><span style="color:var(--yellow);">Paused</span>';
+    } else if(state==='stopping'){
+      statusEl.innerHTML = dot+'background:var(--red);animation:pulse 1.2s infinite;"></span><span style="color:var(--red);">Stopping…</span>';
     } else {
       el('start').style.display='';
       statusEl.innerHTML = dot+'background:var(--red);"></span><span style="color:var(--muted);">Stopped</span>';
@@ -152,9 +154,10 @@
 
   function poll(){
     fetch('/api/progress').then(function(r){return r.json();}).then(function(d){
-      if(!d.is_scanning)   setState('idle');
-      else if(d.is_paused) setState('paused');
-      else                 setState('analysing');
+      if(d.is_stopping)        setState('stopping');
+      else if(!d.is_scanning)  setState('idle');
+      else if(d.is_paused)     setState('paused');
+      else                     setState('analysing');
     }).catch(function(){});
   }
   poll(); setInterval(poll,2000);

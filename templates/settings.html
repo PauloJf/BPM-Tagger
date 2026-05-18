@@ -131,7 +131,7 @@
 
 <!-- Mode -->
 <div class="settings-card">
-  <h2>Operating Mode <span class="restart-badge">restart required</span></h2>
+  <h2>Operating Mode</h2>
   <form method="post" action="{{ url_for('settings_mode') }}">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <div class="field-row">
@@ -145,10 +145,11 @@
     <div class="field-row">
       <label></label>
       <span style="color:var(--muted); font-size:.82rem;">
-        <strong>watch</strong> — scan new/unscanned tracks on start, then watch (recommended) ·
-        <strong>watch_all</strong> — re-analyze every track on start, then watch ·
-        <strong>scan_unscanned</strong> — one-shot: new/changed files only ·
-        <strong>scan_all</strong> — one-shot: re-analyze everything
+        Controls container startup behaviour <em>and</em> what <strong>▶ Start Scan</strong> does. ·
+        <strong>watch</strong> / <strong>scan_unscanned</strong> — new/changed files only ·
+        <strong>watch_all</strong> / <strong>scan_all</strong> — re-analyze everything ·
+        <strong>scan_review</strong> — flagged &amp; error tracks ·
+        <strong>report</strong> — write CSV, no analysis
       </span>
     </div>
     <div class="form-actions">
