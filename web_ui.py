@@ -196,8 +196,11 @@ def tracks():
         per_page = 50
     rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
+    stats = _db.get_stats()
     return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages,
-                           q=q, per_page=per_page)
+                           q=q, per_page=per_page,
+                           review_count=stats.get("needs_review", 0),
+                           locked_count=stats.get("locked", 0))
 
 
 @app.route("/review")
@@ -338,7 +341,10 @@ def api_tracks():
         per_page = 50
     rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
     pages = max(1, (total + per_page - 1) // per_page)
-    return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page)
+    stats = _db.get_stats()
+    return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,
+                   review_count=stats.get("needs_review", 0),
+                   locked_count=stats.get("locked", 0))
 
 
 @app.route("/api/stats")
