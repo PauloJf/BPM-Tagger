@@ -38,6 +38,8 @@ _config: dict = {}
 _settings_path = ""
 _restarting = False
 _waveform_cache: dict = {}
+_waveform_inflight: dict = {}   # path -> threading.Event; prevents double-compute
+_waveform_inflight_lock = Lock()
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -340,7 +342,24 @@ def api_waveform():
             except Exception:
                 pass  # corrupt value — fall through to recompute
 
-    # 3. Fallback: compute on the fly (first visit to tracks processed before this version)
+    # 3. Deduplicated librosa fallback (old tracks not yet in DB)
+    #    Only one thread computes per path; others wait on the Event.
+    with _waveform_inflight_lock:
+        if path in _waveform_inflight:
+            ev = _waveform_inflight[path]
+            leader = False
+        else:
+            ev = threading.Event()
+            _waveform_inflight[path] = ev
+            leader = True
+
+    if not leader:
+        ev.wait(timeout=30)
+        result = _waveform_cache.get(path)
+        if result:
+            return jsonify(result)
+        return jsonify(error="waveform not available"), 503
+
     try:
         from bpm_tagger import compute_waveform_peaks
         raw = compute_waveform_peaks(path)
@@ -348,13 +367,16 @@ def api_waveform():
             return jsonify(error="waveform computation failed"), 500
         result = json.loads(raw)
         _waveform_cache[path] = result
-        # Back-fill DB so subsequent visits skip this branch
         if _db:
             _db.save_waveform_peaks(path, raw)
         return jsonify(result)
     except Exception as exc:
         log.warning("Waveform generation failed for %s: %s", Path(path).name, exc)
         return jsonify(error=str(exc)), 500
+    finally:
+        ev.set()
+        with _waveform_inflight_lock:
+            _waveform_inflight.pop(path, None)
 
 
 @app.route("/api/progress")
