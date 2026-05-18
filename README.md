@@ -203,6 +203,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan
 - **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
+- **Restart** — restarts the application process in-place (re-reads env vars and `settings.json`); any active scan is stopped first; the page reconnects automatically
 
 ### Stats (`/stats`)
 

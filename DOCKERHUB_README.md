@@ -112,7 +112,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Stream audio and use the **tap-tempo** button (or Space bar) to tap the BPM by ear
 - **Save & Lock** a corrected BPM to prevent future scans from overwriting it
 - **Stats page** — BPM histogram, detector breakdown, and summary statistics for your library
-- **Settings page** — all settings (workers, detectors, BPM range, ntfy, Navidrome, operating mode) take effect immediately without restarting the container; the mode setting also controls what **▶ Start Scan** does; changes persist to `/data/settings.json`
+- **Settings page** — all settings (workers, detectors, BPM range, ntfy, Navidrome, operating mode) take effect immediately without restarting the container; the mode setting also controls what **▶ Start Scan** does; changes persist to `/data/settings.json`; a **Restart** button replaces the process in-place and reconnects the browser automatically
 - `/healthz` endpoint returns DB stats as JSON — no login required
 
 ---
