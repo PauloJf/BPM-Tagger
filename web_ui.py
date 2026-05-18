@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 import secrets
 import threading
 import time
@@ -33,6 +34,7 @@ _bpm_max = 200.0
 _tagger = None
 _config: dict = {}
 _settings_path = ""
+_restarting = False
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -411,6 +413,28 @@ def api_scan_stop():
         _progress.set_stopping(True)
     _tagger._stop_event.set()
     _tagger._pause_event.set()  # unblock if currently paused
+    return jsonify(ok=True)
+
+
+@app.route("/api/restart", methods=["POST"])
+@login_required
+def api_restart():
+    global _restarting
+    _check_csrf()
+    if _restarting:
+        return jsonify(ok=True)
+    _restarting = True
+    if _tagger is not None and _progress and _progress.is_scanning:
+        _progress.set_stopping(True)
+        _tagger._stop_event.set()
+        _tagger._pause_event.set()  # unblock if paused
+
+    def _do_restart():
+        time.sleep(1.5)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    log.info("UI: restart requested — replacing process in 1.5 s")
     return jsonify(ok=True)
 
 

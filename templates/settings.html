@@ -192,6 +192,22 @@
   </div>
 </div>
 
+<!-- Restart -->
+<div class="settings-card">
+  <h2>Restart</h2>
+  <div class="danger-zone" style="margin-top:0; padding-top:0; border-top:none;">
+    <p style="color:var(--muted); font-size:.88rem; margin-bottom:.9rem;">
+      Restarts the application process using the same command and environment variables.
+      <strong style="color:var(--yellow);">Any active scan will be stopped.</strong>
+      The page will reconnect automatically.
+    </p>
+    <button id="restart-btn" class="btn btn-danger btn-sm" type="button" onclick="confirmRestart()">
+      Restart Application
+    </button>
+    <span id="restart-status" style="font-size:.82rem; margin-left:.75rem; color:var(--muted);"></span>
+  </div>
+</div>
+
 <script>
 function checkLatest() {
   var btn = document.getElementById('check-update-btn');
@@ -221,6 +237,47 @@ function checkLatest() {
       res.style.color = 'var(--red)';
     })
     .finally(function() { btn.disabled = false; });
+}
+
+function confirmRestart() {
+  if (!confirm('Restart the application now?\n\nAny active scan will be stopped. The page will reconnect automatically.')) return;
+  var btn = document.getElementById('restart-btn');
+  var status = document.getElementById('restart-status');
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  btn.disabled = true;
+  status.textContent = 'Restarting…';
+  status.style.color = 'var(--yellow)';
+  fetch('/api/restart', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+    body: '{}'
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (!d.ok) {
+      status.textContent = 'Error — try again';
+      status.style.color = 'var(--red)';
+      btn.disabled = false;
+      return;
+    }
+    pollUntilAlive();
+  })
+  .catch(function() {
+    // execv may close the connection before the response arrives — treat as ok
+    pollUntilAlive();
+  });
+}
+
+function pollUntilAlive() {
+  var status = document.getElementById('restart-status');
+  status.textContent = 'Reconnecting…';
+  var iv = setInterval(function() {
+    fetch('/api/progress')
+      .then(function(r) {
+        if (r.ok) { clearInterval(iv); window.location.reload(); }
+      })
+      .catch(function() { /* still down */ });
+  }, 1000);
 }
 </script>
 {% endblock %}
