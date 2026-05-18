@@ -76,10 +76,11 @@ Set the `MODE` environment variable to one of the following:
 
 | Mode | Description |
 |---|---|
-| `scan_all` | Re-analyze every audio file, overwriting all existing results regardless of whether the file has changed |
-| `scan_unscanned` | Only analyze files not yet in the database, files whose content has changed (detected via size+mtime hash), and files with `status='error'`. Locked tracks are always skipped. |
-| `scan_review` | Re-analyze only tracks that are flagged for review (`needs_review=1`), have `status='error'`, or were only analyzed by the librosa fallback. Useful for a quick follow-up pass after you've tuned detection settings. |
-| `watch` | Runs `scan_unscanned` on startup (if `SCAN_ON_START=true`), then watches the music directory for new or modified files using filesystem events. A 10-second debounce prevents processing files that are still being copied. |
+| `watch` | Scans all unscanned/changed files on startup, then watches the music directory for new or modified files using filesystem events. A 10-second debounce prevents processing files still being copied. **Recommended default.** |
+| `watch_all` | Re-analyzes every file on startup (overwriting existing results), then enters watch mode for new/changed files. Use when you want a full re-analysis pass followed by continuous watching. |
+| `scan_all` | One-shot: re-analyze every audio file, overwriting all existing results regardless of whether the file has changed |
+| `scan_unscanned` | One-shot: only analyze files not yet in the database, files whose content has changed (detected via size+mtime hash), and files with `status='error'`. Locked tracks are always skipped. |
+| `scan_review` | One-shot: re-analyze only tracks that are flagged for review (`needs_review=1`), have `status='error'`, or were only analyzed by the librosa fallback. Useful for a quick follow-up pass after you've tuned detection settings. |
 | `report` | Queries the database for suspicious tracks (detector disagreement, low confidence, fallback-only, out-of-range BPM), logs them, writes a CSV to `REPORT_PATH`, and sends an ntfy summary if configured. Does not analyze any files. |
 | `lock` | Locks a single track so it is never re-analyzed. Requires `LOCK_FILE` (absolute path inside the container). Optionally provide `LOCK_BPM` to set a corrected BPM value and write it to the file tag at the same time. |
 | `unlock` | Removes the lock from a track so it will be re-analyzed on the next scan. Requires `UNLOCK_FILE` (absolute path inside the container). |
@@ -117,7 +118,6 @@ All settings are environment variables. Every variable has a default and is docu
 | `MUSIC_DIR` | `/music` | Path to the music directory inside the container |
 | `DB_PATH` | `/data/bpm_tagger.db` | SQLite database path inside the container |
 | `WRITE_TAGS` | `true` | Write the detected BPM back to each audio file's metadata tag |
-| `SCAN_ON_START` | `true` | Run `scan_unscanned` before entering watch mode (watch mode only) |
 | `AUDIO_EXTENSIONS` | `.mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv` | Comma-separated list of file extensions to process |
 | `WORKERS` | `1` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance (~500 MB RAM each). Keep at `1` on NAS/low-memory devices; raise to `2`–`4` on a server with ample RAM. |
 | `LOG_LEVEL` | `INFO` | Log verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -181,10 +181,40 @@ When all three are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/
 
 Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `docker-compose.yml`, then open `http://your-host:5000`.
 
+### Navbar scan controls
+
+The navigation bar shows the current scan state at all times and lets you control the scanner without touching the container:
+
+- **Stopped** (red dot) — no scan running; **▶ Start Scan** button starts a new pass
+- **Analysing** (pulsing green dot) — scan in progress; **⏸ Pause** and **■ Stop** buttons are shown
+- **Paused** (yellow dot) — scan is suspended; **▶ Resume** resumes from where it left off
+
+Pausing suspends work between batches (not mid-file), so in-progress tracks complete cleanly.
+
+### Settings (`/settings`)
+
+All scan and notification settings can be changed at runtime without editing `docker-compose.yml` or restarting the container. Changes are saved to `/data/settings.json` and survive restarts. Configurable from the UI:
+
+- **Password** — change the web UI login password
+- **Notifications** — ntfy server URL, topic, batch size, interval, and whether to include review counts
+- **Scan behavior** — worker count, detector toggles (deeprhythm, essentia), tag writing, BPM range, review confidence threshold
+- **Operating mode** — switch between `watch`, `watch_all`, `scan_unscanned`, `scan_all`, `scan_review`, and `report` (restart required)
+- **Navidrome integration** — URL, username, and password for auto-rescan
+- **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
+
+### Stats (`/stats`)
+
+Summary statistics and charts for your library:
+
+- Total / analyzed / needs review / errors / locked / unscanned track counts
+- Mean, median, min, and max BPM across analyzed tracks
+- **BPM histogram** — bar chart showing track distribution across 5-BPM buckets
+- **Detector breakdown** — share of tracks analyzed by each detector combination
+
 ### Pages
 
 #### All Tracks (`/tracks`)
-Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A search box filters by filename. Rows flagged for review are highlighted.
+Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). A search box filters by filename. Rows flagged for review are highlighted.
 
 #### Needs Review (`/review`)
 Filtered view showing only tracks that meet one or more of these criteria:
@@ -452,5 +482,5 @@ volumes:
 **Tips:**
 - Set `user:` in `docker-compose.yml` to match Navidrome's user/group so both containers can read and write the same files without permission conflicts
 - Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan, so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
-- Use `MODE=watch` with `SCAN_ON_START=true` (the default) so newly added albums are tagged automatically within seconds of being added to the library
+- Use `MODE=watch` (the default) so newly added albums are tagged automatically within seconds of being added to the library; it scans all unprocessed files on startup before entering watch mode
 - After adjusting detection settings, run `MODE=scan_review` to re-analyze only the flagged and error tracks instead of the full library
