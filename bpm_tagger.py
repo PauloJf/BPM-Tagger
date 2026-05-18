@@ -385,6 +385,27 @@ def get_file_hash(file_path: str) -> str:
     return f"{stat.st_size}:{stat.st_mtime}"
 
 
+def compute_waveform_peaks(file_path: str, n_bars: int = 300) -> Optional[str]:
+    """Load audio at sr=2000 and return JSON-encoded peak data for waveform display.
+
+    Returns None if loading fails. Intended to be called right after BPM analysis
+    while the file is still warm in the OS page cache.
+    """
+    try:
+        y, sr = librosa.load(file_path, sr=2000, mono=True)
+        chunk = max(1, len(y) // n_bars)
+        peaks: list[float] = []
+        for i in range(n_bars):
+            seg = y[i * chunk: (i + 1) * chunk]
+            peaks.append(float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0)
+        mx = max(peaks) or 1.0
+        peaks = [round(p / mx, 4) for p in peaks]
+        return json.dumps({"peaks": peaks, "duration": round(float(len(y) / sr), 3)})
+    except Exception as exc:
+        log.warning("Waveform computation failed for %s: %s", Path(file_path).name, exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -442,11 +463,12 @@ class BPMDatabase:
         """Add columns that may be absent in databases created before this version."""
         existing = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
         for col, coldef in [
-            ("bpm_dr",       "REAL"),
-            ("bpm_es",       "REAL"),
-            ("bpm_lb",       "REAL"),
-            ("needs_review", "INTEGER DEFAULT 0"),
-            ("locked",       "INTEGER DEFAULT 0"),
+            ("bpm_dr",         "REAL"),
+            ("bpm_es",         "REAL"),
+            ("bpm_lb",         "REAL"),
+            ("needs_review",   "INTEGER DEFAULT 0"),
+            ("locked",         "INTEGER DEFAULT 0"),
+            ("waveform_peaks", "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -468,14 +490,15 @@ class BPMDatabase:
                      bpm: Optional[float], bpm_dr: Optional[float],
                      bpm_es: Optional[float], bpm_lb: Optional[float],
                      confidence: Optional[float], detector: Optional[str],
-                     status: str, needs_review: bool = False, error: Optional[str] = None):
+                     status: str, needs_review: bool = False, error: Optional[str] = None,
+                     waveform_peaks: Optional[str] = None):
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO tracks
                     (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence,
-                     detector, analyzed_at, status, needs_review, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     detector, analyzed_at, status, needs_review, error_message, waveform_peaks)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     file_hash      = excluded.file_hash,
                     bpm            = excluded.bpm,
@@ -487,9 +510,10 @@ class BPMDatabase:
                     analyzed_at    = excluded.analyzed_at,
                     status         = excluded.status,
                     needs_review   = excluded.needs_review,
-                    error_message  = excluded.error_message
+                    error_message  = excluded.error_message,
+                    waveform_peaks = COALESCE(excluded.waveform_peaks, waveform_peaks)
             """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence,
-                  detector, now, status, int(needs_review), error))
+                  detector, now, status, int(needs_review), error, waveform_peaks))
             conn.commit()
 
     def lock_track(self, file_path: str, bpm: Optional[float]):
@@ -538,6 +562,15 @@ class BPMDatabase:
                     updated += 1
             conn.commit()
         return updated, missing
+
+    def save_waveform_peaks(self, file_path: str, waveform_peaks_json: str) -> None:
+        """Back-fill waveform_peaks for a track that was processed before this column existed."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET waveform_peaks = ? WHERE file_path = ?",
+                (waveform_peaks_json, file_path),
+            )
+            conn.commit()
 
     def needs_analysis(self, file_path: str, file_hash: str) -> bool:
         track = self.get_track(file_path)
@@ -835,11 +868,15 @@ class BPMTagger:
                 # and re-analyzes an already-tagged file.
                 file_hash = get_file_hash(file_path)
 
+            # Compute waveform while the file is still warm in the OS page cache
+            waveform_peaks = compute_waveform_peaks(file_path)
+
             self.db.upsert_track(
                 file_path, file_hash,
                 bpm, result["bpm_dr"], result["bpm_es"], result["bpm_lb"],
                 result["confidence"], result["detector"],
                 "done", needs_review=result["needs_review"],
+                waveform_peaks=waveform_peaks,
             )
 
             if self.notifier:
