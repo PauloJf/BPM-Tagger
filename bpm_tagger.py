@@ -3,6 +3,7 @@
 
 import csv
 import hashlib
+import json
 import logging
 import os
 import secrets
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+__version__ = "0.1.3"
 
 # Suppress noisy but harmless third-party warnings:
 # - libsndfile can't decode MP3; librosa falls back to audioread (ffmpeg) automatically
@@ -38,6 +41,22 @@ log = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".wv"}
 
+
+def settings_file_path(db_path: str) -> str:
+    return str(Path(db_path).parent / "settings.json")
+
+
+def load_settings_override(config: dict) -> dict:
+    """Merge persisted settings.json overrides into config (overwrites env-var values)."""
+    path = settings_file_path(config["db_path"])
+    if os.path.isfile(path):
+        try:
+            with open(path) as f:
+                config.update(json.load(f))
+        except Exception as exc:
+            log.warning("Could not load settings override: %s", exc)
+    return config
+
 # ---------------------------------------------------------------------------
 # Low-level BPM helpers
 # ---------------------------------------------------------------------------
@@ -55,12 +74,17 @@ class ScanProgress:
 
     def _reset(self):
         self.is_scanning  = False
+        self.is_paused    = False
         self.current_file = ""
         self.current_step = ""
         self.completed    = 0
         self.total        = 0
         self.last_file    = ""
         self.last_bpm     = None
+
+    def set_paused(self, paused: bool):
+        with self._lock:
+            self.is_paused = paused
 
     def start(self, total: int):
         with self._lock:
@@ -89,7 +113,8 @@ class ScanProgress:
         with self._lock:
             si = (self.STEPS.index(self.current_step) + 1
                   if self.current_step in self.STEPS else 0)
-            return dict(is_scanning=self.is_scanning, current_file=self.current_file,
+            return dict(is_scanning=self.is_scanning, is_paused=self.is_paused,
+                        current_file=self.current_file,
                         current_step=self.current_step, step_index=si,
                         step_total=len(self.STEPS), completed=self.completed,
                         total=self.total, cumulative_completed=self.cumulative_completed,
@@ -532,6 +557,39 @@ class BPMDatabase:
             """).fetchone()
             return dict(row)
 
+    def get_bpm_distribution(self, bucket: int = 5) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT CAST(bpm/? AS INT)*? AS b, COUNT(*) AS n "
+                "FROM tracks WHERE status='done' AND bpm IS NOT NULL "
+                "GROUP BY b ORDER BY b", (bucket, bucket)
+            ).fetchall()
+        return [{"bpm": r["b"], "count": r["n"]} for r in rows]
+
+    def get_detector_distribution(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(detector,'unknown') AS d, COUNT(*) AS n "
+                "FROM tracks WHERE status='done' GROUP BY d ORDER BY n DESC"
+            ).fetchall()
+        return [{"detector": r["d"], "count": r["n"]} for r in rows]
+
+    def get_bpm_descriptive(self) -> dict:
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT ROUND(AVG(bpm),1) AS avg, MIN(bpm) AS mn, MAX(bpm) AS mx, "
+                "COUNT(*) AS n FROM tracks WHERE status='done' AND bpm IS NOT NULL"
+            ).fetchone()
+            bpms = [row[0] for row in conn.execute(
+                "SELECT bpm FROM tracks WHERE status='done' AND bpm IS NOT NULL ORDER BY bpm"
+            ).fetchall()]
+        if not bpms:
+            return {"avg": None, "min": None, "max": None, "median": None, "count": 0}
+        mid = len(bpms) // 2
+        median = (bpms[mid - 1] + bpms[mid]) / 2 if len(bpms) % 2 == 0 else bpms[mid]
+        return {"avg": r["avg"], "min": r["mn"], "max": r["mx"],
+                "median": round(median, 1), "count": r["n"]}
+
 
 # ---------------------------------------------------------------------------
 # Notification manager (anti-spam batching)
@@ -673,6 +731,9 @@ class BPMTagger:
                 min_interval=int(config.get("ntfy_min_interval", 300)),
                 notify_review=config.get("ntfy_notify_review", True),
             )
+        self._pause_event = threading.Event()
+        self._pause_event.set()   # set = running; clear = paused
+        self._stop_event  = threading.Event()
 
     def process_file(self, file_path: str, force: bool = False) -> dict:
         """Analyze one file. Returns dict with 'status': tagged | skipped | error."""
@@ -719,10 +780,20 @@ class BPMTagger:
 
     def _process_files_parallel(self, file_paths: list[str], force: bool) -> dict:
         workers = int(self.config.get("workers", 1))
+        counts = {"tagged": 0, "skipped": 0, "errors": 0, "needs_review": 0}
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(self.process_file, fp, force): fp
-                       for fp in file_paths}
-            return self._count_results(futures)
+            for i in range(0, len(file_paths), workers):
+                if self._stop_event.is_set():
+                    break
+                self._pause_event.wait()   # blocks here while paused
+                if self._stop_event.is_set():
+                    break
+                batch = file_paths[i : i + workers]
+                futures = {executor.submit(self.process_file, fp, force): fp for fp in batch}
+                batch_counts = self._count_results(futures)
+                for k in counts:
+                    counts[k] += batch_counts[k]
+        return counts
 
     def _finish_scan(self, counts: dict, label: str):
         if self.notifier:
@@ -758,6 +829,10 @@ class BPMTagger:
                 "needs_review": needs_review_count}
 
     def scan_directory(self, force: bool = False) -> dict:
+        self._stop_event.clear()
+        self._pause_event.set()
+        self.progress.set_paused(False)
+
         audio_files = []
         for root, _, files in os.walk(self.config["music_dir"]):
             for fname in sorted(files):
@@ -772,6 +847,10 @@ class BPMTagger:
 
     def scan_review(self) -> dict:
         """Re-analyze only flagged, errored, or librosa-only tracks."""
+        self._stop_event.clear()
+        self._pause_event.set()
+        self.progress.set_paused(False)
+
         queue = self.db.get_reanalysis_queue()
         log.info("scan_review: %d tracks queued for re-analysis", len(queue))
 
@@ -848,7 +927,7 @@ class BPMTagger:
                         self._pending[event.dest_path] = time.monotonic() + 10
 
             def drain_pending(self):
-                while True:
+                while not self._tagger._stop_event.is_set():
                     time.sleep(2)
                     try:
                         with self._lock:
@@ -857,6 +936,9 @@ class BPMTagger:
                             for p in ready:
                                 del self._pending[p]
                         for path in ready:
+                            if self._tagger._stop_event.is_set():
+                                break
+                            self._tagger._pause_event.wait()
                             self._tagger.process_file(path, force=True)
                     except Exception as exc:
                         log.error("drain_pending error: %s", exc)
@@ -869,13 +951,14 @@ class BPMTagger:
         observer.start()
 
         try:
-            while True:
+            while not self._stop_event.is_set():
                 time.sleep(60)
                 if self.notifier:
                     self.notifier.flush()
         except KeyboardInterrupt:
-            log.info("Shutting down watcher...")
-            observer.stop()
+            pass
+        log.info("Shutting down watcher...")
+        observer.stop()
         observer.join()
 
 
@@ -926,18 +1009,21 @@ def main():
         "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
     }
 
+    config = load_settings_override(config)
+
     mode = os.environ.get("MODE", "scan_unscanned").lower()
+    # settings file may override mode
+    mode = config.get("mode", mode)
     scan_on_start = os.environ.get("SCAN_ON_START", "true").lower() == "true"
 
     log.info("BPM Tagger starting — mode=%s, music_dir=%s", mode, config["music_dir"])
 
     progress = ScanProgress()
+    tagger = BPMTagger(config, progress)
 
     if config["enable_ui"]:
         import web_ui
-        threading.Thread(target=web_ui.start, args=(config, progress), daemon=True).start()
-
-    tagger = BPMTagger(config, progress)
+        threading.Thread(target=web_ui.start, args=(config, progress, tagger), daemon=True).start()
 
     if mode == "scan_all":
         tagger.scan_directory(force=True)
