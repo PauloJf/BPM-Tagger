@@ -261,6 +261,13 @@ def stats():
     return render_template("stats.html")
 
 
+@app.route("/about")
+@login_required
+def about():
+    from bpm_tagger import __version__
+    return render_template("about.html", version=__version__)
+
+
 @app.route("/settings")
 @login_required
 def settings():
