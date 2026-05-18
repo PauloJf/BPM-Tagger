@@ -185,20 +185,21 @@ Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `
 
 The navigation bar shows the current scan state at all times and lets you control the scanner without touching the container:
 
-- **Stopped** (red dot) — no scan running; **▶ Start Scan** button starts a new pass
+- **Stopped** (red dot) — no scan running; **▶ Start Scan** button triggers a pass using the configured mode
 - **Analysing** (pulsing green dot) — scan in progress; **⏸ Pause** and **■ Stop** buttons are shown
+- **Stopping…** (pulsing red dot) — stop requested; the current track is finishing before the scan exits
 - **Paused** (yellow dot) — scan is suspended; **▶ Resume** resumes from where it left off
 
-Pausing suspends work between batches (not mid-file), so in-progress tracks complete cleanly.
+Pausing and stopping both take effect between tracks, not mid-file, so the current track always completes cleanly.
 
 ### Settings (`/settings`)
 
-All scan and notification settings can be changed at runtime without editing `docker-compose.yml` or restarting the container. Changes are saved to `/data/settings.json` and survive restarts. Configurable from the UI:
+All settings can be changed at runtime — no container restart required. Changes are saved to `/data/settings.json` and survive restarts. Configurable from the UI:
 
 - **Password** — change the web UI login password
 - **Notifications** — ntfy server URL, topic, batch size, interval, and whether to include review counts
 - **Scan behavior** — worker count, detector toggles (deeprhythm, essentia), tag writing, BPM range, review confidence threshold
-- **Operating mode** — switch between `watch`, `watch_all`, `scan_unscanned`, `scan_all`, `scan_review`, and `report` (restart required)
+- **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan
 - **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
 
