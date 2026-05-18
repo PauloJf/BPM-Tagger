@@ -3,9 +3,6 @@
 *.md
 *.csv
 *.db
-static/logo-v[0-9]*.svg
-static/logo.svg
-static/logo-wordmark.svg
 __pycache__
 *.pyc
 *.pyo
