@@ -50,10 +50,11 @@ Set `MODE` to control what the container does on startup:
 
 | Mode | Description |
 |---|---|
-| `watch` | Scan unanalyzed files on start, then watch for new/changed files in real time |
-| `scan_all` | Re-analyze every file (ignores existing DB results) |
-| `scan_unscanned` | Analyze only new or changed files |
-| `scan_review` | Re-analyze only flagged, errored, or fallback-only tracks |
+| `watch` | Scan all unscanned/changed files on start, then watch for new/changed files in real time. **Recommended default.** |
+| `watch_all` | Re-analyze every file on start, then watch for new/changed files in real time |
+| `scan_all` | One-shot: re-analyze every file (ignores existing DB results) |
+| `scan_unscanned` | One-shot: analyze only new or changed files |
+| `scan_review` | One-shot: re-analyze only flagged, errored, or fallback-only tracks |
 | `report` | Write a CSV of suspicious tracks; send ntfy summary |
 | `lock` | Lock a track's BPM (requires `LOCK_FILE`; optional `LOCK_BPM`) |
 | `unlock` | Unlock a track for re-analysis (requires `UNLOCK_FILE`) |
@@ -67,9 +68,10 @@ Set `MODE` to control what the container does on startup:
 | `MODE` | `watch` | Operating mode (see above) |
 | `MUSIC_DIR` | `/music` | Music directory path inside the container |
 | `WRITE_TAGS` | `true` | Write BPM back to audio file metadata |
-| `WORKERS` | `4` | Parallel analysis threads |
+| `WORKERS` | `1` | Parallel analysis threads (each deeprhythm worker adds ~500 MB RAM) |
 | `BPM_MIN` | `60` | BPM range floor (values below are doubled) |
 | `BPM_MAX` | `200` | BPM range ceiling (values above are halved) |
+| `USE_DEEPRHYTHM` | `false` | Enable deeprhythm CNN detector (~500 MB RAM per worker); disable on NAS/low-memory devices |
 | `USE_ESSENTIA` | `true` | Enable essentia as second primary detector |
 | `OCTAVE_CORRECTION` | `true` | Auto-fix 2× BPM errors between detectors |
 | `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM gap between detectors that flags a track for review |
@@ -103,10 +105,13 @@ librosa multi-segment (tiebreaker) ───┘
 
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
-- Browse all tracks with BPM, confidence, and detector info
+- **Navbar scan controls** — Start, Pause, Resume, and Stop the scanner from any page; a live status label shows Analysing / Paused / Stopped at all times
+- Browse all tracks with BPM, confidence, and detector info; configurable rows per page (10/50/100)
 - **Needs Review** queue — step through flagged tracks with Prev/Next navigation
 - Stream audio and use the **tap-tempo** button (or Space bar) to tap the BPM by ear
 - **Save & Lock** a corrected BPM to prevent future scans from overwriting it
+- **Stats page** — BPM histogram, detector breakdown, and summary statistics for your library
+- **Settings page** — change workers, detectors, BPM range, ntfy, Navidrome, and operating mode at runtime without restarting the container; changes persist to `/data/settings.json`
 - `/healthz` endpoint returns DB stats as JSON — no login required
 
 ---
