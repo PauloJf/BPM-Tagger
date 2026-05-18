@@ -435,7 +435,7 @@
       if (data.ok) {
         msg.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ok-fg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 L10 17 L19 7"/></svg>'
           + '<span style="color:var(--ok-fg);">Saved &amp; locked at ' + bpm.toFixed(1) + ' BPM</span>';
-        document.getElementById("current-bpm").textContent = bpm.toFixed(1);
+        setTimeout(function() { window.location.reload(); }, 800);
       } else {
         msg.innerHTML = '<span style="color:var(--err-fg);">Error: ' + (data.error || 'unknown') + '</span>';
       }
