@@ -97,6 +97,7 @@ class ScanProgress:
     def _reset(self):
         self.is_scanning  = False
         self.is_paused    = False
+        self.is_stopping  = False
         self.current_file = ""
         self.current_step = ""
         self.completed    = 0
@@ -107,6 +108,10 @@ class ScanProgress:
     def set_paused(self, paused: bool):
         with self._lock:
             self.is_paused = paused
+
+    def set_stopping(self, stopping: bool):
+        with self._lock:
+            self.is_stopping = stopping
 
     def start(self, total: int):
         with self._lock:
@@ -129,13 +134,15 @@ class ScanProgress:
 
     def finish(self):
         with self._lock:
-            self.is_scanning = False; self.current_file = ""; self.current_step = ""
+            self.is_scanning = False; self.is_stopping = False
+            self.current_file = ""; self.current_step = ""
 
     def snapshot(self) -> dict:
         with self._lock:
             si = (self.STEPS.index(self.current_step) + 1
                   if self.current_step in self.STEPS else 0)
             return dict(is_scanning=self.is_scanning, is_paused=self.is_paused,
+                        is_stopping=self.is_stopping,
                         current_file=self.current_file,
                         current_step=self.current_step, step_index=si,
                         step_total=len(self.STEPS), completed=self.completed,

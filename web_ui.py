@@ -311,8 +311,9 @@ def api_unlock():
 @login_required
 def api_progress():
     if _progress is None:
-        return jsonify(is_scanning=False, is_paused=False, completed=0, total=0,
-                       cumulative_completed=0, current_file="", current_step="",
+        return jsonify(is_scanning=False, is_paused=False, is_stopping=False,
+                       completed=0, total=0, cumulative_completed=0,
+                       current_file="", current_step="",
                        step_index=0, step_total=3, last_file="", last_bpm=None)
     return jsonify(**_progress.snapshot())
 
@@ -363,8 +364,16 @@ def api_scan_start():
         return jsonify(ok=False, error="tagger not available")
     if _progress and _progress.is_scanning:
         return jsonify(ok=False, error="scan already running")
-    t = threading.Thread(target=_tagger.scan_directory, args=(False,), daemon=True)
-    t.start()
+    mode = _config.get("mode", "watch")
+    if mode == "scan_review":
+        target = _tagger.scan_review
+    elif mode == "report":
+        target = _tagger.report
+    elif mode in ("scan_all", "watch_all"):
+        target = lambda: _tagger.scan_directory(force=True)
+    else:  # watch, scan_unscanned, default
+        target = lambda: _tagger.scan_directory(force=False)
+    threading.Thread(target=target, daemon=True).start()
     return jsonify(ok=True)
 
 
@@ -398,6 +407,8 @@ def api_scan_stop():
     _check_csrf()
     if _tagger is None:
         return jsonify(ok=False, error="tagger not available")
+    if _progress and _progress.is_scanning:
+        _progress.set_stopping(True)
     _tagger._stop_event.set()
     _tagger._pause_event.set()  # unblock if currently paused
     return jsonify(ok=True)
