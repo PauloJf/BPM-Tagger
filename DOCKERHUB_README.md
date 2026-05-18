@@ -105,13 +105,13 @@ librosa multi-segment (tiebreaker) ───┘
 
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
-- **Navbar scan controls** — Start, Pause, Resume, and Stop the scanner from any page; a live status label shows Analysing / Paused / Stopped at all times
+- **Navbar scan controls** — Start, Pause, Resume, and Stop the scanner from any page; live status shows Analysing / Stopping… / Paused / Stopped; Stop waits for the current track to finish before exiting
 - Browse all tracks with BPM, confidence, and detector info; configurable rows per page (10/50/100)
 - **Needs Review** queue — step through flagged tracks with Prev/Next navigation
 - Stream audio and use the **tap-tempo** button (or Space bar) to tap the BPM by ear
 - **Save & Lock** a corrected BPM to prevent future scans from overwriting it
 - **Stats page** — BPM histogram, detector breakdown, and summary statistics for your library
-- **Settings page** — change workers, detectors, BPM range, ntfy, Navidrome, and operating mode at runtime without restarting the container; changes persist to `/data/settings.json`
+- **Settings page** — all settings (workers, detectors, BPM range, ntfy, Navidrome, operating mode) take effect immediately without restarting the container; the mode setting also controls what **▶ Start Scan** does; changes persist to `/data/settings.json`
 - `/healthz` endpoint returns DB stats as JSON — no login required
 
 ---
