@@ -1,57 +1,71 @@
+{# ── detector_bar(track) ─────────────────────────────────────────────────────
+   SVG axis 60–200 BPM.  Ticks at 60/90/120/150/180.
+   DR=var(--accent)  ES=var(--accent-2)  LB=var(--info-fg)
+   Final BPM marker is a glowing vertical bar.
+   Null values are skipped silently.
+   viewBox="0 0 300 48"  axis at y=32  dots at y=22  labels at y=13  ticks below axis.
+#}
 {% macro detector_bar(track) %}
-{%- set bpm_min = 60 %}
-{%- set bpm_max = 200 %}
-{%- set bpm_range = bpm_max - bpm_min %}
-{%- macro norm(v) %}{{ ((v - bpm_min) / bpm_range * 300) | round(2) }}{% endmacro %}
+{%- set R = 140.0 %}
 <div class="detector-bar-wrap">
   <svg viewBox="0 0 300 48" width="100%" height="48" style="overflow:visible; display:block;">
-    {# Axis line #}
     <line x1="0" y1="32" x2="300" y2="32" stroke="var(--border)" stroke-width="1.5"/>
-    {# Ticks and labels #}
-    {% for tick in [60, 90, 120, 150, 180] %}
-    {%- set tx = ((tick - bpm_min) / bpm_range * 300) | round(2) %}
-    <line x1="{{ tx }}" y1="29" x2="{{ tx }}" y2="36" stroke="var(--border)" stroke-width="1"/>
+    {%- for tick in [60, 90, 120, 150, 180] %}
+    {%- set tx = ((tick - 60) / R * 300) | round(2) %}
+    <line x1="{{ tx }}" y1="29" x2="{{ tx }}" y2="37" stroke="var(--border)" stroke-width="1"/>
     <text x="{{ tx }}" y="47" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">{{ tick }}</text>
-    {% endfor %}
-    {# Final BPM marker #}
-    {% if track.bpm is not none %}
-    {%- set fx = ((track.bpm - bpm_min) / bpm_range * 300) | round(2) %}
-    <rect x="{{ fx - 1 }}" y="16" width="2" height="22" rx="1" fill="var(--accent)" opacity="0.9"/>
-    <rect x="{{ fx - 5 }}" y="14" width="10" height="22" rx="5" fill="var(--accent-glow)" opacity="0.4"/>
-    {% endif %}
-    {# Detector dots #}
-    {% if track.bpm_dr is not none %}
-    {%- set dx = ((track.bpm_dr - bpm_min) / bpm_range * 300) | round(2) %}
+    {%- endfor %}
+    {%- if track.bpm is not none and track.bpm %}
+    {%- set fx = ((track.bpm - 60) / R * 300) | round(2) %}
+    <rect x="{{ fx - 1 }}" y="16" width="2.5" height="24" rx="1.25"
+          fill="var(--accent)" filter="drop-shadow(0 0 4px var(--accent-glow))"/>
+    {%- endif %}
+    {%- if track.bpm_dr is not none and track.bpm_dr %}
+    {%- set dx = ((track.bpm_dr - 60) / R * 300) | round(2) %}
     <circle cx="{{ dx }}" cy="22" r="5" fill="var(--bg)" stroke="var(--accent)" stroke-width="2"/>
     <text x="{{ dx }}" y="13" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="600" fill="var(--accent)" letter-spacing="0.04em">DR</text>
-    {% endif %}
-    {% if track.bpm_es is not none %}
-    {%- set ex = ((track.bpm_es - bpm_min) / bpm_range * 300) | round(2) %}
+    {%- endif %}
+    {%- if track.bpm_es is not none and track.bpm_es %}
+    {%- set ex = ((track.bpm_es - 60) / R * 300) | round(2) %}
     <circle cx="{{ ex }}" cy="22" r="5" fill="var(--bg)" stroke="var(--accent-2)" stroke-width="2"/>
     <text x="{{ ex }}" y="13" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="600" fill="var(--accent-2)" letter-spacing="0.04em">ES</text>
-    {% endif %}
-    {% if track.bpm_lb is not none %}
-    {%- set lx = ((track.bpm_lb - bpm_min) / bpm_range * 300) | round(2) %}
+    {%- endif %}
+    {%- if track.bpm_lb is not none and track.bpm_lb %}
+    {%- set lx = ((track.bpm_lb - 60) / R * 300) | round(2) %}
     <circle cx="{{ lx }}" cy="22" r="5" fill="var(--bg)" stroke="var(--info-fg)" stroke-width="2"/>
     <text x="{{ lx }}" y="13" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="600" fill="var(--info-fg)" letter-spacing="0.04em">LB</text>
-    {% endif %}
+    {%- endif %}
   </svg>
 </div>
 {% endmacro %}
 
+{# ── bpm_display(bpm, size_px, pulsing, beat_ms) ──────────────────────────────
+   Mono BPM number at size_px.  When pulsing=true and bpm is not null,
+   shows a two-layer pulsing accent dot.  beat_ms drives animation-duration.
+#}
 {% macro bpm_display(bpm, size_px=84, pulsing=false, beat_ms=500) %}
 {%- set dot_size = (size_px * 0.14) | round(1) %}
 {%- set gap = (size_px * 0.16) | round(1) %}
-<span class="bpm-display-comp" style="font-family:var(--mono); font-weight:600; font-size:{{ size_px }}px; line-height:0.95; letter-spacing:-0.04em; color:var(--text); font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:{{ gap }}px;">
-  {% if pulsing and bpm is not none %}
-  <span style="display:inline-block; position:relative; width:{{ dot_size }}px; height:{{ dot_size }}px; flex-shrink:0;">
-    <span style="position:absolute; inset:0; border-radius:999px; background:var(--accent); opacity:0.55;"></span>
-    <span style="position:absolute; inset:0; border-radius:999px; background:var(--accent); animation:pulse-beat {{ beat_ms }}ms ease-out infinite;"></span>
+{%- set unit_px = (size_px * 0.22) | round(0) | int %}
+<span class="bpm-display-comp"
+      style="font-family:var(--mono); font-weight:600; font-size:{{ size_px }}px;
+             line-height:0.95; letter-spacing:-0.04em; color:var(--text);
+             font-variant-numeric:tabular-nums; display:inline-flex;
+             align-items:center; gap:{{ gap }}px;">
+  {%- if pulsing and bpm is not none and bpm %}
+  <span style="display:inline-block; position:relative;
+               width:{{ dot_size }}px; height:{{ dot_size }}px; flex-shrink:0;">
+    <span style="position:absolute; inset:0; border-radius:999px;
+                 background:var(--accent); opacity:0.55;"></span>
+    <span style="position:absolute; inset:0; border-radius:999px;
+                 background:var(--accent);
+                 animation:pulse-beat {{ beat_ms }}ms ease-out infinite;"></span>
   </span>
-  {% endif %}
+  {%- endif %}
   <span style="display:inline-flex; align-items:baseline; gap:8px;">
-    {% if bpm is not none %}{{ "%.1f" | format(bpm) }}{% else %}—{% endif %}
-    <span style="font-size:{{ (size_px * 0.22) | round(0) | int }}px; color:var(--muted); font-weight:500; letter-spacing:0.06em;">BPM</span>
+    {%- if bpm is not none and bpm %}{{ "%.1f" | format(bpm) }}{%- else %}—{%- endif %}
+    <span style="font-size:{{ unit_px }}px; color:var(--muted);
+                 font-weight:500; letter-spacing:0.06em;">BPM</span>
   </span>
 </span>
 {% endmacro %}
