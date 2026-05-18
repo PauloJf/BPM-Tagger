@@ -194,11 +194,13 @@ def tracks():
             per_page = 50
     except (ValueError, TypeError):
         per_page = 50
-    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
+    filter_by = request.args.get("filter", "")
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page, filter=filter_by)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = _db.get_stats()
     return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages,
-                           q=q, per_page=per_page,
+                           q=q, per_page=per_page, filter=filter_by,
+                           all_count=stats.get("total", 0),
                            review_count=stats.get("needs_review", 0),
                            locked_count=stats.get("locked", 0))
 
@@ -339,10 +341,13 @@ def api_tracks():
             per_page = 50
     except (ValueError, TypeError):
         per_page = 50
-    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page)
+    filter_by = request.args.get("filter", "")
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page, filter=filter_by)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = _db.get_stats()
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,
+                   filter=filter_by,
+                   all_count=stats.get("total", 0),
                    review_count=stats.get("needs_review", 0),
                    locked_count=stats.get("locked", 0))
 

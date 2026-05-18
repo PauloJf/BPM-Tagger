@@ -217,7 +217,7 @@ Summary statistics and charts for your library:
 ### Pages
 
 #### All Tracks (`/tracks`)
-Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). A search box filters by filename. Rows flagged for review are highlighted.
+Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). A search box filters by filename. Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.
 
 #### Needs Review (`/review`)
 Filtered view showing only tracks that meet one or more of these criteria:

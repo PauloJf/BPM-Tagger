@@ -549,24 +549,33 @@ class BPMDatabase:
             return True
         return track["file_hash"] != file_hash
 
-    def get_tracks_page(self, q: str, limit: int, offset: int) -> tuple[list[dict], int]:
+    def get_tracks_page(self, q: str, limit: int, offset: int,
+                        filter: str = "") -> tuple[list[dict], int]:
+        filter_clause = {
+            "review": "needs_review = 1",
+            "locked": "locked = 1",
+        }.get(filter, "")
+
         with self._connect() as conn:
+            params_count: list = []
+            params_rows:  list = []
+            clauses: list[str] = []
+
             if q:
-                like = f"%{q}%"
-                total = conn.execute(
-                    "SELECT COUNT(*) FROM tracks WHERE file_path LIKE ?", (like,)
-                ).fetchone()[0]
-                rows = conn.execute(
-                    "SELECT * FROM tracks WHERE file_path LIKE ? "
-                    "ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                    (like, limit, offset)
-                ).fetchall()
-            else:
-                total = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-                rows = conn.execute(
-                    "SELECT * FROM tracks ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                    (limit, offset)
-                ).fetchall()
+                clauses.append("file_path LIKE ?")
+                params_count.append(f"%{q}%")
+                params_rows.append(f"%{q}%")
+            if filter_clause:
+                clauses.append(filter_clause)
+
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM tracks {where}", params_count
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"SELECT * FROM tracks {where} ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                params_rows + [limit, offset]
+            ).fetchall()
         return [dict(r) for r in rows], total
 
     def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
