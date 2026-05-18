@@ -232,7 +232,7 @@ The raw `bpm_dr` (deeprhythm), `bpm_es` (essentia), and `bpm_lb` (librosa) value
 #### Track Detail (`/track`)
 Full detail page for a single track with:
 
-- **Audio player** — streams the file directly from the container; real waveform visualization with click/drag scrubbing (waveform computed server-side via librosa at first visit and cached in memory)
+- **Audio player** — streams the file directly from the container; real waveform visualization with click/drag scrubbing. Waveform peaks are computed during BPM analysis (while the audio is already in the OS page cache) and stored in the database, so the track detail page loads them instantly. Tracks processed before this version have their waveform computed on the first visit and back-filled into the DB automatically.
 - **BPM metadata** — current final BPM, raw deeprhythm, essentia, and librosa results, confidence score, detector used, and status badges
 - **Prev / Next navigation** — when arriving from the review queue, a navigation bar at the top shows your position (e.g. `3 / 47`) and lets you step through the queue without returning to the list. Saving or skipping a track and clicking Next moves you to the next flagged track in order.
 - **Tap-tempo** — tap the large TAP button (or press **Space**) to the beat while the track is playing. The app keeps the last 8 intervals and shows a live BPM estimate that updates on every tap. Press **Apply** to copy the tap BPM into the edit field, then **Save & Lock** to write it to the file tag and lock the DB record.
