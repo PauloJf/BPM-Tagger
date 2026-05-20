@@ -29,6 +29,10 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 |---|---|
 | ![Stats](docs/screenshots/06-stats.png) | ![Settings](docs/screenshots/07-settings.png) |
 
+| About | |
+|---|---|
+| ![About](docs/screenshots/08-about.png) | |
+
 ## Features
 
 - **Three-detector BPM analysis** — [deeprhythm](https://github.com/bleugreen/deeprhythm) (CNN) and [essentia](https://essentia.upf.edu/) `RhythmExtractor2013` run as dual primary detectors; [librosa](https://librosa.org/) multi-segment analysis always runs as confidence scorer and tiebreaker
