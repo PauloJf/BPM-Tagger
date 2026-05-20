@@ -1228,6 +1228,7 @@ def main():
         "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
+        "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),

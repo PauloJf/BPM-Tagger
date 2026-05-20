@@ -172,7 +172,7 @@
       </div>
 
       {# Native audio element (hidden, controlled by the play button) #}
-      <audio id="audio-player" preload="metadata"
+      <audio id="audio-player" preload="auto"
              src="{{ url_for('audio', path=track.file_path) }}"
              style="display:none;">
         Your browser does not support audio playback.
@@ -470,19 +470,61 @@
 
   // ── Audio player ────────────────────────────────────────────────────────
   var audio = document.getElementById("audio-player");
+  var PLAYBACK_BUFFER = {{ playback_buffer | tojson }};
+  var _bufWait = null;
+
   function fmtTime(s) {
     var m = Math.floor(s / 60);
     return m + ":" + String(Math.floor(s % 60)).padStart(2, "0");
   }
+
+  function _bufferedEnd() {
+    for (var i = 0; i < audio.buffered.length; i++) {
+      if (audio.buffered.start(i) <= audio.currentTime + 0.1 &&
+          audio.buffered.end(i)   >= audio.currentTime)
+        return audio.buffered.end(i);
+    }
+    return 0;
+  }
+
+  function _enoughBuffered() {
+    var target = audio.currentTime + PLAYBACK_BUFFER;
+    return _bufferedEnd() >= Math.min(target, audio.duration || target);
+  }
+
+  function _doPlay() {
+    var icon = document.getElementById("play-icon");
+    var btn  = document.getElementById("play-btn");
+    audio.play();
+    btn.style.opacity = '';
+    icon.innerHTML = '<g fill="white"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></g>';
+    startRaf();
+  }
+
   function togglePlay() {
     var icon = document.getElementById("play-icon");
-    if (audio.paused) {
-      audio.play();
-      icon.innerHTML = '<g fill="white"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></g>';
-      startRaf();
-    } else {
+    var btn  = document.getElementById("play-btn");
+    if (!audio.paused || _bufWait) {
+      // pause / cancel buffering wait
+      if (_bufWait) { clearInterval(_bufWait); _bufWait = null; btn.style.opacity = ''; }
       audio.pause();
       icon.innerHTML = '<polygon points="6,4 20,12 6,20" fill="white"/>';
+      return;
+    }
+    if (PLAYBACK_BUFFER <= 0 || _enoughBuffered()) {
+      _doPlay();
+    } else {
+      // show buffering spinner until threshold is reached
+      btn.style.opacity = '0.55';
+      icon.innerHTML = '<circle cx="12" cy="12" r="8" stroke="white" stroke-width="2.5" fill="none"'
+        + ' stroke-dasharray="22 10" stroke-linecap="round"'
+        + ' style="transform-origin:12px 12px;animation:spin 0.8s linear infinite"/>';
+      _bufWait = setInterval(function() {
+        if (_enoughBuffered()) {
+          clearInterval(_bufWait); _bufWait = null;
+          _doPlay();
+        }
+      }, 150);
     }
   }
   if (audio) {
