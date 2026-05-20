@@ -104,8 +104,8 @@
       <div class="stat-value" id="s-locked" style="color:var(--info-fg);">—</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Unscanned</div>
-      <div class="stat-value" id="s-unscanned" style="color:var(--text);">—</div>
+      <div class="stat-label">Pending</div>
+      <div class="stat-value" id="s-unscanned" style="color:var(--muted);">—</div>
     </div>
   </div>
 
@@ -182,7 +182,7 @@
       document.getElementById('retry-errors-btn').style.display = s.errors > 0 ? '' : 'none';
       document.getElementById('s-locked').textContent   = (s.locked || 0).toLocaleString();
       document.getElementById('s-unscanned').textContent =
-        Math.max(0, (s.total||0)-(s.done||0)-(s.errors||0)).toLocaleString();
+        (s.pending || 0).toLocaleString();
 
       var d = data.bpm_descriptive;
       document.getElementById('d-avg').textContent = fmt(d.avg, 1);

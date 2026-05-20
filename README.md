@@ -494,6 +494,14 @@ volumes:
 
 ## Changelog
 
+### v1.0.1 — 2026-05-20
+
+**Two-phase scan**
+- Discovery phase now runs first: every audio file found on disk is immediately registered in the library with status `pending`, so the full library is visible in the UI before analysis begins
+- Processing phase then works through all pending tracks; interrupted scans resume naturally — pending entries survive restarts
+- Library table shows a `pending` badge for tracks not yet analysed
+- Statistics page "Pending" card uses the explicit count instead of deriving it
+
 ### v1.0.0 — 2026-05-18
 
 First stable release.
