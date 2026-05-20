@@ -214,6 +214,52 @@
     }
     .scan-dot.pulsing { animation: pulse-soft 1.4s ease-in-out infinite; }
 
+    /* ── Mobile nav ───────────────────────────────────────────────────────── */
+    .nav-hamburger {
+      display: none;
+      width: 36px; height: 36px;
+      border: none; background: transparent; color: var(--muted);
+      cursor: pointer; border-radius: 8px; flex-shrink: 0;
+      align-items: center; justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav-hamburger:hover { color: var(--text); background: var(--chip-bg); }
+
+    /* Panel drops below the sticky nav */
+    .nav-mobile-panel {
+      display: none;
+      position: absolute; left: 0; right: 0; top: 100%; z-index: 48;
+      background: oklch(0.165 0.012 285 / 0.97);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: saturate(180%) blur(12px);
+      -webkit-backdrop-filter: saturate(180%) blur(12px);
+      padding: 6px 10px 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      animation: fade-in 0.15s ease;
+    }
+    .nav-mobile-panel.open { display: block; }
+    .nav-mobile-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 10px; border-radius: 8px;
+      color: var(--muted); text-decoration: none;
+      font-size: 14px; font-weight: 500;
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav-mobile-link:hover { color: var(--text); background: var(--row-hover); }
+    .nav-mobile-link.active { color: var(--text); background: var(--surface); }
+    .nav-mobile-sep { height: 1px; background: var(--border); margin: 6px 2px; }
+
+    /* Status dot shown in top bar on mobile (always visible) */
+    .nav-scan-dot-mobile { display: none; flex-shrink: 0; }
+
+    @media (max-width: 700px) {
+      .nav-desktop-only { display: none !important; }
+      .nav-hamburger    { display: inline-flex; }
+      .nav-scan-dot-mobile { display: inline-block; }
+      nav.app-nav { padding: 0 14px; position: relative; }
+      .container  { padding: 16px 14px 60px; }
+    }
+
     /* ── Container ────────────────────────────────────────────────────────── */
     .container { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }
 
@@ -477,78 +523,182 @@
     </div>
   </a>
 
-  <div class="nav-divider"></div>
+  <div class="nav-divider nav-desktop-only"></div>
 
-  {# Nav items #}
+  {# Nav items — desktop #}
   <a href="{{ url_for('tracks') }}"
-     class="nav-item {{ 'active' if request.endpoint == 'tracks' }}">Library</a>
+     class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'tracks' }}">Library</a>
   <a href="{{ url_for('review') }}"
-     class="nav-item {{ 'active' if request.endpoint == 'review' }}">
+     class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'review' }}">
     Review
     {% if g.review_count is defined and g.review_count %}
       <span class="nav-badge">{{ g.review_count }}</span>
     {% endif %}
   </a>
   <a href="{{ url_for('stats') }}"
-     class="nav-item {{ 'active' if request.endpoint == 'stats' }}">Stats</a>
+     class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'stats' }}">Stats</a>
   <a href="{{ url_for('settings') }}"
-     class="nav-item {{ 'active' if request.endpoint == 'settings' }}">Settings</a>
+     class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'settings' }}">Settings</a>
   <a href="{{ url_for('about') }}"
-     class="nav-item {{ 'active' if request.endpoint == 'about' }}">About</a>
+     class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'about' }}">About</a>
 
-  <span class="nav-spacer"></span>
+  <span class="nav-spacer nav-desktop-only"></span>
 
-  {# Scan controls pill #}
-  <span id="nav-scan-controls" class="scan-controls" style="margin-right: 8px;">
-    <span id="nav-status" style="display:flex; align-items:center; gap:6px; font-size:12px;"></span>
-    <button id="nav-start-btn"  class="btn btn-bare btn-sm" style="display:none; color:var(--ok-fg);">&#9654; Start scan</button>
-    <button id="nav-pause-btn"  class="btn btn-bare btn-sm" style="display:none;">
+  {# Scan controls pill — desktop #}
+  <span id="nav-scan-controls" class="scan-controls nav-desktop-only" style="margin-right: 8px;">
+    <span class="nav-status-el" style="display:flex; align-items:center; gap:6px; font-size:12px;"></span>
+    <button class="btn btn-bare btn-sm nav-ctrl-start" style="display:none; color:var(--ok-fg);">&#9654; Start scan</button>
+    <button class="btn btn-bare btn-sm nav-ctrl-pause" style="display:none;">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
     </button>
-    <button id="nav-resume-btn" class="btn btn-bare btn-sm" style="display:none; color:var(--ok-fg);">
+    <button class="btn btn-bare btn-sm nav-ctrl-resume" style="display:none; color:var(--ok-fg);">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
     </button>
-    <button id="nav-stop-btn"   class="btn btn-bare btn-sm" style="display:none; color:var(--err-fg);">
+    <button class="btn btn-bare btn-sm nav-ctrl-stop" style="display:none; color:var(--err-fg);">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
     </button>
   </span>
 
-  {# Logout #}
-  <form method="post" action="{{ url_for('logout') }}" style="display:inline; margin:0;">
+  {# Logout — desktop #}
+  <form method="post" action="{{ url_for('logout') }}" class="nav-desktop-only" style="display:inline; margin:0;">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <button type="submit" class="nav-item btn-bare"
             style="color:var(--err-fg); border:none; background:none;">Logout</button>
   </form>
+
+  {# Mobile: scan status dot (always visible, pushes hamburger right) + hamburger #}
+  <span id="nav-scan-dot-mobile" class="scan-dot nav-scan-dot-mobile"
+        style="background:var(--muted); margin-left:auto; margin-right:10px;"></span>
+  <button id="nav-hamburger" class="nav-hamburger" aria-label="Toggle menu"
+          aria-expanded="false" onclick="toggleMobileNav()">
+    <svg id="nav-ham-icon" width="18" height="13" viewBox="0 0 18 13" fill="none">
+      <rect y="0"  width="18" height="2" rx="1" fill="currentColor"/>
+      <rect y="5.5" width="18" height="2" rx="1" fill="currentColor"/>
+      <rect y="11" width="18" height="2" rx="1" fill="currentColor"/>
+    </svg>
+    <svg id="nav-close-icon" width="14" height="14" viewBox="0 0 14 14" style="display:none;" fill="none">
+      <path d="M1 1 L13 13 M13 1 L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  {# Mobile dropdown panel #}
+  <div id="nav-mobile-panel" class="nav-mobile-panel" role="navigation" aria-label="Mobile navigation">
+    <a href="{{ url_for('tracks') }}"
+       class="nav-mobile-link {{ 'active' if request.endpoint == 'tracks' }}">Library</a>
+    <a href="{{ url_for('review') }}"
+       class="nav-mobile-link {{ 'active' if request.endpoint == 'review' }}">
+      Review
+      {% if g.review_count is defined and g.review_count %}
+        <span class="nav-badge">{{ g.review_count }}</span>
+      {% endif %}
+    </a>
+    <a href="{{ url_for('stats') }}"
+       class="nav-mobile-link {{ 'active' if request.endpoint == 'stats' }}">Stats</a>
+    <a href="{{ url_for('settings') }}"
+       class="nav-mobile-link {{ 'active' if request.endpoint == 'settings' }}">Settings</a>
+    <a href="{{ url_for('about') }}"
+       class="nav-mobile-link {{ 'active' if request.endpoint == 'about' }}">About</a>
+
+    <div class="nav-mobile-sep"></div>
+
+    {# Scan controls — mobile #}
+    <div style="padding:6px 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span class="nav-status-el" style="display:flex; align-items:center; gap:6px; font-size:13px; flex-shrink:0;"></span>
+      <button class="btn btn-ghost btn-sm nav-ctrl-start" style="display:none; color:var(--ok-fg);">&#9654; Start scan</button>
+      <button class="btn btn-ghost btn-sm nav-ctrl-pause" style="display:none;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        Pause
+      </button>
+      <button class="btn btn-ghost btn-sm nav-ctrl-resume" style="display:none; color:var(--ok-fg);">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+        Resume
+      </button>
+      <button class="btn btn-danger btn-sm nav-ctrl-stop" style="display:none;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+        Stop
+      </button>
+    </div>
+
+    <div class="nav-mobile-sep"></div>
+    <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="nav-mobile-link"
+              style="width:100%; color:var(--err-fg); border:none; background:none;
+                     cursor:pointer; font-family:inherit; text-align:left;">Logout</button>
+    </form>
+  </div>
 </nav>
 
 <script>
+// ── Mobile nav toggle ────────────────────────────────────────────────────
+function toggleMobileNav() {
+  var panel    = document.getElementById('nav-mobile-panel');
+  var hamIcon  = document.getElementById('nav-ham-icon');
+  var closeIcon= document.getElementById('nav-close-icon');
+  var btn      = document.getElementById('nav-hamburger');
+  var open = panel.classList.toggle('open');
+  hamIcon.style.display   = open ? 'none' : '';
+  closeIcon.style.display = open ? '' : 'none';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+document.addEventListener('click', function(e) {
+  var panel = document.getElementById('nav-mobile-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+  if (!e.target.closest('#nav-mobile-panel') && !e.target.closest('#nav-hamburger')) {
+    panel.classList.remove('open');
+    document.getElementById('nav-ham-icon').style.display   = '';
+    document.getElementById('nav-close-icon').style.display = 'none';
+    document.getElementById('nav-hamburger').setAttribute('aria-expanded', 'false');
+  }
+});
+
+// ── Scan controls (shared between desktop pill + mobile panel) ───────────
 (function(){
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  function el(id){ return document.getElementById('nav-'+id+'-btn'); }
-  var statusEl = document.getElementById('nav-status');
+
+  function ctrlBtns(name){ return document.querySelectorAll('.nav-ctrl-'+name); }
+  function showCtrl(name){ ctrlBtns(name).forEach(function(b){ b.style.display=''; }); }
+  function hideCtrl(name){ ctrlBtns(name).forEach(function(b){ b.style.display='none'; }); }
+  function statusEls()   { return document.querySelectorAll('.nav-status-el'); }
 
   function mkDot(color, pulsing) {
     return '<span class="scan-dot' + (pulsing ? ' pulsing' : '') + '" style="background:' + color
            + '; box-shadow:0 0 0 3px ' + color + '33;"></span>';
   }
 
+  function setMobileDot(color, pulsing) {
+    var d = document.getElementById('nav-scan-dot-mobile');
+    if (!d) return;
+    d.style.background = color;
+    d.className = 'scan-dot nav-scan-dot-mobile' + (pulsing ? ' pulsing' : '');
+    d.style.boxShadow = '0 0 0 3px ' + color + '33';
+  }
+
+  function setStatusHtml(html) {
+    statusEls().forEach(function(el){ el.innerHTML = html; });
+  }
+
   function setState(state){
-    ['start','pause','resume','stop'].forEach(function(i){ el(i).style.display='none'; });
+    ['start','pause','resume','stop'].forEach(hideCtrl);
     if(state==='analysing'){
-      el('pause').style.display=''; el('stop').style.display='';
-      statusEl.innerHTML = mkDot('var(--accent)',true)
-        + '<span style="color:var(--accent-2); font-weight:500;">Analyzing</span>';
+      showCtrl('pause'); showCtrl('stop');
+      setStatusHtml(mkDot('var(--accent)',true)
+        + '<span style="color:var(--accent-2); font-weight:500;">Analyzing</span>');
+      setMobileDot('var(--accent)', true);
     } else if(state==='paused'){
-      el('resume').style.display='';
-      statusEl.innerHTML = mkDot('var(--warn-fg)',false)
-        + '<span style="color:var(--warn-fg); font-weight:500;">Paused</span>';
+      showCtrl('resume');
+      setStatusHtml(mkDot('var(--warn-fg)',false)
+        + '<span style="color:var(--warn-fg); font-weight:500;">Paused</span>');
+      setMobileDot('var(--warn-fg)', false);
     } else if(state==='stopping'){
-      statusEl.innerHTML = mkDot('var(--err-fg)',true)
-        + '<span style="color:var(--err-fg); font-weight:500;">Stopping…</span>';
+      setStatusHtml(mkDot('var(--err-fg)',true)
+        + '<span style="color:var(--err-fg); font-weight:500;">Stopping…</span>');
+      setMobileDot('var(--err-fg)', true);
     } else {
-      el('start').style.display='';
-      statusEl.innerHTML = mkDot('var(--muted)',false)
-        + '<span style="color:var(--muted); font-weight:500;">Idle</span>';
+      showCtrl('start');
+      setStatusHtml(mkDot('var(--muted)',false)
+        + '<span style="color:var(--muted); font-weight:500;">Idle</span>');
+      setMobileDot('var(--muted)', false);
     }
   }
 
@@ -556,7 +706,9 @@
     fetch('/api/scan/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:'{}'})
       .then(function(r){return r.json();}).then(poll).catch(function(){});
   }
-  ['start','pause','resume','stop'].forEach(function(a){ el(a).onclick=function(){act(a);}; });
+  ['start','pause','resume','stop'].forEach(function(a){
+    ctrlBtns(a).forEach(function(btn){ btn.onclick = function(){ act(a); }; });
+  });
 
   function poll(){
     fetch('/api/progress').then(function(r){return r.json();}).then(function(d){
