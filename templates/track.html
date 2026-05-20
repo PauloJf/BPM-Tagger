@@ -121,13 +121,16 @@
         locked
       </span>
     {% endif %}
-    {% if track.needs_review %}
+    {% if track.needs_review and not track.reviewed %}
       <span class="badge badge--review"><span class="badge-dot"></span>needs review</span>
+    {% endif %}
+    {% if track.reviewed %}
+      <span class="badge badge--reviewed"><span class="badge-dot"></span>reviewed</span>
     {% endif %}
     {% if track.status == 'error' %}
       <span class="badge badge--error"><span class="badge-dot"></span>error</span>
     {% endif %}
-    {% if not track.locked and not track.needs_review and track.status != 'error' %}
+    {% if not track.locked and not track.needs_review and not track.reviewed and track.status != 'error' %}
       <span class="badge badge--ok">ok</span>
     {% endif %}
     <span style="font-family:var(--mono); font-size:11px; color:var(--muted); margin-left:auto;">

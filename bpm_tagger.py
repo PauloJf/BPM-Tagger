@@ -411,7 +411,7 @@ def compute_waveform_peaks(file_path: str, n_bars: int = 300) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 class BPMDatabase:
-    _SUSPICIOUS_WHERE = """status = 'done' AND locked = 0 AND (
+    _SUSPICIOUS_WHERE = """status = 'done' AND locked = 0 AND reviewed = 0 AND (
         needs_review = 1
         OR (bpm_confidence IS NOT NULL AND bpm_confidence < ?)
         OR detector = 'librosa'
@@ -449,6 +449,7 @@ class BPMDatabase:
                     status         TEXT DEFAULT 'pending',
                     error_message  TEXT,
                     needs_review   INTEGER DEFAULT 0,
+                    reviewed       INTEGER DEFAULT 0,
                     locked         INTEGER DEFAULT 0
                 )
             """)
@@ -467,6 +468,7 @@ class BPMDatabase:
             ("bpm_es",         "REAL"),
             ("bpm_lb",         "REAL"),
             ("needs_review",   "INTEGER DEFAULT 0"),
+            ("reviewed",       "INTEGER DEFAULT 0"),
             ("locked",         "INTEGER DEFAULT 0"),
             ("waveform_peaks", "TEXT"),
         ]:
@@ -510,6 +512,7 @@ class BPMDatabase:
                     analyzed_at    = excluded.analyzed_at,
                     status         = excluded.status,
                     needs_review   = excluded.needs_review,
+                    reviewed       = 0,
                     error_message  = excluded.error_message,
                     waveform_peaks = COALESCE(excluded.waveform_peaks, waveform_peaks)
             """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence,
@@ -526,6 +529,8 @@ class BPMDatabase:
                     bpm         = COALESCE(excluded.bpm, bpm),
                     analyzed_at = excluded.analyzed_at,
                     status      = 'done',
+                    needs_review = 0,
+                    reviewed    = 1,
                     locked      = 1
             """, (file_path, bpm, now))
             conn.commit()
@@ -564,9 +569,12 @@ class BPMDatabase:
         return updated, missing
 
     def approve_track(self, file_path: str) -> None:
-        """Clear needs_review without changing BPM or locking the track."""
+        """Clear needs_review and mark as reviewed without changing BPM or locking."""
         with self._connect() as conn:
-            conn.execute("UPDATE tracks SET needs_review = 0 WHERE file_path = ?", (file_path,))
+            conn.execute(
+                "UPDATE tracks SET needs_review = 0, reviewed = 1 WHERE file_path = ?",
+                (file_path,)
+            )
             conn.commit()
 
     def get_error_tracks(self) -> list[str]:
@@ -709,6 +717,7 @@ class BPMDatabase:
                     COUNT(CASE WHEN status='error'   THEN 1 END) AS errors,
                     COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
                     COUNT(CASE WHEN needs_review=1 AND status='done' THEN 1 END) AS needs_review,
+                    COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked
                 FROM tracks
             """).fetchone()
