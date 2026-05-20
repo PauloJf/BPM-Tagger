@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.0.4 — 2026-05-20
+
+**Reviewed status**
+- Approving or locking a flagged track now sets status to `reviewed` (green badge) instead of silently clearing the flag
+- Reviewed tracks are excluded from the review queue and from `scan_review` / report re-analysis
+- Re-analyzing an unlocked track resets `reviewed` back to `ok` or `review` based on the new result
+
+**Playback buffering**
+- `preload="auto"` — browser begins buffering audio as soon as the track page loads
+- New **Playback Buffer** setting (default 3 s): play button waits until that many seconds are buffered before starting; shows a spinner while waiting — prevents stuttering on NAS / slow storage
+- Configurable in Settings → Playback (0–30 s), persisted to `settings.json`
+
+**Rescan-after-upgrade fix**
+- Scanner auto-detects stale pre-tag hashes on startup: if >50% of done tracks show mismatches on a non-forced scan, hashes are refreshed in-place before queuing — prevents a full library rescan after upgrading from an older version
+- New **Refresh Hashes** button in Settings → Scan for manual triggering
+- Warning banner in Settings → Mode when `watch_all` or `scan_all` is stored (both re-analyze everything on every restart)
+
+**Other**
+- SVG favicon (purple gradient square with EQ bars)
+- Version check no longer shows a 404 error when no GitHub releases have been published yet
+
 ## v1.0.3 — 2026-05-20
 
 **Docker image size**
