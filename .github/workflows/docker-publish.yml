@@ -21,7 +21,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
+      # --- slim image (no PyTorch, ~400 MB) → :latest / :v1.0.2 / :1.0 ---
+
+      - name: Extract metadata (slim)
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -31,11 +33,33 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Build and push
+      - name: Build and push slim image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
+          build-args: WITH_DEEPRHYTHM=false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # --- full image (PyTorch + deeprhythm CNN, ~1.8 GB) → :full / :v1.0.2-full ---
+
+      - name: Extract metadata (full)
+        id: meta-full
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
+          tags: |
+            type=semver,pattern={{version}}-full
+            type=raw,value=full
+
+      - name: Build and push full image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          build-args: WITH_DEEPRHYTHM=true
+          tags: ${{ steps.meta-full.outputs.tags }}
+          labels: ${{ steps.meta-full.outputs.labels }}
