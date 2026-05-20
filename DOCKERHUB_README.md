@@ -8,12 +8,21 @@ Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/B
 
 ---
 
+## Image Tags
+
+| Tag | Detectors | Peak RAM | Use when |
+|---|---|---|---|
+| `latest` _(default)_ | essentia + librosa | ~400 MB | NAS / low-memory devices |
+| `full` | deeprhythm (CNN) + essentia + librosa | ~1.8 GB | Servers with spare RAM |
+
+---
+
 ## Quick Start
 
 ```yaml
 services:
   bpm-tagger:
-    image: gatoserio/bpm-tagger:latest
+    image: gatoserio/bpm-tagger:latest   # or :full for deeprhythm CNN
     restart: unless-stopped
     environment:
       MODE: watch
@@ -97,19 +106,6 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Supported Formats
 
 `.mp3` · `.flac` · `.ogg` · `.opus` · `.m4a` · `.aac` · `.wav` · `.wv`
-
----
-
-## Memory Requirements
-
-| Configuration | Peak RAM |
-|---|---|
-| `USE_DEEPRHYTHM=false` (default) | ~390 MB |
-| `USE_DEEPRHYTHM=true`, `WORKERS=1` | ~870 MB |
-| `USE_DEEPRHYTHM=true`, `WORKERS=2` | ~1 350 MB |
-| `USE_DEEPRHYTHM=true`, `WORKERS=4` | ~2 300 MB |
-
-Defaults (`USE_DEEPRHYTHM=false`, memory limit `800M`) are sized for NAS devices.
 
 ---
 

@@ -75,14 +75,22 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 ## Hardware / Memory
 
-| Configuration | Peak RAM | Notes |
-|---|---|---|
-| `USE_DEEPRHYTHM=false` (default) | ~390 MB | essentia + librosa only; no PyTorch |
-| `USE_DEEPRHYTHM=true`, `WORKERS=1` | ~870 MB | adds PyTorch CNN (~500 MB) |
-| `USE_DEEPRHYTHM=true`, `WORKERS=2` | ~1 350 MB | each worker loads its own model copy |
-| `USE_DEEPRHYTHM=true`, `WORKERS=4` | ~2 300 MB | only for high-RAM servers |
+Two image variants are published to Docker Hub:
 
-Set `deploy.resources.limits.memory` in `docker-compose.yml` to at least the peak RAM for your configuration. The defaults (`USE_DEEPRHYTHM=false`, limit `800M`) are sized for NAS devices with 2–4 GB total RAM. Re-enable deeprhythm for maximum accuracy if your host has enough headroom.
+| Image tag | Detectors | Peak RAM | Build |
+|---|---|---|---|
+| `latest` _(default)_ | essentia + librosa | ~400 MB | slim, no PyTorch |
+| `full` | deeprhythm (CNN) + essentia + librosa | ~1.8 GB | with PyTorch CPU |
+
+For the `full` image, peak RAM scales with workers:
+
+| `WORKERS` | Peak RAM |
+|---|---|
+| 1 | ~870 MB |
+| 2 | ~1 350 MB |
+| 4 | ~2 300 MB |
+
+Set `deploy.resources.limits.memory` in `docker-compose.yml` to at least the peak RAM for your configuration. The defaults (`latest` image, limit `800M`) are sized for NAS devices. Switch to `:full` and raise the limit if you want CNN accuracy.
 
 ---
 

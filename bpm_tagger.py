@@ -1215,7 +1215,7 @@ def main():
         "segment_duration":           float(os.environ.get("SEGMENT_DURATION", "45")),
         "review_confidence_threshold":float(os.environ.get("REVIEW_CONFIDENCE_THRESHOLD", "0.4")),
         "review_disagree_threshold":  float(os.environ.get("REVIEW_DISAGREE_THRESHOLD", "15")),
-        "use_deeprhythm":             os.environ.get("USE_DEEPRHYTHM", "true").lower() == "true",
+        "use_deeprhythm":             os.environ.get("USE_DEEPRHYTHM", "false").lower() == "true",
         "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
