@@ -294,6 +294,16 @@
           </div>
         </div>
       </form>
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
+        <div style="font-size:13px; font-weight:600; margin-bottom:4px;">Refresh stored hashes</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:10px; max-width:480px; line-height:1.5;">
+          If the scanner re-analyzes your whole library after an upgrade, stored file hashes may be stale.
+          Click to recompute them — the next scan will only process files that have actually changed.
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="refresh-hashes-btn"
+                onclick="doRefreshHashes()">Refresh Hashes</button>
+        <span id="refresh-hashes-result" style="margin-left:10px; font-size:13px; color:var(--muted);"></span>
+      </div>
     </div>
 
     {# Operating Mode #}
@@ -319,9 +329,12 @@
             <div></div>
             <p style="font-size:12px; color:var(--muted); line-height:1.5; max-width:440px;">
               <strong style="color:var(--text);">watch</strong> / <strong style="color:var(--text);">scan_unscanned</strong> — new/changed files only ·
-              <strong style="color:var(--text);">watch_all</strong> / <strong style="color:var(--text);">scan_all</strong> — re-analyze everything ·
+              <strong style="color:var(--text);">watch_all</strong> / <strong style="color:var(--text);">scan_all</strong> — re-analyze everything on <em>every</em> restart ·
               <strong style="color:var(--text);">scan_review</strong> — flagged &amp; error tracks ·
               <strong style="color:var(--text);">report</strong> — write CSV, no analysis
+              {% if cfg.get('mode','watch') in ('watch_all','scan_all') %}
+              <br><span style="color:var(--warn-fg);">⚠ This mode re-analyzes your entire library on every container restart. Switch back to <strong>watch</strong> once you're done.</span>
+              {% endif %}
             </p>
           </div>
           <div>
@@ -443,6 +456,33 @@
 </div>{# end settings-layout #}
 
 <script>
+// ── Refresh hashes ────────────────────────────────────────────────────────
+function doRefreshHashes() {
+  var btn = document.getElementById('refresh-hashes-btn');
+  var res = document.getElementById('refresh-hashes-result');
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  btn.disabled = true;
+  res.textContent = 'Refreshing…';
+  res.style.color = 'var(--muted)';
+  fetch('/api/scan/refresh_hashes', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+    body: '{}'
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        res.textContent = 'Done — ' + d.updated + ' hashes updated, ' + d.missing + ' files not found.';
+        res.style.color = 'var(--ok-fg)';
+      } else {
+        res.textContent = 'Error: ' + (d.error || 'unknown');
+        res.style.color = 'var(--err-fg)';
+      }
+    })
+    .catch(function() { res.textContent = 'Network error'; res.style.color = 'var(--err-fg)'; })
+    .finally(function() { btn.disabled = false; });
+}
+
 // ── Toggle sync ───────────────────────────────────────────────────────────
 function syncToggle(btn, hiddenId) {
   var isOn = btn.classList.contains('on');
