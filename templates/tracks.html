@@ -399,6 +399,16 @@
       }).catch(function() {});
   }
 
+  // Refresh table when returning to this tab after reviewing/locking a track
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) refreshTable();
+  });
+
+  // Low-frequency idle refresh so edits made in a background tab show up
+  setInterval(function() {
+    if (!document.hidden) refreshTable();
+  }, 30000);
+
   poll();
   setInterval(poll, 1500);
 })();
