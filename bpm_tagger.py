@@ -563,6 +563,20 @@ class BPMDatabase:
             conn.commit()
         return updated, missing
 
+    def approve_track(self, file_path: str) -> None:
+        """Clear needs_review without changing BPM or locking the track."""
+        with self._connect() as conn:
+            conn.execute("UPDATE tracks SET needs_review = 0 WHERE file_path = ?", (file_path,))
+            conn.commit()
+
+    def get_error_tracks(self) -> list[str]:
+        """Return file paths of unlocked tracks with status='error'."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path FROM tracks WHERE status = 'error' AND locked = 0"
+            ).fetchall()
+        return [r["file_path"] for r in rows]
+
     def save_waveform_peaks(self, file_path: str, waveform_peaks_json: str) -> None:
         """Back-fill waveform_peaks for a track that was processed before this column existed."""
         with self._connect() as conn:
@@ -999,6 +1013,21 @@ class BPMTagger:
         counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
         self._finish_scan(counts, "scan_review")
+        return counts
+
+    def retry_errors(self) -> dict:
+        """Re-analyze only tracks with status='error'."""
+        self._stop_event.clear()
+        self._pause_event.set()
+        self.progress.set_paused(False)
+
+        queue = self.db.get_error_tracks()
+        log.info("retry_errors: %d error tracks queued", len(queue))
+
+        self.progress.start(len(queue))
+        counts = self._process_files_parallel(queue, force=True)
+        self.progress.finish()
+        self._finish_scan(counts, "retry_errors")
         return counts
 
     def report(self) -> dict:

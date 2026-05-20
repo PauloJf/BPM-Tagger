@@ -147,6 +147,10 @@
             border-top: 1px solid var(--border);
             font-family: var(--mono); font-size: 11px; color: var(--muted);">
   <span>BPM Tagger · v{{ version }}</span>
+  <span id="version-badge"
+        style="font-family:var(--mono); font-size:11px; color:var(--muted);">
+    checking…
+  </span>
   <span style="color: var(--border);">·</span>
   <a href="https://github.com/paulojf/bpm-tagger" target="_blank" rel="noopener"
      style="color: var(--accent-2); text-decoration: none;">
@@ -155,4 +159,28 @@
   <span style="color: var(--border);">·</span>
   <span>MIT licence</span>
 </div>
+
+<script>
+  (function() {
+    var current = {{ version | tojson }};
+    fetch('/api/version/check')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var el = document.getElementById('version-badge');
+        if (!d.latest) { el.textContent = ''; return; }
+        var latest = d.latest.replace(/^v/, '');
+        if (latest === current) {
+          el.textContent = '· up to date';
+          el.style.color = 'var(--ok-fg)';
+        } else {
+          el.textContent = '· v' + latest + ' available';
+          el.style.color = 'var(--warn-fg)';
+          el.style.fontWeight = '600';
+        }
+      })
+      .catch(function() {
+        document.getElementById('version-badge').textContent = '';
+      });
+  })();
+</script>
 {% endblock %}
