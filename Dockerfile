@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+# slim (default): essentia + librosa only, no PyTorch  ~400 MB
+# full:           adds PyTorch CPU + deeprhythm CNN    ~1.8 GB
+#   docker build --build-arg WITH_DEEPRHYTHM=true -t gatoserio/bpm-tagger:full .
+ARG WITH_DEEPRHYTHM=false
+
 # System deps for librosa / soundfile / essentia
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -10,19 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install CPU-only PyTorch first — avoids the default ~2 GB CUDA build
-RUN pip install --no-cache-dir \
-        torch torchaudio \
-        --index-url https://download.pytorch.org/whl/cpu
+# PyTorch + deeprhythm — only in the full build
+RUN if [ "$WITH_DEEPRHYTHM" = "true" ]; then \
+        pip install --no-cache-dir \
+            torch torchaudio \
+            --index-url https://download.pytorch.org/whl/cpu \
+        && pip install --no-cache-dir deeprhythm \
+        && python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"; \
+    fi
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
 RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
-
-# Pre-download the deeprhythm model weights so the container works offline
-RUN python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"
 
 COPY VERSION bpm_tagger.py web_ui.py ./
 COPY templates/ templates/
