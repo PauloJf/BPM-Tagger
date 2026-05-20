@@ -15,6 +15,20 @@
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected web UI for reviewing and correcting results.
 
+## Screenshots
+
+| Library | Review queue |
+|---|---|
+| ![Library](docs/screenshots/02-library.png) | ![Review](docs/screenshots/04-review.png) |
+
+| Track detail | Statistics |
+|---|---|
+| ![Track detail](docs/screenshots/05-track-detail.png) | ![Stats](docs/screenshots/06-stats.png) |
+
+| Settings | Login |
+|---|---|
+| ![Settings](docs/screenshots/07-settings.png) | ![Login](docs/screenshots/01-login.png) |
+
 ## Features
 
 - **Three-detector BPM analysis** — [deeprhythm](https://github.com/bleugreen/deeprhythm) (CNN) and [essentia](https://essentia.upf.edu/) `RhythmExtractor2013` run as dual primary detectors; [librosa](https://librosa.org/) multi-segment analysis always runs as confidence scorer and tiebreaker
