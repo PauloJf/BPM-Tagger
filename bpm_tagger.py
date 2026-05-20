@@ -921,6 +921,9 @@ class BPMTagger:
         log.info("%s done — %d tagged (%d need review), %d skipped, %d errors",
                  label, counts["tagged"], counts["needs_review"],
                  counts["skipped"], counts["errors"])
+        # Worker threads have exited; their thread-local model instances are eligible
+        # for collection. Run GC explicitly to reclaim torch weights promptly.
+        import gc; gc.collect()
 
     def _count_results(self, futures) -> dict:
         """Drain a dict of futures and return tallied counts."""
@@ -1065,6 +1068,8 @@ class BPMTagger:
                         self._pending[event.dest_path] = time.monotonic() + 10
 
             def drain_pending(self):
+                idle_release_secs = 300  # release model after 5 min with no new files
+                last_work_time = 0.0
                 while not self._tagger._stop_event.is_set():
                     time.sleep(2)
                     try:
@@ -1078,6 +1083,15 @@ class BPMTagger:
                                 break
                             self._tagger._pause_event.wait()
                             self._tagger.process_file(path, force=True)
+                        if ready:
+                            last_work_time = time.monotonic()
+                        elif (last_work_time > 0
+                              and time.monotonic() - last_work_time > idle_release_secs
+                              and hasattr(_local, "predictor")):
+                            del _local.predictor
+                            import gc; gc.collect()
+                            log.debug("DeepRhythm model released after idle period")
+                            last_work_time = 0.0
                     except Exception as exc:
                         log.error("drain_pending error: %s", exc)
 

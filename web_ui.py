@@ -37,9 +37,18 @@ _tagger = None
 _config: dict = {}
 _settings_path = ""
 _restarting = False
-_waveform_cache: dict = {}
-_waveform_inflight: dict = {}   # path -> threading.Event; prevents double-compute
+_waveform_cache: dict = {}          # path -> {peaks, duration}; insertion-ordered for eviction
+_waveform_cache_max = 500           # evict oldest 10% when exceeded
+_waveform_inflight: dict = {}       # path -> threading.Event; prevents double-compute
 _waveform_inflight_lock = Lock()
+
+def _cache_waveform(path: str, result: dict) -> None:
+    _waveform_cache[path] = result
+    if len(_waveform_cache) > _waveform_cache_max:
+        evict = list(_waveform_cache.keys())[:_waveform_cache_max // 10]
+        for k in evict:
+            _waveform_cache.pop(k, None)
+
 
 # Brute-force login protection
 _login_attempts: dict = defaultdict(list)
@@ -344,7 +353,7 @@ def api_waveform():
         if track and track.get("waveform_peaks"):
             try:
                 result = json.loads(track["waveform_peaks"])
-                _waveform_cache[path] = result
+                _cache_waveform(path, result)
                 return jsonify(result)
             except Exception:
                 pass  # corrupt value — fall through to recompute
@@ -373,7 +382,7 @@ def api_waveform():
         if raw is None:
             return jsonify(error="waveform computation failed"), 500
         result = json.loads(raw)
-        _waveform_cache[path] = result
+        _cache_waveform(path, result)
         if _db:
             _db.save_waveform_peaks(path, raw)
         return jsonify(result)
