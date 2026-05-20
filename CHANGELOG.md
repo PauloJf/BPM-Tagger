@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0.3 — 2026-05-20
+
+**Docker image size**
+- New slim (default) image ships without PyTorch — ~400 MB instead of ~1.8 GB; suited for NAS and low-memory devices
+- New `:full` tag includes PyTorch CPU + deeprhythm CNN for maximum accuracy on servers with spare RAM
+- `USE_DEEPRHYTHM` now defaults to `false` in code (was `true`), consistent with `docker-compose.yml`
+- `docs/` (screenshots) excluded from Docker build context via `.dockerignore`
+- GitHub Actions workflow moved to `main`; publishes both `:latest` (slim) and `:full` on every version tag
+
 ## v1.0.2 — 2026-05-20
 
 **Mobile UI**
