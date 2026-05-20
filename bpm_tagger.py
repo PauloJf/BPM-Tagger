@@ -1035,6 +1035,30 @@ class BPMTagger:
                     fp = os.path.join(root, fname)
                     entries.append((fp, get_file_hash(fp)))
 
+        if not force:
+            # Auto-detect stale pre-tag hashes: if the majority of already-done
+            # tracks show hash mismatches it almost certainly means the DB was
+            # built by an older version that stored the hash before writing the
+            # BPM tag.  Refresh stored hashes in-place so the upcoming
+            # bulk_register_pending doesn't re-queue the whole library.
+            existing = self.db.get_all_file_hashes()
+            entry_map = dict(entries)
+            done_tracked = [(fp, h) for fp, (h, s, _l) in existing.items()
+                            if s == "done" and not _l and fp in entry_map]
+            if done_tracked:
+                mismatches = sum(1 for fp, h in done_tracked if h != entry_map[fp])
+                ratio = mismatches / len(done_tracked)
+                if mismatches > 10 and ratio > 0.5:
+                    log.warning(
+                        "Hash mismatch on %.0f%% of done tracks (%d/%d) — "
+                        "auto-refreshing stored hashes (stale pre-tag hashes detected; "
+                        "this happens once after upgrading from an older version)",
+                        ratio * 100, mismatches, len(done_tracked),
+                    )
+                    self.db.refresh_hashes()
+                    # Recompute entries so bulk_register uses the fresh hashes
+                    entries = [(fp, get_file_hash(fp)) for fp, _ in entries]
+
         self.db.bulk_register_pending(entries, force=force)
         log.info("Scan phase 1 complete — %d audio files registered", len(entries))
 

@@ -502,6 +502,19 @@ def api_scan_retry_errors():
     return jsonify(ok=True)
 
 
+@app.route("/api/scan/refresh_hashes", methods=["POST"])
+@login_required
+def api_refresh_hashes():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    if _progress and _progress.is_scanning:
+        return jsonify(ok=False, error="cannot refresh hashes while a scan is running")
+    updated, missing = _db.refresh_hashes()
+    log.info("Manual hash refresh: %d updated, %d not found on disk", updated, missing)
+    return jsonify(ok=True, updated=updated, missing=missing)
+
+
 @app.route("/api/scan/pause", methods=["POST"])
 @login_required
 def api_scan_pause():
