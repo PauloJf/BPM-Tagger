@@ -138,8 +138,10 @@ Set `deploy.resources.limits.memory` to at least the peak for your config. The d
 
 ## Changelog
 
+Full release history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
 **v1.0.2** — Mobile-responsive UI: hamburger nav, settings sidebar scroll strip, scan controls accessible on small screens; scan status dot always visible in the top bar.
 
-**v1.0.1** — Two-phase scan: all audio files are registered as `pending` in the library immediately on startup, before BPM analysis begins; interrupted scans resume from pending entries.
+**v1.0.1** — Two-phase scan: all audio files registered as `pending` immediately on startup, before BPM analysis begins; interrupted scans resume from pending entries.
 
-**v1.0.0** — First stable release: full UI redesign (oklch tokens, Inter Tight + JetBrains Mono, card layouts, real waveform with scrubbing, tap-tempo, redesigned review queue with DetectorBar, CSS histogram on stats); two-phase waveform pipeline stores peaks in SQLite; memory released after idle; Approve / Retry Errors / version badge added.
+**v1.0.0** — First stable release: full UI redesign, real waveform with scrubbing, tap-tempo, DetectorBar, CSS histogram; waveform peaks stored in SQLite; memory released after idle.
