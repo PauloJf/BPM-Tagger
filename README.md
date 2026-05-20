@@ -17,17 +17,17 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 ## Screenshots
 
-| Library | Review queue |
+| Login | Library |
 |---|---|
-| ![Library](docs/screenshots/02-library.png) | ![Review](docs/screenshots/04-review.png) |
+| ![Login](docs/screenshots/01-login.png) | ![Library](docs/screenshots/02-library.png) |
 
-| Track detail | Statistics |
+| Track detail | Review queue |
 |---|---|
-| ![Track detail](docs/screenshots/05-track-detail.png) | ![Stats](docs/screenshots/06-stats.png) |
+| ![Track detail](docs/screenshots/05-track-detail.png) | ![Review](docs/screenshots/04-review.png) |
 
-| Settings | Login |
+| Statistics | Settings |
 |---|---|
-| ![Settings](docs/screenshots/07-settings.png) | ![Login](docs/screenshots/01-login.png) |
+| ![Stats](docs/screenshots/06-stats.png) | ![Settings](docs/screenshots/07-settings.png) |
 
 ## Features
 
