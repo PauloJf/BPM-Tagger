@@ -95,6 +95,9 @@
     <div class="stat-card">
       <div class="stat-label">Errors</div>
       <div class="stat-value" id="s-errors" style="color:var(--err-fg);">—</div>
+      <button id="retry-errors-btn" class="btn btn-ghost btn-sm"
+              style="display:none; margin-top:10px; width:100%; font-size:11px;"
+              onclick="retryErrors()">Retry →</button>
     </div>
     <div class="stat-card">
       <div class="stat-label">Locked</div>
@@ -176,6 +179,7 @@
       document.getElementById('s-done').textContent     = (s.done  || 0).toLocaleString();
       document.getElementById('s-review').textContent   = (s.needs_review || 0).toLocaleString();
       document.getElementById('s-errors').textContent   = (s.errors || 0).toLocaleString();
+      document.getElementById('retry-errors-btn').style.display = s.errors > 0 ? '' : 'none';
       document.getElementById('s-locked').textContent   = (s.locked || 0).toLocaleString();
       document.getElementById('s-unscanned').textContent =
         Math.max(0, (s.total||0)-(s.done||0)-(s.errors||0)).toLocaleString();
@@ -236,5 +240,28 @@
       document.getElementById('loading').textContent = 'Failed to load statistics.';
     });
 })();
+
+var CSRF = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+function retryErrors() {
+  var btn = document.getElementById('retry-errors-btn');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  fetch('/api/scan/retry_errors', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF},
+    body: '{}'
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      window.location.href = '/tracks';
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Retry →';
+    }
+  })
+  .catch(function() { btn.disabled = false; btn.textContent = 'Retry →'; });
+}
 </script>
 {% endblock %}

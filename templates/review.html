@@ -35,7 +35,7 @@
     Needs review
   </h1>
   <p style="font-size:13px; color:var(--muted);">
-    <span style="font-family:var(--mono); color:var(--warn-fg);">{{ total }}</span>
+    <span style="font-family:var(--mono); color:var(--warn-fg);" id="review-total">{{ total }}</span>
     tracks flagged · review them one by one or open directly
   </p>
 </div>
@@ -137,8 +137,16 @@
           </div>
 
           <div style="display:flex; gap:8px; margin-top:14px;">
-            <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
-               class="btn btn-ghost btn-sm" style="flex:1; text-align:center;">Skip</a>
+            <button class="btn btn-ghost btn-sm"
+                    style="flex:1; color:var(--ok-fg);"
+                    onclick="approveTrack(this, {{ t.file_path|tojson }})">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12 L10 17 L19 7"/>
+              </svg>
+              Approve
+            </button>
             <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
                class="btn btn-primary btn-sm" style="flex:1; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">
               Review
@@ -176,4 +184,39 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+  var CSRF = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  function approveTrack(btn, filePath) {
+    btn.disabled = true;
+    fetch('/api/approve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF},
+      body: JSON.stringify({file_path: filePath})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { btn.disabled = false; return; }
+      var card = btn.closest('.review-card');
+      card.style.transition = 'opacity 0.25s';
+      card.style.opacity = '0';
+      setTimeout(function() {
+        var wrap = card.parentNode;
+        card.remove();
+        var totalEl = document.getElementById('review-total');
+        if (totalEl) totalEl.textContent = Math.max(0, parseInt(totalEl.textContent) - 1);
+        // Show empty state if no cards remain
+        if (wrap && !wrap.querySelector('.review-card')) {
+          wrap.innerHTML = '<div style="padding:60px 20px; text-align:center;'
+            + 'background:var(--surface); border:1px solid var(--border); border-radius:14px;">'
+            + '<div style="font-size:32px; margin-bottom:12px; color:var(--ok-fg);">✓</div>'
+            + '<div style="font-size:14px; color:var(--muted);">No tracks need review.</div>'
+            + '</div>';
+        }
+      }, 270);
+    })
+    .catch(function() { btn.disabled = false; });
+  }
+</script>
 {% endblock %}

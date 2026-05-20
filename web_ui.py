@@ -335,6 +335,23 @@ def api_unlock():
         return jsonify(ok=False, error=str(exc))
 
 
+@app.route("/api/approve", methods=["POST"])
+@login_required
+def api_approve():
+    _check_csrf()
+    data = request.get_json(force=True, silent=True) or {}
+    file_path = data.get("file_path", "")
+    if not file_path:
+        return jsonify(ok=False, error="file_path required")
+    _assert_in_music_dir(file_path)
+    try:
+        _db.approve_track(file_path)
+        log.info("UI: approved %s", Path(file_path).name)
+        return jsonify(ok=True, review_count=_db.get_stats().get("needs_review", 0))
+    except Exception as exc:
+        return jsonify(ok=False, error=str(exc))
+
+
 @app.route("/api/waveform")
 @login_required
 def api_waveform():
@@ -468,6 +485,18 @@ def api_scan_start():
     else:  # watch, scan_unscanned, default
         target = lambda: _tagger.scan_directory(force=False)
     threading.Thread(target=target, daemon=True).start()
+    return jsonify(ok=True)
+
+
+@app.route("/api/scan/retry_errors", methods=["POST"])
+@login_required
+def api_scan_retry_errors():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    if _progress and _progress.is_scanning:
+        return jsonify(ok=False, error="scan already running")
+    threading.Thread(target=_tagger.retry_errors, daemon=True).start()
     return jsonify(ok=True)
 
 
