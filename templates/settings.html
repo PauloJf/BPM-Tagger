@@ -435,9 +435,12 @@ function checkLatest() {
       if (d.error) {
         res.textContent = 'Error: ' + d.error;
         res.style.color = 'var(--err-fg)';
+      } else if (!d.latest) {
+        res.textContent = 'No releases published yet';
+        res.style.color = 'var(--muted)';
       } else {
         var current = 'v{{ version }}';
-        var latest  = d.latest || 'unknown';
+        var latest  = d.latest;
         if (latest === current) {
           res.textContent = '✓ Up to date (' + latest + ')';
           res.style.color = 'var(--ok-fg)';
