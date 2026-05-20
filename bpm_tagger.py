@@ -665,15 +665,51 @@ class BPMDatabase:
             """).fetchall()
             return [r[0] for r in rows]
 
+    def bulk_register_pending(self, entries: list[tuple[str, str]], force: bool = False) -> None:
+        """Insert/update entries as 'pending'. Locked tracks and (when !force)
+        already-done unchanged tracks are left untouched."""
+        if not entries:
+            return
+        if force:
+            sql = """
+                INSERT INTO tracks (file_path, file_hash, status)
+                VALUES (?, ?, 'pending')
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_hash = excluded.file_hash,
+                    status    = 'pending'
+                WHERE locked = 0
+            """
+        else:
+            sql = """
+                INSERT INTO tracks (file_path, file_hash, status)
+                VALUES (?, ?, 'pending')
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_hash = excluded.file_hash,
+                    status    = 'pending'
+                WHERE locked = 0 AND (status != 'done' OR file_hash != excluded.file_hash)
+            """
+        with self._connect() as conn:
+            conn.executemany(sql, entries)
+            conn.commit()
+
+    def get_pending_tracks(self) -> list[str]:
+        """Return file paths of unlocked tracks with status='pending'."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path FROM tracks WHERE status = 'pending' AND locked = 0 ORDER BY file_path"
+            ).fetchall()
+        return [r["file_path"] for r in rows]
+
     def get_stats(self) -> dict:
         with self._connect() as conn:
             row = conn.execute("""
                 SELECT
                     COUNT(*) AS total,
-                    COUNT(CASE WHEN status='done'  THEN 1 END) AS done,
-                    COUNT(CASE WHEN status='error' THEN 1 END) AS errors,
+                    COUNT(CASE WHEN status='done'    THEN 1 END) AS done,
+                    COUNT(CASE WHEN status='error'   THEN 1 END) AS errors,
+                    COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
                     COUNT(CASE WHEN needs_review=1 AND status='done' THEN 1 END) AS needs_review,
-                    COUNT(CASE WHEN locked=1       THEN 1 END) AS locked
+                    COUNT(CASE WHEN locked=1         THEN 1 END) AS locked
                 FROM tracks
             """).fetchone()
             return dict(row)
@@ -981,21 +1017,26 @@ class BPMTagger:
         self._pause_event.set()
         self.progress.set_paused(False)
 
-        audio_files = []
+        # Phase 1 — discovery: register every audio file as 'pending' so the
+        # full library is visible in the UI immediately, before analysis begins.
+        entries: list[tuple[str, str]] = []
         for root, _, files in os.walk(self.config["music_dir"]):
             for fname in sorted(files):
                 if Path(fname).suffix.lower() in self.config["extensions"]:
-                    audio_files.append(os.path.join(root, fname))
+                    fp = os.path.join(root, fname)
+                    entries.append((fp, get_file_hash(fp)))
 
-        if not force:
-            # Bulk-load all tracked records (one query) and filter to files that
-            # genuinely need analysis, so progress.total and the thread pool only
-            # reflect real work rather than the entire library.
-            tracked = self.db.get_all_file_hashes()
-            audio_files = [fp for fp in audio_files if self._needs_analysis_fast(fp, tracked)]
+        self.db.bulk_register_pending(entries, force=force)
+        log.info("Scan phase 1 complete — %d audio files registered", len(entries))
 
-        self.progress.start(len(audio_files))
-        counts = self._process_files_parallel(audio_files, force=force)
+        # Phase 2 — processing: work through every pending track.
+        # bulk_register_pending already filtered out locked + (when !force)
+        # unchanged done tracks, so everything in the queue needs analysis.
+        queue = self.db.get_pending_tracks()
+        log.info("Scan phase 2 — %d tracks queued for analysis", len(queue))
+
+        self.progress.start(len(queue))
+        counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
         self._finish_scan(counts, "Scan")
         return counts
