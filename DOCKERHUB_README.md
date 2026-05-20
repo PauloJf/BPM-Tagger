@@ -113,6 +113,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v1.0.3** — Slim image (~400 MB, no PyTorch) as default `:latest`; new `:full` tag adds deeprhythm CNN (~1.8 GB).
+
 **v1.0.2** — Mobile nav (hamburger menu, scroll-strip settings sidebar, scan controls on small screens).
 
 **v1.0.1** — Two-phase scan: all files registered as `pending` before analysis; interrupted scans resume.
