@@ -9,6 +9,7 @@ import secrets
 import threading
 import time
 import urllib.request
+import urllib.error
 from collections import defaultdict
 from datetime import timedelta
 from functools import wraps
@@ -706,6 +707,10 @@ def api_version_check():
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
         return jsonify(latest=data.get("tag_name", "unknown"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return jsonify(latest=None)
+        return jsonify(error=str(exc))
     except Exception as exc:
         return jsonify(error=str(exc))
 
