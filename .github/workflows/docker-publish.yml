@@ -3,6 +3,11 @@ name: Publish Docker image
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag suffix (e.g. v1.0.3)"
+        required: true
 
 jobs:
   push:
