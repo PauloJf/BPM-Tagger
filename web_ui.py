@@ -262,7 +262,8 @@ def track_detail():
 
     return render_template("track.html", track=track, back=back,
                            prev_path=prev_path, next_path=next_path,
-                           queue_pos=queue_pos, queue_total=queue_total)
+                           queue_pos=queue_pos, queue_total=queue_total,
+                           playback_buffer=_config.get("playback_buffer", 3))
 
 
 @app.route("/stats")
@@ -688,6 +689,22 @@ def settings_navidrome():
         _tagger.config.update(updates)
     _save_settings(updates)
     flash("Navidrome settings saved.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/playback", methods=["POST"])
+@login_required
+def settings_playback():
+    _check_csrf()
+    try:
+        buf = float(request.form.get("playback_buffer", 3) or 3)
+        buf = max(0.0, min(30.0, buf))
+    except (ValueError, TypeError):
+        buf = 3.0
+    updates = {"playback_buffer": buf}
+    _config.update(updates)
+    _save_settings(updates)
+    flash("Playback settings saved.", "success")
     return redirect(url_for("settings"))
 
 

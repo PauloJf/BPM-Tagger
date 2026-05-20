@@ -66,6 +66,7 @@
     <a href="#sec-scan">Scan Behavior</a>
     <a href="#sec-mode">Operating Mode</a>
     <a href="#sec-navidrome">Navidrome</a>
+    <a href="#sec-playback">Playback</a>
     <a href="#sec-version">Version</a>
     <a href="#sec-restart">Restart</a>
   </div>
@@ -363,6 +364,33 @@
           <div>
             <button type="submit" class="btn btn-primary btn-sm">Save Navidrome Settings</button>
           </div>
+        </div>
+      </form>
+    </div>
+
+    {# Playback #}
+    <div id="sec-playback" class="settings-card card">
+      <div class="settings-card-header">
+        <h2>Playback</h2>
+        <p>Controls audio buffering in the track detail player.</p>
+      </div>
+      <form method="post" action="{{ url_for('settings_playback') }}">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <div class="field-row">
+          <div>
+            <div class="field-row-label">Buffer before play</div>
+            <div class="field-row-hint">Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="number" name="playback_buffer"
+                   value="{{ cfg.get('playback_buffer', 3) }}"
+                   min="0" max="30" step="0.5"
+                   style="width:78px; font-family:var(--mono); text-align:center;">
+            <span style="color:var(--muted); font-size:13px;">s</span>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <button type="submit" class="btn btn-primary btn-sm">Save Playback Settings</button>
         </div>
       </form>
     </div>
