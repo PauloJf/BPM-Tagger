@@ -106,13 +106,13 @@ librosa multi-segment (tiebreaker) ───┘
 
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
-- **Navbar scan controls** — Start, Pause, Resume, and Stop the scanner from any page; live status shows Analysing / Stopping… / Paused / Stopped; Stop waits for the current track to finish before exiting
-- Browse all tracks with BPM, confidence, and detector info; configurable rows per page (10/50/100); filter pills to view **All / Review / Locked** subsets with live counts
-- **Needs Review** queue — step through flagged tracks with Prev/Next navigation
+- **Navbar scan controls** — Start, Pause, Resume, and Stop the scanner from any page; live status dot shows Analysing / Paused / Idle; on mobile (≤700 px) the nav collapses to a hamburger menu — all controls accessible from the dropdown
+- Browse all tracks with BPM, confidence, and detector info; configurable rows per page (10/50/100); filter pills to view **All / Review / Locked** subsets with live counts; newly discovered tracks appear immediately with a `pending` badge before analysis starts
+- **Needs Review** queue — step through flagged tracks with Prev/Next navigation; Approve button clears the flag without re-analysing
 - Stream audio with a **real waveform** (scrub by clicking/dragging); use the **tap-tempo** button (or Space bar) to tap the BPM by ear
 - **Save & Lock** a corrected BPM to prevent future scans from overwriting it
-- **Stats page** — BPM histogram, detector breakdown, and summary statistics for your library
-- **Settings page** — all settings (workers, detectors, BPM range, ntfy, Navidrome, operating mode) take effect immediately without restarting the container; the mode setting also controls what **▶ Start Scan** does; changes persist to `/data/settings.json`; a **Restart** button replaces the process in-place and reconnects the browser automatically
+- **Stats page** — BPM histogram, detector breakdown, and summary statistics; Retry Errors button re-queues failed tracks
+- **Settings page** — all settings (workers, detectors, BPM range, ntfy, Navidrome, operating mode) take effect immediately without restarting the container; sidebar becomes a scroll strip on mobile; changes persist to `/data/settings.json`; a **Restart** button replaces the process in-place and reconnects the browser automatically
 - `/healthz` endpoint returns DB stats as JSON — no login required
 
 ---
@@ -133,3 +133,15 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 | `USE_DEEPRHYTHM=true`, `WORKERS=4` | ~2 300 MB | only for high-RAM servers |
 
 Set `deploy.resources.limits.memory` to at least the peak for your config. The defaults (`USE_DEEPRHYTHM=false`, limit `800M`) are sized for NAS devices. Re-enable deeprhythm for maximum accuracy if your host has enough RAM.
+
+---
+
+## Changelog
+
+Full release history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v1.0.2** — Mobile-responsive UI: hamburger nav, settings sidebar scroll strip, scan controls accessible on small screens; scan status dot always visible in the top bar.
+
+**v1.0.1** — Two-phase scan: all audio files registered as `pending` immediately on startup, before BPM analysis begins; interrupted scans resume from pending entries.
+
+**v1.0.0** — First stable release: full UI redesign, real waveform with scrubbing, tap-tempo, DetectorBar, CSS histogram; waveform peaks stored in SQLite; memory released after idle.

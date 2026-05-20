@@ -216,6 +216,8 @@
       <div>
         {% if t.status == 'error' %}
           <span class="badge badge--error"><span class="badge-dot"></span>error</span>
+        {% elif t.status == 'pending' %}
+          <span class="badge badge--pending">pending</span>
         {% elif t.needs_review %}
           <span class="badge badge--review"><span class="badge-dot"></span>review</span>
         {% elif t.locked %}
@@ -296,10 +298,11 @@
       : '<span style="color:var(--muted);">—</span>';
 
     var badge;
-    if      (t.status==='error') badge = '<span class="badge badge--error"><span class="badge-dot"></span>error</span>';
-    else if (t.needs_review)     badge = '<span class="badge badge--review"><span class="badge-dot"></span>review</span>';
-    else if (t.locked)           badge = '<span class="badge badge--locked"><span class="badge-dot"></span>locked</span>';
-    else                         badge = '<span class="badge badge--ok">ok</span>';
+    if      (t.status==='error')   badge = '<span class="badge badge--error"><span class="badge-dot"></span>error</span>';
+    else if (t.status==='pending') badge = '<span class="badge badge--pending">pending</span>';
+    else if (t.needs_review)       badge = '<span class="badge badge--review"><span class="badge-dot"></span>review</span>';
+    else if (t.locked)             badge = '<span class="badge badge--locked"><span class="badge-dot"></span>locked</span>';
+    else                           badge = '<span class="badge badge--ok">ok</span>';
 
     var flagged = (t.needs_review || t.status === 'error');
     var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks';
