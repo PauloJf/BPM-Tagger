@@ -494,6 +494,14 @@ volumes:
 
 ## Changelog
 
+### v1.0.2 — 2026-05-20
+
+**Mobile UI**
+- Nav bar collapses to a hamburger menu at ≤700 px — links, scan controls (with labels), and Logout all accessible from the dropdown panel
+- Scan-status dot always visible in the mobile top bar so you can see Analyzing / Paused / Idle without opening the menu
+- Settings sidebar becomes a horizontal-scroll pill strip on mobile instead of a stacked list
+- Segmented mode control, sliders, and text inputs all adapt to narrow viewports
+
 ### v1.0.1 — 2026-05-20
 
 **Two-phase scan**
