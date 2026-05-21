@@ -138,11 +138,12 @@
           <path d="M16 16 L21 21"/>
         </svg>
       </span>
-      <input type="text" name="q" value="{{ q }}"
+      <input type="text" id="search-input" name="q" value="{{ q }}"
              placeholder="Search filename or artist…"
-             class="search-input">
+             class="search-input" autocomplete="off">
     </div>
-    {% if q %}<a href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    <a id="search-clear" href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm"
+       style="{{ '' if q else 'display:none' }}">Clear</a>
     <select name="_pp"
             onchange="var u=new URLSearchParams(window.location.search);u.set('per_page',this.value);u.set('page','1');window.location.search=u.toString();"
             style="font-size:12px;">
@@ -285,7 +286,38 @@
   function basename(p) { return p.split('/').pop(); }
   function parentName(p) { var a = p.split('/'); return a.length >= 2 ? a[a.length-2] : ''; }
 
-  var BACK_SUFFIX = '&back_filter={{ filter | urlencode }}&back_page={{ page }}&back_q={{ q | urlencode }}&back_per_page={{ per_page }}';
+  function backSuffix() {
+    var p = new URLSearchParams(window.location.search);
+    var s = '';
+    var bf = p.get('filter');   if (bf)  s += '&back_filter='   + encodeURIComponent(bf);
+    var bp = p.get('page');     if (bp)  s += '&back_page='     + encodeURIComponent(bp);
+    var bq = p.get('q');        if (bq)  s += '&back_q='        + encodeURIComponent(bq);
+    var bpp= p.get('per_page'); if (bpp) s += '&back_per_page=' + encodeURIComponent(bpp);
+    return s;
+  }
+
+  // ── Live search ────────────────────────────────────────────────────────────
+  var _searchTimer = null;
+  var searchInput  = document.getElementById('search-input');
+  var searchClear  = document.getElementById('search-clear');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(function() {
+        var u = new URLSearchParams(window.location.search);
+        var val = searchInput.value.trim();
+        if (val) { u.set('q', val); } else { u.delete('q'); }
+        u.set('page', '1');
+        history.replaceState(null, '', '?' + u.toString());
+        if (searchClear) searchClear.style.display = val ? '' : 'none';
+        refreshTable();
+      }, 300);
+    });
+    // Prevent form submit — live search handles it
+    var searchForm = searchInput.closest('form');
+    if (searchForm) searchForm.addEventListener('submit', function(e) { e.preventDefault(); });
+  }
 
   function confColor(v) {
     if (v == null) return 'var(--muted)';
@@ -310,7 +342,7 @@
     else                                      badge = '<span class="badge badge--ok">ok</span>';
 
     var flagged = ((t.needs_review && !t.reviewed) || t.status === 'error');
-    var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks' + BACK_SUFFIX;
+    var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks' + backSuffix();
     var folderIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/></svg>';
     var arrowIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg>';
 
@@ -334,8 +366,12 @@
   function buildPagination(page, pages, perPage) {
     if (pages <= 1) { paginEl.style.display='none'; return; }
     paginEl.style.display='';
-    var q  = new URLSearchParams(window.location.search).get('q') || '';
-    var qp = (q ? '&q='+encodeURIComponent(q) : '') + '&per_page='+perPage;
+    var sp     = new URLSearchParams(window.location.search);
+    var q      = sp.get('q') || '';
+    var filter = sp.get('filter') || '';
+    var qp = (q      ? '&q='      + encodeURIComponent(q)      : '')
+           + (filter ? '&filter=' + encodeURIComponent(filter) : '')
+           + '&per_page=' + perPage;
     var h = '';
     if (page > 1) h += '<a href="?page='+(page-1)+qp+'">← Prev</a>';
     for (var p=1; p<=pages; p++) {
