@@ -1,23 +1,21 @@
 name: Publish Docker image
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Image tag suffix (e.g. v1.0.3)"
-        required: true
 
 jobs:
   push:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -28,17 +26,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # --- slim image (no PyTorch, ~400 MB) → :latest / :v1.0.2 / :1.0 ---
-
-      - name: Extract metadata (slim)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+      # --- slim image (no PyTorch, ~400 MB) → :latest / :vX.Y.Z ---
 
       - name: Build and push slim image
         uses: docker/build-push-action@v6
@@ -47,19 +35,11 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: WITH_DEEPRHYTHM=false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      # --- full image (PyTorch + deeprhythm CNN, ~1.8 GB) → :full / :v1.0.2-full ---
-
-      - name: Extract metadata (full)
-        id: meta-full
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
           tags: |
-            type=semver,pattern={{version}}-full
-            type=raw,value=full
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}
+
+      # --- full image (PyTorch + deeprhythm CNN, ~1.8 GB) → :full / :vX.Y.Z-full ---
 
       - name: Build and push full image
         uses: docker/build-push-action@v6
@@ -68,5 +48,6 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: WITH_DEEPRHYTHM=true
-          tags: ${{ steps.meta-full.outputs.tags }}
-          labels: ${{ steps.meta-full.outputs.labels }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:full
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}-full
