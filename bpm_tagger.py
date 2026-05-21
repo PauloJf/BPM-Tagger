@@ -1185,7 +1185,7 @@ class BPMTagger:
                             if self._tagger._stop_event.is_set():
                                 break
                             self._tagger._pause_event.wait()
-                            self._tagger.process_file(path, force=True)
+                            self._tagger.process_file(path, force=False)
                         if ready:
                             last_work_time = time.monotonic()
                         elif (last_work_time > 0
