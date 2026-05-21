@@ -143,7 +143,21 @@
              class="search-input" autocomplete="off">
     </div>
     <a id="search-clear" href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm"
-       style="{{ '' if q else 'display:none' }}">Clear</a>
+       style="{{ '' if (q or bpm) else 'display:none' }}">Clear</a>
+
+    {# BPM filter #}
+    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+      <input type="number" id="bpm-filter" placeholder="BPM" min="1" max="300" step="1"
+             value="{{ bpm }}" autocomplete="off"
+             style="width:72px; padding:7px 10px; font-family:var(--mono); font-size:13px;
+                    font-weight:600; text-align:center; font-variant-numeric:tabular-nums;">
+      <span style="font-size:11px; color:var(--muted); font-family:var(--mono);">±</span>
+      <input type="number" id="bpm-tol" min="0" max="50" step="1"
+             value="{{ bpm_tol }}" autocomplete="off"
+             style="width:48px; padding:7px 8px; font-family:var(--mono); font-size:13px;
+                    text-align:center; font-variant-numeric:tabular-nums;">
+    </div>
+
     <select name="_pp"
             onchange="var u=new URLSearchParams(window.location.search);u.set('per_page',this.value);u.set('page','1');window.location.search=u.toString();"
             style="font-size:12px;">
@@ -216,7 +230,7 @@
 
       <div>
         {% if t.status == 'error' %}
-          <span class="badge badge--error"><span class="badge-dot"></span>error</span>
+          <span class="badge badge--error" title="{{ t.error_message or 'Analysis error' }}"><span class="badge-dot"></span>error</span>
         {% elif t.status == 'pending' %}
           <span class="badge badge--pending">pending</span>
         {% elif t.needs_review and not t.reviewed %}
@@ -289,35 +303,46 @@
   function backSuffix() {
     var p = new URLSearchParams(window.location.search);
     var s = '';
-    var bf = p.get('filter');   if (bf)  s += '&back_filter='   + encodeURIComponent(bf);
-    var bp = p.get('page');     if (bp)  s += '&back_page='     + encodeURIComponent(bp);
-    var bq = p.get('q');        if (bq)  s += '&back_q='        + encodeURIComponent(bq);
-    var bpp= p.get('per_page'); if (bpp) s += '&back_per_page=' + encodeURIComponent(bpp);
+    var bf  = p.get('filter');   if (bf)  s += '&back_filter='   + encodeURIComponent(bf);
+    var bp  = p.get('page');     if (bp)  s += '&back_page='     + encodeURIComponent(bp);
+    var bq  = p.get('q');        if (bq)  s += '&back_q='        + encodeURIComponent(bq);
+    var bpp = p.get('per_page'); if (bpp) s += '&back_per_page=' + encodeURIComponent(bpp);
     return s;
   }
 
-  // ── Live search ────────────────────────────────────────────────────────────
-  var _searchTimer = null;
+  // ── Live search + BPM filter ───────────────────────────────────────────────
+  var _filterTimer = null;
   var searchInput  = document.getElementById('search-input');
   var searchClear  = document.getElementById('search-clear');
+  var bpmInput     = document.getElementById('bpm-filter');
+  var bpmTolInput  = document.getElementById('bpm-tol');
+
+  function applyFilters() {
+    var u = new URLSearchParams(window.location.search);
+    var qval  = searchInput ? searchInput.value.trim() : '';
+    var bval  = bpmInput    ? bpmInput.value.trim()    : '';
+    var btval = bpmTolInput ? bpmTolInput.value.trim() : '5';
+    if (qval)  { u.set('q',   qval); }  else { u.delete('q'); }
+    if (bval)  { u.set('bpm', bval); u.set('bpm_tol', btval); }
+    else       { u.delete('bpm'); u.delete('bpm_tol'); }
+    u.set('page', '1');
+    history.replaceState(null, '', '?' + u.toString());
+    if (searchClear) searchClear.style.display = (qval || bval) ? '' : 'none';
+    refreshTable();
+  }
+
+  function debounceFilter() {
+    clearTimeout(_filterTimer);
+    _filterTimer = setTimeout(applyFilters, 300);
+  }
 
   if (searchInput) {
-    searchInput.addEventListener('input', function() {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(function() {
-        var u = new URLSearchParams(window.location.search);
-        var val = searchInput.value.trim();
-        if (val) { u.set('q', val); } else { u.delete('q'); }
-        u.set('page', '1');
-        history.replaceState(null, '', '?' + u.toString());
-        if (searchClear) searchClear.style.display = val ? '' : 'none';
-        refreshTable();
-      }, 300);
-    });
-    // Prevent form submit — live search handles it
+    searchInput.addEventListener('input', debounceFilter);
     var searchForm = searchInput.closest('form');
     if (searchForm) searchForm.addEventListener('submit', function(e) { e.preventDefault(); });
   }
+  if (bpmInput)    bpmInput.addEventListener('input', debounceFilter);
+  if (bpmTolInput) bpmTolInput.addEventListener('input', debounceFilter);
 
   function confColor(v) {
     if (v == null) return 'var(--muted)';
@@ -334,7 +359,7 @@
       : '<span style="color:var(--muted);">—</span>';
 
     var badge;
-    if      (t.status==='error')              badge = '<span class="badge badge--error"><span class="badge-dot"></span>error</span>';
+    if      (t.status==='error')              badge = '<span class="badge badge--error" title="' + (t.error_message || 'Analysis error').replace(/"/g,'&quot;') + '"><span class="badge-dot"></span>error</span>';
     else if (t.status==='pending')            badge = '<span class="badge badge--pending">pending</span>';
     else if (t.needs_review && !t.reviewed)   badge = '<span class="badge badge--review"><span class="badge-dot"></span>review</span>';
     else if (t.reviewed)                      badge = '<span class="badge badge--reviewed"><span class="badge-dot"></span>reviewed</span>';
@@ -367,10 +392,13 @@
     if (pages <= 1) { paginEl.style.display='none'; return; }
     paginEl.style.display='';
     var sp     = new URLSearchParams(window.location.search);
-    var q      = sp.get('q') || '';
-    var filter = sp.get('filter') || '';
-    var qp = (q      ? '&q='      + encodeURIComponent(q)      : '')
-           + (filter ? '&filter=' + encodeURIComponent(filter) : '')
+    var q      = sp.get('q')       || '';
+    var filter = sp.get('filter')  || '';
+    var bpm    = sp.get('bpm')     || '';
+    var bpmTol = sp.get('bpm_tol') || '';
+    var qp = (q      ? '&q='       + encodeURIComponent(q)      : '')
+           + (filter ? '&filter='  + encodeURIComponent(filter) : '')
+           + (bpm    ? '&bpm='     + encodeURIComponent(bpm) + '&bpm_tol=' + encodeURIComponent(bpmTol || '5') : '')
            + '&per_page=' + perPage;
     var h = '';
     if (page > 1) h += '<a href="?page='+(page-1)+qp+'">← Prev</a>';

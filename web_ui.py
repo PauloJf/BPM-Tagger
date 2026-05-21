@@ -193,6 +193,20 @@ def index():
     return redirect(url_for("tracks"))
 
 
+def _parse_bpm_filter(args) -> tuple:
+    """Return (bpm_target, bpm_tol) from request args, or (None, 5)."""
+    bpm_target = None
+    bpm_tol = 5.0
+    bpm_str = args.get("bpm", "").strip()
+    if bpm_str:
+        try:
+            bpm_target = float(bpm_str)
+            bpm_tol = max(0.0, float(args.get("bpm_tol", "5")))
+        except (ValueError, TypeError):
+            pass
+    return bpm_target, bpm_tol
+
+
 @app.route("/tracks")
 @login_required
 def tracks():
@@ -208,11 +222,16 @@ def tracks():
     except (ValueError, TypeError):
         per_page = 50
     filter_by = request.args.get("filter", "")
-    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page, filter=filter_by)
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page,
+                                      filter=filter_by,
+                                      bpm_target=bpm_target, bpm_tol=bpm_tol)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = _db.get_stats()
     return render_template("tracks.html", tracks=rows, total=total, page=page, pages=pages,
                            q=q, per_page=per_page, filter=filter_by,
+                           bpm=request.args.get("bpm", ""),
+                           bpm_tol=int(bpm_tol),
                            all_count=stats.get("total", 0),
                            review_count=stats.get("needs_review", 0),
                            locked_count=stats.get("locked", 0))
@@ -455,7 +474,10 @@ def api_tracks():
     except (ValueError, TypeError):
         per_page = 50
     filter_by = request.args.get("filter", "")
-    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page, filter=filter_by)
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    rows, total = _db.get_tracks_page(q, per_page, (page - 1) * per_page,
+                                      filter=filter_by,
+                                      bpm_target=bpm_target, bpm_tol=bpm_tol)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = _db.get_stats()
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,

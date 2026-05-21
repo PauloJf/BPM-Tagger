@@ -4,11 +4,9 @@
 <style>
   /* Summary grid */
   .stat-grid {
-    display: grid; grid-template-columns: repeat(6, 1fr);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 12px; margin-bottom: 22px;
   }
-  @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 500px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 
   .stat-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -104,6 +102,10 @@
       <div class="stat-value" id="s-locked" style="color:var(--info-fg);">—</div>
     </div>
     <div class="stat-card">
+      <div class="stat-label">Reviewed</div>
+      <div class="stat-value" id="s-reviewed" style="color:var(--ok-fg); opacity:0.7;">—</div>
+    </div>
+    <div class="stat-card">
       <div class="stat-label">Pending</div>
       <div class="stat-value" id="s-unscanned" style="color:var(--muted);">—</div>
     </div>
@@ -180,9 +182,9 @@
       document.getElementById('s-review').textContent   = (s.needs_review || 0).toLocaleString();
       document.getElementById('s-errors').textContent   = (s.errors || 0).toLocaleString();
       document.getElementById('retry-errors-btn').style.display = s.errors > 0 ? '' : 'none';
-      document.getElementById('s-locked').textContent   = (s.locked || 0).toLocaleString();
-      document.getElementById('s-unscanned').textContent =
-        (s.pending || 0).toLocaleString();
+      document.getElementById('s-locked').textContent    = (s.locked   || 0).toLocaleString();
+      document.getElementById('s-reviewed').textContent  = (s.reviewed || 0).toLocaleString();
+      document.getElementById('s-unscanned').textContent = (s.pending  || 0).toLocaleString();
 
       var d = data.bpm_descriptive;
       document.getElementById('d-avg').textContent = fmt(d.avg, 1);
@@ -198,19 +200,34 @@
       var histEl = document.getElementById('bpm-histogram');
       if (dist && dist.length) {
         var maxCount = Math.max.apply(null, dist.map(function(x){ return x.count; }).concat([1]));
-        // Remove any previous bars (keep gridlines)
-        var bars = histEl.querySelectorAll('.hist-bar');
-        bars.forEach(function(b){ b.remove(); });
+        var peakBpm  = dist.reduce(function(a,x){ return x.count > a.count ? x : a; }, dist[0]).bpm;
+        var median   = data.bpm_descriptive ? data.bpm_descriptive.median : null;
+        var bpmMin   = dist[0].bpm;
+        var bpmMax   = dist[dist.length-1].bpm + 5;
+        histEl.querySelectorAll('.hist-bar, .hist-median').forEach(function(b){ b.remove(); });
         dist.forEach(function(dd) {
-          var h = (dd.count / maxCount) * 100;
-          var inRange = dd.bpm >= 100 && dd.bpm <= 160;
+          var h  = (dd.count / maxCount) * 100;
           var bar = document.createElement('div');
           bar.className = 'hist-bar';
           bar.style.height = h + '%';
-          bar.style.background = inRange ? 'var(--accent)' : 'var(--accent-soft-strong)';
-          bar.title = dd.bpm + '–' + (dd.bpm + 5) + ' BPM · ' + dd.count;
+          bar.style.background = dd.bpm === peakBpm
+            ? 'var(--accent-2)'
+            : (dd.bpm >= 100 && dd.bpm <= 160 ? 'var(--accent)' : 'var(--accent-soft-strong)');
+          bar.title = dd.bpm + '–' + (dd.bpm + 5) + ' BPM · ' + dd.count
+            + (dd.bpm === peakBpm ? ' (peak)' : '');
           histEl.appendChild(bar);
         });
+        // Median marker
+        if (median != null) {
+          var pct = Math.max(0, Math.min(100, (median - bpmMin) / (bpmMax - bpmMin) * 100));
+          var marker = document.createElement('div');
+          marker.className = 'hist-median';
+          marker.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;'
+            + 'background:var(--warn-fg);opacity:0.8;left:' + pct + '%;pointer-events:none;'
+            + 'border-radius:1px;';
+          marker.title = 'Median: ' + Number(median).toFixed(1) + ' BPM';
+          histEl.appendChild(marker);
+        }
       } else {
         histEl.innerHTML = '<p style="color:var(--muted); font-size:13px; align-self:center; padding:20px;">No data yet.</p>';
       }

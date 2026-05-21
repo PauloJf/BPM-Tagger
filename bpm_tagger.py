@@ -609,7 +609,9 @@ class BPMDatabase:
         return track["file_hash"] != file_hash
 
     def get_tracks_page(self, q: str, limit: int, offset: int,
-                        filter: str = "") -> tuple[list[dict], int]:
+                        filter: str = "",
+                        bpm_target: Optional[float] = None,
+                        bpm_tol: float = 5.0) -> tuple[list[dict], int]:
         filter_clause = {
             "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
             "locked": "locked = 1",
@@ -626,6 +628,11 @@ class BPMDatabase:
                 params_rows.append(f"%{q}%")
             if filter_clause:
                 clauses.append(filter_clause)
+            if bpm_target is not None:
+                clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
+                lo, hi = bpm_target - bpm_tol, bpm_target + bpm_tol
+                params_count.extend([lo, hi])
+                params_rows.extend([lo, hi])
 
             where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
             total = conn.execute(
@@ -1177,6 +1184,8 @@ class BPMTagger:
             def drain_pending(self):
                 idle_release_secs = 300  # release model after 5 min with no new files
                 last_work_time = 0.0
+                last_navidrome = 0.0
+                any_tagged = False
                 while not self._tagger._stop_event.is_set():
                     time.sleep(2)
                     try:
@@ -1189,16 +1198,26 @@ class BPMTagger:
                             if self._tagger._stop_event.is_set():
                                 break
                             self._tagger._pause_event.wait()
-                            self._tagger.process_file(path, force=False)
+                            result = self._tagger.process_file(path, force=False)
+                            if result.get("status") == "tagged":
+                                any_tagged = True
                         if ready:
                             last_work_time = time.monotonic()
-                        elif (last_work_time > 0
+                        else:
+                            # Queue just drained — trigger Navidrome if files were tagged
+                            if any_tagged and not self._pending:
+                                now_t = time.monotonic()
+                                if now_t - last_navidrome > 60:
+                                    _trigger_navidrome_rescan(self._tagger.config)
+                                    last_navidrome = now_t
+                                any_tagged = False
+                            if (last_work_time > 0
                               and time.monotonic() - last_work_time > idle_release_secs
                               and hasattr(_local, "predictor")):
-                            del _local.predictor
-                            import gc; gc.collect()
-                            log.debug("DeepRhythm model released after idle period")
-                            last_work_time = 0.0
+                                del _local.predictor
+                                import gc; gc.collect()
+                                log.debug("DeepRhythm model released after idle period")
+                                last_work_time = 0.0
                     except Exception as exc:
                         log.error("drain_pending error: %s", exc)
 
