@@ -293,6 +293,20 @@
                                    display:flex; align-items:center; gap:6px;"></div>
       </div>
       <div id="unlock-msg" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
+
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);
+                  display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <button id="reanalyze-btn" class="btn btn-ghost btn-md" onclick="reanalyzeTrack()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 4 v6 h6"/>
+            <path d="M3.51 15 a9 9 0 1 0 .49 -4.95"/>
+          </svg>
+          Re-analyze
+        </button>
+        <div id="reanalyze-msg" style="font-size:12px; display:flex; align-items:center; gap:6px;"></div>
+      </div>
     </div>
   </div>
 
@@ -465,6 +479,51 @@
         msg.textContent = "Error: " + (data.error || "unknown");
         msg.style.color = "var(--err-fg)";
       }
+    });
+  }
+
+  function reanalyzeTrack() {
+    var btn = document.getElementById("reanalyze-btn");
+    var msg = document.getElementById("reanalyze-msg");
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"'
+      + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"'
+      + ' style="transform-origin:12px 12px;animation:spin 0.8s linear infinite">'
+      + '<path d="M1 4 v6 h6"/><path d="M3.51 15 a9 9 0 1 0 .49 -4.95"/>'
+      + '</svg> Analyzing…';
+    msg.innerHTML = '';
+    fetch("/api/scan/reanalyze", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": CSRF_TOKEN},
+      body: JSON.stringify({file_path: FILE_PATH})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        msg.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"'
+          + ' stroke="var(--ok-fg)" stroke-width="2" stroke-linecap="round"'
+          + ' stroke-linejoin="round"><path d="M5 12 L10 17 L19 7"/></svg>'
+          + '<span style="color:var(--ok-fg);">Done — reloading…</span>';
+        setTimeout(function() { window.location.reload(); }, 600);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"'
+          + ' stroke="currentColor" stroke-width="1.6"'
+          + ' stroke-linecap="round" stroke-linejoin="round">'
+          + '<path d="M1 4 v6 h6"/><path d="M3.51 15 a9 9 0 1 0 .49 -4.95"/>'
+          + '</svg> Re-analyze';
+        msg.innerHTML = '<span style="color:var(--err-fg);">Error: '
+          + (data.error || 'unknown') + '</span>';
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.6"'
+        + ' stroke-linecap="round" stroke-linejoin="round">'
+        + '<path d="M1 4 v6 h6"/><path d="M3.51 15 a9 9 0 1 0 .49 -4.95"/>'
+        + '</svg> Re-analyze';
+      msg.innerHTML = '<span style="color:var(--err-fg);">Request failed.</span>';
     });
   }
 

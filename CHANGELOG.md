@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.6 — 2026-05-21
+
+**Bug fix**
+- File watcher no longer re-analyzes locked tracks — locking a track via the UI no longer triggers an infinite re-scan loop caused by repeated tag writes
+
+**Track detail**
+- Re-analyze button: re-runs BPM detection for a single track immediately, without starting a full library scan
+
 ## v1.0.5 — 2026-05-21
 
 **Build fix**

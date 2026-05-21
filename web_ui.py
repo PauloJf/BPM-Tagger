@@ -502,6 +502,24 @@ def api_scan_retry_errors():
     return jsonify(ok=True)
 
 
+@app.route("/api/scan/reanalyze", methods=["POST"])
+@login_required
+def api_reanalyze():
+    _check_csrf()
+    if _tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    if _progress and _progress.is_scanning:
+        return jsonify(ok=False, error="a scan is already running")
+    data = request.get_json(force=True, silent=True) or {}
+    file_path = data.get("file_path", "")
+    if not file_path:
+        return jsonify(ok=False, error="file_path required")
+    _assert_in_music_dir(file_path)
+    result = _tagger.process_file(file_path, force=True)
+    log.info("UI: re-analyzed %s → %s", Path(file_path).name, result.get("status"))
+    return jsonify(ok=result.get("status") != "error", **result)
+
+
 @app.route("/api/scan/refresh_hashes", methods=["POST"])
 @login_required
 def api_refresh_hashes():
