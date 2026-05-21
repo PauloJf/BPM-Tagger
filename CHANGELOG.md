@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.5 — 2026-05-21
+
+**Build fix**
+- Docker publish workflow now always checks out `main` regardless of which commit a tag points to — prevents stale builds when a tag is pushed from an older branch or wrong commit
+
 ## v1.0.4 — 2026-05-20
 
 **Reviewed status**

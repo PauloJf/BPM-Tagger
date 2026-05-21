@@ -113,6 +113,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v1.0.5** — Build fix: Docker image now always built from `main`, preventing stale images from misplaced tags.
+
 **v1.0.4** — Reviewed status badge; playback buffer setting (prevents NAS stuttering); auto-fix for full-library rescan after upgrade; SVG favicon.
 
 **v1.0.3** — Slim image (~400 MB, no PyTorch) as default `:latest`; new `:full` tag adds deeprhythm CNN (~1.8 GB).
