@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.0.8 — 2026-05-21
+
+**Library**
+- Search field filters tracks as you type (300 ms debounce) — no Enter required
+- New BPM ± tolerance filter: enter a target BPM and allowance to narrow the list to a specific range
+- Going back from track detail returns to the exact library state — same filter, page, and search query
+- Hovering an `error` badge shows the full error message as a tooltip
+
+**Statistics**
+- New **Reviewed** summary card
+- Histogram: peak bucket highlighted in a distinct colour; vertical median line
+
+**Watch mode**
+- Navidrome rescan now triggers once when the file queue drains after tagging new files (60 s cooldown) — previously never fired in watch mode
+- DeepRhythm model load and release logged at INFO level
+
+**Bug fixes**
+- Re-analyze spinner rotation axis corrected
+- Review count badge and library "Review" filter no longer count locked or already-reviewed tracks
+- Startup migration clears stale `needs_review` flags on locked tracks from pre-v1.0.4 databases
+- Locking a track no longer triggers an infinite re-scan loop
+- Re-analyze button on track detail page for on-demand single-track re-analysis
+
+## v1.0.7 — 2026-05-21
+
+**Bug fixes**
+- Re-analyze spinner now rotates around its centre instead of the corner
+- Review count badge and library "Review" filter no longer count locked or already-reviewed tracks
+- Startup migration clears stale `needs_review` flags on locked tracks from pre-v1.0.4 databases
+
+**Library**
+- Search field filters tracks as you type (300 ms debounce)
+- New BPM ± tolerance filter
+- Going back from track detail returns to the exact library state
+- Error badge tooltip shows the full error message
+
+**Statistics**
+- New Reviewed summary card
+- Histogram peak and median marker
+
+**Watch mode**
+- Navidrome rescan triggered once when queue drains
+- DeepRhythm model load/release logged at INFO level
+
 ## v1.0.6 — 2026-05-21
 
 **Bug fix**

@@ -113,6 +113,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v1.0.8** — Live search, BPM ± filter, back-navigation state, error tooltips, Reviewed stat card, histogram peak/median, Navidrome watch-mode rescan, DeepRhythm memory logging, and several bug fixes.
+
 **v1.0.6** — Bug fix: locking a track no longer triggers an infinite re-scan loop; Re-analyze button on track detail page.
 
 **v1.0.5** — Build fix: Docker image now always built from `main`, preventing stale images from misplaced tags.
