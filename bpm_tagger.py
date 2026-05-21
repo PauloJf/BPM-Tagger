@@ -474,6 +474,10 @@ class BPMDatabase:
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
+        # Pre-v1.0.4 lock_track() didn't clear needs_review; fix stale rows.
+        conn.execute(
+            "UPDATE tracks SET needs_review = 0 WHERE locked = 1 AND needs_review = 1"
+        )
 
     def get_all_file_hashes(self) -> dict:
         """Return {file_path: (file_hash, status, locked)} in one query for bulk filtering."""
