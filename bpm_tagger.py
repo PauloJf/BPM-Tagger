@@ -607,7 +607,7 @@ class BPMDatabase:
     def get_tracks_page(self, q: str, limit: int, offset: int,
                         filter: str = "") -> tuple[list[dict], int]:
         filter_clause = {
-            "review": "needs_review = 1",
+            "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
             "locked": "locked = 1",
         }.get(filter, "")
 
@@ -716,7 +716,7 @@ class BPMDatabase:
                     COUNT(CASE WHEN status='done'    THEN 1 END) AS done,
                     COUNT(CASE WHEN status='error'   THEN 1 END) AS errors,
                     COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
-                    COUNT(CASE WHEN needs_review=1 AND status='done' THEN 1 END) AS needs_review,
+                    COUNT(CASE WHEN needs_review=1 AND status='done' AND locked=0 AND reviewed=0 THEN 1 END) AS needs_review,
                     COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked
                 FROM tracks
