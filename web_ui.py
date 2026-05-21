@@ -247,6 +247,21 @@ def track_detail():
     if not track:
         abort(404)
 
+    # Reconstruct the library URL the user came from
+    if back == "review":
+        back_url = url_for("review")
+    else:
+        kw = {}
+        bf = request.args.get("back_filter", "")
+        bp = request.args.get("back_page", "")
+        bq = request.args.get("back_q", "")
+        bpp = request.args.get("back_per_page", "")
+        if bf:  kw["filter"]   = bf
+        if bp:  kw["page"]     = bp
+        if bq:  kw["q"]        = bq
+        if bpp: kw["per_page"] = bpp
+        back_url = url_for("tracks", **kw)
+
     prev_path = next_path = None
     queue_pos = queue_total = None
     if back == "review":
@@ -260,7 +275,7 @@ def track_detail():
         except ValueError:
             pass
 
-    return render_template("track.html", track=track, back=back,
+    return render_template("track.html", track=track, back=back, back_url=back_url,
                            prev_path=prev_path, next_path=next_path,
                            queue_pos=queue_pos, queue_total=queue_total,
                            playback_buffer=_config.get("playback_buffer", 3))
