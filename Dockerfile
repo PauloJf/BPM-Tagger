@@ -4,6 +4,8 @@ FROM python:3.12-slim
 # full:           adds PyTorch CPU + deeprhythm CNN    ~1.8 GB
 #   docker build --build-arg WITH_DEEPRHYTHM=true -t gatoserio/bpm-tagger:full .
 ARG WITH_DEEPRHYTHM=false
+# Bake the build-time flag into the image so the app can read it at runtime
+ENV WITH_DEEPRHYTHM=${WITH_DEEPRHYTHM}
 
 # System deps for librosa / soundfile / essentia
 RUN apt-get update && apt-get install -y --no-install-recommends \
