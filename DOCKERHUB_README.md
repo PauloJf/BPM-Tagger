@@ -76,7 +76,7 @@ docker compose up -d && docker compose logs -f
 | `REFRESH_HASHES` | `false` | Recompute hashes before scanning (migration from pre-1.0.0) |
 | `BPM_MIN` | `60` | BPM floor — values below are doubled |
 | `BPM_MAX` | `200` | BPM ceiling — values above are halved |
-| `USE_DEEPRHYTHM` | `false` | CNN detector (~500 MB/worker); disable on low-RAM devices |
+| `USE_DEEPRHYTHM` | `false` | CNN detector (~500 MB/worker); **only effective on the `:full` image** — ignored on `:latest` (slim, no PyTorch) |
 | `USE_ESSENTIA` | `true` | Essentia RhythmExtractor2013 detector |
 | `OCTAVE_CORRECTION` | `true` | Auto-fix 2× BPM errors between detectors |
 | `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM gap that flags a track for review |
@@ -94,11 +94,12 @@ All variables documented in [`docker-compose.yml`](https://github.com/PauloJf/BP
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
 - Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; hamburger menu on mobile (≤700 px)
-- Library table with BPM, confidence, detector info, filter pills (All / Review / Locked), and `pending` badge before analysis
-- Review queue — Prev/Next navigation, Approve without re-analysing
+- Library table with BPM, confidence, detector info, filter pills (All / Review / Locked), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
+- Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
+- **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis
-- Stats — BPM histogram, detector breakdown, Retry Errors
+- Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors
 - Settings — live config changes without restart; `/healthz` JSON endpoint
 
 ---
