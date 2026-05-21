@@ -152,8 +152,10 @@ class ScanProgress:
 
 def _get_predictor():
     if not hasattr(_local, "predictor"):
+        log.info("Loading DeepRhythm model into memory…")
         from deeprhythm import DeepRhythmPredictor
         _local.predictor = DeepRhythmPredictor()
+        log.info("DeepRhythm model ready")
     return _local.predictor
 
 
@@ -1216,7 +1218,8 @@ class BPMTagger:
                               and hasattr(_local, "predictor")):
                                 del _local.predictor
                                 import gc; gc.collect()
-                                log.debug("DeepRhythm model released after idle period")
+                                log.info("DeepRhythm model released after %d min idle",
+                                         idle_release_secs // 60)
                                 last_work_time = 0.0
                     except Exception as exc:
                         log.error("drain_pending error: %s", exc)
