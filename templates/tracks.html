@@ -165,7 +165,7 @@
   </div>
   <div id="tracks-body">
     {% for t in tracks %}
-    <a href="{{ url_for('track_detail', path=t.file_path, back='tracks') }}"
+    <a href="{{ url_for('track_detail', path=t.file_path, back='tracks', back_filter=filter, back_page=page, back_q=q, back_per_page=per_page) }}"
        class="tracks-row {{ 'flagged' if (t.needs_review and not t.reviewed) or t.status == 'error' }}"
        style="display:grid; grid-template-columns:1fr 130px 90px 130px 110px 70px; padding:12px 18px; gap:14px; align-items:center; text-decoration:none; color:inherit; border-bottom:1px solid var(--border);">
       <div style="min-width:0;">
@@ -285,6 +285,8 @@
   function basename(p) { return p.split('/').pop(); }
   function parentName(p) { var a = p.split('/'); return a.length >= 2 ? a[a.length-2] : ''; }
 
+  var BACK_SUFFIX = '&back_filter={{ filter | urlencode }}&back_page={{ page }}&back_q={{ q | urlencode }}&back_per_page={{ per_page }}';
+
   function confColor(v) {
     if (v == null) return 'var(--muted)';
     return v >= 0.7 ? 'var(--ok-fg)' : v >= 0.4 ? 'var(--accent-2)' : 'var(--warn-fg)';
@@ -308,7 +310,7 @@
     else                                      badge = '<span class="badge badge--ok">ok</span>';
 
     var flagged = ((t.needs_review && !t.reviewed) || t.status === 'error');
-    var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks';
+    var u = '/track?path=' + encodeURIComponent(t.file_path) + '&back=tracks' + BACK_SUFFIX;
     var folderIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/></svg>';
     var arrowIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg>';
 
