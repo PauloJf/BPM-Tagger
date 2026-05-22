@@ -94,7 +94,7 @@ All variables documented in [`docker-compose.yml`](https://github.com/PauloJf/BP
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
 - Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; hamburger menu on mobile (≤700 px)
-- Library table with BPM, confidence, detector info, filter pills (All / Review / Locked), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
+- Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
 - Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
@@ -113,6 +113,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v1.1.0** — Deleted file detection: files removed from disk are automatically marked `deleted` in both watch mode (real-time) and scan mode (post-discovery diff). Locked tracks are never marked deleted. Deleted tracks reappear in the queue if the file comes back. New Deleted filter pill and Statistics card in the web UI.
 
 **v1.0.8** — Live search, BPM ± filter, back-navigation state, error tooltips, Reviewed stat card, histogram peak/median, Navidrome watch-mode rescan, DeepRhythm memory logging, and several bug fixes.
 

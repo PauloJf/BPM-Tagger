@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.0 — 2026-05-22
+
+**Deleted file detection**
+- Watch mode: when a file is deleted or moved while the container is running, the track is marked `deleted` in the database immediately via filesystem events
+- Scan mode: at the start of every scan, the discovered file list is compared against all tracked paths; any file no longer on disk (and not locked) is marked `deleted` automatically
+- Locked tracks are never marked deleted — if a volume is temporarily unmounted, locked tracks are preserved
+- Deleted tracks automatically re-enter the analysis queue if the file reappears on disk
+
+**Web UI**
+- New **Deleted** filter pill on the Library page with a live count
+- Deleted tracks are hidden from the default **All** view and the **Review** queue — visible only when the **Deleted** filter is active
+- New **Deleted** summary card on the Statistics page
+
 ## v1.0.8 — 2026-05-21
 
 **Library**
