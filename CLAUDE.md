@@ -42,7 +42,7 @@ pip install --pre essentia          # optional; falls back gracefully if absent
 MODE=scan_unscanned MUSIC_DIR=/path/to/music DB_PATH=./bpm.db python bpm_tagger.py
 
 # With web UI
-ENABLE_UI=true UI_PASSWORD=secret MODE=watch MUSIC_DIR=/path/to/music python bpm_tagger.py
+ENABLE_UI=true UI_PASSWORD=<your-password> MODE=watch MUSIC_DIR=/path/to/music python bpm_tagger.py
 ```
 
 ### Publish Docker images (CI)
