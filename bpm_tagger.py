@@ -614,16 +614,23 @@ class BPMDatabase:
                         filter: str = "",
                         bpm_target: Optional[float] = None,
                         bpm_tol: float = 5.0) -> tuple[list[dict], int]:
-        filter_clause = {
-            "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
-            "locked": "locked = 1",
-        }.get(filter, "")
+        if filter == "deleted":
+            filter_clause = "status = 'deleted'"
+            hide_deleted = False
+        else:
+            filter_clause = {
+                "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
+                "locked": "locked = 1",
+            }.get(filter, "")
+            hide_deleted = True
 
         with self._connect() as conn:
             params_count: list = []
             params_rows:  list = []
             clauses: list[str] = []
 
+            if hide_deleted:
+                clauses.append("status != 'deleted'")
             if q:
                 clauses.append("file_path LIKE ?")
                 params_count.append(f"%{q}%")
@@ -677,7 +684,7 @@ class BPMDatabase:
         with self._connect() as conn:
             rows = conn.execute("""
                 SELECT file_path FROM tracks
-                WHERE locked = 0 AND (
+                WHERE locked = 0 AND status != 'deleted' AND (
                     needs_review = 1
                     OR status = 'error'
                     OR detector = 'librosa'
@@ -685,6 +692,26 @@ class BPMDatabase:
                 ORDER BY file_path
             """).fetchall()
             return [r[0] for r in rows]
+
+    def mark_deleted(self, file_path: str) -> None:
+        """Mark a single track as deleted (unlocked tracks only)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET status = 'deleted' WHERE file_path = ? AND locked = 0",
+                (file_path,),
+            )
+            conn.commit()
+
+    def mark_deleted_bulk(self, file_paths: set) -> None:
+        """Mark a set of tracks as deleted (unlocked tracks only)."""
+        if not file_paths:
+            return
+        with self._connect() as conn:
+            conn.executemany(
+                "UPDATE tracks SET status = 'deleted' WHERE file_path = ? AND locked = 0",
+                [(fp,) for fp in file_paths],
+            )
+            conn.commit()
 
     def bulk_register_pending(self, entries: list[tuple[str, str]], force: bool = False) -> None:
         """Insert/update entries as 'pending'. Locked tracks and (when !force)
@@ -729,6 +756,7 @@ class BPMDatabase:
                     COUNT(CASE WHEN status='done'    THEN 1 END) AS done,
                     COUNT(CASE WHEN status='error'   THEN 1 END) AS errors,
                     COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
+                    COUNT(CASE WHEN status='deleted' THEN 1 END) AS deleted,
                     COUNT(CASE WHEN needs_review=1 AND status='done' AND locked=0 AND reviewed=0 THEN 1 END) AS needs_review,
                     COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked
@@ -1075,6 +1103,19 @@ class BPMTagger:
         self.db.bulk_register_pending(entries, force=force)
         log.info("Scan phase 1 complete — %d audio files registered", len(entries))
 
+        # Detect files that were previously tracked but are no longer on disk.
+        # Locked tracks are intentionally excluded — they may live on an external
+        # drive that is temporarily unmounted and we don't want to lose the lock.
+        discovered_paths = {fp for fp, _ in entries}
+        all_tracked = self.db.get_all_file_hashes()
+        deleted_paths = {
+            fp for fp, (_hash, status, locked) in all_tracked.items()
+            if fp not in discovered_paths and not locked and status != "deleted"
+        }
+        if deleted_paths:
+            log.info("Detected %d deleted file(s) — marking as deleted in DB", len(deleted_paths))
+            self.db.mark_deleted_bulk(deleted_paths)
+
         # Phase 2 — processing: work through every pending track.
         # bulk_register_pending already filtered out locked + (when !force)
         # unchanged done tracks, so everything in the queue needs analysis.
@@ -1177,11 +1218,25 @@ class BPMTagger:
                 if not event.is_directory:
                     self._schedule(event.src_path)
 
+            def on_deleted(self, event):
+                if not event.is_directory:
+                    fp = event.src_path
+                    if Path(fp).suffix.lower() in self._tagger.config["extensions"]:
+                        with self._lock:
+                            self._pending.pop(fp, None)
+                        self._tagger.db.mark_deleted(fp)
+                        log.info("File deleted — marked as deleted in DB: %s", Path(fp).name)
+
             def on_moved(self, event):
                 if not event.is_directory:
                     with self._lock:
                         self._pending.pop(event.src_path, None)
                         self._pending[event.dest_path] = time.monotonic() + 10
+                    # The source path no longer exists — mark it deleted
+                    if Path(event.src_path).suffix.lower() in self._tagger.config["extensions"]:
+                        self._tagger.db.mark_deleted(event.src_path)
+                        log.info("File moved — old path marked as deleted: %s",
+                                 Path(event.src_path).name)
 
             def drain_pending(self):
                 idle_release_secs = 300  # release model after 5 min with no new files

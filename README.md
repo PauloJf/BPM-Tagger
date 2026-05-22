@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v1.0.8** · [Changelog](CHANGELOG.md)
+**v1.1.0** · [Changelog](CHANGELOG.md)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected web UI for reviewing and correcting results.
 

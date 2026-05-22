@@ -126,6 +126,11 @@
       Locked
       <span class="pill-count" id="pill-count-locked">{{ locked_count }}</span>
     </a>
+    <a href="{{ url_for('tracks', q=q, per_page=per_page, filter='deleted') }}"
+       class="filter-pill {% if request.args.get('filter') == 'deleted' %}active{% endif %}">
+      Deleted
+      <span class="pill-count" id="pill-count-deleted">{{ deleted_count }}</span>
+    </a>
   </div>
 
   {# Search #}
@@ -231,6 +236,8 @@
       <div>
         {% if t.status == 'error' %}
           <span class="badge badge--error" title="{{ t.error_message or 'Analysis error' }}"><span class="badge-dot"></span>error</span>
+        {% elif t.status == 'deleted' %}
+          <span class="badge badge--error">deleted</span>
         {% elif t.status == 'pending' %}
           <span class="badge badge--pending">pending</span>
         {% elif t.needs_review and not t.reviewed %}
@@ -360,6 +367,7 @@
 
     var badge;
     if      (t.status==='error')              badge = '<span class="badge badge--error" title="' + (t.error_message || 'Analysis error').replace(/"/g,'&quot;') + '"><span class="badge-dot"></span>error</span>';
+    else if (t.status==='deleted')            badge = '<span class="badge badge--error">deleted</span>';
     else if (t.status==='pending')            badge = '<span class="badge badge--pending">pending</span>';
     else if (t.needs_review && !t.reviewed)   badge = '<span class="badge badge--review"><span class="badge-dot"></span>review</span>';
     else if (t.reviewed)                      badge = '<span class="badge badge--reviewed"><span class="badge-dot"></span>reviewed</span>';
@@ -411,9 +419,10 @@
     paginEl.innerHTML = h;
   }
 
-  var pillAll    = document.getElementById('pill-count-all');
-  var pillReview = document.getElementById('pill-count-review');
-  var pillLocked = document.getElementById('pill-count-locked');
+  var pillAll     = document.getElementById('pill-count-all');
+  var pillReview  = document.getElementById('pill-count-review');
+  var pillLocked  = document.getElementById('pill-count-locked');
+  var pillDeleted = document.getElementById('pill-count-deleted');
 
   function refreshTable() {
     fetch('/api/tracks'+window.location.search)
@@ -423,9 +432,10 @@
           ? d.tracks.map(buildRow).join('')
           : '<div class="tracks-row-empty">No tracks found.</div>';
         totalEl.textContent = d.total;
-        if (pillAll)    pillAll.textContent    = d.all_count !== undefined ? d.all_count : d.total;
-        if (pillReview) pillReview.textContent = d.review_count;
-        if (pillLocked) pillLocked.textContent = d.locked_count;
+        if (pillAll)     pillAll.textContent     = d.all_count !== undefined ? d.all_count : d.total;
+        if (pillReview)  pillReview.textContent  = d.review_count;
+        if (pillLocked)  pillLocked.textContent  = d.locked_count;
+        if (pillDeleted) pillDeleted.textContent = d.deleted_count !== undefined ? d.deleted_count : 0;
         buildPagination(d.page, d.pages, d.per_page);
       }).catch(function() {});
   }

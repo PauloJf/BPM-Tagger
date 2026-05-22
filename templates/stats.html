@@ -109,6 +109,10 @@
       <div class="stat-label">Pending</div>
       <div class="stat-value" id="s-unscanned" style="color:var(--muted);">—</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-label">Deleted</div>
+      <div class="stat-value" id="s-deleted" style="color:var(--muted);">—</div>
+    </div>
   </div>
 
   {# ── BPM distribution card ─────────────────────────────────────────────── #}
@@ -185,6 +189,7 @@
       document.getElementById('s-locked').textContent    = (s.locked   || 0).toLocaleString();
       document.getElementById('s-reviewed').textContent  = (s.reviewed || 0).toLocaleString();
       document.getElementById('s-unscanned').textContent = (s.pending  || 0).toLocaleString();
+      document.getElementById('s-deleted').textContent   = (s.deleted  || 0).toLocaleString();
 
       var d = data.bpm_descriptive;
       document.getElementById('d-avg').textContent = fmt(d.avg, 1);

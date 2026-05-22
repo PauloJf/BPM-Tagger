@@ -234,7 +234,8 @@ def tracks():
                            bpm_tol=int(bpm_tol),
                            all_count=stats.get("total", 0),
                            review_count=stats.get("needs_review", 0),
-                           locked_count=stats.get("locked", 0))
+                           locked_count=stats.get("locked", 0),
+                           deleted_count=stats.get("deleted", 0))
 
 
 @app.route("/review")
@@ -484,7 +485,8 @@ def api_tracks():
                    filter=filter_by,
                    all_count=stats.get("total", 0),
                    review_count=stats.get("needs_review", 0),
-                   locked_count=stats.get("locked", 0))
+                   locked_count=stats.get("locked", 0),
+                   deleted_count=stats.get("deleted", 0))
 
 
 @app.route("/api/stats")
