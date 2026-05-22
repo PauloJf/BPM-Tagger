@@ -3,5 +3,10 @@ __pycache__/
 *.egg-info/
 .env
 
+# Runtime-generated files that may contain secrets or large local data
+*.db
+data/
+*.csv
+
 # Claude Code
 .claude/
