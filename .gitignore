@@ -5,8 +5,21 @@ __pycache__/
 
 # Runtime-generated files that may contain secrets or large local data
 *.db
+*.db-shm
+*.db-wal
 data/
 *.csv
+
+# Demo / dev helpers (not part of the shipped codebase)
+demo_music/
+seed_demo.py
+inject_data.py
+fix_paths.py
+fix_demo_db.py
+take_screenshots.py
+screenshot_server.py
+test_screen.png
+test_window.png
 
 # Claude Code
 .claude/
