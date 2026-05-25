@@ -93,6 +93,8 @@ All variables documented in [`docker-compose.yml`](https://github.com/PauloJf/BP
 
 Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:5000`.
 
+> **⚠️ LAN access only by default.** The UI runs over plain HTTP. Place a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it outside your local network.
+
 - Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; hamburger menu on mobile (≤700 px)
 - Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
 - Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue

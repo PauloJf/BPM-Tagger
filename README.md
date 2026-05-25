@@ -77,6 +77,8 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
    http://your-host:5000
    ```
 
+> **⚠️ LAN / local access only by default.** The web UI has no TLS. If you want to reach it from outside your home network, put a reverse proxy (nginx, Caddy) with HTTPS in front of port 5000 — do not expose it to the internet over plain HTTP.
+
 ---
 
 ## Hardware / Memory
@@ -215,6 +217,8 @@ This triggers a Navidrome library rescan automatically so the new BPM tags appea
 ## Web UI
 
 Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `docker-compose.yml`, then open `http://your-host:5000`.
+
+> **Security note:** The web UI runs over plain HTTP. It is designed for access on a trusted local network. If you need to reach it remotely, place a reverse proxy (nginx, Caddy, Traefik) with TLS in front of it. See the [Security](#security) section for the full recommendations.
 
 ### Navbar scan controls
 
