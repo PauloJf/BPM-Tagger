@@ -14,7 +14,8 @@ Before taking any action that could incur charges on the team plan — including
 | Version | v1.1.0 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
-| Author | Paulo Fernandes (paulofernandes@facm.pt) |
+| Author | Paulo (paulo@gatoserio.dev) |
+| Git identity | Always use `paulo@gatoserio.dev` / `Paulo` for all commits on this project |
 | Origin | Built by a runner who needed BPM-tagged music for cadence-synced running |
 
 ---
