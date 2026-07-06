@@ -131,6 +131,41 @@ services:
       NAVIDROME_PASS: ""            # Navidrome admin password
 
       # -----------------------------------------------------------------------
+      # Grabber — Spotify playlist sync + downloader (M3+). Disabled by default.
+      # -----------------------------------------------------------------------
+      # Turn the whole subsystem on. Requires ENABLE_UI=true to connect Spotify.
+      GRABBER_ENABLED: "false"
+
+      # Spotify Web API (Authorization Code flow). Create an app at
+      # https://developer.spotify.com/dashboard and add the redirect URI below
+      # to its allow-list *byte-for-byte*. Use https:// in production, or the
+      # loopback literal http://127.0.0.1:5000/... for local (NOT "localhost").
+      # Client id/secret are env-only — never written to settings.json.
+      SPOTIFY_CLIENT_ID: ""
+      SPOTIFY_CLIENT_SECRET: ""
+      SPOTIFY_REDIRECT_URI: ""      # e.g. https://bpm.example.com/api/spotify/callback
+      SPOTIFY_SYNC_MINUTES: "30"    # how often watched playlists re-sync (watch mode)
+
+      # Base URL used in ntfy click links (e.g. the inbox deep link)
+      UI_PUBLIC_URL: ""             # e.g. https://bpm.example.com
+
+      # Read file tags into the DB for library matching (leave on)
+      INDEX_TAGS: "true"
+
+      # Download providers / pipeline (used from M4). PROVIDER_ORDER is tried in
+      # order; OUTPUT_FORMAT is the single transcode target for every download.
+      # MONOCHROME_BASE_URL: ""     # self-hosted Tidal proxy base URL
+      # MONOCHROME_API_KEY: ""
+      # MONOCHROME_QUALITY: "LOSSLESS"
+      # PROVIDER_ORDER: "monochrome,ytdlp"
+      # OUTPUT_FORMAT: "mp3-320"    # mp3-320 | flac | opus-192
+      # PATH_TEMPLATE: "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
+      # GRAB_WORKERS: "1"           # download/transcode workers (max 3)
+      # GRAB_DRY_RUN: "false"       # match + plan without downloading
+      # AUTO_ACCEPT_THRESHOLD: "0.85"
+      # ASK_THRESHOLD: "0.55"
+
+      # -----------------------------------------------------------------------
       # Hash refresh (run once after upgrading from an older version)
       # -----------------------------------------------------------------------
       # Set to "true" to recompute stored size:mtime hashes for all already-
