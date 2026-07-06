@@ -147,7 +147,7 @@
               </svg>
               Approve
             </button>
-            <a href="{{ url_for('track_detail', path=t.file_path, back='review') }}"
+            <a href="{{ url_for('pages.track_detail', path=t.file_path, back='review') }}"
                class="btn btn-primary btn-sm" style="flex:1; text-align:center; display:flex; align-items:center; justify-content:center; gap:6px;">
               Review
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -168,19 +168,19 @@
 {% if pages > 1 %}
 <div class="pagination" style="margin-top:20px;">
   {% if page > 1 %}
-    <a href="{{ url_for('review', page=page-1) }}">← Prev</a>
+    <a href="{{ url_for('pages.review', page=page-1) }}">← Prev</a>
   {% endif %}
   {% for p in range(1, pages+1) %}
     {% if p == page %}
       <span class="current">{{ p }}</span>
     {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
-      <a href="{{ url_for('review', page=p) }}">{{ p }}</a>
+      <a href="{{ url_for('pages.review', page=p) }}">{{ p }}</a>
     {% elif p == 4 or p == pages-3 %}
       <span>…</span>
     {% endif %}
   {% endfor %}
   {% if page < pages %}
-    <a href="{{ url_for('review', page=page+1) }}">Next →</a>
+    <a href="{{ url_for('pages.review', page=page+1) }}">Next →</a>
   {% endif %}
 </div>
 {% endif %}

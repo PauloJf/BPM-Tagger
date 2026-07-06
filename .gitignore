@@ -23,3 +23,8 @@ test_window.png
 
 # Claude Code
 .claude/
+
+# Local dev virtualenv & test caches
+.venv/
+.pytest_cache/
+sample_music/

@@ -80,7 +80,7 @@
         <h2>Password</h2>
         <p>Change the UI login password.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_password') }}">
+      <form method="post" action="{{ url_for('settings.settings_password') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="settings-fields">
           <div class="field-row">
@@ -117,7 +117,7 @@
         <h2>Notifications (ntfy)</h2>
         <p>Push notifications for scan progress and review counts.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_ntfy') }}">
+      <form method="post" action="{{ url_for('settings.settings_ntfy') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="settings-fields">
           <div class="field-row">
@@ -187,7 +187,7 @@
         <h2>Scan Behavior</h2>
         <p>Tune the BPM detector stack.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_scan') }}">
+      <form method="post" action="{{ url_for('settings.settings_scan') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="settings-fields">
           <div class="field-row">
@@ -312,7 +312,7 @@
         <h2>Operating Mode</h2>
         <p>Controls container startup behaviour and what ▶ Start Scan does.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_mode') }}">
+      <form method="post" action="{{ url_for('settings.settings_mode') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="settings-fields">
           <div class="field-row">
@@ -350,7 +350,7 @@
         <h2>Navidrome Integration</h2>
         <p>Trigger a library rescan after every scan pass.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_navidrome') }}">
+      <form method="post" action="{{ url_for('settings.settings_navidrome') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="settings-fields">
           <div class="field-row">
@@ -387,7 +387,7 @@
         <h2>Playback</h2>
         <p>Controls audio buffering in the track detail player.</p>
       </div>
-      <form method="post" action="{{ url_for('settings_playback') }}">
+      <form method="post" action="{{ url_for('settings.settings_playback') }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <div class="field-row">
           <div>

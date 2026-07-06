@@ -82,7 +82,7 @@
   </span>
   <div style="flex:1;"></div>
   {% if prev_path %}
-    <a href="{{ url_for('track_detail', path=prev_path, back='review') }}"
+    <a href="{{ url_for('pages.track_detail', path=prev_path, back='review') }}"
        class="btn btn-ghost btn-sm">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
         <polygon points="19,4 7,12 19,20"/><rect x="5" y="4" width="2" height="16"/>
@@ -91,7 +91,7 @@
     </a>
   {% endif %}
   {% if next_path %}
-    <a href="{{ url_for('track_detail', path=next_path, back='review') }}"
+    <a href="{{ url_for('pages.track_detail', path=next_path, back='review') }}"
        class="btn btn-primary btn-sm">
       Next
       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -173,7 +173,7 @@
 
       {# Native audio element (hidden, controlled by the play button) #}
       <audio id="audio-player" preload="auto"
-             src="{{ url_for('audio', path=track.file_path) }}"
+             src="{{ url_for('media.audio', path=track.file_path) }}"
              style="display:none;">
         Your browser does not support audio playback.
       </audio>

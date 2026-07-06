@@ -1,0 +1,70 @@
+"""Media streaming, progress, health, and version-check endpoints."""
+
+import json
+import logging
+import os
+import urllib.error
+import urllib.request
+
+from flask import Blueprint, abort, jsonify, request, send_file
+
+from ..auth import login_required
+from ..state import _assert_in_music_dir, state
+
+log = logging.getLogger(__name__)
+
+media_bp = Blueprint("media", __name__)
+
+
+@media_bp.route("/api/progress")
+@login_required
+def api_progress():
+    st = state()
+    if st.progress is None:
+        return jsonify(is_scanning=False, is_paused=False, is_stopping=False,
+                       completed=0, total=0, cumulative_completed=0,
+                       current_file="", current_step="",
+                       step_index=0, step_total=3, last_file="", last_bpm=None)
+    return jsonify(**st.progress.snapshot())
+
+
+@media_bp.route("/api/version/check")
+@login_required
+def api_version_check():
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/paulojf/bpm-tagger/releases/latest",
+            headers={"Accept": "application/vnd.github+json",
+                     "User-Agent": "bpm-tagger-ui"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        return jsonify(latest=data.get("tag_name", "unknown"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return jsonify(latest=None)
+        return jsonify(error=str(exc))
+    except Exception as exc:
+        return jsonify(error=str(exc))
+
+
+@media_bp.route("/healthz")
+def healthz():
+    st = state()
+    try:
+        stats = st.db.get_stats() if st.db else {}
+        return jsonify(status="ok", **stats)
+    except Exception as exc:
+        return jsonify(status="error", error=str(exc)), 500
+
+
+@media_bp.route("/audio")
+@login_required
+def audio():
+    file_path = request.args.get("path", "")
+    if not file_path:
+        abort(400)
+    real = _assert_in_music_dir(file_path)
+    if not os.path.isfile(real):
+        abort(404)
+    return send_file(real, conditional=True)

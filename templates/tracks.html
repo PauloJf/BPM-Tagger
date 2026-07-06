@@ -111,22 +111,22 @@
 
   {# Filter pills — link-based so they work server-side #}
   <div class="filter-pills">
-    <a href="{{ url_for('tracks', q=q, per_page=per_page) }}"
+    <a href="{{ url_for('pages.tracks', q=q, per_page=per_page) }}"
        class="filter-pill {% if not request.args.get('filter') %}active{% endif %}">
       All
       <span class="pill-count" id="pill-count-all">{{ all_count }}</span>
     </a>
-    <a href="{{ url_for('tracks', q=q, per_page=per_page, filter='review') }}"
+    <a href="{{ url_for('pages.tracks', q=q, per_page=per_page, filter='review') }}"
        class="filter-pill {% if request.args.get('filter') == 'review' %}active{% endif %}">
       Review
       <span class="pill-count" id="pill-count-review">{{ review_count }}</span>
     </a>
-    <a href="{{ url_for('tracks', q=q, per_page=per_page, filter='locked') }}"
+    <a href="{{ url_for('pages.tracks', q=q, per_page=per_page, filter='locked') }}"
        class="filter-pill {% if request.args.get('filter') == 'locked' %}active{% endif %}">
       Locked
       <span class="pill-count" id="pill-count-locked">{{ locked_count }}</span>
     </a>
-    <a href="{{ url_for('tracks', q=q, per_page=per_page, filter='deleted') }}"
+    <a href="{{ url_for('pages.tracks', q=q, per_page=per_page, filter='deleted') }}"
        class="filter-pill {% if request.args.get('filter') == 'deleted' %}active{% endif %}">
       Deleted
       <span class="pill-count" id="pill-count-deleted">{{ deleted_count }}</span>
@@ -147,7 +147,7 @@
              placeholder="Search filename or artist…"
              class="search-input" autocomplete="off">
     </div>
-    <a id="search-clear" href="{{ url_for('tracks') }}" class="btn btn-ghost btn-sm"
+    <a id="search-clear" href="{{ url_for('pages.tracks') }}" class="btn btn-ghost btn-sm"
        style="{{ '' if (q or bpm) else 'display:none' }}">Clear</a>
 
     {# BPM filter #}
@@ -185,7 +185,7 @@
   </div>
   <div id="tracks-body">
     {% for t in tracks %}
-    <a href="{{ url_for('track_detail', path=t.file_path, back='tracks', back_filter=filter, back_page=page, back_q=q, back_per_page=per_page) }}"
+    <a href="{{ url_for('pages.track_detail', path=t.file_path, back='tracks', back_filter=filter, back_page=page, back_q=q, back_per_page=per_page) }}"
        class="tracks-row {{ 'flagged' if (t.needs_review and not t.reviewed) or t.status == 'error' }}"
        style="display:grid; grid-template-columns:1fr 130px 90px 130px 110px 70px; padding:12px 18px; gap:14px; align-items:center; text-decoration:none; color:inherit; border-bottom:1px solid var(--border);">
       <div style="min-width:0;">
@@ -273,19 +273,19 @@
   </span>
   <div class="pagination" id="tracks-pagination" style="{{ '' if pages > 1 else 'display:none' }}; margin-top:0;">
     {% if page > 1 %}
-      <a href="{{ url_for('tracks', page=page-1, q=q, per_page=per_page) }}">← Prev</a>
+      <a href="{{ url_for('pages.tracks', page=page-1, q=q, per_page=per_page) }}">← Prev</a>
     {% endif %}
     {% for p in range(1, pages+1) %}
       {% if p == page %}
         <span class="current">{{ p }}</span>
       {% elif p <= 3 or p > pages-3 or (p >= page-2 and p <= page+2) %}
-        <a href="{{ url_for('tracks', page=p, q=q, per_page=per_page) }}">{{ p }}</a>
+        <a href="{{ url_for('pages.tracks', page=p, q=q, per_page=per_page) }}">{{ p }}</a>
       {% elif p == 4 or p == pages-3 %}
         <span>…</span>
       {% endif %}
     {% endfor %}
     {% if page < pages %}
-      <a href="{{ url_for('tracks', page=page+1, q=q, per_page=per_page) }}">Next →</a>
+      <a href="{{ url_for('pages.tracks', page=page+1, q=q, per_page=per_page) }}">Next →</a>
     {% endif %}
   </div>
 </div>

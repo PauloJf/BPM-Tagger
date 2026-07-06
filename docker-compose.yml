@@ -100,7 +100,7 @@ services:
       # Example (run once, do not set in the long-running service):
       #   docker compose run --rm --no-deps bpm-tagger \
       #     env MODE=lock LOCK_FILE="/music/artist/track.mp3" LOCK_BPM=128 \
-      #     python bpm_tagger.py
+      #     python -m bpm_tagger
       # LOCK_FILE: ""
       # LOCK_BPM: ""
       # UNLOCK_FILE: ""

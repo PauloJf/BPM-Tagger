@@ -123,17 +123,17 @@ Set the `MODE` environment variable to one of the following:
 # Lock a track and correct its BPM to 128
 docker compose run --rm --no-deps bpm-tagger \
   env MODE=lock LOCK_FILE="/music/Artist/Album/track.mp3" LOCK_BPM=128 \
-  python bpm_tagger.py
+  python -m bpm_tagger
 
 # Lock a track at its current BPM (just prevent future re-analysis)
 docker compose run --rm --no-deps bpm-tagger \
   env MODE=lock LOCK_FILE="/music/Artist/Album/track.mp3" \
-  python bpm_tagger.py
+  python -m bpm_tagger
 
 # Unlock a track
 docker compose run --rm --no-deps bpm-tagger \
   env MODE=unlock UNLOCK_FILE="/music/Artist/Album/track.mp3" \
-  python bpm_tagger.py
+  python -m bpm_tagger
 ```
 
 ---

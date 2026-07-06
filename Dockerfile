@@ -32,10 +32,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
 RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
 
-COPY VERSION bpm_tagger.py web_ui.py ./
+COPY VERSION web_ui.py ./
+COPY bpm_tagger/ bpm_tagger/
 COPY templates/ templates/
 COPY static/ static/
 
 RUN mkdir -p /data
 
-CMD ["python", "bpm_tagger.py"]
+CMD ["python", "-m", "bpm_tagger"]

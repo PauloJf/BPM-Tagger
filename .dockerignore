@@ -8,3 +8,7 @@ __pycache__
 *.pyo
 .env
 docs/
+.venv
+tests
+.pytest_cache
+frontend

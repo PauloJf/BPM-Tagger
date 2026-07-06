@@ -509,7 +509,7 @@
 {% if session.get('ok') %}
 <nav class="app-nav">
   {# Logo #}
-  <a href="{{ url_for('tracks') }}" class="nav-logo">
+  <a href="{{ url_for('pages.tracks') }}" class="nav-logo">
     <div class="nav-logo-tile">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
         <rect x="3"  y="10" width="2.4" height="4"  rx="1" fill="white" opacity="0.7"/>
@@ -528,20 +528,20 @@
   <div class="nav-divider nav-desktop-only"></div>
 
   {# Nav items — desktop #}
-  <a href="{{ url_for('tracks') }}"
+  <a href="{{ url_for('pages.tracks') }}"
      class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'tracks' }}">Library</a>
-  <a href="{{ url_for('review') }}"
+  <a href="{{ url_for('pages.review') }}"
      class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'review' }}">
     Review
     {% if g.review_count is defined and g.review_count %}
       <span class="nav-badge">{{ g.review_count }}</span>
     {% endif %}
   </a>
-  <a href="{{ url_for('stats') }}"
+  <a href="{{ url_for('pages.stats') }}"
      class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'stats' }}">Stats</a>
-  <a href="{{ url_for('settings') }}"
+  <a href="{{ url_for('pages.settings') }}"
      class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'settings' }}">Settings</a>
-  <a href="{{ url_for('about') }}"
+  <a href="{{ url_for('pages.about') }}"
      class="nav-item nav-desktop-only {{ 'active' if request.endpoint == 'about' }}">About</a>
 
   <span class="nav-spacer nav-desktop-only"></span>
@@ -562,7 +562,7 @@
   </span>
 
   {# Logout — desktop #}
-  <form method="post" action="{{ url_for('logout') }}" class="nav-desktop-only" style="display:inline; margin:0;">
+  <form method="post" action="{{ url_for('auth.logout') }}" class="nav-desktop-only" style="display:inline; margin:0;">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <button type="submit" class="nav-item btn-bare"
             style="color:var(--err-fg); border:none; background:none;">Logout</button>
@@ -585,20 +585,20 @@
 
   {# Mobile dropdown panel #}
   <div id="nav-mobile-panel" class="nav-mobile-panel" role="navigation" aria-label="Mobile navigation">
-    <a href="{{ url_for('tracks') }}"
+    <a href="{{ url_for('pages.tracks') }}"
        class="nav-mobile-link {{ 'active' if request.endpoint == 'tracks' }}">Library</a>
-    <a href="{{ url_for('review') }}"
+    <a href="{{ url_for('pages.review') }}"
        class="nav-mobile-link {{ 'active' if request.endpoint == 'review' }}">
       Review
       {% if g.review_count is defined and g.review_count %}
         <span class="nav-badge">{{ g.review_count }}</span>
       {% endif %}
     </a>
-    <a href="{{ url_for('stats') }}"
+    <a href="{{ url_for('pages.stats') }}"
        class="nav-mobile-link {{ 'active' if request.endpoint == 'stats' }}">Stats</a>
-    <a href="{{ url_for('settings') }}"
+    <a href="{{ url_for('pages.settings') }}"
        class="nav-mobile-link {{ 'active' if request.endpoint == 'settings' }}">Settings</a>
-    <a href="{{ url_for('about') }}"
+    <a href="{{ url_for('pages.about') }}"
        class="nav-mobile-link {{ 'active' if request.endpoint == 'about' }}">About</a>
 
     <div class="nav-mobile-sep"></div>
@@ -622,7 +622,7 @@
     </div>
 
     <div class="nav-mobile-sep"></div>
-    <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+    <form method="post" action="{{ url_for('auth.logout') }}" style="margin:0;">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
       <button type="submit" class="nav-mobile-link"
               style="width:100%; color:var(--err-fg); border:none; background:none;
