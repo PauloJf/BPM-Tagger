@@ -3,6 +3,39 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import { applyTheme, type Theme } from "../lib/theme";
+
+function ThemeToggle({ mobile }: { mobile?: boolean }) {
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || "dark");
+  const toggle = () => {
+    const next: Theme = theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    setTheme(next);
+  };
+  const icon = theme === "dark" ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" />
+    </svg>
+  );
+  if (mobile) {
+    return (
+      <button className="nav-mobile-link" style={{ width: "100%", border: "none", background: "none", cursor: "pointer", textAlign: "left" }} onClick={toggle}>
+        {icon}
+        {theme === "dark" ? "Light mode" : "Dark mode"}
+      </button>
+    );
+  }
+  return (
+    <button className="nav-item btn-bare nav-desktop-only" style={{ border: "none", background: "none" }} onClick={toggle} aria-label="Toggle theme" title="Toggle theme">
+      {icon}
+    </button>
+  );
+}
+
 
 interface NavItem { to: string; label: string; badge?: boolean; badgeCount?: number }
 
@@ -150,6 +183,8 @@ export default function Nav() {
         <ScanControls state={state} act={act} />
       </span>
 
+      <ThemeToggle />
+
       <button
         className="nav-item btn-bare nav-desktop-only"
         style={{ color: "var(--err-fg)", border: "none", background: "none" }}
@@ -205,6 +240,7 @@ export default function Nav() {
           <ScanControls state={state} act={act} mobile />
         </div>
         <div className="nav-mobile-sep" />
+        <ThemeToggle mobile />
         <button
           className="nav-mobile-link"
           style={{ width: "100%", color: "var(--err-fg)", border: "none", background: "none", cursor: "pointer", textAlign: "left" }}

@@ -48,7 +48,7 @@ export default function Settings() {
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [grabber, setGrabber] = useState({ enabled: false, syncMinutes: 30, publicUrl: "" });
+  const [grabber, setGrabber] = useState({ enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false });
   const [grabberSaved, setGrabberSaved] = useState<Saved>("");
 
   const [ntfySaved, setNtfySaved] = useState<Saved>("");
@@ -72,7 +72,7 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
-    setGrabber({ enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30), publicUrl: s("ui_public_url") });
+    setGrabber({ enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30), publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false) });
   }, [cfg]);
 
   // Surface the ?spotify=... result the OAuth callback redirected back with.
@@ -246,6 +246,10 @@ export default function Settings() {
                        onChange={(e) => setGrabber({ ...grabber, syncMinutes: +e.target.value })} style={{ width: 90 }} />
               </div>
               <div className="field-row">
+                {fieldLabel("Dry run", "Match + plan downloads but don't actually download (routes to the inbox)")}
+                <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} />
+              </div>
+              <div className="field-row">
                 {fieldLabel("Public URL", "Base URL used in ntfy click links (e.g. https://bpm.example.com)")}
                 <input type="text" value={grabber.publicUrl}
                        onChange={(e) => setGrabber({ ...grabber, publicUrl: e.target.value })}
@@ -261,6 +265,7 @@ export default function Settings() {
                     grabber_enabled: grabber.enabled,
                     spotify_sync_minutes: grabber.syncMinutes,
                     ui_public_url: grabber.publicUrl,
+                    grab_dry_run: grabber.dryRun,
                   }, setGrabberSaved)}
                 >
                   {grabberSaved === "saving" ? "Saving…" : grabberSaved === "ok" ? "Saved ✓ (restart to apply)" : "Save Grabber Settings"}

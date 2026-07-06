@@ -17,6 +17,17 @@ export interface Track {
   reviewed: number;
   locked: number;
   waveform_peaks?: string | null;
+  // Tag-index columns (grabber, M3+)
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  album_artist?: string | null;
+  track_no?: number | null;
+  disc_no?: number | null;
+  year?: number | null;
+  isrc?: string | null;
+  managed?: number;
+  spotify_track_id?: string | null;
 }
 
 export interface TracksPage {

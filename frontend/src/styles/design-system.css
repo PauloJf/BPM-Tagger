@@ -76,6 +76,33 @@
   --info-bd: oklch(0.385 0.080 225);
 }
 
+/* ── Light theme (opt-in via <html data-theme="light">) ───────────────────── */
+:root[data-theme="light"] {
+  --bg:            oklch(0.970 0.004 285);
+  --surface:       oklch(1     0     0);
+  --surface-2:     oklch(0.955 0.004 285);
+  --border:        oklch(0.900 0.006 285);
+  --border-strong: oklch(0.800 0.010 285);
+  --text:          oklch(0.250 0.012 285);
+  --muted:         oklch(0.500 0.016 285);
+  --chip-bg:       oklch(0.950 0.005 285);
+  --row-hover:     oklch(0.962 0.005 285);
+  --wave:          oklch(0.800 0.012 285);
+
+  --accent-2:           oklch(0.560 0.190 var(--accent-h));
+  --accent-soft:        oklch(0.930 0.050 var(--accent-h));
+  --accent-soft-strong: oklch(0.880 0.070 var(--accent-h));
+  --accent-border:      oklch(0.800 0.080 var(--accent-h));
+
+  --ok-fg:   oklch(0.500 0.140 155); --ok-bg:   oklch(0.940 0.050 155); --ok-bd:   oklch(0.850 0.070 155);
+  --warn-fg: oklch(0.500 0.120 75);  --warn-bg: oklch(0.940 0.070 85);  --warn-bg-hover: oklch(0.900 0.080 85); --warn-bd: oklch(0.850 0.090 85);
+  --err-fg:  oklch(0.520 0.180 25);  --err-bg:  oklch(0.950 0.045 25);  --err-bd:  oklch(0.860 0.090 25);
+  --info-fg: oklch(0.520 0.130 225); --info-bg: oklch(0.940 0.045 225); --info-bd: oklch(0.850 0.070 225);
+}
+/* Nav + mobile panel backgrounds are hardcoded (with alpha) — override for light. */
+:root[data-theme="light"] nav.app-nav { background: oklch(0.985 0.004 285 / 0.85); }
+:root[data-theme="light"] .nav-mobile-panel { background: oklch(0.990 0.004 285 / 0.97); }
+
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 html, body {
   height: 100%;

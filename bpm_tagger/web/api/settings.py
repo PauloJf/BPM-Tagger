@@ -172,6 +172,8 @@ def api_settings_grabber():
         updates["grabber_enabled"] = bool(data["grabber_enabled"])
     if "index_tags" in data:
         updates["index_tags"] = bool(data["index_tags"])
+    if "grab_dry_run" in data:
+        updates["grab_dry_run"] = bool(data["grab_dry_run"])
     if "ui_public_url" in data:
         updates["ui_public_url"] = str(data["ui_public_url"]).strip()
     if "spotify_sync_minutes" in data:

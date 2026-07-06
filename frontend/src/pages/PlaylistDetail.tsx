@@ -66,6 +66,9 @@ export default function PlaylistDetail() {
             {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
           </button>
         )}
+        {(pl?.have_count ?? 0) > 0 && (
+          <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
+        )}
         <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate()}>
           {sync.isPending ? "Syncing…" : "Sync now"}
         </button>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, audioUrl } from "../lib/api";
 import { basename, dirname } from "../lib/paths";
@@ -18,6 +18,7 @@ function fmtTime(s: number): string {
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const path = params.get("path") || "";
   const qc = useQueryClient();
   useTitle(path ? basename(path) : "Track");
@@ -46,20 +47,48 @@ export default function TrackDetail() {
   const [unlockMsg, setUnlockMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeMsg, setReanalyzeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [metaForm, setMetaForm] = useState({ title: "", artist: "", album: "", album_artist: "", track_no: "", disc_no: "", year: "", isrc: "" });
+  const [applyTemplate, setApplyTemplate] = useState(false);
+  const [metaMsg, setMetaMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const detail = detailQ.data;
   const track = detail?.track;
   const playbackBuffer = detail?.playback_buffer ?? 3;
 
-  // Seed the BPM override input when the track loads/changes.
+  // Seed the BPM override input + metadata form when the track loads/changes.
   useEffect(() => {
     setBpmInput(track?.bpm ? track.bpm.toFixed(1) : "");
     setSaveMsg(null);
     setUnlockMsg(null);
     setReanalyzeMsg(null);
+    setMetaMsg(null);
     setPlaying(false);
     setBuffering(false);
+    if (track) {
+      const s = (v: unknown) => (v == null ? "" : String(v));
+      setMetaForm({ title: s(track.title), artist: s(track.artist), album: s(track.album),
+        album_artist: s(track.album_artist), track_no: s(track.track_no), disc_no: s(track.disc_no),
+        year: s(track.year), isrc: s(track.isrc) });
+    }
   }, [track?.file_path, track?.bpm]);
+
+  async function saveMeta() {
+    setMetaMsg(null);
+    try {
+      const res = await api.put<{ ok: boolean; file_path?: string; error?: string }>(
+        "/api/track/tags", { file_path: path, ...metaForm, apply_template: applyTemplate });
+      if (!res.ok) { setMetaMsg({ ok: false, text: res.error || "Failed" }); return; }
+      qc.invalidateQueries({ queryKey: ["tracks"] });
+      if (res.file_path && res.file_path !== path) {
+        navigate(`/track?path=${encodeURIComponent(res.file_path)}&back=${params.get("back") || "tracks"}`, { replace: true });
+      } else {
+        qc.invalidateQueries({ queryKey: ["track", path] });
+        setMetaMsg({ ok: true, text: "Saved" });
+      }
+    } catch (e) {
+      setMetaMsg({ ok: false, text: e instanceof Error ? e.message : "Request failed" });
+    }
+  }
 
   // Audio element listeners for the time display.
   useEffect(() => {
@@ -440,6 +469,31 @@ export default function TrackDetail() {
                 {reanalyzing ? "Analyzing…" : "Re-analyze"}
               </button>
               {reanalyzeMsg && <div style={{ fontSize: 12, color: reanalyzeMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", display: "flex", alignItems: "center", gap: 6 }}>{reanalyzeMsg.text}</div>}
+            </div>
+          </div>
+
+          {/* Metadata editor */}
+          <div className="card">
+            <div className="section-label"><span>Metadata</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {([
+                ["title", "Title"], ["artist", "Artist"], ["album", "Album"], ["album_artist", "Album artist"],
+                ["track_no", "Track #"], ["disc_no", "Disc #"], ["year", "Year"], ["isrc", "ISRC"],
+              ] as [keyof typeof metaForm, string][]).map(([key, label]) => (
+                <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: 10, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}</span>
+                  <input type="text" value={metaForm[key]} onChange={(e) => setMetaForm({ ...metaForm, [key]: e.target.value })} style={{ width: "100%" }} />
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+                <input type="checkbox" checked={applyTemplate} onChange={(e) => setApplyTemplate(e.target.checked)} />
+                Rename file to path template
+              </label>
+              <div style={{ flex: 1 }} />
+              {metaMsg && <span style={{ fontSize: 12, color: metaMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{metaMsg.text}</span>}
+              <button className="btn btn-primary btn-md" onClick={saveMeta}>Save metadata</button>
             </div>
           </div>
         </div>

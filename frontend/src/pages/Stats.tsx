@@ -34,11 +34,19 @@ function StatCard({ label, value, color, children }: { label: string; value: str
   );
 }
 
+interface DupGroup {
+  artist: string;
+  title: string;
+  count: number;
+  tracks: { file_path: string; title: string | null; artist: string | null; album: string | null; bpm: number | null; managed: number }[];
+}
+
 export default function Stats() {
   useTitle("Statistics");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: () => api.get<StatsResponse>("/api/stats") });
+  const dupQ = useQuery({ queryKey: ["duplicates"], queryFn: () => api.get<{ groups: DupGroup[] }>("/api/duplicates") });
 
   const retryErrors = useMutation({
     mutationFn: () => api.post<{ ok: boolean }>("/api/scan/retry_errors", {}),
@@ -170,6 +178,32 @@ export default function Stats() {
             <p style={{ color: "var(--muted)", fontSize: 13 }}>No data yet.</p>
           )}
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="section-label">
+          <span>Possible duplicates</span>
+          <span className="section-hint">same normalized artist + title</span>
+        </div>
+        {(dupQ.data?.groups.length ?? 0) === 0 ? (
+          <p style={{ color: "var(--muted)", fontSize: 13 }}>{dupQ.isLoading ? "Loading…" : "No duplicates found."}</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {dupQ.data!.groups.map((g, i) => (
+              <div key={i}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                  {g.tracks[0]?.artist || g.artist} – {g.tracks[0]?.title || g.title}
+                  <span className="chip chip--warn" style={{ marginLeft: 8 }}>{g.count}</span>
+                </div>
+                {g.tracks.map((t) => (
+                  <div key={t.file_path} style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.file_path}{t.bpm ? ` · ${t.bpm.toFixed(1)} BPM` : ""}{t.managed ? " · managed" : ""}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
