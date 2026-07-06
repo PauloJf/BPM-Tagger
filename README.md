@@ -297,13 +297,14 @@ Summary statistics and charts for your library:
 
 ### Pages
 
-When the grabber is enabled, the navbar also shows **Playlists**, **Queue**, and **Inbox** (with a badge for items awaiting review):
+When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **Queue**, and **Inbox** (with a badge for items awaiting review):
 
 - **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
+- **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Edit search, or Skip.
 
-The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar.
+A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Monochrome.
 
 #### All Tracks (`/tracks`)
 Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.
