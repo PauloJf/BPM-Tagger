@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Music Grabber + React UI
+
+Major expansion into a Spotify→library sync + downloader, on a full UI rewrite.
+
+**Architecture**
+- Refactored the `bpm_tagger.py` / `web_ui.py` monoliths into the `bpm_tagger` package (config, db, bpm, scan, notify, integrations, grabber, web) with a characterization test suite.
+- Web UI migrated from server-rendered Jinja to a **React SPA** (Vite + TypeScript + Tailwind); Flask now serves a JSON API + the built bundle. Tightened CSP; added a light/dark theme toggle.
+
+**Music grabber (opt-in, `GRABBER_ENABLED=true`)**
+- Spotify playlist sync (Authorization Code OAuth) → have/missing/queued reconciliation against the library by ISRC or fuzzy score.
+- Download pipeline: Monochrome (Tidal) → yt-dlp fallback → ffmpeg transcode to one format → full tags + cover → path-template filing → 3-detector BPM analysis; grabbed files marked `managed` (watcher-safe).
+- Ambiguity **inbox** (choose / re-search / skip) with ntfy pings; download **queue** with progress/retry/cancel/history.
+- Metadata + cover editor with template rename; m3u export; duplicate report; dry-run.
+
 ## v1.1.0 — 2026-05-22
 
 **Deleted file detection**

@@ -13,7 +13,11 @@
 
 **v1.1.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
-Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected web UI for reviewing and correcting results.
+Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
+
+**Now with an optional Spotify grabber:** watch your own Spotify playlists, compare them against what's already on disk, and automatically download the tracks you're missing — preferring lossless via a self-hosted Monochrome (Tidal) proxy, falling back to yt-dlp — transcoding to one configured format, writing full tags + cover art, running the same three-detector BPM analysis, and filing them into your library by a customizable path template. Ambiguous matches wait in an inbox and ping you over [ntfy](https://ntfy.sh/).
+
+> The web UI is now a **React single-page app** (migrated from the original server-rendered pages); Docker serves the pre-built bundle automatically. Screenshots below show the earlier UI and will be refreshed.
 
 ## Screenshots
 
@@ -51,6 +55,19 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Manual lock** — pin a track's BPM so future scans never overwrite it
 - **Slim and full Docker images** — the default `:latest` image (~400 MB, no PyTorch) uses essentia + librosa; the `:full` image (~1.8 GB) adds deeprhythm CNN for maximum accuracy
 - **Fully Docker-native** — all settings via environment variables in `docker-compose.yml`
+
+### Music grabber (optional, `GRABBER_ENABLED=true`)
+
+- **Spotify playlist sync** — connect your own Spotify account (one-time OAuth), add playlists by URL, and BPM Tagger reconciles each against your library on a schedule (watch mode) or on demand
+- **Have / missing / queued** — every playlist track is matched to your library by ISRC or a fuzzy title+artist+duration score; the ones you're missing are enqueued automatically
+- **Lossless-first downloading** — tries a self-hosted **Monochrome** (Tidal) proxy first, falls back to **yt-dlp** (YouTube Music); provider order is configurable
+- **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-320`, `flac`, or `opus-192`)
+- **Full tagging + BPM** — writes title/artist/album/track/year/ISRC + embedded cover art, then runs the same 3-detector BPM analysis and tags the result; files land under a customizable **path template** (default `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}`)
+- **Ambiguity inbox** — low-confidence matches wait for you to choose a candidate, refine the search, or skip; you get an ntfy ping with a tap-through link
+- **Queue** — live download progress, retry/cancel, and history
+- **Metadata editor** — edit tags + cover on any track and optionally rename it to the path template (the watcher won't re-analyze the edited file)
+- **m3u export & duplicate report** — export a playlist's on-disk tracks; find library duplicates by normalized artist+title
+- **Managed, never clobbered** — grabbed tracks are marked `managed`; the BPM hash is stamped after tagging so the library watcher leaves them alone
 
 ---
 
@@ -200,6 +217,32 @@ When all three are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/
 
 This triggers a Navidrome library rescan automatically so the new BPM tags appear in your music player without a manual rescan step.
 
+### Music Grabber
+
+Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to turn on Spotify playlist sync + downloading.
+
+| Variable | Default | Description |
+|---|---|---|
+| `GRABBER_ENABLED` | `false` | Master switch for the grabber subsystem. Requires a restart to take effect. |
+| `SPOTIFY_CLIENT_ID` | _(empty)_ | Spotify app Client ID (env-only, never stored in `settings.json`). Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard). |
+| `SPOTIFY_CLIENT_SECRET` | _(empty)_ | Spotify app Client Secret (env-only). |
+| `SPOTIFY_REDIRECT_URI` | _(empty)_ | Must match the app's redirect URI **byte-for-byte** and end in `/api/spotify/callback`. Use `https://…` in production or the loopback literal `http://127.0.0.1:5000/api/spotify/callback` for local (not `localhost`). |
+| `SPOTIFY_SYNC_MINUTES` | `30` | How often watched playlists are re-synced in watch mode. |
+| `UI_PUBLIC_URL` | _(empty)_ | Public base URL used in ntfy click links (e.g. the inbox deep link). |
+| `INDEX_TAGS` | `true` | Read file tags into the DB for library matching. Leave on. |
+| `PROVIDER_ORDER` | `monochrome,ytdlp` | Providers tried in order. Monochrome is skipped unless `MONOCHROME_BASE_URL` is set. |
+| `MONOCHROME_BASE_URL` | _(empty)_ | Base URL of your self-hosted Monochrome (Tidal proxy). |
+| `MONOCHROME_API_KEY` | _(empty)_ | Monochrome API key (env-only). |
+| `MONOCHROME_QUALITY` | `LOSSLESS` | Requested quality (`LOSSLESS` → `HIGH` → `LOW`). |
+| `OUTPUT_FORMAT` | `mp3-320` | Single transcode target: `mp3-320`, `flac`, or `opus-192`. |
+| `PATH_TEMPLATE` | `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}` | Destination path template for downloaded files. |
+| `GRAB_WORKERS` | `1` | Concurrent download/transcode workers (max 3). |
+| `GRAB_DRY_RUN` | `false` | Match + plan downloads without actually downloading (routes to the inbox). |
+| `AUTO_ACCEPT_THRESHOLD` | `0.85` | Match score at/above which a candidate is downloaded automatically (ISRC match = instant accept). |
+| `ASK_THRESHOLD` | `0.55` | Below auto-accept but at/above this → the track waits in the inbox for a decision. |
+
+**Connecting Spotify:** with the three `SPOTIFY_*` vars set and the grabber enabled, open **Settings → Grabber → Connect Spotify** in the UI, approve the one-time consent, then add playlists on the **Playlists** page. Client Credentials can't read playlist contents post-Feb-2026, so the Authorization Code flow (owner login → stored refresh token → unattended thereafter) is required; keep the owning account Premium.
+
 ### Web UI
 
 | Variable | Default | Description |
@@ -253,6 +296,14 @@ Summary statistics and charts for your library:
 - **Detector breakdown** — share of tracks analyzed by each detector combination
 
 ### Pages
+
+When the grabber is enabled, the navbar also shows **Playlists**, **Queue**, and **Inbox** (with a badge for items awaiting review):
+
+- **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
+- **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, and completed history.
+- **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Edit search, or Skip.
+
+The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar.
 
 #### All Tracks (`/tracks`)
 Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.

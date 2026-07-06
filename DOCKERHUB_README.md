@@ -1,8 +1,10 @@
 # BPM Tagger
 
-Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/) library, writes it back to the file's metadata, and provides a password-protected web UI for reviewing and correcting results.
+Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/) library, writes it back to the file's metadata, and provides a password-protected **React** web UI for reviewing and correcting results.
 
 Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia** RhythmExtractor2013, and **librosa** — so octave errors are caught automatically and disagreements are flagged for manual review.
+
+**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists, download the tracks you're missing (lossless via a Monochrome/Tidal proxy, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings.
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger)
 
