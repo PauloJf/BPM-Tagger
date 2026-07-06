@@ -128,20 +128,24 @@ def test_add_and_list_playlist(grab):
     assert any(p["spotify_id"] == "PL123" for p in listing)
 
 
-def test_sync_classifies_have_and_missing(grab):
+def test_sync_classifies_have_and_auto_enqueues_missing(grab):
     client, st, _ = grab
     pid = st.db.add_playlist("PL123", "Playlist PL123")
     r = client.post(f"/api/playlists/{pid}/sync", headers={"X-CSRF-Token": client._csrf})
     assert r.status_code == 200
 
     have = client.get(f"/api/playlists/{pid}/tracks?status=have").get_json()["tracks"]
+    # The missing track is auto-enqueued during sync, so it now classifies as queued.
+    queued = client.get(f"/api/playlists/{pid}/tracks?status=queued").get_json()["tracks"]
     missing = client.get(f"/api/playlists/{pid}/tracks?status=missing").get_json()["tracks"]
     assert [t["title"] for t in have] == ["Blinding Lights"]
-    assert [t["title"] for t in missing] == ["Totally Missing Song"]
+    assert [t["title"] for t in queued] == ["Totally Missing Song"]
+    assert missing == []
 
-    # Counts on the list endpoint reflect the classification.
     pl = next(p for p in client.get("/api/playlists").get_json()["playlists"] if p["id"] == pid)
-    assert pl["have_count"] == 1 and pl["missing_count"] == 1
+    assert pl["have_count"] == 1 and pl["queued_count"] == 1 and pl["missing_count"] == 0
+    # And a pending grab-queue item was created for it.
+    assert st.db.get_queue_counts().get("pending") == 1
 
 
 def test_disconnect(grab):

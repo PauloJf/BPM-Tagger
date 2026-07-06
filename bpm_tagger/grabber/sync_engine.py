@@ -115,6 +115,19 @@ class SpotifySync(threading.Thread):
             new_status = "have" if path else "missing"
             if new_status != pt.get("match_status") or path != pt.get("matched_file_path"):
                 self.db.set_playlist_track_match(pt["id"], new_status, path)
+            # Auto-enqueue freshly-missing tracks (skip ones already tried — failed/
+            # skipped items are only retried via an explicit user action).
+            if new_status == "missing" and pt.get("spotify_track_id") \
+                    and not self.db.has_any_grab(pt["spotify_track_id"]):
+                self.db.enqueue_grab(_grab_meta(pt))
+
+
+def _grab_meta(pt: dict) -> dict:
+    return {"playlist_track_id": pt.get("id"), "spotify_track_id": pt.get("spotify_track_id"),
+            "title": pt.get("title"), "artist": pt.get("artist"), "album": pt.get("album"),
+            "album_artist": pt.get("album_artist"), "duration_ms": pt.get("duration_ms"),
+            "isrc": pt.get("isrc"), "track_no": pt.get("track_no"), "disc_no": pt.get("disc_no"),
+            "year": pt.get("year"), "cover_url": pt.get("cover_url")}
 
 
 class GrabberService:
@@ -127,16 +140,31 @@ class GrabberService:
         self.db = db
         self.client = SpotifyClient(config, db)
         self.sync = SpotifySync(config, db, tagger, self.client, notifier)
+        from .worker import GrabPool
+        self.pool = GrabPool(config, db, tagger, notifier)
         self._thread_started = False
 
     def start_background(self):
         if not self._thread_started:
             self.sync.start()
+            self.pool.start()
             self._thread_started = True
 
     def stop_background(self):
         if self._thread_started:
             self.sync.stop()
+            self.pool.stop()
+
+    def enqueue_missing(self, playlist_id: int) -> int:
+        """Manually enqueue every missing track of a playlist (re-attempts failed
+        ones, unlike the sync auto-enqueue). Returns how many were enqueued."""
+        n = 0
+        for pt in self.db.get_playlist_tracks(playlist_id, "missing"):
+            if pt.get("spotify_track_id") and not self.db.has_nonterminal_grab(pt["spotify_track_id"]):
+                if self.db.enqueue_grab(_grab_meta(pt)) is not None:
+                    n += 1
+        self.sync.request_sync()
+        return n
 
     # Convenience pass-throughs for the API layer.
     def status(self) -> dict:
