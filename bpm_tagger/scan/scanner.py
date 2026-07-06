@@ -239,7 +239,31 @@ class BPMTagger:
         counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
         self._finish_scan(counts, "Scan")
+        self.index_tags()
         return counts
+
+    def index_tags(self) -> int:
+        """Read mutagen metadata into the DB for rows whose tags are unread or
+        whose file changed (grabber library-match index). Gated by index_tags."""
+        if not self.config.get("index_tags", True):
+            return 0
+        from ..bpm.tags import read_tags
+        from ..grabber.matching import normalize_artist, normalize_title
+
+        rows = self.db.get_tracks_needing_tag_index()
+        updated = 0
+        for row in rows:
+            fp = row["file_path"]
+            if not os.path.exists(fp):
+                continue
+            tags = read_tags(fp)
+            tags["norm_title"] = normalize_title(tags.get("title"))
+            tags["norm_artist"] = normalize_artist(tags.get("artist"))
+            self.db.update_track_tags(fp, tags, get_file_hash(fp))
+            updated += 1
+        if updated:
+            log.info("Tag index: updated metadata for %d track(s)", updated)
+        return updated
 
     def scan_review(self) -> dict:
         """Re-analyze only flagged, errored, or librosa-only tracks."""

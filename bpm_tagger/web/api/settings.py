@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 settings_bp = Blueprint("settings", __name__)
 
 # Values that must never be returned to the client in the clear.
-_SECRET_KEYS = {"ui_password", "ui_secret_key", "navidrome_pass"}
+_SECRET_KEYS = {"ui_password", "ui_secret_key", "navidrome_pass",
+                "spotify_client_secret", "monochrome_api_key"}
 
 
 def _json_body() -> dict:

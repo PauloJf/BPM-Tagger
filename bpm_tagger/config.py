@@ -106,4 +106,26 @@ def build_config() -> dict:
         "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
         "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),
         "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
+
+        # ── Grabber (M3+) ─────────────────────────────────────────────────────
+        "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
+        "index_tags":                 os.environ.get("INDEX_TAGS", "true").lower() == "true",
+        # Spotify OAuth — client id/secret are env-only, never persisted to settings.json
+        "spotify_client_id":          os.environ.get("SPOTIFY_CLIENT_ID", ""),
+        "spotify_client_secret":      os.environ.get("SPOTIFY_CLIENT_SECRET", ""),
+        "spotify_redirect_uri":       os.environ.get("SPOTIFY_REDIRECT_URI", ""),
+        "spotify_sync_minutes":       int(os.environ.get("SPOTIFY_SYNC_MINUTES", "30")),
+        "ui_public_url":              os.environ.get("UI_PUBLIC_URL", ""),
+        # Providers / pipeline (used from M4; declared here so settings.json can hold them)
+        "monochrome_base_url":        os.environ.get("MONOCHROME_BASE_URL", ""),
+        "monochrome_api_key":         os.environ.get("MONOCHROME_API_KEY", ""),
+        "monochrome_quality":         os.environ.get("MONOCHROME_QUALITY", "LOSSLESS"),
+        "provider_order":             os.environ.get("PROVIDER_ORDER", "monochrome,ytdlp"),
+        "output_format":              os.environ.get("OUTPUT_FORMAT", "mp3-320"),
+        "path_template":              os.environ.get(
+            "PATH_TEMPLATE", "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"),
+        "grab_workers":               int(os.environ.get("GRAB_WORKERS", "1")),
+        "grab_dry_run":               os.environ.get("GRAB_DRY_RUN", "false").lower() == "true",
+        "auto_accept_threshold":      float(os.environ.get("AUTO_ACCEPT_THRESHOLD", "0.85")),
+        "ask_threshold":              float(os.environ.get("ASK_THRESHOLD", "0.55")),
     }

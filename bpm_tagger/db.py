@@ -1,14 +1,22 @@
-"""SQLite database (WAL) for the track index and BPM results."""
+"""SQLite database (WAL) for the track index, BPM results, and grabber state."""
 
 import logging
 import os
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
 from .bpm.tags import get_file_hash
+from .config import __version__
 
 log = logging.getLogger(__name__)
+
+# Grab-queue status state machine (§2). Non-terminal states mean the item is
+# still "in flight"; exactly one non-terminal item may exist per spotify_track_id.
+GRAB_TERMINAL = ("done", "failed", "skipped")
+GRAB_NONTERMINAL = ("pending", "searching", "awaiting_user", "downloading",
+                    "transcoding", "tagging", "analyzing_bpm")
 
 
 class BPMDatabase:
@@ -25,7 +33,22 @@ class BPMDatabase:
     def __init__(self, db_path: str):
         self.db_path = db_path
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        self._backup_once()
         self._init_db()
+
+    def _backup_once(self) -> None:
+        """Copy the DB file to ``<db>.bak-<version>`` before migrating, once per
+        version. No-op on a fresh/empty DB. Never fatal."""
+        try:
+            if not os.path.isfile(self.db_path) or os.path.getsize(self.db_path) == 0:
+                return
+            bak = f"{self.db_path}.bak-{__version__}"
+            if os.path.exists(bak):
+                return
+            shutil.copy2(self.db_path, bak)
+            log.info("DB backup written before migration: %s", os.path.basename(bak))
+        except Exception as exc:  # pragma: no cover - best effort
+            log.warning("DB pre-migration backup failed (continuing): %s", exc)
 
     def _connect(self):
         conn = sqlite3.connect(self.db_path, timeout=30)
@@ -62,7 +85,7 @@ class BPMDatabase:
             conn.commit()
 
     def _migrate(self, conn):
-        """Add columns that may be absent in databases created before this version."""
+        """Add columns/tables that may be absent in older databases. Additive only."""
         existing = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
         for col, coldef in [
             ("bpm_dr",         "REAL"),
@@ -72,6 +95,21 @@ class BPMDatabase:
             ("reviewed",       "INTEGER DEFAULT 0"),
             ("locked",         "INTEGER DEFAULT 0"),
             ("waveform_peaks", "TEXT"),
+            # ── Grabber tag index (M3) ────────────────────────────────────────
+            ("title",          "TEXT"),
+            ("artist",         "TEXT"),
+            ("album",          "TEXT"),
+            ("album_artist",   "TEXT"),
+            ("track_no",       "INTEGER"),
+            ("disc_no",        "INTEGER"),
+            ("year",           "INTEGER"),
+            ("isrc",           "TEXT"),
+            ("duration_ms",    "INTEGER"),
+            ("norm_title",     "TEXT"),
+            ("norm_artist",    "TEXT"),
+            ("managed",        "INTEGER DEFAULT 0"),
+            ("spotify_track_id", "TEXT"),
+            ("tags_indexed_hash", "TEXT"),  # file_hash at last tag-read pass
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -79,6 +117,122 @@ class BPMDatabase:
         conn.execute(
             "UPDATE tracks SET needs_review = 0 WHERE locked = 1 AND needs_review = 1"
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_norm ON tracks(norm_artist, norm_title)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON tracks(isrc)")
+
+        self._create_grabber_tables(conn)
+
+    def _create_grabber_tables(self, conn):
+        """New grabber tables (§2). All CREATE ... IF NOT EXISTS — safe to re-run."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS playlists (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                spotify_id     TEXT UNIQUE NOT NULL,
+                name           TEXT,
+                snapshot_id    TEXT,
+                enabled        INTEGER DEFAULT 1,
+                image_url      TEXT,
+                track_count    INTEGER DEFAULT 0,
+                last_synced_at TEXT,
+                created_at     TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS playlist_tracks (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                playlist_id      INTEGER NOT NULL,
+                spotify_track_id TEXT,
+                position         INTEGER,
+                title            TEXT,
+                artist           TEXT,
+                album            TEXT,
+                album_artist     TEXT,
+                duration_ms      INTEGER,
+                isrc             TEXT,
+                track_no         INTEGER,
+                disc_no          INTEGER,
+                year             INTEGER,
+                cover_url        TEXT,
+                added_at         TEXT,
+                norm_title       TEXT,
+                norm_artist      TEXT,
+                match_status     TEXT DEFAULT 'unknown',   -- have | missing | unknown
+                matched_file_path TEXT,
+                UNIQUE(playlist_id, position)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_playlist ON playlist_tracks(playlist_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_sid ON playlist_tracks(spotify_track_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS grab_queue (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                playlist_track_id  INTEGER,
+                spotify_track_id   TEXT,
+                title              TEXT,
+                artist             TEXT,
+                album              TEXT,
+                album_artist       TEXT,
+                duration_ms        INTEGER,
+                isrc               TEXT,
+                track_no           INTEGER,
+                disc_no            INTEGER,
+                year               INTEGER,
+                cover_url          TEXT,
+                status             TEXT DEFAULT 'pending',
+                provider           TEXT,
+                chosen_candidate_id INTEGER,
+                search_override    TEXT,
+                error              TEXT,
+                attempts           INTEGER DEFAULT 0,
+                progress           REAL DEFAULT 0,
+                tmp_path           TEXT,
+                final_path         TEXT,
+                priority           INTEGER DEFAULT 0,
+                created_at         TEXT,
+                updated_at         TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_status ON grab_queue(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_sid ON grab_queue(spotify_track_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS grab_candidates (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                queue_item_id    INTEGER NOT NULL,
+                provider         TEXT,
+                provider_track_id TEXT,
+                title            TEXT,
+                artist           TEXT,
+                album            TEXT,
+                duration_ms      INTEGER,
+                isrc             TEXT,
+                quality          TEXT,
+                score            REAL,
+                score_breakdown  TEXT,
+                url              TEXT,
+                cover_url        TEXT,
+                rank             INTEGER
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_item ON grab_candidates(queue_item_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS grab_events (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                queue_item_id INTEGER NOT NULL,
+                event         TEXT,
+                detail        TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_item ON grab_events(queue_item_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_tokens (
+                service       TEXT UNIQUE NOT NULL,
+                access_token  TEXT,
+                refresh_token TEXT,
+                expires_at    TEXT,
+                scope         TEXT
+            )
+        """)
 
     def get_all_file_hashes(self) -> dict:
         """Return {file_path: (file_hash, status, locked)} in one query for bulk filtering."""
@@ -395,3 +549,286 @@ class BPMDatabase:
         median = (bpms[mid - 1] + bpms[mid]) / 2 if len(bpms) % 2 == 0 else bpms[mid]
         return {"avg": r["avg"], "min": r["mn"], "max": r["mx"],
                 "median": round(median, 1), "count": r["n"]}
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Grabber (M3+)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # ── Tag indexing ──────────────────────────────────────────────────────────
+    def get_tracks_needing_tag_index(self) -> list[dict]:
+        """done/locked tracks whose tags haven't been read for the current hash."""
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT file_path, file_hash FROM tracks
+                WHERE status != 'deleted' AND (
+                    tags_indexed_hash IS NULL OR tags_indexed_hash != file_hash
+                )
+            """).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_track_tags(self, file_path: str, tags: dict, file_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE tracks SET
+                    title=?, artist=?, album=?, album_artist=?, track_no=?, disc_no=?,
+                    year=?, isrc=?, duration_ms=?, norm_title=?, norm_artist=?,
+                    tags_indexed_hash=?
+                WHERE file_path=?
+            """, (tags.get("title"), tags.get("artist"), tags.get("album"),
+                  tags.get("album_artist"), tags.get("track_no"), tags.get("disc_no"),
+                  tags.get("year"), tags.get("isrc"), tags.get("duration_ms"),
+                  tags.get("norm_title"), tags.get("norm_artist"), file_hash, file_path))
+            conn.commit()
+
+    # ── Library matching support ──────────────────────────────────────────────
+    def find_by_isrc(self, isrc: str) -> list[dict]:
+        if not isrc:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE isrc = ? AND status != 'deleted'", (isrc,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_candidates_by_norm(self, norm_artist: str, norm_title: str) -> list[dict]:
+        """Cheap SQL prefilter: rows sharing the normalized artist OR title.
+        The fuzzy scorer in grabber.matching does the final decision."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE status != 'deleted' AND "
+                "(norm_artist = ? OR norm_title = ?)",
+                (norm_artist or "", norm_title or ""),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── OAuth tokens ──────────────────────────────────────────────────────────
+    def get_oauth_token(self, service: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM oauth_tokens WHERE service = ?", (service,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def save_oauth_token(self, service: str, access_token: str, refresh_token: str,
+                         expires_at: str, scope: str) -> None:
+        with self._connect() as conn:
+            conn.execute("""
+                INSERT INTO oauth_tokens (service, access_token, refresh_token, expires_at, scope)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(service) DO UPDATE SET
+                    access_token=excluded.access_token,
+                    refresh_token=COALESCE(excluded.refresh_token, oauth_tokens.refresh_token),
+                    expires_at=excluded.expires_at,
+                    scope=excluded.scope
+            """, (service, access_token, refresh_token, expires_at, scope))
+            conn.commit()
+
+    def delete_oauth_token(self, service: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM oauth_tokens WHERE service = ?", (service,))
+            conn.commit()
+
+    # ── Playlists ─────────────────────────────────────────────────────────────
+    def add_playlist(self, spotify_id: str, name: str, image_url: str = "",
+                     track_count: int = 0) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute("""
+                INSERT INTO playlists (spotify_id, name, image_url, track_count, enabled, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+                ON CONFLICT(spotify_id) DO UPDATE SET
+                    name=excluded.name, image_url=excluded.image_url,
+                    track_count=excluded.track_count, enabled=1
+            """, (spotify_id, name, image_url, track_count, now))
+            conn.commit()
+            row = conn.execute("SELECT id FROM playlists WHERE spotify_id = ?", (spotify_id,)).fetchone()
+            return row["id"] if row else cur.lastrowid
+
+    def list_playlists(self) -> list[dict]:
+        with self._connect() as conn:
+            playlists = [dict(r) for r in conn.execute(
+                "SELECT * FROM playlists ORDER BY name COLLATE NOCASE"
+            ).fetchall()]
+            queued = {r["spotify_track_id"] for r in conn.execute(
+                f"SELECT DISTINCT spotify_track_id FROM grab_queue "
+                f"WHERE status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
+                GRAB_NONTERMINAL,
+            ).fetchall()}
+            for p in playlists:
+                rows = conn.execute(
+                    "SELECT spotify_track_id, match_status FROM playlist_tracks WHERE playlist_id = ?",
+                    (p["id"],),
+                ).fetchall()
+                have = miss = q = 0
+                for r in rows:
+                    if r["spotify_track_id"] in queued:
+                        q += 1
+                    elif r["match_status"] == "have":
+                        have += 1
+                    else:
+                        miss += 1
+                p["have_count"] = have
+                p["missing_count"] = miss
+                p["queued_count"] = q
+                p["indexed_count"] = len(rows)
+        return playlists
+
+    def get_playlist(self, playlist_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_playlist_by_spotify_id(self, spotify_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM playlists WHERE spotify_id = ?", (spotify_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_enabled_playlists(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM playlists WHERE enabled = 1").fetchall()
+        return [dict(r) for r in rows]
+
+    def set_playlist_enabled(self, playlist_id: int, enabled: bool) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE playlists SET enabled = ? WHERE id = ?",
+                         (int(enabled), playlist_id))
+            conn.commit()
+
+    def delete_playlist(self, playlist_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
+            conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+            conn.commit()
+
+    def update_playlist_sync(self, playlist_id: int, snapshot_id: str, name: str,
+                             image_url: str, track_count: int) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE playlists SET snapshot_id=?, name=?, image_url=?, track_count=?,
+                    last_synced_at=? WHERE id=?
+            """, (snapshot_id, name, image_url, track_count, now, playlist_id))
+            conn.commit()
+
+    # ── Playlist tracks ───────────────────────────────────────────────────────
+    def replace_playlist_tracks(self, playlist_id: int, tracks: list[dict]) -> None:
+        """Rebuild a playlist's track rows in one transaction (per snapshot change)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
+            conn.executemany("""
+                INSERT INTO playlist_tracks
+                    (playlist_id, spotify_track_id, position, title, artist, album,
+                     album_artist, duration_ms, isrc, track_no, disc_no, year, cover_url,
+                     added_at, norm_title, norm_artist, match_status, matched_file_path)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, [(playlist_id, t.get("spotify_track_id"), t.get("position"), t.get("title"),
+                   t.get("artist"), t.get("album"), t.get("album_artist"), t.get("duration_ms"),
+                   t.get("isrc"), t.get("track_no"), t.get("disc_no"), t.get("year"),
+                   t.get("cover_url"), t.get("added_at"), t.get("norm_title"),
+                   t.get("norm_artist"), t.get("match_status", "unknown"),
+                   t.get("matched_file_path")) for t in tracks])
+            conn.commit()
+
+    def get_playlist_track_rows(self, playlist_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
+                (playlist_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_playlist_track_match(self, pt_id: int, match_status: str,
+                                 matched_file_path: Optional[str]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE playlist_tracks SET match_status=?, matched_file_path=? WHERE id=?",
+                (match_status, matched_file_path, pt_id),
+            )
+            conn.commit()
+
+    def _queued_sids(self, conn) -> set:
+        return {r["spotify_track_id"] for r in conn.execute(
+            f"SELECT DISTINCT spotify_track_id FROM grab_queue "
+            f"WHERE status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
+            GRAB_NONTERMINAL,
+        ).fetchall()}
+
+    def get_playlist_tracks(self, playlist_id: int, status: str = "") -> list[dict]:
+        """Playlist tracks with a derived per-row status (have|queued|missing)."""
+        with self._connect() as conn:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
+                (playlist_id,),
+            ).fetchall()]
+            queued = self._queued_sids(conn)
+        for r in rows:
+            if r["spotify_track_id"] in queued:
+                r["derived_status"] = "queued"
+            elif r["match_status"] == "have":
+                r["derived_status"] = "have"
+            else:
+                r["derived_status"] = "missing"
+        if status:
+            rows = [r for r in rows if r["derived_status"] == status]
+        return rows
+
+    # ── Grab queue ────────────────────────────────────────────────────────────
+    def has_nonterminal_grab(self, spotify_track_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT 1 FROM grab_queue WHERE spotify_track_id = ? "
+                f"AND status IN ({','.join('?' * len(GRAB_NONTERMINAL))}) LIMIT 1",
+                (spotify_track_id, *GRAB_NONTERMINAL),
+            ).fetchone()
+        return row is not None
+
+    def enqueue_grab(self, meta: dict) -> Optional[int]:
+        """Insert a pending grab_queue item unless a non-terminal one already
+        exists for this spotify_track_id. Returns the new id, or None if skipped."""
+        sid = meta.get("spotify_track_id")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            if sid:
+                exists = conn.execute(
+                    f"SELECT 1 FROM grab_queue WHERE spotify_track_id = ? "
+                    f"AND status IN ({','.join('?' * len(GRAB_NONTERMINAL))}) LIMIT 1",
+                    (sid, *GRAB_NONTERMINAL),
+                ).fetchone()
+                if exists:
+                    return None
+            cur = conn.execute("""
+                INSERT INTO grab_queue
+                    (playlist_track_id, spotify_track_id, title, artist, album, album_artist,
+                     duration_ms, isrc, track_no, disc_no, year, cover_url, status,
+                     priority, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?, ?, ?)
+            """, (meta.get("playlist_track_id"), sid, meta.get("title"), meta.get("artist"),
+                  meta.get("album"), meta.get("album_artist"), meta.get("duration_ms"),
+                  meta.get("isrc"), meta.get("track_no"), meta.get("disc_no"),
+                  meta.get("year"), meta.get("cover_url"), meta.get("priority", 0), now, now))
+            item_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
+                (item_id, "enqueued", meta.get("title", ""), now),
+            )
+            conn.commit()
+            return item_id
+
+    def transition(self, item_id: int, status: str, detail: str = "") -> None:
+        """Move a queue item to a new status and append an audit event."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("UPDATE grab_queue SET status=?, updated_at=? WHERE id=?",
+                         (status, now, item_id))
+            conn.execute(
+                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
+                (item_id, status, detail, now),
+            )
+            conn.commit()
+
+    def get_queue_counts(self) -> dict:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) AS n FROM grab_queue GROUP BY status"
+            ).fetchall()
+        return {r["status"]: r["n"] for r in rows}
