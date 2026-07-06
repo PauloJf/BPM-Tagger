@@ -231,11 +231,12 @@ class GrabPipeline:
             return
         body = (f"Best match {best.score:.2f} via {best.provider}. Resolve in the inbox."
                 if best else "No confident match found. Resolve in the inbox.")
+        url = self._click_url(f"/inbox/{item['id']}")
         try:
             self.notifier.send_grabber(
                 f"Needs review: {item.get('artist')} – {item.get('title')}",
-                body, click_url=self._click_url(f"/inbox/{item['id']}"),
-                priority="default", tags="mag")
+                body, click_url=url, priority="default", tags="mag",
+                actions=f"view, Open inbox, {url}" if url else "")
         except Exception:
             pass
 
@@ -299,3 +300,12 @@ class GrabPool:
 
     def stop(self):
         self._stop.set()
+
+    def join(self, timeout: float = 5.0):
+        """Wait up to `timeout` seconds total for workers to finish, after stop()."""
+        end = time.monotonic() + timeout
+        for t in self._threads:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            t.join(remaining)

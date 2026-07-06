@@ -138,7 +138,21 @@ def api_restart():
         st.tagger._stop_event.set()
         st.tagger._pause_event.set()  # unblock if paused
 
+    # Ask the grabber threads to stop; startup-recovery resets any in-flight rows.
+    grabber = getattr(st.tagger, "grabber", None) if st.tagger else None
+    if grabber is not None:
+        try:
+            grabber.stop_background()
+        except Exception:
+            pass
+
     def _do_restart():
+        # Give the grabber pool a moment to wind down (<=5s), then replace process.
+        if grabber is not None:
+            try:
+                grabber.pool.join(5)
+            except Exception:
+                pass
         time.sleep(1.5)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 

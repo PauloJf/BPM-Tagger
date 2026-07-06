@@ -1,6 +1,5 @@
 """Characterization tests for _reconcile — combining detector BPM values."""
 
-import pytest
 
 from bpm_tagger import _reconcile
 

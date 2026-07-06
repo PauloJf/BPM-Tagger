@@ -225,5 +225,22 @@ services:
     # Uncomment and set to match your Navidrome user/group to avoid permission issues
     # user: "1000:1000"
 
+  # ---------------------------------------------------------------------------
+  # Optional: a self-hosted ntfy server for notifications (grabber ambiguity
+  # pings, scan summaries). Point NTFY_URL above at http://ntfy:80 if you use it.
+  # ---------------------------------------------------------------------------
+  # ntfy:
+  #   image: binwiederhier/ntfy:latest
+  #   container_name: ntfy
+  #   command: serve
+  #   restart: unless-stopped
+  #   environment:
+  #     NTFY_BASE_URL: http://ntfy
+  #   volumes:
+  #     - ntfy_data:/var/cache/ntfy
+  #   ports:
+  #     - "8080:80"
+
 volumes:
   bpm_tagger_data:
+  # ntfy_data:

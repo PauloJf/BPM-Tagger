@@ -45,6 +45,7 @@ def grabber_status():
         queue_counts=counts,
         active=db.get_active_grabs(),
         inbox_count=counts.get("awaiting_user", 0),
+        last_change=db.get_last_change(),
         versions=_versions(),
     )
 

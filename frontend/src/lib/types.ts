@@ -119,6 +119,7 @@ export interface GrabberStatus {
   queue_counts?: Record<string, number>;
   active?: { id: number; status: string; progress: number; title: string; artist: string }[];
   inbox_count?: number;
+  last_change?: string;
   versions?: { app?: string; yt_dlp?: string | null };
 }
 

@@ -60,13 +60,35 @@ def write_track_tags(file_path: str, meta: dict) -> None:
         log.warning("Tag write failed for %s: %s", os.path.basename(file_path), exc)
 
 
+def resize_cover(image_bytes: bytes, max_px: int = 1200) -> bytes:
+    """Downscale cover art to <= max_px on the long edge, re-encoded as JPEG.
+    No-op (returns input) if Pillow is unavailable or the image is already small."""
+    if not image_bytes:
+        return image_bytes
+    try:
+        import io
+
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        if max(img.size) <= max_px:
+            return image_bytes
+        img = img.convert("RGB")
+        img.thumbnail((max_px, max_px))
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=90)
+        return out.getvalue()
+    except Exception as exc:
+        log.debug("Cover resize skipped: %s", exc)
+        return image_bytes
+
+
 def fetch_cover(url: str) -> bytes | None:
     if not url:
         return None
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        return resp.content
+        return resize_cover(resp.content)
     except Exception as exc:
         log.debug("Cover fetch failed (%s): %s", url, exc)
         return None

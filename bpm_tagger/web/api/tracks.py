@@ -12,7 +12,7 @@ from ...bpm.tags import get_file_hash, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
-from ...grabber.tagging import embed_cover, read_cover, write_track_tags
+from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 
@@ -314,9 +314,9 @@ def api_track_cover_put():
     image = request.get_data()
     if not image:
         return jsonify(ok=False, error="empty body"), 400
-    mime = request.content_type or "image/jpeg"
     try:
-        embed_cover(path, image, mime="image/png" if "png" in mime else "image/jpeg")
+        image = resize_cover(image)  # normalize to <=1200px JPEG
+        embed_cover(path, image, mime="image/jpeg")
         st.db.refresh_track_hash(path, get_file_hash(path))  # hash only; keep tags
         return jsonify(ok=True)
     except Exception as exc:

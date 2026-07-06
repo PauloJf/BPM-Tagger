@@ -7,7 +7,8 @@ export function useGrabberStatus() {
   return useQuery({
     queryKey: ["grabber-status"],
     queryFn: () => api.get<GrabberStatus>("/api/grabber/status"),
-    refetchInterval: 5000,
-    staleTime: 3000,
+    // Poll faster while downloads are active, slower when idle.
+    refetchInterval: (query) => ((query.state.data as GrabberStatus | undefined)?.active?.length ? 1500 : 4000),
+    staleTime: 1000,
   });
 }

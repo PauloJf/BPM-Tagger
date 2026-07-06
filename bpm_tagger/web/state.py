@@ -10,7 +10,6 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Optional
 
 from flask import abort, current_app
 

@@ -937,6 +937,15 @@ class BPMDatabase:
                     "SELECT * FROM grab_queue ORDER BY priority DESC, id DESC").fetchall()
         return [dict(r) for r in rows]
 
+    def get_last_change(self) -> str:
+        """Cheap token that changes whenever grabber state does — lets the client
+        gate cache invalidation instead of blindly refetching lists."""
+        with self._connect() as conn:
+            q = conn.execute("SELECT MAX(updated_at) FROM grab_queue").fetchone()[0] or ""
+            p = conn.execute("SELECT MAX(last_synced_at) FROM playlists").fetchone()[0] or ""
+            n = conn.execute("SELECT COUNT(*) FROM grab_queue").fetchone()[0]
+        return f"{q}|{p}|{n}"
+
     def get_active_grabs(self) -> list[dict]:
         """Non-terminal queue items (for the live status poll)."""
         with self._connect() as conn:
