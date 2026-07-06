@@ -930,6 +930,12 @@ class BPMDatabase:
                 (item_id,)).fetchall()
         return [dict(r) for r in rows]
 
+    def get_grab_candidate(self, candidate_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM grab_candidates WHERE id=?",
+                               (candidate_id,)).fetchone()
+        return dict(row) if row else None
+
     def get_grab_events(self, item_id: int) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(

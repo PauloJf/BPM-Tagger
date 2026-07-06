@@ -193,3 +193,57 @@ def test_enqueue_missing_requeues_after_cancel(grab):
     # The track is now missing again with no in-flight grab → enqueue-missing re-adds it.
     r = client.post(f"/api/playlists/{pid}/enqueue-missing", headers=csrf)
     assert r.status_code == 200 and r.get_json()["enqueued"] == 1
+
+
+def _awaiting_item(db):
+    iid = db.enqueue_grab({"spotify_track_id": "amb1", "title": "Ambiguous", "artist": "X"})
+    db.transition(iid, "awaiting_user", "test")
+    db.add_grab_candidates(iid, [{"provider": "fake", "provider_track_id": "c1", "title": "Ambiguous",
+                                  "artist": "X", "album": "", "duration_ms": 200000, "isrc": "",
+                                  "quality": "LOSSLESS", "score": 0.7, "score_breakdown": "{}",
+                                  "url": "", "cover_url": "", "rank": 0}])
+    return iid
+
+
+def test_inbox_lists_awaiting_with_candidates(grab):
+    client, st, _ = grab
+    _awaiting_item(st.db)
+    body = client.get("/api/inbox").get_json()
+    assert len(body["items"]) == 1
+    assert body["items"][0]["title"] == "Ambiguous"
+    assert len(body["items"][0]["candidates"]) == 1
+
+
+def test_inbox_choose_sets_pending(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    cid = st.db.get_grab_candidates(iid)[0]["id"]
+    r = client.post(f"/api/inbox/{iid}/choose", json={"candidate_id": cid},
+                    headers={"X-CSRF-Token": client._csrf})
+    assert r.status_code == 200
+    item = st.db.get_grab_item(iid)
+    assert item["status"] == "pending" and item["chosen_candidate_id"] == cid
+
+
+def test_inbox_search_sets_override(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    r = client.post(f"/api/inbox/{iid}/search", json={"query": "better query"},
+                    headers={"X-CSRF-Token": client._csrf})
+    assert r.status_code == 200
+    item = st.db.get_grab_item(iid)
+    assert item["status"] == "pending" and item["search_override"] == "better query"
+
+
+def test_inbox_skip(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    r = client.post(f"/api/inbox/{iid}/skip", headers={"X-CSRF-Token": client._csrf})
+    assert r.status_code == 200
+    assert st.db.get_grab_item(iid)["status"] == "skipped"
+
+
+def test_inbox_choose_requires_csrf(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    assert client.post(f"/api/inbox/{iid}/choose", json={"candidate_id": 1}).status_code == 403

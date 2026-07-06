@@ -4,7 +4,7 @@ import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
-interface NavItem { to: string; label: string; badge?: boolean }
+interface NavItem { to: string; label: string; badge?: boolean; badgeCount?: number }
 
 const BASE_LINKS: NavItem[] = [
   { to: "/tracks", label: "Library" },
@@ -88,10 +88,13 @@ export default function Nav() {
   const dot = stateColor(state);
   const grabber = useGrabberStatus();
 
-  // Insert Playlists + Queue after Library when the grabber is enabled.
+  // Insert Playlists + Queue + Inbox after Library when the grabber is enabled.
   const links: NavItem[] = [...BASE_LINKS];
   if (grabber.data?.enabled) {
-    links.splice(1, 0, { to: "/playlists", label: "Playlists" }, { to: "/queue", label: "Queue" });
+    links.splice(1, 0,
+      { to: "/playlists", label: "Playlists" },
+      { to: "/queue", label: "Queue" },
+      { to: "/inbox", label: "Inbox", badgeCount: grabber.data.inbox_count || 0 });
   }
 
   // Close the mobile panel on navigation.
@@ -137,6 +140,7 @@ export default function Nav() {
         >
           {l.label}
           {l.badge && reviewCount > 0 && <span className="nav-badge">{reviewCount}</span>}
+          {l.badgeCount ? <span className="nav-badge">{l.badgeCount}</span> : null}
         </NavLink>
       ))}
 

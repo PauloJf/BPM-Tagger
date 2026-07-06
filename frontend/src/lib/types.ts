@@ -109,12 +109,30 @@ export interface GrabberStatus {
   inbox_count?: number;
 }
 
+export interface GrabCandidate {
+  id: number;
+  provider: string;
+  provider_track_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration_ms: number | null;
+  isrc: string | null;
+  quality: string | null;
+  score: number | null;
+  score_breakdown: string | null;
+  url: string | null;
+  cover_url: string | null;
+  rank: number;
+}
+
 export interface QueueItem {
   id: number;
   spotify_track_id: string | null;
   title: string | null;
   artist: string | null;
   album: string | null;
+  duration_ms: number | null;
   status: string;
   provider: string | null;
   error: string | null;
@@ -124,6 +142,10 @@ export interface QueueItem {
   priority: number;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface InboxItem extends QueueItem {
+  candidates: GrabCandidate[];
 }
 
 export interface Playlist {

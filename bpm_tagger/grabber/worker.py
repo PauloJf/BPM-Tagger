@@ -19,7 +19,7 @@ from ..integrations.navidrome import _trigger_navidrome_rescan
 from .matching import normalize_artist, normalize_title, score
 from .path_template import render, unique_path
 from .providers import build_providers
-from .providers.base import TrackMeta
+from .providers.base import ProviderCandidate, TrackMeta
 from .tagging import embed_cover, fetch_cover, write_track_tags
 from .transcode import profile_ext, transcode
 
@@ -50,16 +50,26 @@ class GrabPipeline:
     def _provider(self, name):
         return next((p for p in self.providers if p.name == name), None)
 
-    def _search_and_score(self, tmeta: TrackMeta) -> list:
+    def _candidate_from_row(self, row: dict) -> ProviderCandidate:
+        return ProviderCandidate(
+            provider=row.get("provider") or "", provider_track_id=row.get("provider_track_id") or "",
+            title=row.get("title") or "", artist=row.get("artist") or "",
+            album=row.get("album") or "", duration_ms=row.get("duration_ms"),
+            isrc=row.get("isrc") or "", quality=row.get("quality") or "",
+            url=row.get("url") or "", cover_url=row.get("cover_url") or "")
+
+    def _search_and_score(self, search_meta: TrackMeta, score_meta: TrackMeta) -> list:
+        """Search using `search_meta` (may be a user override), score every
+        candidate against `score_meta` (always the real track)."""
         found = []
         for provider in self.providers:
             try:
-                cands = provider.search(tmeta, limit=8)
+                cands = provider.search(search_meta, limit=8)
             except Exception as exc:
                 log.warning("Provider %s search failed: %s", provider.name, exc)
                 continue
             for c in cands:
-                s, br = score(tmeta.as_match(), c.as_match())
+                s, br = score(score_meta.as_match(), c.as_match())
                 if provider.name == "ytdlp" and not c.is_topic:
                     s = max(0.0, s - 0.10)
                     br["yt_channel_penalty"] = 0.10
@@ -106,16 +116,29 @@ class GrabPipeline:
         meta = _meta_from_item(item)
         meta["norm_title"] = normalize_title(meta.get("title"))
         meta["norm_artist"] = normalize_artist(meta.get("artist"))
-        tmeta = TrackMeta.from_row(item)
+        score_meta = TrackMeta.from_row(item)
         tmp_dir = os.path.join(self.grab_tmp, str(item_id))
         os.makedirs(tmp_dir, exist_ok=True)
         try:
-            # 1 — search + score
+            # Inbox choice: skip search, download the user-picked candidate.
+            chosen_id = item.get("chosen_candidate_id")
+            if chosen_id:
+                row = self.db.get_grab_candidate(chosen_id)
+                if not row:
+                    self.db.transition(item_id, "failed", "chosen candidate no longer available")
+                    return "failed"
+                self.db.transition(item_id, "downloading", "user choice")
+                return self._download_and_finish(item, meta, [self._candidate_from_row(row)], tmp_dir)
+
+            # 1 — search (honoring a user search override) + score against the real track
             self.db.transition(item_id, "searching")
-            candidates = self._search_and_score(tmeta)
+            override = (item.get("search_override") or "").strip()
+            search_meta = TrackMeta(title=override, artist="") if override else score_meta
+            candidates = self._search_and_score(search_meta, score_meta)
             self.db.add_grab_candidates(item_id, [self._cand_row(c) for c in candidates])
             if not candidates:
                 self.db.transition(item_id, "awaiting_user", "no candidates found")
+                self._notify_ambiguous(item, None)
                 return "awaiting_user"
 
             best = candidates[0]
@@ -129,17 +152,31 @@ class GrabPipeline:
                 self._notify_ambiguous(item, best)
                 return "awaiting_user"
 
-            # 2 — download (auto-accept)
             self.db.transition(item_id, "downloading")
-            chosen, downloaded = self._download_with_fallback(item_id, candidates, tmp_dir)
-            if not downloaded:
-                self.db.update_grab(item_id, error="all downloads failed",
-                                    attempts=(item.get("attempts") or 0) + 1)
-                self.db.transition(item_id, "failed", "all downloads failed")
-                self._notify_failure(item)
-                return "failed"
-            self.db.update_grab(item_id, provider=chosen.provider)
+            return self._download_and_finish(item, meta, candidates, tmp_dir)
+        except Exception as exc:
+            log.exception("Grab item %s failed: %s", item_id, exc)
+            self.db.update_grab(item_id, error=str(exc)[:500],
+                                attempts=(item.get("attempts") or 0) + 1)
+            self.db.transition(item_id, "failed", str(exc)[:200])
+            return "failed"
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def _download_and_finish(self, item: dict, meta: dict, candidates: list, tmp_dir: str) -> str:
+        """Download the best available candidate then transcode → tag → move →
+        BPM → done. Shared by the auto-accept path and inbox 'choose'."""
+        item_id = item["id"]
+        chosen, downloaded = self._download_with_fallback(item_id, candidates, tmp_dir)
+        if not downloaded:
+            self.db.update_grab(item_id, error="all downloads failed",
+                                attempts=(item.get("attempts") or 0) + 1)
+            self.db.transition(item_id, "failed", "all downloads failed")
+            self._notify_failure(item)
+            return "failed"
+        self.db.update_grab(item_id, provider=chosen.provider)
+
+        if True:
             # 3 — transcode to the single output format
             self.db.transition(item_id, "transcoding")
             out_path, warn = transcode(downloaded.path, tmp_dir, self.output_format, f"grab_{item_id}")
@@ -183,14 +220,6 @@ class GrabPipeline:
             except Exception:
                 pass
             return "done"
-        except Exception as exc:
-            log.exception("Grab item %s failed: %s", item_id, exc)
-            self.db.update_grab(item_id, error=str(exc)[:500],
-                                attempts=(item.get("attempts") or 0) + 1)
-            self.db.transition(item_id, "failed", str(exc)[:200])
-            return "failed"
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # ── notifications (ntfy never fails the pipeline) ──────────────────────────
     def _click_url(self, path):
@@ -200,11 +229,13 @@ class GrabPipeline:
     def _notify_ambiguous(self, item, best):
         if not self.notifier:
             return
+        body = (f"Best match {best.score:.2f} via {best.provider}. Resolve in the inbox."
+                if best else "No confident match found. Resolve in the inbox.")
         try:
             self.notifier.send_grabber(
                 f"Needs review: {item.get('artist')} – {item.get('title')}",
-                f"Best match {best.score:.2f} via {best.provider}. Resolve in the inbox.",
-                click_url=self._click_url(f"/inbox/{item['id']}"), priority="default", tags="mag")
+                body, click_url=self._click_url(f"/inbox/{item['id']}"),
+                priority="default", tags="mag")
         except Exception:
             pass
 

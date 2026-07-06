@@ -132,3 +132,45 @@ def test_low_score_routes_to_awaiting_user(tmp_path):
     assert status == "awaiting_user"
     # Candidates are still recorded for the inbox (M5).
     assert len(db.get_grab_candidates(item_id)) == 1
+
+
+def test_inbox_choose_resumes_to_done(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    item_id = _enqueue(db)
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[FakeProvider(quality_match=False)])
+
+    # Ambiguous → awaiting_user with a recorded candidate.
+    assert pipe.process_item(db.get_grab_item(item_id)) == "awaiting_user"
+    cand = db.get_grab_candidates(item_id)[0]
+
+    # User chooses that candidate → item returns to pending → worker resumes.
+    db.update_grab(item_id, chosen_candidate_id=cand["id"])
+    db.transition(item_id, "pending", "chose")
+    assert pipe.process_item(db.get_grab_item(item_id)) == "done"
+
+    row = db.get_grab_item(item_id)
+    assert row["status"] == "done" and row["final_path"]
+    # Tagged with the ORIGINAL track meta, not the candidate's.
+    assert row["final_path"].replace("\\", "/").endswith("Blinding Lights.mp3")
+
+
+def test_inbox_search_override_used_for_query(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    item_id = _enqueue(db)
+
+    class RecordingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__(quality_match=True)
+            self.queries = []
+
+        def search(self, meta, limit=8):
+            self.queries.append(meta.title)
+            return super().search(meta, limit)
+
+    prov = RecordingProvider()
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[prov])
+    db.update_grab(item_id, search_override="my custom query")
+    pipe.process_item(db.get_grab_item(item_id))
+    assert "my custom query" in prov.queries

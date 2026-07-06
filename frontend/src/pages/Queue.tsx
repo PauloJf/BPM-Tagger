@@ -113,7 +113,7 @@ export default function Queue() {
       </div>
 
       <p style={{ marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
-        Ambiguous matches wait in the <Link to="/playlists" style={{ color: "var(--accent-2)" }}>inbox</Link> (coming in M5).
+        Ambiguous matches wait in the <Link to="/inbox" style={{ color: "var(--accent-2)" }}>inbox</Link>.
       </p>
     </>
   );

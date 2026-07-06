@@ -21,6 +21,7 @@ from ..db import BPMDatabase
 from .api.auth import api_auth_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
+from .api.inbox import inbox_bp
 from .api.playlists import playlists_bp
 from .api.queue import queue_bp
 from .api.settings import settings_bp
@@ -75,7 +76,7 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
-               spotify_bp, playlists_bp, queue_bp):
+               spotify_bp, playlists_bp, queue_bp, inbox_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

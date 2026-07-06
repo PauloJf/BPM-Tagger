@@ -7,6 +7,7 @@ import TrackDetail from "./pages/TrackDetail";
 import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
 import Queue from "./pages/Queue";
+import Inbox from "./pages/Inbox";
 import Review from "./pages/Review";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -55,6 +56,8 @@ export default function App() {
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlist" element={<PlaylistDetail />} />
         <Route path="/queue" element={<Queue />} />
+        <Route path="/inbox" element={<Inbox />} />
+        <Route path="/inbox/:id" element={<Inbox />} />
         <Route path="/review" element={<Review />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
