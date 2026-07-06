@@ -101,7 +101,8 @@ def test_logout_clears_session(auth_client):
 # ---------------------------------------------------------------------------
 
 def test_track_requires_login(client):
-    assert client.get("/api/track?path=/x").status_code == 302
+    # SPA model: protected API returns 401 JSON (not an HTML redirect).
+    assert client.get("/api/track?path=/x").status_code == 401
 
 
 def test_track_returns_detail(auth_client):

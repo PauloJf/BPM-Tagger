@@ -10,12 +10,25 @@ from flask import Blueprint, abort, jsonify, request
 from ...bpm.tags import write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
 from ..auth import _check_csrf, login_required
-from ..pages import _parse_bpm_filter
 from ..state import _assert_in_music_dir, state
 
 log = logging.getLogger(__name__)
 
 tracks_bp = Blueprint("api_tracks", __name__)
+
+
+def _parse_bpm_filter(args) -> tuple:
+    """Return (bpm_target, bpm_tol) from request args, or (None, 5)."""
+    bpm_target = None
+    bpm_tol = 5.0
+    bpm_str = args.get("bpm", "").strip()
+    if bpm_str:
+        try:
+            bpm_target = float(bpm_str)
+            bpm_tol = max(0.0, float(args.get("bpm_tol", "5")))
+        except (ValueError, TypeError):
+            pass
+    return bpm_target, bpm_tol
 
 
 @tracks_bp.route("/api/save_bpm", methods=["POST"])

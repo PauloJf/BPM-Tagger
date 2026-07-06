@@ -11,4 +11,6 @@ docs/
 .venv
 tests
 .pytest_cache
-frontend
+# Keep frontend/ (needed by the build stage) but drop its heavy/derived dirs.
+frontend/node_modules
+frontend/dist

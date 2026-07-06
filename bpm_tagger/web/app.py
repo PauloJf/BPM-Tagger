@@ -2,6 +2,11 @@
 
 ``start(config, progress, tagger)`` keeps the exact signature the monolith
 exposed and is still launched as a daemon thread from ``main()``.
+
+Since M2 the browser UI is a React SPA built to ``frontend/dist``. Flask serves
+that bundle: hashed assets under ``/assets``, the SPA's own static files, and an
+``index.html`` catch-all for every non-API client route. The JSON API blueprints
+are unchanged.
 """
 
 import logging
@@ -10,7 +15,7 @@ import secrets
 from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask, request
+from flask import Flask, abort, request, send_file, send_from_directory
 
 from ..db import BPMDatabase
 from .api.auth import api_auth_bp
@@ -19,27 +24,29 @@ from .api.scan import scan_bp
 from .api.settings import settings_bp
 from .api.stats import stats_bp
 from .api.tracks import tracks_bp
-from .auth import _csrf_token, auth_bp
-from .pages import pages_bp
+from .auth import _csrf_token
 from .state import AppState
 
 log = logging.getLogger(__name__)
 
-# templates/ and static/ live at the repository/image root, above the package.
+# static/ (fonts, favicon) lives at the repository/image root; the built SPA
+# lives in frontend/dist next to it.
 _ROOT = Path(__file__).resolve().parent.parent.parent
-_TEMPLATE_DIR = str(_ROOT / "templates")
 _STATIC_DIR = str(_ROOT / "static")
+_FRONTEND_DIST = _ROOT / "frontend" / "dist"
 
 # Endpoints that must not force CSRF-token creation (see _ensure_csrf).
-# The SPA obtains its token from /api/me, so /api/login is exempt too.
-_CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "auth.login",
-                          "api_auth.api_login")
+# The SPA obtains its token from /api/me, so /api/login and the static shell are
+# exempt.
+_CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
+                          "spa", "spa_assets")
+
+# Path prefixes owned by the backend — never served the SPA shell.
+_API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/")
 
 
 def create_app(config: dict) -> Flask:
-    app = Flask(__name__, template_folder=_TEMPLATE_DIR, static_folder=_STATIC_DIR)
-    app.jinja_env.filters["basename"] = lambda p: os.path.basename(p) if p else ""
-    app.jinja_env.filters["dirname"]  = lambda p: os.path.dirname(p) if p else ""
+    app = Flask(__name__, static_folder=_STATIC_DIR)
 
     st = AppState()
     st.db = BPMDatabase(config["db_path"])
@@ -64,18 +71,42 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-    for bp in (auth_bp, api_auth_bp, pages_bp, tracks_bp, scan_bp, stats_bp,
-               settings_bp, media_bp):
+    for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp):
         app.register_blueprint(bp)
+
+    # ── SPA serving ─────────────────────────────────────────────────────────
+    @app.route("/assets/<path:filename>")
+    def spa_assets(filename):
+        return send_from_directory(_FRONTEND_DIST / "assets", filename)
+
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def spa(path):
+        # Backend-owned paths are handled by their own routes; if we get here
+        # for one, it doesn't exist.
+        if path.startswith(_API_PREFIXES):
+            abort(404)
+        # Serve a real dist file when it exists (e.g. a bundled icon); otherwise
+        # hand back index.html so the client router can take over.
+        candidate = (_FRONTEND_DIST / path).resolve()
+        if path and candidate.is_file() and str(candidate).startswith(str(_FRONTEND_DIST.resolve())):
+            return send_file(candidate)
+        index = _FRONTEND_DIST / "index.html"
+        if not index.is_file():
+            return ("Frontend not built. Run `npm run build` in frontend/.", 501)
+        return send_file(index)
 
     @app.after_request
     def _security_headers(resp):
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "same-origin"
+        # Vite emits external, hashed script bundles, so 'unsafe-inline' is no
+        # longer needed for scripts. Inline styles are still used (React style
+        # props), so style-src keeps 'unsafe-inline'.
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; media-src 'self';"
+            "script-src 'self'; img-src 'self' data:; media-src 'self';"
         )
         return resp
 
@@ -101,4 +132,4 @@ def start(config: dict, progress=None, tagger=None):
     from waitress import serve
     port = int(config.get("ui_port", 5000))
     log.info("BPM UI running on http://0.0.0.0:%d", port)
-    serve(app, host="0.0.0.0", port=port, threads=8)
+    serve(app, host="0.0.0.0", port=port, threads=12)
