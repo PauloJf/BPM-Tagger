@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Music Grabber + React UI
+## v2.0.0 — 2026-07-07
 
 Major expansion into a Spotify→library sync + downloader, on a full UI rewrite.
 

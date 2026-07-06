@@ -118,6 +118,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.0.0** — Music Grabber + React UI: watch Spotify playlists and download missing tracks (Monochrome/Tidal → yt-dlp fallback), transcode to one format, tag + BPM-analyze, ambiguity inbox, download queue, manual search & grab, metadata editor. Full React SPA (replaces the Jinja UI) with a persistent waveform player bar and light/dark theme.
+
 **v1.1.0** — Deleted file detection: files removed from disk are automatically marked `deleted` in both watch mode (real-time) and scan mode (post-discovery diff). Locked tracks are never marked deleted. Deleted tracks reappear in the queue if the file comes back. New Deleted filter pill and Statistics card in the web UI.
 
 **v1.0.8** — Live search, BPM ± filter, back-navigation state, error tooltips, Reviewed stat card, histogram peak/median, Navidrome watch-mode rescan, DeepRhythm memory logging, and several bug fixes.

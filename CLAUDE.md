@@ -11,7 +11,7 @@ Before taking any action that could incur charges on the team plan — including
 | Field | Value |
 |---|---|
 | Name | BPM Tagger |
-| Version | v1.1.0 |
+| Version | v2.0.0 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
 | Author | Paulo (paulo@gatoserio.dev) |
