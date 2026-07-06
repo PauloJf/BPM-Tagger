@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTitle } from "../hooks/useTitle";
+import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
 const STACK: [string, string][] = [
   ["Flask + Waitress", "web server"],
@@ -16,6 +17,8 @@ const STACK: [string, string][] = [
 export default function About() {
   useTitle("About");
   const { version } = useAuth();
+  const grabber = useGrabberStatus();
+  const ytdlp = grabber.data?.versions?.yt_dlp;
   const versionQ = useQuery({
     queryKey: ["version-check"],
     queryFn: () => api.get<{ latest?: string }>("/api/version/check"),
@@ -93,6 +96,12 @@ export default function About() {
               <span className="stack-label">{label}</span>
             </div>
           ))}
+          {ytdlp && (
+            <div className="stack-row">
+              <span>yt-dlp <span style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 11 }}>{ytdlp}</span></span>
+              <span className="stack-label">download fallback</span>
+            </div>
+          )}
         </div>
       </div>
 

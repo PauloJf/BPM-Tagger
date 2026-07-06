@@ -26,6 +26,7 @@ export interface Track {
   disc_no?: number | null;
   year?: number | null;
   isrc?: string | null;
+  duration_ms?: number | null;
   managed?: number;
   spotify_track_id?: string | null;
 }
@@ -118,6 +119,7 @@ export interface GrabberStatus {
   queue_counts?: Record<string, number>;
   active?: { id: number; status: string; progress: number; title: string; artist: string }[];
   inbox_count?: number;
+  versions?: { app?: string; yt_dlp?: string | null };
 }
 
 export interface GrabCandidate {

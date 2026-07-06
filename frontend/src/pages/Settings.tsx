@@ -48,8 +48,36 @@ export default function Settings() {
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [grabber, setGrabber] = useState({ enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false });
+  const [grabber, setGrabber] = useState({
+    enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
+    outputFormat: "mp3-320", pathTemplate: "", providerOrder: "monochrome,ytdlp",
+    monoUrl: "", monoKey: "", monoQuality: "LOSSLESS",
+  });
   const [grabberSaved, setGrabberSaved] = useState<Saved>("");
+  const [testMsg, setTestMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+
+  async function testConn(kind: string, path: string, body: unknown) {
+    setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: "Testing…" } }));
+    try {
+      const r = await api.post<{ ok: boolean; message?: string; error?: string }>(path, body);
+      setTestMsg((m) => ({ ...m, [kind]: { ok: !!r.ok, text: r.ok ? (r.message || "OK") : (r.error || "Failed") } }));
+    } catch (e) {
+      setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: e instanceof Error ? e.message : "Failed" } }));
+    }
+  }
+
+  function previewPath(tpl: string): string {
+    const sample: Record<string, string | number> = {
+      AlbumArtist: "The Weeknd", Artist: "The Weeknd", Album: "After Hours",
+      Title: "Blinding Lights", TrackNo: 3, DiscNo: 1, Year: 2020,
+      ext: (grabber.outputFormat.split("-")[0] === "opus" ? "opus" : grabber.outputFormat.split("-")[0]),
+    };
+    return tpl.replace(/\{(\w+)(?::0(\d)d)?\}/g, (_m, k, pad) => {
+      let v = sample[k] ?? "";
+      if (pad && typeof v === "number") v = String(v).padStart(+pad, "0");
+      return String(v);
+    });
+  }
 
   const [ntfySaved, setNtfySaved] = useState<Saved>("");
   const [scanSaved, setScanSaved] = useState<Saved>("");
@@ -72,7 +100,14 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
-    setGrabber({ enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30), publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false) });
+    setGrabber({
+      enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
+      publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
+      outputFormat: s("output_format") || "mp3-320", pathTemplate: s("path_template"),
+      providerOrder: s("provider_order") || "monochrome,ytdlp",
+      monoUrl: s("monochrome_base_url"), monoKey: s("monochrome_api_key"),
+      monoQuality: s("monochrome_quality") || "LOSSLESS",
+    });
   }, [cfg]);
 
   // Surface the ?spotify=... result the OAuth callback redirected back with.
@@ -250,6 +285,50 @@ export default function Settings() {
                 <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} />
               </div>
               <div className="field-row">
+                {fieldLabel("Output format", "Every download is transcoded to this single format")}
+                <select value={grabber.outputFormat} onChange={(e) => setGrabber({ ...grabber, outputFormat: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                  <option value="mp3-320">mp3-320</option>
+                  <option value="flac">flac</option>
+                  <option value="opus-192">opus-192</option>
+                </select>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Path template", "Destination path for downloaded files")}
+                <div style={{ width: "100%", maxWidth: 360 }}>
+                  <input type="text" value={grabber.pathTemplate} placeholder="{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
+                         onChange={(e) => setGrabber({ ...grabber, pathTemplate: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                    → {previewPath(grabber.pathTemplate || "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}")}
+                  </div>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Provider order", "Comma-separated; tried in order (monochrome,ytdlp)")}
+                <input type="text" value={grabber.providerOrder} onChange={(e) => setGrabber({ ...grabber, providerOrder: e.target.value })}
+                       style={{ maxWidth: 240, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Monochrome URL", "Self-hosted Tidal proxy (leave blank to use yt-dlp only)")}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
+                  <input type="text" value={grabber.monoUrl} placeholder="http://monochrome:8080"
+                         onChange={(e) => setGrabber({ ...grabber, monoUrl: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <input type="password" value={grabber.monoKey} placeholder="API key"
+                         onChange={(e) => setGrabber({ ...grabber, monoKey: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <select value={grabber.monoQuality} onChange={(e) => setGrabber({ ...grabber, monoQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                      <option value="LOSSLESS">LOSSLESS</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="LOW">LOW</option>
+                    </select>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("mono", "/api/settings/test-monochrome", { monochrome_base_url: grabber.monoUrl, monochrome_api_key: grabber.monoKey })}>Test</button>
+                    {testMsg.mono && <span style={{ fontSize: 12, color: testMsg.mono.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.mono.text}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="field-row">
                 {fieldLabel("Public URL", "Base URL used in ntfy click links (e.g. https://bpm.example.com)")}
                 <input type="text" value={grabber.publicUrl}
                        onChange={(e) => setGrabber({ ...grabber, publicUrl: e.target.value })}
@@ -266,6 +345,12 @@ export default function Settings() {
                     spotify_sync_minutes: grabber.syncMinutes,
                     ui_public_url: grabber.publicUrl,
                     grab_dry_run: grabber.dryRun,
+                    output_format: grabber.outputFormat,
+                    path_template: grabber.pathTemplate,
+                    provider_order: grabber.providerOrder,
+                    monochrome_base_url: grabber.monoUrl,
+                    monochrome_api_key: grabber.monoKey,
+                    monochrome_quality: grabber.monoQuality,
                   }, setGrabberSaved)}
                 >
                   {grabberSaved === "saving" ? "Saving…" : grabberSaved === "ok" ? "Saved ✓ (restart to apply)" : "Save Grabber Settings"}
@@ -330,8 +415,10 @@ export default function Settings() {
                   {fieldLabel("Notify on review", 'include "N need review" in scan summary')}
                   <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} />
                 </div>
-                <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <SaveButton state={ntfySaved} label="Save Notification Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("ntfy", "/api/settings/test-ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic })}>Test</button>
+                  {testMsg.ntfy && <span style={{ fontSize: 12, color: testMsg.ntfy.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.ntfy.text}</span>}
                 </div>
               </div>
             </form>
@@ -450,8 +537,10 @@ export default function Settings() {
                   {fieldLabel("Password")}
                   <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
                 </div>
-                <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <SaveButton state={navSaved} label="Save Navidrome Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
+                  {testMsg.nav && <span style={{ fontSize: 12, color: testMsg.nav.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.nav.text}</span>}
                 </div>
               </div>
             </form>

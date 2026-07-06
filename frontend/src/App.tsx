@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import Nav from "./components/Nav";
+import PlayerBar from "./components/PlayerBar";
 import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
@@ -8,6 +9,7 @@ import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
 import Queue from "./pages/Queue";
 import Inbox from "./pages/Inbox";
+import Search from "./pages/Search";
 import Review from "./pages/Review";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -18,6 +20,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     <>
       <Nav />
       <div className="container page-enter">{children}</div>
+      <PlayerBar />
     </>
   );
 }
@@ -58,6 +61,7 @@ export default function App() {
         <Route path="/queue" element={<Queue />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/inbox/:id" element={<Inbox />} />
+        <Route path="/search" element={<Search />} />
         <Route path="/review" element={<Review />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />

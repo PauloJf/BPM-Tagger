@@ -126,6 +126,7 @@ export default function Nav() {
   if (grabber.data?.enabled) {
     links.splice(1, 0,
       { to: "/playlists", label: "Playlists" },
+      { to: "/search", label: "Search" },
       { to: "/queue", label: "Queue" },
       { to: "/inbox", label: "Inbox", badgeCount: grabber.data.inbox_count || 0 });
   }

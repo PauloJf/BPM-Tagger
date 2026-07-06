@@ -6,6 +6,7 @@ import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
 import { ArrowIcon, ConfBar, FolderIcon, StatusBadge } from "../components/trackBits";
 import { useTitle } from "../hooks/useTitle";
+import { usePlayer } from "../lib/player";
 
 const STEPS = ["deeprhythm", "essentia", "librosa"];
 
@@ -60,6 +61,7 @@ export default function Tracks() {
   useTitle("Library");
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
+  const player = usePlayer();
 
   const q = params.get("q") || "";
   const filter = params.get("filter") || "";
@@ -301,15 +303,28 @@ export default function Tracks() {
               const flagged = (t.needs_review && !t.reviewed) || t.status === "error";
               return (
                 <Link key={t.file_path} to={trackHref(t.file_path)} className={"tracks-row" + (flagged ? " flagged" : "")}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
-                      {basename(t.file_path)}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <FolderIcon />
-                      <span style={{ fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {parentName(t.file_path)}
-                      </span>
+                  <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                    <button
+                      className="row-play"
+                      aria-label="Play"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        player.play({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+                    </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
+                        {basename(t.file_path)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                        <FolderIcon />
+                        <span style={{ fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {parentName(t.file_path)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>

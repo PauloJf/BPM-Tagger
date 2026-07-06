@@ -727,3 +727,38 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
 @media (max-width: 700px) {
   .q-row { grid-template-columns: 1fr auto; row-gap: 8px; }
 }
+
+/* Persistent player footer bar */
+body.has-player .container { padding-bottom: 88px; }
+.player-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  background: oklch(0.185 0.012 285 / 0.96); border-top: 1px solid var(--border);
+  backdrop-filter: saturate(180%) blur(10px); -webkit-backdrop-filter: saturate(180%) blur(10px);
+}
+:root[data-theme="light"] .player-bar { background: oklch(0.99 0.004 285 / 0.96); }
+.player-bar-play {
+  width: 38px; height: 38px; border-radius: 999px; flex-shrink: 0; border: none;
+  background: var(--accent); color: white; cursor: pointer; display: grid; place-items: center;
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+.player-bar-meta { min-width: 0; width: 200px; flex-shrink: 0; }
+.player-bar-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-bar-artist { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-bar-time { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.player-bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; cursor: pointer; overflow: hidden; }
+.player-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 3px; }
+.player-bar-close { border: none; background: none; color: var(--muted); cursor: pointer; flex-shrink: 0; padding: 4px; }
+.player-bar-close:hover { color: var(--text); }
+@media (max-width: 700px) {
+  .player-bar-meta { width: 120px; }
+  .player-bar { gap: 8px; padding: 8px 12px; }
+}
+
+/* Small round play button used in track/search rows */
+.row-play {
+  width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0; border: 1px solid var(--border);
+  background: var(--chip-bg); color: var(--text); cursor: pointer; display: grid; place-items: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.row-play:hover { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); }

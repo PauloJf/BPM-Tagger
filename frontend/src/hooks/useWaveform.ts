@@ -23,6 +23,10 @@ export function useWaveform(
   // has loaded). Without it the effect would run before the canvas exists and
   // never re-run, so the peaks would never be fetched.
   enabled: boolean,
+  // True when the shared audio element is currently playing THIS track. When
+  // false the waveform is drawn static (no playhead) and no audio/scrub
+  // listeners are wired — so it doesn't seek/read another track's playback.
+  isActive: boolean,
 ) {
   const [loading, setLoading] = useState(true);
   const peaksRef = useRef<number[] | null>(null);
@@ -81,7 +85,8 @@ export function useWaveform(
     }
 
     function renderNow() {
-      render(audio ? audio.currentTime : 0, audio ? audio.duration || 0 : 0);
+      if (isActive && audio) render(audio.currentTime, audio.duration || 0);
+      else render(0, 0); // static: peaks only, no playhead
     }
 
     function startRaf() {
@@ -140,17 +145,20 @@ export function useWaveform(
       renderNow();
     };
 
-    canvas.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
-    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-    canvas.addEventListener("touchend", onTouchEnd);
     window.addEventListener("resize", onResize);
-    if (audio) {
-      audio.addEventListener("timeupdate", onTimeUpdate);
-      audio.addEventListener("play", startRaf);
-      audio.addEventListener("ended", onEnded);
+    if (isActive) {
+      canvas.addEventListener("mousedown", onMouseDown);
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+      canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+      canvas.addEventListener("touchend", onTouchEnd);
+      if (audio) {
+        audio.addEventListener("timeupdate", onTimeUpdate);
+        audio.addEventListener("play", startRaf);
+        audio.addEventListener("ended", onEnded);
+        if (!audio.paused) startRaf();  // already playing when we mounted/activated
+      }
     }
 
     initCanvas();
@@ -191,7 +199,7 @@ export function useWaveform(
         audio.removeEventListener("ended", onEnded);
       }
     };
-  }, [canvasRef, audioRef, filePath, enabled]);
+  }, [canvasRef, audioRef, filePath, enabled, isActive]);
 
   return { loading };
 }

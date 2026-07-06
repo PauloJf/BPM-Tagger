@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, audioUrl } from "../lib/api";
+import { api } from "../lib/api";
 import { basename, dirname } from "../lib/paths";
+import { usePlayer } from "../lib/player";
 import type { TrackDetailResponse } from "../lib/types";
 import { BpmDisplay } from "../components/BpmDisplay";
 import { DetectorBar } from "../components/DetectorBar";
 import { useTapTempo } from "../hooks/useTapTempo";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
-
-function fmtTime(s: number): string {
-  if (!isFinite(s)) return "0:00";
-  const m = Math.floor(s / 60);
-  return m + ":" + String(Math.floor(s % 60)).padStart(2, "0");
-}
+import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
@@ -29,18 +25,14 @@ export default function TrackDetail() {
     enabled: !!path,
   });
 
-  const audioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const player = usePlayer();
+  const active = player.isCurrent(path);          // is this the track loaded in the bar?
   const trackReady = !!detailQ.data?.track;
-  const { loading: wfLoading } = useWaveform(canvasRef, audioRef, path, trackReady);
+  const { loading: wfLoading } = useWaveform(canvasRef, player.audioRef, path, trackReady, active);
+  const { time, dur } = useAudioTime(player.audioRef);
   const tap = useTapTempo();
   const tapBtnRef = useRef<HTMLButtonElement>(null);
-
-  const [playing, setPlaying] = useState(false);
-  const [buffering, setBuffering] = useState(false);
-  const [curTime, setCurTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const bufWait = useRef<number | undefined>(undefined);
 
   const [bpmInput, setBpmInput] = useState("");
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -53,7 +45,6 @@ export default function TrackDetail() {
 
   const detail = detailQ.data;
   const track = detail?.track;
-  const playbackBuffer = detail?.playback_buffer ?? 3;
 
   // Seed the BPM override input + metadata form when the track loads/changes.
   useEffect(() => {
@@ -62,8 +53,6 @@ export default function TrackDetail() {
     setUnlockMsg(null);
     setReanalyzeMsg(null);
     setMetaMsg(null);
-    setPlaying(false);
-    setBuffering(false);
     if (track) {
       const s = (v: unknown) => (v == null ? "" : String(v));
       setMetaForm({ title: s(track.title), artist: s(track.artist), album: s(track.album),
@@ -90,68 +79,12 @@ export default function TrackDetail() {
     }
   }
 
-  // Audio element listeners for the time display.
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onTime = () => setCurTime(audio.currentTime);
-    const onMeta = () => setDuration(audio.duration || 0);
-    const onEnded = () => setPlaying(false);
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("loadedmetadata", onMeta);
-    audio.addEventListener("ended", onEnded);
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("loadedmetadata", onMeta);
-      audio.removeEventListener("ended", onEnded);
-    };
-  }, [path]);
-
-  function bufferedEnd(audio: HTMLAudioElement) {
-    for (let i = 0; i < audio.buffered.length; i++) {
-      if (audio.buffered.start(i) <= audio.currentTime + 0.1 && audio.buffered.end(i) >= audio.currentTime)
-        return audio.buffered.end(i);
-    }
-    return 0;
-  }
-  function enoughBuffered(audio: HTMLAudioElement) {
-    const target = audio.currentTime + playbackBuffer;
-    return bufferedEnd(audio) >= Math.min(target, audio.duration || target);
-  }
-  function doPlay(audio: HTMLAudioElement) {
-    audio.play();
-    setBuffering(false);
-    setPlaying(true);
-  }
+  // Playback is driven by the shared footer player so it survives navigation.
+  const isPlaying = active && player.playing;
   function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (!audio.paused || bufWait.current) {
-      if (bufWait.current) {
-        window.clearInterval(bufWait.current);
-        bufWait.current = undefined;
-        setBuffering(false);
-      }
-      audio.pause();
-      setPlaying(false);
-      return;
-    }
-    if (playbackBuffer <= 0 || enoughBuffered(audio)) {
-      doPlay(audio);
-    } else {
-      setBuffering(true);
-      bufWait.current = window.setInterval(() => {
-        if (enoughBuffered(audio)) {
-          window.clearInterval(bufWait.current);
-          bufWait.current = undefined;
-          doPlay(audio);
-        }
-      }, 150);
-    }
+    if (active) player.toggle();
+    else if (track) player.play({ path, title: basename(track.file_path), artist: track.artist || "" });
   }
-  useEffect(() => () => {
-    if (bufWait.current) window.clearInterval(bufWait.current);
-  }, []);
 
   function spawnRipple() {
     const btn = tapBtnRef.current;
@@ -353,17 +286,13 @@ export default function TrackDetail() {
               <canvas ref={canvasRef} id="waveform-canvas" />
               {wfLoading && <div id="waveform-loading" />}
             </div>
-            <audio ref={audioRef} preload="auto" src={audioUrl(track.file_path)} style={{ display: "none" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <button
                 onClick={togglePlay}
-                style={{ width: 44, height: 44, borderRadius: 999, background: "var(--accent)", color: "white", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 4px 16px var(--accent-glow)", opacity: buffering ? 0.55 : 1 }}
+                style={{ width: 44, height: 44, borderRadius: 999, background: "var(--accent)", color: "white", border: "none", cursor: "pointer", display: "grid", placeItems: "center", flexShrink: 0, boxShadow: "0 4px 16px var(--accent-glow)" }}
+                aria-label={isPlaying ? "Pause" : "Play"}
               >
-                {buffering ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="8" stroke="white" strokeWidth="2.5" fill="none" strokeDasharray="22 10" strokeLinecap="round" style={{ transformOrigin: "12px 12px", animation: "spin 0.8s linear infinite" }} />
-                  </svg>
-                ) : playing ? (
+                {isPlaying ? (
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
                     <rect x="6" y="4" width="4" height="16" rx="1" />
                     <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -375,8 +304,8 @@ export default function TrackDetail() {
                 )}
               </button>
               <div style={{ flex: 1, fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
-                <span style={{ color: "var(--text)" }}>{fmtTime(curTime)}</span>
-                <span> / {fmtTime(duration)}</span>
+                <span style={{ color: "var(--text)" }}>{fmtTime(active ? time : 0)}</span>
+                <span> / {fmtTime(active ? dur : (track.duration_ms ? track.duration_ms / 1000 : 0))}</span>
               </div>
             </div>
           </div>
