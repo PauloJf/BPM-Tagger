@@ -21,7 +21,9 @@ from ..db import BPMDatabase
 from .api.auth import api_auth_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
+from .api.playlists import playlists_bp
 from .api.settings import settings_bp
+from .api.spotify import spotify_bp
 from .api.stats import stats_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token
@@ -39,7 +41,7 @@ _FRONTEND_DIST = _ROOT / "frontend" / "dist"
 # The SPA obtains its token from /api/me, so /api/login and the static shell are
 # exempt.
 _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
-                          "spa", "spa_assets")
+                          "spa", "spa_assets", "api_spotify.spotify_callback")
 
 # Path prefixes owned by the backend — never served the SPA shell.
 _API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/")
@@ -71,7 +73,8 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-    for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp):
+    for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
+               spotify_bp, playlists_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

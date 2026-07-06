@@ -71,12 +71,22 @@ class NotificationManager:
             lines.append(f"  …and {count - 15} more")
         self._post(f"BPM Review Needed: {count} tracks", "\n".join(lines), "warning")
 
-    def _post(self, title: str, body: str, tag: str):
+    def send_grabber(self, title: str, body: str, click_url: str = "",
+                     priority: str = "default", tags: str = "arrow_down"):
+        """Grabber-specific push (bypasses batching). Ambiguity/failure use high
+        priority + a click URL into the inbox; ntfy being down never raises."""
+        self._post(title, body, tags, priority=priority, click_url=click_url)
+
+    def _post(self, title: str, body: str, tag: str, priority: str = "low",
+              click_url: str = ""):
         try:
+            headers = {"Title": title, "Priority": priority, "Tags": tag}
+            if click_url:
+                headers["Click"] = click_url
             resp = requests.post(
                 f"{self._url}/{self._topic}",
                 data=body.encode(),
-                headers={"Title": title, "Priority": "low", "Tags": tag},
+                headers=headers,
                 timeout=10,
             )
             resp.raise_for_status()

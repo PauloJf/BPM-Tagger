@@ -54,6 +54,7 @@ class BPMTagger:
         self._pause_event = threading.Event()
         self._pause_event.set()   # set = running; clear = paused
         self._stop_event  = threading.Event()
+        self.grabber = None       # GrabberService, set in main() when enabled
 
     def process_file(self, file_path: str, force: bool = False) -> dict:
         """Analyze one file. Returns dict with 'status': tagged | skipped | error."""

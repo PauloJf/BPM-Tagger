@@ -39,6 +39,14 @@ def main():
     progress = ScanProgress()
     tagger = BPMTagger(config, progress)
 
+    grabber = None
+    if config.get("grabber_enabled"):
+        from .grabber.sync_engine import GrabberService
+        grabber = GrabberService(config, tagger.db, tagger, tagger.notifier)
+        tagger.grabber = grabber
+        log.info("Grabber enabled — Spotify configured=%s, connected=%s",
+                 grabber.client.is_configured(), grabber.client.is_connected())
+
     if config["enable_ui"]:
         from .web.app import start as web_start
         threading.Thread(target=web_start, args=(config, progress, tagger), daemon=True).start()
@@ -56,10 +64,14 @@ def main():
 
     elif mode == "watch":
         tagger.scan_directory(force=False)
+        if grabber:
+            grabber.start_background()
         tagger.watch()
 
     elif mode == "watch_all":
         tagger.scan_directory(force=True)
+        if grabber:
+            grabber.start_background()
         tagger.watch()
 
     elif mode == "report":
