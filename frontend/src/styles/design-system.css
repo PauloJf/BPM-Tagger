@@ -684,3 +684,19 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
   padding: 10px 14px; border-bottom: 1px solid var(--border);
 }
 .pl-track-row:last-child { border-bottom: none; }
+
+/* Queue */
+.chip--active { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+.chip--done   { background: var(--ok-bg);       color: var(--ok-fg);    border-color: var(--ok-bd); }
+.chip--failed { background: var(--err-bg);      color: var(--err-fg);   border-color: var(--err-bd); }
+.chip--warn   { background: var(--warn-bg);     color: var(--warn-fg);  border-color: var(--warn-bd); }
+.q-row {
+  display: grid; grid-template-columns: 1fr 130px 120px auto; gap: 12px; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.q-row:last-child { border-bottom: none; }
+.q-prog-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.q-prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 2px; transition: width 0.4s ease; }
+@media (max-width: 700px) {
+  .q-row { grid-template-columns: 1fr auto; row-gap: 8px; }
+}

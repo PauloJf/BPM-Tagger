@@ -88,10 +88,10 @@ export default function Nav() {
   const dot = stateColor(state);
   const grabber = useGrabberStatus();
 
-  // Insert Playlists after Library when the grabber is enabled.
+  // Insert Playlists + Queue after Library when the grabber is enabled.
   const links: NavItem[] = [...BASE_LINKS];
   if (grabber.data?.enabled) {
-    links.splice(1, 0, { to: "/playlists", label: "Playlists" });
+    links.splice(1, 0, { to: "/playlists", label: "Playlists" }, { to: "/queue", label: "Queue" });
   }
 
   // Close the mobile panel on navigation.

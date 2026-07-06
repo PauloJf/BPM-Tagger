@@ -892,6 +892,15 @@ class BPMDatabase:
                     "SELECT * FROM grab_queue ORDER BY priority DESC, id DESC").fetchall()
         return [dict(r) for r in rows]
 
+    def get_active_grabs(self) -> list[dict]:
+        """Non-terminal queue items (for the live status poll)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT id, status, progress, title, artist FROM grab_queue "
+                f"WHERE status IN ({','.join('?' * len(GRAB_NONTERMINAL))}) "
+                f"ORDER BY priority DESC, id ASC", GRAB_NONTERMINAL).fetchall()
+        return [dict(r) for r in rows]
+
     def get_grab_history(self, limit: int = 100) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(

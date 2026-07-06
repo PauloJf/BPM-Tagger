@@ -25,10 +25,14 @@ def grabber_status():
     g = _grabber()
     if not g:
         return jsonify(enabled=False)
+    db = state().db
+    counts = db.get_queue_counts()
     return jsonify(
         enabled=True,
         spotify=g.status(),
-        queue_counts=state().db.get_queue_counts(),
+        queue_counts=counts,
+        active=db.get_active_grabs(),
+        inbox_count=counts.get("awaiting_user", 0),
     )
 
 

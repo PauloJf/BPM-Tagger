@@ -33,12 +33,15 @@ export default function PlaylistDetail() {
     enabled: !!id,
   });
 
-  const sync = useMutation({
-    mutationFn: () => api.post(`/api/playlists/${id}/sync`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["playlist-tracks", id] });
-      qc.invalidateQueries({ queryKey: ["playlists"] });
-    },
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["playlist-tracks", id] });
+    qc.invalidateQueries({ queryKey: ["playlists"] });
+    qc.invalidateQueries({ queryKey: ["grabber-status"] });
+  };
+  const sync = useMutation({ mutationFn: () => api.post(`/api/playlists/${id}/sync`), onSuccess: invalidate });
+  const enqueue = useMutation({
+    mutationFn: () => api.post<{ enqueued: number }>(`/api/playlists/${id}/enqueue-missing`),
+    onSuccess: invalidate,
   });
 
   const pl = tracksQ.data?.playlist;
@@ -58,6 +61,11 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
+        {(pl?.missing_count ?? 0) > 0 && (
+          <button className="btn btn-soft btn-sm" disabled={enqueue.isPending || !connected} onClick={() => enqueue.mutate()}>
+            {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
+          </button>
+        )}
         <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate()}>
           {sync.isPending ? "Syncing…" : "Sync now"}
         </button>

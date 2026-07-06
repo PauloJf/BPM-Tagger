@@ -105,6 +105,25 @@ export interface GrabberStatus {
   enabled: boolean;
   spotify?: SpotifyStatus;
   queue_counts?: Record<string, number>;
+  active?: { id: number; status: string; progress: number; title: string; artist: string }[];
+  inbox_count?: number;
+}
+
+export interface QueueItem {
+  id: number;
+  spotify_track_id: string | null;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  status: string;
+  provider: string | null;
+  error: string | null;
+  attempts: number;
+  progress: number;
+  final_path: string | null;
+  priority: number;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface Playlist {

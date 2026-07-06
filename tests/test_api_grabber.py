@@ -159,3 +159,37 @@ def test_delete_playlist(grab):
     pid = st.db.add_playlist("PLX", "X")
     assert client.delete(f"/api/playlists/{pid}", headers={"X-CSRF-Token": client._csrf}).status_code == 200
     assert st.db.get_playlist(pid) is None
+
+
+def test_queue_list_cancel_retry(grab):
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    pid = st.db.add_playlist("PL123", "P")
+    client.post(f"/api/playlists/{pid}/sync", headers=csrf)  # auto-enqueues the missing track
+
+    q = client.get("/api/queue").get_json()
+    assert q["counts"].get("pending") == 1
+    iid = q["items"][0]["id"]
+    assert q["items"][0]["title"] == "Totally Missing Song"
+
+    # detail carries events
+    d = client.get(f"/api/queue/{iid}").get_json()
+    assert d["item"]["id"] == iid and "events" in d
+
+    assert client.post(f"/api/queue/{iid}/cancel", headers=csrf).status_code == 200
+    assert st.db.get_grab_item(iid)["status"] == "skipped"
+    assert client.post(f"/api/queue/{iid}/retry", headers=csrf).status_code == 200
+    assert st.db.get_grab_item(iid)["status"] == "pending"
+
+
+def test_enqueue_missing_requeues_after_cancel(grab):
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    pid = st.db.add_playlist("PL123", "P")
+    client.post(f"/api/playlists/{pid}/sync", headers=csrf)
+    iid = client.get("/api/queue").get_json()["items"][0]["id"]
+    client.post(f"/api/queue/{iid}/cancel", headers=csrf)  # skipped (terminal)
+
+    # The track is now missing again with no in-flight grab → enqueue-missing re-adds it.
+    r = client.post(f"/api/playlists/{pid}/enqueue-missing", headers=csrf)
+    assert r.status_code == 200 and r.get_json()["enqueued"] == 1
