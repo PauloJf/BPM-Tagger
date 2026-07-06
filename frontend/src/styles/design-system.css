@@ -568,3 +568,73 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .stack-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .stack-row:last-child { border-bottom: none; }
 .stack-label { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+
+/* ── Login page ───────────────────────────────────────────────────────────── */
+.login-page {
+  min-height: 100vh; display: grid; place-items: center;
+  padding: 24px; position: relative; overflow: hidden; background: var(--bg);
+}
+.login-glow {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0.7;
+  background:
+    radial-gradient(800px circle at 30% 20%, var(--accent-glow), transparent 60%),
+    radial-gradient(700px circle at 70% 90%, var(--accent-glow), transparent 55%);
+}
+.login-bars {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 140px; display: flex; gap: 3px; padding: 0 20px;
+  align-items: flex-end; opacity: 0.12; pointer-events: none; transform-origin: bottom;
+}
+.login-bar { flex: 1; background: var(--accent); border-radius: 1px 1px 0 0; transform-origin: bottom; }
+.login-card-wrap { position: relative; z-index: 1; width: 100%; max-width: 360px; display: flex; flex-direction: column; align-items: center; }
+.login-logo { margin-bottom: 28px; }
+.login-logo .tile {
+  width: 44px; height: 44px; border-radius: 12.32px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 1px var(--accent-border), 0 8px 28px -8px var(--accent);
+}
+.login-logo-wrap { display: flex; align-items: center; gap: 12px; }
+.login-logo-text { display: flex; flex-direction: column; line-height: 1; }
+.login-logo-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; color: var(--text); }
+.login-logo-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 3px; }
+.login-card {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.4);
+}
+.login-card.shake { animation: shake-x 0.32s ease; }
+.login-card-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.login-card-sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+.login-field { margin-bottom: 14px; }
+.login-label { display: block; margin-bottom: 6px; font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.login-input-wrap { position: relative; }
+.login-input {
+  width: 100%; padding: 10px 42px 10px 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text);
+  font-family: var(--mono); font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.login-input:focus { border-color: var(--accent-border); }
+.login-input.error { border-color: var(--err-bd); }
+.login-eye {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  padding: 2px; display: grid; place-items: center; transition: color 0.15s;
+}
+.login-eye:hover { color: var(--text); }
+.login-error { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--err-fg); }
+.login-submit {
+  width: 100%; padding: 12px 18px; font-size: 14px;
+  background: var(--accent); color: white; border: 1px solid var(--accent);
+  border-radius: 8px; cursor: pointer; font-family: inherit; font-weight: 500;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 8px; transition: background 0.15s;
+}
+.login-submit:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.login-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.lockout-icon {
+  width: 44px; height: 44px; border-radius: 999px;
+  background: var(--err-bg); border: 1px solid var(--err-bd);
+  color: var(--err-fg); display: grid; place-items: center; margin: 0 auto 14px;
+}
+.login-footer { margin-top: 18px; font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.02em; text-align: center; }
