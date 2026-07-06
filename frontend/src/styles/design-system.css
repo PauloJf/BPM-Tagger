@@ -401,10 +401,26 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .field-row { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: flex-start; }
 .field-row-label { font-size: 13px; color: var(--text); margin-bottom: 2px; }
 .field-row-hint  { font-size: 11px; color: var(--muted); line-height: 1.4; }
-@media (max-width: 700px) {
-  .settings-layout { grid-template-columns: 1fr; }
-  .settings-sidebar { position: static; flex-direction: row; flex-wrap: wrap; }
-  .field-row { grid-template-columns: 1fr; gap: 8px; }
+@media (max-width: 680px) {
+  .settings-layout { grid-template-columns: 1fr !important; gap: 12px !important; }
+  /* Sidebar becomes a horizontal scroll tab strip */
+  .settings-sidebar {
+    position: static !important; display: flex !important; flex-direction: row !important;
+    gap: 4px; overflow-x: auto; padding: 2px 0 8px;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .settings-sidebar::-webkit-scrollbar { display: none; }
+  .settings-sidebar a {
+    flex-shrink: 0; white-space: nowrap; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); font-size: 12px; background: var(--chip-bg);
+  }
+  .settings-sidebar a:hover { background: var(--surface); color: var(--text); }
+  .field-row { grid-template-columns: 1fr !important; gap: 8px !important; }
+  .segmented { flex-wrap: wrap; width: 100%; }
+  .segmented-btn { flex: 1; text-align: center; }
+  .slider-wrap { max-width: 100% !important; }
+  .settings-card input[type=text],
+  .settings-card input[type=password] { max-width: 100% !important; width: 100% !important; }
 }
 
 /* Toggle */

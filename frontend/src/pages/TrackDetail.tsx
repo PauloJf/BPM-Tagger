@@ -8,6 +8,7 @@ import { BpmDisplay } from "../components/BpmDisplay";
 import { DetectorBar } from "../components/DetectorBar";
 import { useTapTempo } from "../hooks/useTapTempo";
 import { useWaveform } from "../hooks/useWaveform";
+import { useTitle } from "../hooks/useTitle";
 
 function fmtTime(s: number): string {
   if (!isFinite(s)) return "0:00";
@@ -19,6 +20,7 @@ export default function TrackDetail() {
   const [params] = useSearchParams();
   const path = params.get("path") || "";
   const qc = useQueryClient();
+  useTitle(path ? basename(path) : "Track");
 
   const detailQ = useQuery({
     queryKey: ["track", path],

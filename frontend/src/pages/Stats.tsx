@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { useTitle } from "../hooks/useTitle";
 
 interface StatsResponse {
   summary: {
@@ -34,6 +35,7 @@ function StatCard({ label, value, color, children }: { label: string; value: str
 }
 
 export default function Stats() {
+  useTitle("Statistics");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: () => api.get<StatsResponse>("/api/stats") });

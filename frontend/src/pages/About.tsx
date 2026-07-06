@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useTitle } from "../hooks/useTitle";
 
 const STACK: [string, string][] = [
   ["Flask + Waitress", "web server"],
@@ -13,6 +14,7 @@ const STACK: [string, string][] = [
 ];
 
 export default function About() {
+  useTitle("About");
   const { version } = useAuth();
   const versionQ = useQuery({
     queryKey: ["version-check"],

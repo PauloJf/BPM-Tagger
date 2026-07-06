@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
 import { ArrowIcon, ConfBar, FolderIcon, StatusBadge } from "../components/trackBits";
+import { useTitle } from "../hooks/useTitle";
 
 const STEPS = ["deeprhythm", "essentia", "librosa"];
 
@@ -56,6 +57,7 @@ const SearchIcon = () => (
 );
 
 export default function Tracks() {
+  useTitle("Library");
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
 
@@ -131,6 +133,10 @@ export default function Tracks() {
     queryKey: ["tracks", search],
     queryFn: () => api.get<TracksPage>(`/api/tracks?${search}`),
     placeholderData: (prev) => prev,
+    // Mirror the Jinja page's freshness: refresh on tab focus and every 30s
+    // (so edits/scan results made elsewhere show up). Paused while hidden.
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 
   // Scan progress banner + live table refresh while scanning.

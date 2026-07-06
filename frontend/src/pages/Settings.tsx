@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
+import { useTitle } from "../hooks/useTitle";
 
 type Saved = "" | "saving" | "ok" | "err";
 
@@ -29,6 +30,7 @@ function SaveButton({ state, label, ghost }: { state: Saved; label: string; ghos
 }
 
 export default function Settings() {
+  useTitle("Settings");
   const qc = useQueryClient();
   const { version } = useAuth();
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap }>("/api/settings") });

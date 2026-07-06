@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ReviewPage, Track } from "../lib/types";
 import { DetectorBar } from "../components/DetectorBar";
+import { useTitle } from "../hooks/useTitle";
 
 const SEP = /[/\\]/;
 function pathParts(p: string) {
@@ -117,6 +118,7 @@ function ReviewCard({ track, idx, total, confThreshold, onApprove, approving }: 
 }
 
 export default function Review() {
+  useTitle("Needs Review");
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const page = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
