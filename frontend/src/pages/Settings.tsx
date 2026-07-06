@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
 import { useTitle } from "../hooks/useTitle";
+import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
 type Saved = "" | "saving" | "ok" | "err";
 
 const SIDEBAR = [
+  ["sec-grabber", "Grabber"],
   ["sec-password", "Password"],
   ["sec-ntfy", "Notifications"],
   ["sec-scan", "Scan Behavior"],
@@ -33,6 +36,8 @@ export default function Settings() {
   useTitle("Settings");
   const qc = useQueryClient();
   const { version } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const grabberStatus = useGrabberStatus();
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap }>("/api/settings") });
   const cfg = settingsQ.data?.settings;
 
@@ -43,6 +48,8 @@ export default function Settings() {
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [grabber, setGrabber] = useState({ enabled: false, syncMinutes: 30, publicUrl: "" });
+  const [grabberSaved, setGrabberSaved] = useState<Saved>("");
 
   const [ntfySaved, setNtfySaved] = useState<Saved>("");
   const [scanSaved, setScanSaved] = useState<Saved>("");
@@ -65,7 +72,29 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
+    setGrabber({ enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30), publicUrl: s("ui_public_url") });
   }, [cfg]);
+
+  // Surface the ?spotify=... result the OAuth callback redirected back with.
+  const spotifyResult = searchParams.get("spotify");
+  function clearSpotifyResult() {
+    const p = new URLSearchParams(searchParams);
+    p.delete("spotify");
+    setSearchParams(p, { replace: true });
+  }
+
+  async function connectSpotify() {
+    try {
+      const { url } = await api.get<{ url: string }>("/api/spotify/authorize-url");
+      window.location.href = url;
+    } catch {
+      /* surfaced via status */
+    }
+  }
+  async function disconnectSpotify() {
+    await api.post("/api/spotify/disconnect").catch(() => {});
+    qc.invalidateQueries({ queryKey: ["grabber-status"] });
+  }
 
   async function saveSection(path: string, body: unknown, setSaved: (s: Saved) => void) {
     setSaved("saving");
@@ -167,6 +196,79 @@ export default function Settings() {
         </div>
 
         <div>
+          {/* Grabber */}
+          <div id="sec-grabber" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Grabber</h2>
+              <p>Spotify playlist sync + downloader. Client ID/secret are set via environment variables.</p>
+            </div>
+            {spotifyResult && (
+              <div
+                className="flash"
+                style={
+                  spotifyResult === "connected"
+                    ? { background: "var(--ok-bg)", borderColor: "var(--ok-bd)", color: "var(--ok-fg)" }
+                    : { background: "var(--err-bg)", borderColor: "var(--err-bd)", color: "var(--err-fg)" }
+                }
+                onClick={clearSpotifyResult}
+              >
+                {spotifyResult === "connected" ? "Spotify connected ✓" : `Spotify connect failed (${spotifyResult})`}
+              </div>
+            )}
+            <div className="settings-fields">
+              <div className="field-row">
+                {fieldLabel("Enabled", "Turn the grabber subsystem on. Requires a restart to take effect.")}
+                <Toggle on={grabber.enabled} onChange={(v) => setGrabber({ ...grabber, enabled: v })} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Spotify")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {(() => {
+                    const sp = grabberStatus.data?.spotify;
+                    if (!grabberStatus.data?.enabled)
+                      return <span style={{ color: "var(--muted)", fontSize: 13 }}>Enable + restart first</span>;
+                    if (!sp?.configured)
+                      return <span style={{ color: "var(--warn-fg)", fontSize: 13 }}>Set SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI</span>;
+                    if (sp.connected)
+                      return (
+                        <>
+                          <span className="chip chip--have">connected</span>
+                          <button className="btn btn-danger btn-sm" onClick={disconnectSpotify}>Disconnect</button>
+                        </>
+                      );
+                    return <button className="btn btn-primary btn-sm" onClick={connectSpotify}>Connect Spotify</button>;
+                  })()}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Sync interval (min)", "How often watched playlists are re-synced in watch mode")}
+                <input type="number" min={1} max={1440} value={grabber.syncMinutes}
+                       onChange={(e) => setGrabber({ ...grabber, syncMinutes: +e.target.value })} style={{ width: 90 }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Public URL", "Base URL used in ntfy click links (e.g. https://bpm.example.com)")}
+                <input type="text" value={grabber.publicUrl}
+                       onChange={(e) => setGrabber({ ...grabber, publicUrl: e.target.value })}
+                       placeholder="https://bpm.example.com"
+                       style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+              </div>
+              <div>
+                <button
+                  type="button"
+                  className={"btn btn-sm " + (grabberSaved === "ok" ? "btn-ghost" : "btn-primary")}
+                  disabled={grabberSaved === "saving"}
+                  onClick={() => saveSection("/api/settings/grabber", {
+                    grabber_enabled: grabber.enabled,
+                    spotify_sync_minutes: grabber.syncMinutes,
+                    ui_public_url: grabber.publicUrl,
+                  }, setGrabberSaved)}
+                >
+                  {grabberSaved === "saving" ? "Saving…" : grabberSaved === "ok" ? "Saved ✓ (restart to apply)" : "Save Grabber Settings"}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Password */}
           <div id="sec-password" className="settings-card card">
             <div className="settings-card-header">

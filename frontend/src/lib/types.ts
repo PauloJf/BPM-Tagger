@@ -90,3 +90,51 @@ export interface Stats {
 }
 
 export type SettingsMap = Record<string, unknown>;
+
+// ── Grabber (M3) ──────────────────────────────────────────────────────────
+export interface SpotifyStatus {
+  enabled?: boolean;
+  configured: boolean;
+  connected: boolean;
+  scope?: string;
+  redirect_uri?: string;
+  last_error?: string;
+}
+
+export interface GrabberStatus {
+  enabled: boolean;
+  spotify?: SpotifyStatus;
+  queue_counts?: Record<string, number>;
+}
+
+export interface Playlist {
+  id: number;
+  spotify_id: string;
+  name: string;
+  snapshot_id: string | null;
+  enabled: number;
+  image_url: string | null;
+  track_count: number;
+  last_synced_at: string | null;
+  have_count: number;
+  missing_count: number;
+  queued_count: number;
+  indexed_count: number;
+}
+
+export interface PlaylistTrack {
+  id: number;
+  spotify_track_id: string;
+  position: number;
+  title: string;
+  artist: string;
+  album: string;
+  album_artist: string;
+  duration_ms: number | null;
+  isrc: string | null;
+  track_no: number | null;
+  cover_url: string | null;
+  match_status: string;
+  matched_file_path: string | null;
+  derived_status: "have" | "missing" | "queued";
+}

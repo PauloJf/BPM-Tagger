@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
+import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
-const NAV_LINKS = [
+interface NavItem { to: string; label: string; badge?: boolean }
+
+const BASE_LINKS: NavItem[] = [
   { to: "/tracks", label: "Library" },
   { to: "/review", label: "Review", badge: true },
   { to: "/stats", label: "Stats" },
@@ -83,6 +86,13 @@ export default function Nav() {
   const panelRef = useRef<HTMLDivElement>(null);
   const { state, act } = useScan();
   const dot = stateColor(state);
+  const grabber = useGrabberStatus();
+
+  // Insert Playlists after Library when the grabber is enabled.
+  const links: NavItem[] = [...BASE_LINKS];
+  if (grabber.data?.enabled) {
+    links.splice(1, 0, { to: "/playlists", label: "Playlists" });
+  }
 
   // Close the mobile panel on navigation.
   useEffect(() => setOpen(false), [location.pathname]);
@@ -119,7 +129,7 @@ export default function Nav() {
 
       <div className="nav-divider nav-desktop-only" />
 
-      {NAV_LINKS.map((l) => (
+      {links.map((l) => (
         <NavLink
           key={l.to}
           to={l.to}
@@ -176,7 +186,7 @@ export default function Nav() {
         role="navigation"
         aria-label="Mobile navigation"
       >
-        {NAV_LINKS.map((l) => (
+        {links.map((l) => (
           <NavLink
             key={l.to}
             to={l.to}

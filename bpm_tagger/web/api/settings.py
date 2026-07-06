@@ -161,6 +161,30 @@ def api_settings_playback():
     return jsonify(ok=True)
 
 
+@settings_bp.route("/api/settings/grabber", methods=["POST"])
+@login_required
+def api_settings_grabber():
+    _check_csrf()
+    st = state()
+    data = _json_body()
+    updates = {}
+    if "grabber_enabled" in data:
+        updates["grabber_enabled"] = bool(data["grabber_enabled"])
+    if "index_tags" in data:
+        updates["index_tags"] = bool(data["index_tags"])
+    if "ui_public_url" in data:
+        updates["ui_public_url"] = str(data["ui_public_url"]).strip()
+    if "spotify_sync_minutes" in data:
+        try:
+            updates["spotify_sync_minutes"] = max(1, int(data["spotify_sync_minutes"]))
+        except (ValueError, TypeError):
+            pass
+    st.config.update(updates)
+    save_settings(st.settings_path, updates)
+    # Toggling grabber_enabled needs a restart (threads/service wire up at boot).
+    return jsonify(ok=True, restart_required="grabber_enabled" in updates)
+
+
 @settings_bp.route("/api/settings/password", methods=["POST"])
 @login_required
 def api_settings_password():

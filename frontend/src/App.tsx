@@ -4,6 +4,8 @@ import Nav from "./components/Nav";
 import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
+import Playlists from "./pages/Playlists";
+import PlaylistDetail from "./pages/PlaylistDetail";
 import Review from "./pages/Review";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/tracks" replace />} />
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
+        <Route path="/playlists" element={<Playlists />} />
+        <Route path="/playlist" element={<PlaylistDetail />} />
         <Route path="/review" element={<Review />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />

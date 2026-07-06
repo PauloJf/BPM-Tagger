@@ -654,3 +654,33 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   color: var(--err-fg); display: grid; place-items: center; margin: 0 auto 14px;
 }
 .login-footer { margin-top: 18px; font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.02em; text-align: center; }
+
+/* ── Playlists (grabber) ──────────────────────────────────────────────────── */
+.pl-list { display: flex; flex-direction: column; gap: 12px; }
+.pl-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px 16px; text-decoration: none; color: inherit;
+  transition: border-color 0.15s, background 0.12s;
+}
+a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hover); }
+.pl-cover {
+  width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
+  flex-shrink: 0; background: var(--surface-2); display: grid; place-items: center;
+  color: var(--muted);
+}
+.pl-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+  border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.chip--have    { background: var(--ok-bg);       color: var(--ok-fg);    border-color: var(--ok-bd); }
+.chip--missing { background: var(--err-bg);      color: var(--err-fg);   border-color: var(--err-bd); }
+.chip--queued  { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+.chip--neutral { background: var(--chip-bg);     color: var(--muted);    border-color: var(--border); }
+.pl-track-row {
+  display: grid; grid-template-columns: 32px 1fr 90px; gap: 12px; align-items: center;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.pl-track-row:last-child { border-bottom: none; }
