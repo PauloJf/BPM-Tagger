@@ -7,3 +7,4 @@ soundfile>=0.12.1
 flask>=3.0
 waitress>=3.0
 rapidfuzz>=3.9.0
+yt-dlp>=2024.8.0
