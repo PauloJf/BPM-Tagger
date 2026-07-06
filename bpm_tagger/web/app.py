@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Flask, request
 
 from ..db import BPMDatabase
+from .api.auth import api_auth_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
 from .api.settings import settings_bp
@@ -30,7 +31,9 @@ _TEMPLATE_DIR = str(_ROOT / "templates")
 _STATIC_DIR = str(_ROOT / "static")
 
 # Endpoints that must not force CSRF-token creation (see _ensure_csrf).
-_CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "auth.login")
+# The SPA obtains its token from /api/me, so /api/login is exempt too.
+_CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "auth.login",
+                          "api_auth.api_login")
 
 
 def create_app(config: dict) -> Flask:
@@ -61,7 +64,8 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-    for bp in (auth_bp, pages_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp):
+    for bp in (auth_bp, api_auth_bp, pages_bp, tracks_bp, scan_bp, stats_bp,
+               settings_bp, media_bp):
         app.register_blueprint(bp)
 
     @app.after_request

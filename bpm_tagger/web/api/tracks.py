@@ -144,6 +144,68 @@ def api_waveform():
             st.waveform_inflight.pop(path, None)
 
 
+@tracks_bp.route("/api/track")
+@login_required
+def api_track():
+    """Single-track detail for the SPA TrackDetail page.
+
+    Mirrors ``pages.track_detail``: detector values, confidence and lock state
+    come straight from the row; prev/next are resolved within the review queue
+    (``back=review``). Track-list navigation is handled client-side from the
+    already-loaded page, matching the current Jinja UI.
+    """
+    st = state()
+    path = request.args.get("path", "")
+    if not path:
+        abort(400)
+    _assert_in_music_dir(path)
+    track = st.db.get_track(path)
+    if not track:
+        abort(404)
+
+    back = request.args.get("back", "tracks")
+    if back not in ("tracks", "review"):
+        back = "tracks"
+
+    prev_path = next_path = None
+    queue_pos = queue_total = None
+    if back == "review":
+        queue = [t["file_path"] for t in
+                 st.db.get_suspicious(st.conf_threshold, 0, float("inf"))]
+        queue_total = len(queue)
+        try:
+            idx = queue.index(path)
+            queue_pos = idx + 1
+            prev_path = queue[idx - 1] if idx > 0 else None
+            next_path = queue[idx + 1] if idx < len(queue) - 1 else None
+        except ValueError:
+            pass
+
+    return jsonify(track=track, back=back,
+                   prev_path=prev_path, next_path=next_path,
+                   queue_pos=queue_pos, queue_total=queue_total,
+                   playback_buffer=st.config.get("playback_buffer", 3))
+
+
+@tracks_bp.route("/api/review")
+@login_required
+def api_review():
+    """Paginated review queue (suspicious tracks) for the SPA Review page."""
+    st = state()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    per_page = 50
+    total = st.db.get_suspicious_count(st.conf_threshold, st.bpm_min, st.bpm_max)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = st.db.get_suspicious_page(st.conf_threshold, st.bpm_min, st.bpm_max,
+                                     per_page, (page - 1) * per_page)
+    return jsonify(tracks=rows, conf_threshold=st.conf_threshold,
+                   total=total, page=page, pages=pages, per_page=per_page)
+
+
 @tracks_bp.route("/api/tracks")
 @login_required
 def api_tracks():
