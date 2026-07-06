@@ -72,6 +72,34 @@ def fetch_cover(url: str) -> bytes | None:
         return None
 
 
+def read_cover(file_path: str) -> tuple[bytes, str] | None:
+    """Extract embedded cover art → (bytes, mime), or None."""
+    ext = os.path.splitext(file_path)[1].lower()
+    try:
+        if ext == ".mp3":
+            apics = ID3(file_path).getall("APIC")
+            if apics:
+                return apics[0].data, apics[0].mime or "image/jpeg"
+        elif ext == ".flac":
+            pics = FLAC(file_path).pictures
+            if pics:
+                return pics[0].data, pics[0].mime or "image/jpeg"
+        elif ext in (".m4a", ".aac", ".mp4"):
+            covr = MP4(file_path).get("covr")
+            if covr:
+                fmt = "image/png" if covr[0].imageformat == MP4Cover.FORMAT_PNG else "image/jpeg"
+                return bytes(covr[0]), fmt
+        elif ext in (".ogg", ".opus"):
+            audio = mutagen.File(file_path)
+            b64 = audio.get("metadata_block_picture") if audio else None
+            if b64:
+                pic = Picture(base64.b64decode(b64[0]))
+                return pic.data, pic.mime or "image/jpeg"
+    except Exception as exc:
+        log.debug("read_cover failed for %s: %s", os.path.basename(file_path), exc)
+    return None
+
+
 def embed_cover(file_path: str, image_bytes: bytes, mime: str = "image/jpeg") -> None:
     if not image_bytes:
         return

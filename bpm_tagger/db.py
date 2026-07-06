@@ -566,6 +566,51 @@ class BPMDatabase:
             """).fetchall()
         return [dict(r) for r in rows]
 
+    def update_track_metadata(self, old_path: str, new_path: str, tags: dict,
+                              file_hash: str) -> None:
+        """Rewrite a track's descriptive tags and (if it moved) its file_path,
+        stamping the post-write hash so the watcher won't re-analyze it."""
+        with self._connect() as conn:
+            conn.execute("""
+                UPDATE tracks SET
+                    file_path=?, file_hash=?, tags_indexed_hash=?,
+                    title=?, artist=?, album=?, album_artist=?, track_no=?, disc_no=?,
+                    year=?, isrc=?, norm_title=?, norm_artist=?
+                WHERE file_path=?
+            """, (new_path, file_hash, file_hash, tags.get("title"), tags.get("artist"),
+                  tags.get("album"), tags.get("album_artist"), tags.get("track_no"),
+                  tags.get("disc_no"), tags.get("year"), tags.get("isrc"),
+                  tags.get("norm_title"), tags.get("norm_artist"), old_path))
+            conn.commit()
+
+    def refresh_track_hash(self, file_path: str, file_hash: str) -> None:
+        """Stamp the current file hash (after a cover/tag write) so the watcher skips it."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET file_hash=?, tags_indexed_hash=? WHERE file_path=?",
+                (file_hash, file_hash, file_path))
+            conn.commit()
+
+    def get_duplicates(self) -> list[dict]:
+        """Groups of >1 non-deleted tracks sharing normalized artist+title."""
+        with self._connect() as conn:
+            groups = conn.execute("""
+                SELECT norm_artist, norm_title, COUNT(*) AS n
+                FROM tracks
+                WHERE status != 'deleted' AND norm_title IS NOT NULL AND norm_title != ''
+                GROUP BY norm_artist, norm_title HAVING n > 1
+                ORDER BY n DESC, norm_artist, norm_title
+            """).fetchall()
+            out = []
+            for g in groups:
+                rows = conn.execute(
+                    "SELECT file_path, title, artist, album, bpm, managed FROM tracks "
+                    "WHERE status != 'deleted' AND norm_artist IS ? AND norm_title = ?",
+                    (g["norm_artist"], g["norm_title"])).fetchall()
+                out.append({"artist": g["norm_artist"], "title": g["norm_title"],
+                            "count": g["n"], "tracks": [dict(r) for r in rows]})
+        return out
+
     def update_track_tags(self, file_path: str, tags: dict, file_hash: str) -> None:
         with self._connect() as conn:
             conn.execute("""

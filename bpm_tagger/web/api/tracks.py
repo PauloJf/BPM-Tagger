@@ -2,13 +2,17 @@
 
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 
-from flask import Blueprint, abort, jsonify, request
+from flask import Blueprint, Response, abort, jsonify, request
 
-from ...bpm.tags import write_bpm_tag
+from ...bpm.tags import get_file_hash, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
+from ...grabber.matching import normalize_artist, normalize_title
+from ...grabber.path_template import render, unique_path
+from ...grabber.tagging import embed_cover, read_cover, write_track_tags
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 
@@ -200,6 +204,13 @@ def api_track():
                    playback_buffer=st.config.get("playback_buffer", 3))
 
 
+@tracks_bp.route("/api/duplicates")
+@login_required
+def api_duplicates():
+    """Groups of library tracks sharing normalized artist+title (possible dupes)."""
+    return jsonify(groups=state().db.get_duplicates())
+
+
 @tracks_bp.route("/api/review")
 @login_required
 def api_review():
@@ -217,6 +228,99 @@ def api_review():
                                      per_page, (page - 1) * per_page)
     return jsonify(tracks=rows, conf_threshold=st.conf_threshold,
                    total=total, page=page, pages=pages, per_page=per_page)
+
+
+def _int_or_none(v):
+    try:
+        return int(str(v).split("/")[0].strip()) if v not in (None, "") else None
+    except (ValueError, TypeError):
+        return None
+
+
+@tracks_bp.route("/api/track/tags", methods=["PUT"])
+@login_required
+def api_track_tags():
+    """Rewrite descriptive tags; optionally rename to the path template. The DB
+    hash is refreshed AFTER all writes so the watcher won't re-analyze the file."""
+    _check_csrf()
+    st = state()
+    data = request.get_json(force=True, silent=True) or {}
+    path = data.get("file_path", "")
+    if not path:
+        return jsonify(ok=False, error="file_path required"), 400
+    _assert_in_music_dir(path)
+    track = st.db.get_track(path)
+    if not track:
+        return jsonify(ok=False, error="not found"), 404
+
+    tags = {
+        "title": (data.get("title") or "").strip() or None,
+        "artist": (data.get("artist") or "").strip() or None,
+        "album": (data.get("album") or "").strip() or None,
+        "album_artist": (data.get("album_artist") or "").strip() or None,
+        "track_no": _int_or_none(data.get("track_no")),
+        "disc_no": _int_or_none(data.get("disc_no")),
+        "year": _int_or_none(data.get("year")),
+        "isrc": (data.get("isrc") or "").strip() or None,
+    }
+    tags["norm_title"] = normalize_title(tags["title"])
+    tags["norm_artist"] = normalize_artist(tags["artist"])
+
+    try:
+        write_track_tags(path, tags)
+        new_path = path
+        if data.get("apply_template"):
+            ext = os.path.splitext(path)[1].lstrip(".")
+            template = st.config.get("path_template", "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}")
+            candidate = unique_path(st.music_dir, render(template, tags, ext))
+            if os.path.abspath(candidate) != os.path.abspath(path):
+                os.makedirs(os.path.dirname(candidate), exist_ok=True)
+                os.replace(path, candidate)  # same filesystem (both under music_dir)
+                new_path = candidate
+        fresh_hash = get_file_hash(new_path)
+        st.db.update_track_metadata(path, new_path, tags, fresh_hash)
+        log.info("UI: edited tags for %s", Path(new_path).name)
+        return jsonify(ok=True, file_path=new_path)
+    except Exception as exc:
+        log.error("Tag edit failed: %s", exc)
+        return jsonify(ok=False, error=str(exc)), 500
+
+
+@tracks_bp.route("/api/track/cover")
+@login_required
+def api_track_cover_get():
+    path = request.args.get("path", "")
+    if not path:
+        abort(400)
+    _assert_in_music_dir(path)
+    cover = read_cover(path)
+    if not cover:
+        abort(404)
+    data, mime = cover
+    return Response(data, mimetype=mime, headers={"Cache-Control": "no-cache"})
+
+
+@tracks_bp.route("/api/track/cover", methods=["PUT"])
+@login_required
+def api_track_cover_put():
+    _check_csrf()
+    st = state()
+    path = request.args.get("path", "")
+    if not path:
+        return jsonify(ok=False, error="path required"), 400
+    _assert_in_music_dir(path)
+    if not st.db.get_track(path):
+        return jsonify(ok=False, error="not found"), 404
+    image = request.get_data()
+    if not image:
+        return jsonify(ok=False, error="empty body"), 400
+    mime = request.content_type or "image/jpeg"
+    try:
+        embed_cover(path, image, mime="image/png" if "png" in mime else "image/jpeg")
+        st.db.refresh_track_hash(path, get_file_hash(path))  # hash only; keep tags
+        return jsonify(ok=True)
+    except Exception as exc:
+        return jsonify(ok=False, error=str(exc)), 500
 
 
 @tracks_bp.route("/api/tracks")

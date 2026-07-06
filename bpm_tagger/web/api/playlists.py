@@ -2,8 +2,9 @@
 manual sync. Also the consolidated grabber status poll."""
 
 import logging
+import re
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
 from ...grabber.spotify import SpotifyError, parse_playlist_id
 from ..auth import _check_csrf, login_required
@@ -97,6 +98,25 @@ def playlist_tracks(pid):
     if status not in ("", "have", "missing", "queued"):
         status = ""
     return jsonify(playlist=pl, tracks=db.get_playlist_tracks(pid, status))
+
+
+@playlists_bp.route("/api/playlists/<int:pid>/export.m3u")
+@login_required
+def export_m3u(pid):
+    db = state().db
+    pl = db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    lines = ["#EXTM3U"]
+    for r in db.get_playlist_track_rows(pid):
+        if r.get("matched_file_path"):
+            dur = int((r.get("duration_ms") or 0) / 1000)
+            lines.append(f"#EXTINF:{dur},{r.get('artist', '')} - {r.get('title', '')}")
+            lines.append(r["matched_file_path"])
+    body = "\n".join(lines) + "\n"
+    fname = re.sub(r'[^\w.-]+', "_", pl.get("name") or "playlist") or "playlist"
+    return Response(body, mimetype="audio/x-mpegurl",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}.m3u"'})
 
 
 @playlists_bp.route("/api/playlists/<int:pid>/sync", methods=["POST"])

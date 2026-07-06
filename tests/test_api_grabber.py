@@ -247,3 +247,32 @@ def test_inbox_choose_requires_csrf(grab):
     client, st, _ = grab
     iid = _awaiting_item(st.db)
     assert client.post(f"/api/inbox/{iid}/choose", json={"candidate_id": 1}).status_code == 403
+
+
+def test_export_m3u_lists_matched_tracks(grab):
+    client, st, _ = grab
+    pid = st.db.add_playlist("PL123", "My Playlist")
+    client.post(f"/api/playlists/{pid}/sync", headers={"X-CSRF-Token": client._csrf})
+    r = client.get(f"/api/playlists/{pid}/export.m3u")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert body.startswith("#EXTM3U")
+    assert "bl.mp3" in body                      # the matched "have" track
+    assert "Totally Missing Song" not in body    # missing tracks aren't exported
+    # Sync refreshed the name from Spotify ("Playlist PL123"); filename is sanitized.
+    assert "filename=\"Playlist_PL123.m3u\"" in r.headers.get("Content-Disposition", "")
+
+
+def test_duplicates_report(grab):
+    import os
+    client, st, _ = grab
+    for name in ("dup_a.mp3", "dup_b.mp3"):
+        p = os.path.join(st.music_dir, name)
+        with open(p, "wb") as fh:
+            fh.write(b"\x00")
+        st.db.upsert_track(p, "1:2", 120.0, None, None, 120.0, 0.9, "librosa", "done")
+        st.db.update_track_tags(p, {"title": "Same Song", "artist": "Same Artist",
+                                    "norm_title": "same song", "norm_artist": "same artist"}, "1:2")
+    groups = client.get("/api/duplicates").get_json()["groups"]
+    dup = next((g for g in groups if g["title"] == "same song"), None)
+    assert dup is not None and dup["count"] == 2
