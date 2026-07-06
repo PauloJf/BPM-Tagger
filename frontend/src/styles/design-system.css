@@ -748,6 +748,7 @@ body.has-player .container { padding-bottom: 88px; }
 .player-bar-time { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .player-bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; cursor: pointer; overflow: hidden; }
 .player-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 3px; }
+.player-bar-wave { flex: 1; height: 40px; display: block; cursor: crosshair; min-width: 0; }
 .player-bar-close { border: none; background: none; color: var(--muted); cursor: pointer; flex-shrink: 0; padding: 4px; }
 .player-bar-close:hover { color: var(--text); }
 @media (max-width: 700px) {
