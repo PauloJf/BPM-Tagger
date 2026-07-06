@@ -1,0 +1,607 @@
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import type { SettingsMap } from "../lib/types";
+import { Toggle } from "../components/Toggle";
+import { useTitle } from "../hooks/useTitle";
+import { useGrabberStatus } from "../hooks/useGrabberStatus";
+
+type Saved = "" | "saving" | "ok" | "err";
+
+const SIDEBAR = [
+  ["sec-grabber", "Grabber"],
+  ["sec-password", "Password"],
+  ["sec-ntfy", "Notifications"],
+  ["sec-scan", "Scan Behavior"],
+  ["sec-mode", "Operating Mode"],
+  ["sec-navidrome", "Navidrome"],
+  ["sec-playback", "Playback"],
+  ["sec-version", "Version"],
+  ["sec-restart", "Restart"],
+];
+
+const MODES = ["watch", "watch_all", "scan_unscanned", "scan_all", "scan_review", "report"];
+
+function SaveButton({ state, label, ghost }: { state: Saved; label: string; ghost?: boolean }) {
+  return (
+    <button type="submit" className={"btn btn-sm " + (ghost ? "btn-ghost" : "btn-primary")} disabled={state === "saving"}>
+      {state === "saving" ? "Saving…" : state === "ok" ? "Saved ✓" : label}
+    </button>
+  );
+}
+
+export default function Settings() {
+  useTitle("Settings");
+  const qc = useQueryClient();
+  const { version } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const grabberStatus = useGrabberStatus();
+  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap }>("/api/settings") });
+  const cfg = settingsQ.data?.settings;
+
+  // Per-section local state, seeded once settings load.
+  const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
+  const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, conf: 0.4 });
+  const [mode, setMode] = useState("watch");
+  const [nav, setNav] = useState({ url: "", user: "", pass: "" });
+  const [playback, setPlayback] = useState(3);
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [grabber, setGrabber] = useState({
+    enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
+    outputFormat: "mp3-320", pathTemplate: "", providerOrder: "monochrome,ytdlp",
+    monoUrl: "", monoKey: "", monoQuality: "LOSSLESS",
+  });
+  const [grabberSaved, setGrabberSaved] = useState<Saved>("");
+  const [testMsg, setTestMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+
+  async function testConn(kind: string, path: string, body: unknown) {
+    setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: "Testing…" } }));
+    try {
+      const r = await api.post<{ ok: boolean; message?: string; error?: string }>(path, body);
+      setTestMsg((m) => ({ ...m, [kind]: { ok: !!r.ok, text: r.ok ? (r.message || "OK") : (r.error || "Failed") } }));
+    } catch (e) {
+      setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: e instanceof Error ? e.message : "Failed" } }));
+    }
+  }
+
+  function previewPath(tpl: string): string {
+    const sample: Record<string, string | number> = {
+      AlbumArtist: "The Weeknd", Artist: "The Weeknd", Album: "After Hours",
+      Title: "Blinding Lights", TrackNo: 3, DiscNo: 1, Year: 2020,
+      ext: (grabber.outputFormat.split("-")[0] === "opus" ? "opus" : grabber.outputFormat.split("-")[0]),
+    };
+    return tpl.replace(/\{(\w+)(?::0(\d)d)?\}/g, (_m, k, pad) => {
+      let v = sample[k] ?? "";
+      if (pad && typeof v === "number") v = String(v).padStart(+pad, "0");
+      return String(v);
+    });
+  }
+
+  const [ntfySaved, setNtfySaved] = useState<Saved>("");
+  const [scanSaved, setScanSaved] = useState<Saved>("");
+  const [modeSaved, setModeSaved] = useState<Saved>("");
+  const [navSaved, setNavSaved] = useState<Saved>("");
+  const [playSaved, setPlaySaved] = useState<Saved>("");
+  const [pwSaved, setPwSaved] = useState<Saved>("");
+  const [pwErr, setPwErr] = useState("");
+  const [hashMsg, setHashMsg] = useState("");
+  const [versionMsg, setVersionMsg] = useState<{ text: string; color: string } | null>(null);
+  const [restartMsg, setRestartMsg] = useState<{ text: string; color: string } | null>(null);
+
+  useEffect(() => {
+    if (!cfg) return;
+    const s = (k: string, d = "") => (cfg[k] == null ? d : String(cfg[k]));
+    const n = (k: string, d: number) => (cfg[k] == null ? d : Number(cfg[k]));
+    const b = (k: string, d: boolean) => (cfg[k] == null ? d : Boolean(cfg[k]));
+    setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
+    setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), conf: n("review_confidence_threshold", 0.4) });
+    setMode(s("mode", "watch") || "watch");
+    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
+    setPlayback(n("playback_buffer", 3));
+    setGrabber({
+      enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
+      publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
+      outputFormat: s("output_format") || "mp3-320", pathTemplate: s("path_template"),
+      providerOrder: s("provider_order") || "monochrome,ytdlp",
+      monoUrl: s("monochrome_base_url"), monoKey: s("monochrome_api_key"),
+      monoQuality: s("monochrome_quality") || "LOSSLESS",
+    });
+  }, [cfg]);
+
+  // Surface the ?spotify=... result the OAuth callback redirected back with.
+  const spotifyResult = searchParams.get("spotify");
+  function clearSpotifyResult() {
+    const p = new URLSearchParams(searchParams);
+    p.delete("spotify");
+    setSearchParams(p, { replace: true });
+  }
+
+  async function connectSpotify() {
+    try {
+      const { url } = await api.get<{ url: string }>("/api/spotify/authorize-url");
+      window.location.href = url;
+    } catch {
+      /* surfaced via status */
+    }
+  }
+  async function disconnectSpotify() {
+    await api.post("/api/spotify/disconnect").catch(() => {});
+    qc.invalidateQueries({ queryKey: ["grabber-status"] });
+  }
+
+  async function saveSection(path: string, body: unknown, setSaved: (s: Saved) => void) {
+    setSaved("saving");
+    try {
+      await api.post(path, body);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setSaved("ok");
+      setTimeout(() => setSaved(""), 1800);
+    } catch {
+      setSaved("err");
+    }
+  }
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwErr("");
+    setPwSaved("saving");
+    try {
+      await api.post("/api/settings/password", { current_password: pw.current, new_password: pw.next, confirm_password: pw.confirm });
+      setPwSaved("ok");
+      setPw({ current: "", next: "", confirm: "" });
+      setTimeout(() => setPwSaved(""), 1800);
+    } catch (err) {
+      setPwSaved("err");
+      setPwErr(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function refreshHashes() {
+    setHashMsg("Refreshing…");
+    try {
+      const d = await api.post<{ ok: boolean; updated?: number; missing?: number; error?: string }>("/api/scan/refresh_hashes", {});
+      setHashMsg(d.ok ? `Done — ${d.updated} hashes updated, ${d.missing} files not found.` : `Error: ${d.error || "unknown"}`);
+    } catch {
+      setHashMsg("Network error");
+    }
+  }
+
+  async function checkLatest() {
+    setVersionMsg({ text: "Checking…", color: "var(--muted)" });
+    try {
+      const d = await api.get<{ latest?: string; error?: string }>("/api/version/check");
+      if (d.error) setVersionMsg({ text: `Error: ${d.error}`, color: "var(--err-fg)" });
+      else if (!d.latest) setVersionMsg({ text: "No releases published yet", color: "var(--muted)" });
+      else if (d.latest === `v${version}`) setVersionMsg({ text: `✓ Up to date (${d.latest})`, color: "var(--ok-fg)" });
+      else setVersionMsg({ text: `Latest: ${d.latest} (you have v${version})`, color: "var(--warn-fg)" });
+    } catch {
+      setVersionMsg({ text: "Network error", color: "var(--err-fg)" });
+    }
+  }
+
+  async function restart() {
+    if (!window.confirm("Restart the application now?\n\nAny active scan will be stopped. The page will reconnect automatically.")) return;
+    setRestartMsg({ text: "Restarting…", color: "var(--warn-fg)" });
+    try {
+      await api.post("/api/restart", {});
+    } catch {
+      /* execv may drop the connection before responding — treat as success */
+    }
+    setRestartMsg({ text: "Reconnecting…", color: "var(--warn-fg)" });
+    const iv = window.setInterval(async () => {
+      try {
+        await api.get("/api/progress");
+        window.clearInterval(iv);
+        window.location.reload();
+      } catch {
+        /* still down */
+      }
+    }, 1000);
+  }
+
+  if (settingsQ.isLoading) return <p style={{ color: "var(--muted)" }}>Loading settings…</p>;
+
+  const fieldLabel = (label: React.ReactNode, hint?: string) => (
+    <div>
+      <div className="field-row-label">{label}</div>
+      {hint && <div className="field-row-hint">{hint}</div>}
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginBottom: 24, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Settings</h1>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>
+            All changes apply at runtime · saved to <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>/data/settings.json</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="settings-layout">
+        <div className="settings-sidebar">
+          {SIDEBAR.map(([id, label]) => (
+            <a key={id} href={`#${id}`}>
+              {label}
+            </a>
+          ))}
+        </div>
+
+        <div>
+          {/* Grabber */}
+          <div id="sec-grabber" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Grabber</h2>
+              <p>Spotify playlist sync + downloader. Client ID/secret are set via environment variables.</p>
+            </div>
+            {spotifyResult && (
+              <div
+                className="flash"
+                style={
+                  spotifyResult === "connected"
+                    ? { background: "var(--ok-bg)", borderColor: "var(--ok-bd)", color: "var(--ok-fg)" }
+                    : { background: "var(--err-bg)", borderColor: "var(--err-bd)", color: "var(--err-fg)" }
+                }
+                onClick={clearSpotifyResult}
+              >
+                {spotifyResult === "connected" ? "Spotify connected ✓" : `Spotify connect failed (${spotifyResult})`}
+              </div>
+            )}
+            <div className="settings-fields">
+              <div className="field-row">
+                {fieldLabel("Enabled", "Turn the grabber subsystem on. Requires a restart to take effect.")}
+                <Toggle on={grabber.enabled} onChange={(v) => setGrabber({ ...grabber, enabled: v })} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Spotify")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {(() => {
+                    const sp = grabberStatus.data?.spotify;
+                    if (!grabberStatus.data?.enabled)
+                      return <span style={{ color: "var(--muted)", fontSize: 13 }}>Enable + restart first</span>;
+                    if (!sp?.configured)
+                      return <span style={{ color: "var(--warn-fg)", fontSize: 13 }}>Set SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI</span>;
+                    if (sp.connected)
+                      return (
+                        <>
+                          <span className="chip chip--have">connected</span>
+                          <button className="btn btn-danger btn-sm" onClick={disconnectSpotify}>Disconnect</button>
+                        </>
+                      );
+                    return <button className="btn btn-primary btn-sm" onClick={connectSpotify}>Connect Spotify</button>;
+                  })()}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Sync interval (min)", "How often watched playlists are re-synced in watch mode")}
+                <input type="number" min={1} max={1440} value={grabber.syncMinutes}
+                       onChange={(e) => setGrabber({ ...grabber, syncMinutes: +e.target.value })} style={{ width: 90 }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Dry run", "Match + plan downloads but don't actually download (routes to the inbox)")}
+                <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Output format", "Every download is transcoded to this single format")}
+                <select value={grabber.outputFormat} onChange={(e) => setGrabber({ ...grabber, outputFormat: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                  <option value="mp3-320">mp3-320</option>
+                  <option value="flac">flac</option>
+                  <option value="opus-192">opus-192</option>
+                </select>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Path template", "Destination path for downloaded files")}
+                <div style={{ width: "100%", maxWidth: 360 }}>
+                  <input type="text" value={grabber.pathTemplate} placeholder="{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
+                         onChange={(e) => setGrabber({ ...grabber, pathTemplate: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                    → {previewPath(grabber.pathTemplate || "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}")}
+                  </div>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Provider order", "Comma-separated; tried in order (monochrome,ytdlp)")}
+                <input type="text" value={grabber.providerOrder} onChange={(e) => setGrabber({ ...grabber, providerOrder: e.target.value })}
+                       style={{ maxWidth: 240, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Monochrome URL", "Self-hosted Tidal proxy (leave blank to use yt-dlp only)")}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
+                  <input type="text" value={grabber.monoUrl} placeholder="http://monochrome:8080"
+                         onChange={(e) => setGrabber({ ...grabber, monoUrl: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <input type="password" value={grabber.monoKey} placeholder="API key"
+                         onChange={(e) => setGrabber({ ...grabber, monoKey: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <select value={grabber.monoQuality} onChange={(e) => setGrabber({ ...grabber, monoQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                      <option value="LOSSLESS">LOSSLESS</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="LOW">LOW</option>
+                    </select>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("mono", "/api/settings/test-monochrome", { monochrome_base_url: grabber.monoUrl, monochrome_api_key: grabber.monoKey })}>Test</button>
+                    {testMsg.mono && <span style={{ fontSize: 12, color: testMsg.mono.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.mono.text}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Public URL", "Base URL used in ntfy click links (e.g. https://bpm.example.com)")}
+                <input type="text" value={grabber.publicUrl}
+                       onChange={(e) => setGrabber({ ...grabber, publicUrl: e.target.value })}
+                       placeholder="https://bpm.example.com"
+                       style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+              </div>
+              <div>
+                <button
+                  type="button"
+                  className={"btn btn-sm " + (grabberSaved === "ok" ? "btn-ghost" : "btn-primary")}
+                  disabled={grabberSaved === "saving"}
+                  onClick={() => saveSection("/api/settings/grabber", {
+                    grabber_enabled: grabber.enabled,
+                    spotify_sync_minutes: grabber.syncMinutes,
+                    ui_public_url: grabber.publicUrl,
+                    grab_dry_run: grabber.dryRun,
+                    output_format: grabber.outputFormat,
+                    path_template: grabber.pathTemplate,
+                    provider_order: grabber.providerOrder,
+                    monochrome_base_url: grabber.monoUrl,
+                    monochrome_api_key: grabber.monoKey,
+                    monochrome_quality: grabber.monoQuality,
+                  }, setGrabberSaved)}
+                >
+                  {grabberSaved === "saving" ? "Saving…" : grabberSaved === "ok" ? "Saved ✓ (restart to apply)" : "Save Grabber Settings"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Password */}
+          <div id="sec-password" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Password</h2>
+              <p>Change the UI login password.</p>
+            </div>
+            <form onSubmit={changePassword}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("Current password")}
+                  <input type="password" required autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("New password")}
+                  <input type="password" required autoComplete="new-password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Confirm new password")}
+                  <input type="password" required autoComplete="new-password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                </div>
+                {pwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{pwErr}</div>}
+                <div>
+                  <SaveButton state={pwSaved} label="Update Password" />
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Notifications */}
+          <div id="sec-ntfy" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Notifications (ntfy)</h2>
+              <p>Push notifications for scan progress and review counts.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic, ntfy_batch_size: ntfy.batch, ntfy_min_interval: ntfy.interval, ntfy_notify_review: ntfy.notifyReview }, setNtfySaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("ntfy server URL")}
+                  <input type="text" value={ntfy.url} onChange={(e) => setNtfy({ ...ntfy, url: e.target.value })} placeholder="https://ntfy.sh" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("ntfy topic")}
+                  <input type="text" value={ntfy.topic} onChange={(e) => setNtfy({ ...ntfy, topic: e.target.value })} placeholder="my-bpm-alerts" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Batch size", "tracks per notification")}
+                  <input type="number" min={1} max={100} value={ntfy.batch} onChange={(e) => setNtfy({ ...ntfy, batch: +e.target.value })} style={{ width: 90 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Min interval (s)", "between batch notifications")}
+                  <input type="number" min={10} max={86400} value={ntfy.interval} onChange={(e) => setNtfy({ ...ntfy, interval: +e.target.value })} style={{ width: 100 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Notify on review", 'include "N need review" in scan summary')}
+                  <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <SaveButton state={ntfySaved} label="Save Notification Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("ntfy", "/api/settings/test-ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic })}>Test</button>
+                  {testMsg.ntfy && <span style={{ fontSize: 12, color: testMsg.ntfy.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.ntfy.text}</span>}
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Scan Behavior */}
+          <div id="sec-scan" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Scan Behavior</h2>
+              <p>Tune the BPM detector stack.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/scan", { workers: scan.workers, bpm_min: scan.bpmMin, bpm_max: scan.bpmMax, use_deeprhythm: scan.useDr, use_essentia: scan.useEs, write_tags: scan.writeTags, review_confidence_threshold: scan.conf }, setScanSaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel(<>Workers <span className="badge badge--review" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>⚠ Memory</span></>, "Each deeprhythm worker adds ~500 MB RAM")}
+                  <input type="number" min={1} max={8} value={scan.workers} onChange={(e) => setScan({ ...scan, workers: +e.target.value })} style={{ width: 70 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("BPM range", "Plausibility window for octave correction")}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="number" min={20} max={300} step={1} value={scan.bpmMin} onChange={(e) => setScan({ ...scan, bpmMin: +e.target.value })} style={{ width: 78, textAlign: "center" }} />
+                    <span style={{ color: "var(--muted)" }}>—</span>
+                    <input type="number" min={20} max={400} step={1} value={scan.bpmMax} onChange={(e) => setScan({ ...scan, bpmMax: +e.target.value })} style={{ width: 78, textAlign: "center" }} />
+                  </div>
+                </div>
+                <div className="field-row">
+                  {fieldLabel(<>Use deeprhythm <span className="badge badge--neutral" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>+500 MB</span></>, "PyTorch CNN — most accurate")}
+                  <Toggle on={scan.useDr} onChange={(v) => setScan({ ...scan, useDr: v })} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Use essentia", "RhythmExtractor2013 — second neural detector")}
+                  <Toggle on={scan.useEs} onChange={(v) => setScan({ ...scan, useEs: v })} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Write BPM tags", "Write BPM back to audio file metadata")}
+                  <Toggle on={scan.writeTags} onChange={(v) => setScan({ ...scan, writeTags: v })} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Review threshold", "Confidence below this flags a track for review (0–1)")}
+                  <div className="slider-wrap">
+                    <input type="range" min={0} max={1} step={0.01} value={scan.conf} onChange={(e) => setScan({ ...scan, conf: +e.target.value })} />
+                    <span className="slider-val">{scan.conf.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div>
+                  <SaveButton state={scanSaved} label="Save Scan Settings" />
+                </div>
+              </div>
+            </form>
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Refresh stored hashes</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxWidth: 480, lineHeight: 1.5 }}>
+                If the scanner re-analyzes your whole library after an upgrade, stored file hashes may be stale. Click to recompute them — the next scan will only process files that have actually changed.
+              </div>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={refreshHashes}>
+                Refresh Hashes
+              </button>
+              <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>{hashMsg}</span>
+            </div>
+          </div>
+
+          {/* Operating Mode */}
+          <div id="sec-mode" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Operating Mode</h2>
+              <p>Controls container startup behaviour and what ▶ Start Scan does.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/mode", { mode }, setModeSaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("Mode")}
+                  <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                    {MODES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-row">
+                  <div />
+                  <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, maxWidth: 440 }}>
+                    <strong style={{ color: "var(--text)" }}>watch</strong> / <strong style={{ color: "var(--text)" }}>scan_unscanned</strong> — new/changed files only · <strong style={{ color: "var(--text)" }}>watch_all</strong> / <strong style={{ color: "var(--text)" }}>scan_all</strong> — re-analyze everything on <em>every</em> restart · <strong style={{ color: "var(--text)" }}>scan_review</strong> — flagged &amp; error tracks · <strong style={{ color: "var(--text)" }}>report</strong> — write CSV, no analysis
+                    {(mode === "watch_all" || mode === "scan_all") && (
+                      <>
+                        <br />
+                        <span style={{ color: "var(--warn-fg)" }}>⚠ This mode re-analyzes your entire library on every container restart. Switch back to <strong>watch</strong> once you're done.</span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <SaveButton state={modeSaved} label="Save Mode" ghost />
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Navidrome */}
+          <div id="sec-navidrome" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Navidrome Integration</h2>
+              <p>Trigger a library rescan after every scan pass.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass }, setNavSaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("Navidrome URL")}
+                  <input type="text" value={nav.url} onChange={(e) => setNav({ ...nav, url: e.target.value })} placeholder="http://navidrome:4533" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Username")}
+                  <input type="text" value={nav.user} onChange={(e) => setNav({ ...nav, user: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Password")}
+                  <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <SaveButton state={navSaved} label="Save Navidrome Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
+                  {testMsg.nav && <span style={{ fontSize: 12, color: testMsg.nav.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.nav.text}</span>}
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Playback */}
+          <div id="sec-playback" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Playback</h2>
+              <p>Controls audio buffering in the track detail player.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback }, setPlaySaved); }}>
+              <div className="field-row">
+                {fieldLabel("Buffer before play", "Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0} max={30} step={0.5} value={playback} onChange={(e) => setPlayback(+e.target.value)} style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>s</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={playSaved} label="Save Playback Settings" />
+              </div>
+            </form>
+          </div>
+
+          {/* Version */}
+          <div id="sec-version" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Version</h2>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>Current version</span>
+              <span style={{ background: "var(--accent)", color: "white", padding: "3px 10px", borderRadius: 6, fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600 }}>v{version}</span>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={checkLatest}>
+                Check for latest
+              </button>
+              {versionMsg && <span style={{ fontSize: 13, color: versionMsg.color }}>{versionMsg.text}</span>}
+            </div>
+          </div>
+
+          {/* Restart */}
+          <div id="sec-restart" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Restart</h2>
+              <p>Restarts the application process. Re-reads env vars and settings.</p>
+            </div>
+            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 14, lineHeight: 1.5, maxWidth: 460 }}>
+              Restarts the application using the same command and environment variables. <strong style={{ color: "var(--warn-fg)" }}>Any active scan will be stopped.</strong> The page will reconnect automatically.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button className="btn btn-danger btn-sm" type="button" onClick={restart}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 12 a8 8 0 1 1 -2.34 -5.66 M20 4 V8 H16" />
+                </svg>
+                Restart Application
+              </button>
+              {restartMsg && <span style={{ fontSize: 13, color: restartMsg.color }}>{restartMsg.text}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

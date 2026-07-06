@@ -1,0 +1,1 @@
+"""Notification subsystem (ntfy batching)."""

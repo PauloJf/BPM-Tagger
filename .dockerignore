@@ -8,3 +8,9 @@ __pycache__
 *.pyo
 .env
 docs/
+.venv
+tests
+.pytest_cache
+# Keep frontend/ (needed by the build stage) but drop its heavy/derived dirs.
+frontend/node_modules
+frontend/dist

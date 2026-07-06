@@ -11,7 +11,7 @@ Before taking any action that could incur charges on the team plan — including
 | Field | Value |
 |---|---|
 | Name | BPM Tagger |
-| Version | v1.1.0 |
+| Version | v2.0.0 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
 | Author | Paulo (paulo@gatoserio.dev) |
@@ -30,8 +30,8 @@ Automatically detects the BPM of every track in a [Navidrome](https://www.navidr
 
 | File / Dir | Purpose |
 |---|---|
-| `bpm_tagger.py` | Sole entry point — scanner, watcher, BPM pipeline, CLI modes |
-| `web_ui.py` | Flask/Waitress web UI (daemon thread when `ENABLE_UI=true`) |
+| `bpm_tagger/` | Package: entry point (`python -m bpm_tagger`), config, db, `bpm/`, `scan/`, `notify/`, `integrations/`, `web/` |
+| `web_ui.py` | Back-compat shim → re-exports `bpm_tagger.web.app.start` / `create_app` |
 | `requirements.txt` | Python dependencies |
 | `Dockerfile` | Multi-stage build; `WITH_DEEPRHYTHM=true` for full image |
 | `docker-compose.yml` | Primary deployment path |
@@ -126,7 +126,7 @@ docker compose logs -f
 # One-shot mode (e.g. lock a track)
 docker compose run --rm --no-deps bpm-tagger \
   env MODE=lock LOCK_FILE="/music/artist/track.mp3" LOCK_BPM=128 \
-  python bpm_tagger.py
+  python -m bpm_tagger
 ```
 
 ### Local
@@ -135,8 +135,8 @@ docker compose run --rm --no-deps bpm-tagger \
 pip install -r requirements.txt
 pip install --pre essentia   # optional
 
-MODE=scan_unscanned MUSIC_DIR=/path/to/music DB_PATH=./bpm.db python bpm_tagger.py
-ENABLE_UI=true UI_PASSWORD=<pw> MODE=watch MUSIC_DIR=/path/to/music python bpm_tagger.py
+MODE=scan_unscanned MUSIC_DIR=/path/to/music DB_PATH=./bpm.db python -m bpm_tagger
+ENABLE_UI=true UI_PASSWORD=<pw> MODE=watch MUSIC_DIR=/path/to/music python -m bpm_tagger
 ```
 
 ### Publish Docker images

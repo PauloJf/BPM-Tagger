@@ -1,8 +1,10 @@
 # BPM Tagger
 
-Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/) library, writes it back to the file's metadata, and provides a password-protected web UI for reviewing and correcting results.
+Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/) library, writes it back to the file's metadata, and provides a password-protected **React** web UI for reviewing and correcting results.
 
 Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia** RhythmExtractor2013, and **librosa** — so octave errors are caught automatically and disagreements are flagged for manual review.
+
+**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists, download the tracks you're missing (lossless via a Monochrome/Tidal proxy, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings.
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger)
 
@@ -115,6 +117,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.0.0** — Music Grabber + React UI: watch Spotify playlists and download missing tracks (Monochrome/Tidal → yt-dlp fallback), transcode to one format, tag + BPM-analyze, ambiguity inbox, download queue, manual search & grab, metadata editor. Full React SPA (replaces the Jinja UI) with a persistent waveform player bar and light/dark theme.
 
 **v1.1.0** — Deleted file detection: files removed from disk are automatically marked `deleted` in both watch mode (real-time) and scan mode (post-discovery diff). Locked tracks are never marked deleted. Deleted tracks reappear in the queue if the file comes back. New Deleted filter pill and Statistics card in the web UI.
 

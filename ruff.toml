@@ -1,0 +1,17 @@
+# Lint config. Pyflakes (F) catches real problems (unused/undefined names);
+# a few pycodestyle style rules are disabled to match the codebase's compact
+# single-line guards and lambdas.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line length (handled by formatter/eye)
+    "E701",  # multiple statements on one line (colon) — compact guards
+    "E702",  # multiple statements on one line (semicolon)
+    "E731",  # lambda assignment
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["E402"]  # imports after module docstring/setup in a couple of tests
