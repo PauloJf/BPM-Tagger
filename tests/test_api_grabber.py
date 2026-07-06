@@ -33,6 +33,18 @@ class FakeClient:
     def get_playlist_tracks(self, pid):
         return list(self._tracks)
 
+    def search_tracks(self, query, limit=20):
+        return [
+            {"spotify_track_id": "sid0", "title": "Blinding Lights", "artist": "The Weeknd",
+             "album": "After Hours", "album_artist": "The Weeknd", "duration_ms": 200000, "isrc": "",
+             "track_no": 1, "disc_no": 1, "year": 2020, "cover_url": "",
+             "norm_title": m.normalize_title("Blinding Lights"), "norm_artist": m.normalize_artist("The Weeknd")},
+            {"spotify_track_id": "sidX", "title": "Brand New Track", "artist": "Someone",
+             "album": "", "album_artist": "Someone", "duration_ms": 180000, "isrc": "",
+             "track_no": 1, "disc_no": 1, "year": 2021, "cover_url": "",
+             "norm_title": m.normalize_title("Brand New Track"), "norm_artist": m.normalize_artist("Someone")},
+        ]
+
 
 class _Tagger:
     def __init__(self, db):
@@ -276,3 +288,42 @@ def test_duplicates_report(grab):
     groups = client.get("/api/duplicates").get_json()["groups"]
     dup = next((g for g in groups if g["title"] == "same song"), None)
     assert dup is not None and dup["count"] == 2
+
+
+def test_spotify_search_flags_in_library(grab):
+    client, st, _ = grab
+    res = client.get("/api/spotify/search?q=weeknd").get_json()["results"]
+    bl = next(r for r in res if r["title"] == "Blinding Lights")
+    other = next(r for r in res if r["title"] == "Brand New Track")
+    assert bl.get("in_library") is True       # matches the seeded library file
+    assert not other.get("in_library")
+
+
+def test_manual_enqueue_and_dedup(grab):
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    r = client.post("/api/queue", json={"title": "Brand New Track", "artist": "Someone",
+                                        "spotify_track_id": "sidX"}, headers=csrf)
+    assert r.status_code == 200
+    assert st.db.get_queue_counts().get("pending") == 1
+    dup = client.post("/api/queue", json={"title": "Brand New Track", "spotify_track_id": "sidX"}, headers=csrf)
+    assert dup.status_code == 409
+
+
+def test_manual_enqueue_requires_csrf(grab):
+    client, _, _ = grab
+    assert client.post("/api/queue", json={"title": "X"}).status_code == 403
+
+
+def test_connection_tests_validate(grab):
+    client, _, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    assert client.post("/api/settings/test-ntfy", json={}, headers=csrf).get_json()["ok"] is False
+    assert client.post("/api/settings/test-navidrome", json={}, headers=csrf).get_json()["ok"] is False
+    assert client.post("/api/settings/test-monochrome", json={}, headers=csrf).status_code == 400
+
+
+def test_grabber_status_exposes_versions(grab):
+    client, _, _ = grab
+    v = client.get("/api/grabber/status").get_json()["versions"]
+    assert "app" in v and "yt_dlp" in v

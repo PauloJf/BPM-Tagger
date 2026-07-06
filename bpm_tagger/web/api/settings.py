@@ -6,9 +6,11 @@ Persist to settings.json and update live AppState. GET masks secrets.
 import hmac
 import logging
 
+import requests
 from flask import Blueprint, current_app, jsonify, request
 
 from ...config import __version__, save_settings
+from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
 from ..auth import _check_csrf, login_required
 from ..state import state
@@ -181,10 +183,77 @@ def api_settings_grabber():
             updates["spotify_sync_minutes"] = max(1, int(data["spotify_sync_minutes"]))
         except (ValueError, TypeError):
             pass
+    # Provider / output / path options (env defaults; UI can override at runtime).
+    for key in ("output_format", "path_template", "provider_order",
+                "monochrome_base_url", "monochrome_quality"):
+        if key in data:
+            updates[key] = str(data[key]).strip()
+    # Monochrome API key: only overwrite when a non-masked value is supplied.
+    mk = str(data.get("monochrome_api_key", ""))
+    if mk and mk != "********":
+        updates["monochrome_api_key"] = mk.strip()
     st.config.update(updates)
+    # Live-apply provider changes to the running grabber, if any.
+    g = getattr(st.tagger, "grabber", None) if st.tagger else None
+    if g is not None and any(k in updates for k in
+                             ("provider_order", "output_format", "path_template",
+                              "monochrome_base_url", "monochrome_api_key", "monochrome_quality")):
+        try:
+            from ...grabber.providers import build_providers
+            g.pool.pipeline.providers = build_providers(st.config)
+            g.pool.pipeline.output_format = st.config.get("output_format", "mp3-320")
+            g.pool.pipeline.path_template = st.config.get("path_template", g.pool.pipeline.path_template)
+        except Exception as exc:
+            log.warning("Could not live-apply provider settings: %s", exc)
     save_settings(st.settings_path, updates)
     # Toggling grabber_enabled needs a restart (threads/service wire up at boot).
     return jsonify(ok=True, restart_required="grabber_enabled" in updates)
+
+
+@settings_bp.route("/api/settings/test-ntfy", methods=["POST"])
+@login_required
+def api_test_ntfy():
+    _check_csrf()
+    data = _json_body()
+    url = str(data.get("ntfy_url", "")).strip().rstrip("/")
+    topic = str(data.get("ntfy_topic", "")).strip()
+    if not (url and topic):
+        return jsonify(ok=False, error="URL and topic required"), 400
+    try:
+        resp = requests.post(f"{url}/{topic}", data=b"BPM Tagger test notification",
+                             headers={"Title": "BPM Tagger", "Tags": "white_check_mark"}, timeout=10)
+        resp.raise_for_status()
+        return jsonify(ok=True, message="Test notification sent")
+    except Exception as exc:
+        return jsonify(ok=False, error=str(exc))
+
+
+@settings_bp.route("/api/settings/test-navidrome", methods=["POST"])
+@login_required
+def api_test_navidrome():
+    _check_csrf()
+    data = _json_body()
+    ok, msg = ping_navidrome(str(data.get("navidrome_url", "")).strip(),
+                             str(data.get("navidrome_user", "")).strip(),
+                             str(data.get("navidrome_pass", "")))
+    return jsonify(ok=ok, message=msg if ok else None, error=None if ok else msg)
+
+
+@settings_bp.route("/api/settings/test-monochrome", methods=["POST"])
+@login_required
+def api_test_monochrome():
+    _check_csrf()
+    data = _json_body()
+    base = str(data.get("monochrome_base_url", "")).strip()
+    if not base:
+        return jsonify(ok=False, error="Base URL required"), 400
+    key = str(data.get("monochrome_api_key", ""))
+    if key == "********":
+        key = state().config.get("monochrome_api_key", "")
+    from ...grabber.providers.monochrome import MonochromeProvider
+    ok = MonochromeProvider({"monochrome_base_url": base, "monochrome_api_key": key}).healthcheck()
+    return jsonify(ok=ok, message="Reachable" if ok else None,
+                   error=None if ok else "Health check failed")
 
 
 @settings_bp.route("/api/settings/password", methods=["POST"])

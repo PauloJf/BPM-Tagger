@@ -10,6 +10,7 @@ import secrets
 
 from flask import Blueprint, jsonify, redirect, request, session
 
+from ...grabber.matching import library_match
 from ..auth import _check_csrf, login_required
 from ..state import state
 
@@ -77,6 +78,32 @@ def spotify_callback():
         log.error("Spotify callback failed: %s", exc)
         return redirect(_redirect_target("/settings?spotify=error"))
     return redirect(_redirect_target("/settings?spotify=connected"))
+
+
+@spotify_bp.route("/api/spotify/search")
+@login_required
+def spotify_search():
+    g = _grabber()
+    if not g:
+        return jsonify(error="grabber_disabled"), 409
+    if not g.client.is_connected():
+        return jsonify(error="not_connected"), 400
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify(results=[])
+    try:
+        results = g.client.search_tracks(query, limit=20)
+    except Exception as exc:
+        log.warning("Spotify search failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    # Flag which results are already in the library / queued.
+    db = state().db
+    for r in results:
+        if library_match(r, db):
+            r["in_library"] = True
+        elif r.get("spotify_track_id") and db.has_nonterminal_grab(r["spotify_track_id"]):
+            r["queued"] = True
+    return jsonify(results=results)
 
 
 @spotify_bp.route("/api/spotify/disconnect", methods=["POST"])

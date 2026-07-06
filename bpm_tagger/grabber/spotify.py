@@ -166,6 +166,32 @@ class SpotifyClient:
             "owner": (d.get("owner") or {}).get("display_name", ""),
         }
 
+    @staticmethod
+    def _parse_track(track: dict) -> dict:
+        """Normalize a Spotify track object into our track-meta dict shape."""
+        album = track.get("album") or {}
+        images = album.get("images") or []
+        artists = [a["name"] for a in track.get("artists", []) if a.get("name")]
+        album_artists = [a["name"] for a in album.get("artists", []) if a.get("name")]
+        artist_str = ", ".join(artists)
+        title = track.get("name", "")
+        rel = album.get("release_date", "") or ""
+        return {
+            "spotify_track_id": track["id"],
+            "title": title,
+            "artist": artist_str,
+            "album": album.get("name", ""),
+            "album_artist": album_artists[0] if album_artists else (artists[0] if artists else ""),
+            "duration_ms": track.get("duration_ms"),
+            "isrc": (track.get("external_ids") or {}).get("isrc", ""),
+            "track_no": track.get("track_number"),
+            "disc_no": track.get("disc_number"),
+            "year": int(rel[:4]) if rel[:4].isdigit() else None,
+            "cover_url": images[0]["url"] if images else "",
+            "norm_title": normalize_title(title),
+            "norm_artist": normalize_artist(artist_str),
+        }
+
     def get_playlist_tracks(self, playlist_id: str) -> list[dict]:
         """Return normalized playlist_tracks dicts (paginated)."""
         out: list[dict] = []
@@ -181,36 +207,22 @@ class SpotifyClient:
                 if not track or not track.get("id"):
                     pos += 1
                     continue  # removed track / local file / episode
-                album = track.get("album") or {}
-                images = album.get("images") or []
-                artists = [a["name"] for a in track.get("artists", []) if a.get("name")]
-                album_artists = [a["name"] for a in album.get("artists", []) if a.get("name")]
-                artist_str = ", ".join(artists)
-                title = track.get("name", "")
-                rel = album.get("release_date", "") or ""
-                out.append({
-                    "spotify_track_id": track["id"],
-                    "position": pos,
-                    "title": title,
-                    "artist": artist_str,
-                    "album": album.get("name", ""),
-                    "album_artist": album_artists[0] if album_artists else (artists[0] if artists else ""),
-                    "duration_ms": track.get("duration_ms"),
-                    "isrc": (track.get("external_ids") or {}).get("isrc", ""),
-                    "track_no": track.get("track_number"),
-                    "disc_no": track.get("disc_number"),
-                    "year": int(rel[:4]) if rel[:4].isdigit() else None,
-                    "cover_url": images[0]["url"] if images else "",
-                    "added_at": item.get("added_at", ""),
-                    "norm_title": normalize_title(title),
-                    "norm_artist": normalize_artist(artist_str),
-                    "match_status": "unknown",
-                    "matched_file_path": None,
-                })
+                row = self._parse_track(track)
+                row.update({"position": pos, "added_at": item.get("added_at", ""),
+                            "match_status": "unknown", "matched_file_path": None})
+                out.append(row)
                 pos += 1
             url = page.get("next")
             params = None  # `next` is a full URL already carrying params
         return out
+
+    def search_tracks(self, query: str, limit: int = 20) -> list[dict]:
+        """Search Spotify's catalog for tracks (manual search & grab)."""
+        if not query.strip():
+            return []
+        data = self._get("/search", {"q": query, "type": "track", "limit": min(50, max(1, limit))})
+        items = ((data.get("tracks") or {}).get("items")) or []
+        return [self._parse_track(t) for t in items if t and t.get("id")]
 
 
 def parse_playlist_id(value: str) -> str:

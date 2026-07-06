@@ -6,9 +6,20 @@ import re
 
 from flask import Blueprint, Response, jsonify, request
 
+from ...config import __version__
 from ...grabber.spotify import SpotifyError, parse_playlist_id
 from ..auth import _check_csrf, login_required
 from ..state import state
+
+
+def _versions() -> dict:
+    v = {"app": __version__, "yt_dlp": None}
+    try:
+        import yt_dlp
+        v["yt_dlp"] = getattr(getattr(yt_dlp, "version", None), "__version__", None)
+    except Exception:
+        pass
+    return v
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +45,7 @@ def grabber_status():
         queue_counts=counts,
         active=db.get_active_grabs(),
         inbox_count=counts.get("awaiting_user", 0),
+        versions=_versions(),
     )
 
 

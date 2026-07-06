@@ -27,6 +27,27 @@ def list_queue():
                    counts=state().db.get_queue_counts())
 
 
+@queue_bp.route("/api/queue", methods=["POST"])
+@login_required
+def enqueue_manual():
+    """Manually enqueue a track (e.g. from Spotify search). playlist_track_id is
+    left null; the sid dedup guard prevents duplicate in-flight items."""
+    _check_csrf()
+    g = _grabber()
+    if not g:
+        return jsonify(error="grabber_disabled"), 409
+    data = request.get_json(force=True, silent=True) or {}
+    if not (data.get("title") or data.get("spotify_track_id")):
+        return jsonify(error="title or spotify_track_id required"), 400
+    meta = {k: data.get(k) for k in ("spotify_track_id", "title", "artist", "album",
+            "album_artist", "duration_ms", "isrc", "track_no", "disc_no", "year", "cover_url")}
+    item_id = state().db.enqueue_grab(meta)
+    if item_id is None:
+        return jsonify(ok=False, error="already queued"), 409
+    g.request_sync()
+    return jsonify(ok=True, id=item_id)
+
+
 @queue_bp.route("/api/queue/history")
 @login_required
 def queue_history():
