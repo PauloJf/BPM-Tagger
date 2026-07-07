@@ -287,6 +287,11 @@ export default function TrackDetail() {
           </span>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 4, wordBreak: "break-word" }}>{fname}</h1>
+        {track.artist && (
+          <div style={{ fontSize: 13, marginBottom: 4 }}>
+            by <Link to={`/artist?name=${encodeURIComponent(track.artist)}`} style={{ color: "var(--accent-2)" }}>{track.artist}</Link>
+          </div>
+        )}
         <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)", display: "flex", alignItems: "center", gap: 6 }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
             <path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z" />

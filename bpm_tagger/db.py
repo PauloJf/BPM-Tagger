@@ -424,6 +424,17 @@ class BPMDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_artist_tracks(self, name: str) -> list[dict]:
+        """Every non-deleted track by an artist (matched on artist or album
+        artist), ordered for an album-grouped artist page."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE status != 'deleted' "
+                "AND (artist = ? OR album_artist = ?) "
+                "ORDER BY album, disc_no, track_no, file_path", (name, name)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_tracks_missing_isrc(self, limit: int = 2000) -> list[dict]:
         """Non-deleted tracks with no ISRC yet — the bulk-fill work list."""
         with self._connect() as conn:

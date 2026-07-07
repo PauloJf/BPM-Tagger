@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
 import TrackCompare from "./pages/TrackCompare";
+import Artist from "./pages/Artist";
 import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
 import Queue from "./pages/Queue";
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
         <Route path="/compare" element={<TrackCompare />} />
+        <Route path="/artist" element={<Artist />} />
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlist" element={<PlaylistDetail />} />
         <Route path="/queue" element={<Queue />} />

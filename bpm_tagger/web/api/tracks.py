@@ -209,6 +209,26 @@ def api_track():
                    playback_buffer=st.config.get("playback_buffer", 3))
 
 
+@tracks_bp.route("/api/artist")
+@login_required
+def api_artist():
+    """An artist's tracks (album-ordered) plus a small BPM summary."""
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify(name="", tracks=[], stats={})
+    rows = state().db.get_artist_tracks(name)
+    bpms = [r["bpm"] for r in rows if r.get("bpm")]
+    albums = sorted({(r.get("album") or "") for r in rows})
+    stats = {
+        "tracks": len(rows),
+        "albums": len([a for a in albums if a]),
+        "avg_bpm": round(sum(bpms) / len(bpms), 1) if bpms else None,
+        "min_bpm": min(bpms) if bpms else None,
+        "max_bpm": max(bpms) if bpms else None,
+    }
+    return jsonify(name=name, tracks=rows, stats=stats)
+
+
 @tracks_bp.route("/api/duplicates")
 @login_required
 def api_duplicates():

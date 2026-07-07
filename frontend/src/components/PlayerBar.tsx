@@ -74,7 +74,9 @@ export default function PlayerBar() {
         ) : previewing ? (
           <div className="player-bar-artist" style={{ color: "var(--accent-2)" }}>Preview · returns to queue</div>
         ) : current.artist ? (
-          <div className="player-bar-artist">{current.artist}</div>
+          <Link to={`/artist?name=${encodeURIComponent(current.artist)}`} className="player-bar-artist" style={{ color: "inherit", textDecoration: "none" }} title={`View ${current.artist}`}>
+            {current.artist}
+          </Link>
         ) : null}
       </div>
       {hasQueue && (

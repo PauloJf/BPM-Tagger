@@ -245,6 +245,25 @@ def test_tracks_search_matches_indexed_metadata(auth_client):
     assert any(t["file_path"] == path for t in body["tracks"])
 
 
+def test_artist_lists_tracks_and_stats(auth_client):
+    p1 = _seed_track(auth_client, name="a.mp3", bpm=120.0)
+    p2 = _seed_track(auth_client, name="b.mp3", bpm=128.0)
+    st = _state(auth_client)
+    for p, bpm, alb in ((p1, 120.0, "After Hours"), (p2, 128.0, "Dawn FM")):
+        st.db.update_track_metadata(p, p, {
+            "title": "T", "artist": "The Weeknd", "album": alb, "album_artist": "The Weeknd",
+            "track_no": 1, "disc_no": 1, "year": 2020, "isrc": "",
+            "norm_title": "t", "norm_artist": "the weeknd",
+        }, "1:2")
+    body = auth_client.get("/api/artist", query_string={"name": "The Weeknd"}).get_json()
+    assert body["stats"]["tracks"] == 2 and body["stats"]["albums"] == 2
+    assert {t["file_path"] for t in body["tracks"]} == {p1, p2}
+
+
+def test_artist_requires_login(client):
+    assert client.get("/api/artist", query_string={"name": "X"}).status_code == 401
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)
