@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.2.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.3.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -312,13 +312,13 @@ When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip.
 
-A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view, and the bar has prev/next, shuffle and repeat (off/all/one) controls; playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the bar's track title links to that track's detail page. The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
+A **persistent player bar** at the bottom keeps a track playing as you move between pages (play / **add-to-queue** / **play-next** buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view; the bar has prev/next, shuffle, repeat (off/all/one) and volume controls, and a **queue viewer** drawer (jump-to, remove, reorder). The queue **persists across reloads**, and **keyboard shortcuts** work anywhere (`k` play/pause, `←/→` prev/next, `+/-` volume, `m` mute). Playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the title links to the track detail, and the artist links to a per-**artist page** (with album links → per-**album pages**). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
 #### All Tracks (`/tracks`)
-Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.
+Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), **Locked**, **No ISRC**, or **Deleted** tracks; live counts update automatically during a scan.
 
 - **Live search** — the search box filters tracks as you type (300 ms debounce); no Enter required
-- **BPM ± filter** — enter a target BPM and an allowance (e.g. `120 ± 5`) to narrow the list to a specific tempo range
+- **BPM ± filter** — enter a target BPM and an allowance (e.g. `120 ± 5`) to narrow the list to a specific tempo range; a **cadence ½×/2×** toggle also matches half- and double-time tracks (a 170 SPM running cadence surfaces 85 BPM songs)
 - **Error tooltips** — hovering an `error` badge shows the full error message
 - **Back-navigation state** — navigating into a track detail and pressing Back returns to the exact same filter, page, and search query
 

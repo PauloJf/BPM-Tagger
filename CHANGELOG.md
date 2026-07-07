@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.3.0 — 2026-07-07
+
+**Browse by artist & album**
+- New **artist** and **album** pages — album-grouped track lists with Play all / Shuffle, reached from the player bar, track detail, and each other.
+
+**Player & queue**
+- **Queue viewer** — a drawer off the player bar shows the upcoming queue with jump-to, remove, and reorder.
+- **Add to queue** / **Play next** buttons on library, artist and album rows.
+- The queue **persists across reloads** (restored paused), a **volume** control, and **keyboard shortcuts** (`k` play/pause, `←/→` prev/next, `+/-` volume, `m` mute).
+
+**Library & search**
+- Search now matches indexed **title/artist/album**, not just the file path.
+- A **No ISRC** filter pill, and a **cadence ½×/2×** BPM toggle so a running cadence also matches half/double-time tracks.
+
+**Duplicates**
+- **Keep** (trash the other copies in one click), **Not a duplicate** (dismiss a group), and a **suggested-keep** hint (best by format/BPM).
+
+**ISRC**
+- Format validation on writes, and the bulk fill is now **cancellable**.
+
 ## v2.2.0 — 2026-07-07
 
 **ISRC tools**

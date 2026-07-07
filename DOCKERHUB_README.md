@@ -102,7 +102,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
 - Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
-- Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, and a ducking **preview** from detail/compare views
+- Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), reload-persistent queue, keyboard shortcuts, and a ducking **preview** from detail/compare views
+- **Artist & album pages** and a cadence ½×/2× BPM filter for running
 - Duplicate resolution — step through groups side-by-side and move unwanted copies to a recoverable **trash** (purged from Settings)
 - ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
@@ -121,6 +122,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.3.0** — Artist & album pages (Play all/Shuffle). Player queue viewer (jump/remove/reorder), add-to-queue / play-next, queue persistence, volume, and keyboard shortcuts. Library search over indexed tags, a "No ISRC" filter, and a cadence ½×/2× BPM match for running. Duplicate "Keep" / "Not a duplicate" / suggested-keep; ISRC validation + cancellable bulk fill.
 
 **v2.2.0** — ISRC tools: "Find ISRC" (Deezer / Spotify / MusicBrainz) on track-detail & compare views, and a bulk "Fill missing ISRCs" that auto-writes confident duration-matched results and lists the rest to choose. Queue "Retry all failed"; player title links to the track detail.
 
