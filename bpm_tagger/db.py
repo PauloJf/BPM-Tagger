@@ -423,6 +423,16 @@ class BPMDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_tracks_missing_isrc(self, limit: int = 2000) -> list[dict]:
+        """Non-deleted tracks with no ISRC yet — the bulk-fill work list."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, title, artist, duration_ms FROM tracks "
+                "WHERE status != 'deleted' AND (isrc IS NULL OR isrc = '') "
+                "ORDER BY analyzed_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
         with self._connect() as conn:
             return conn.execute(

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -14,7 +15,7 @@ from ...bpm.waveform import compute_waveform_peaks
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
-from ...integrations.musicbrainz import lookup_isrcs
+from ...integrations.isrc import gather_candidates, pick_confident
 from ...integrations.navidrome import _trigger_navidrome_rescan
 from ...trash import move_to_trash, purge_trash, trash_stats
 from ..auth import _check_csrf, login_required
@@ -256,33 +257,108 @@ def api_isrc_lookup():
     if not query:
         return jsonify(candidates=[], spotify_search_url=spotify_search_url)
 
-    candidates: list[dict] = []
-    seen: set[str] = set()
-
     g = getattr(st.tagger, "grabber", None) if st.tagger else None
-    if g and g.client.is_connected():
-        try:
-            for t in g.client.search_tracks(query, limit=5):
-                code = (t.get("isrc") or "").upper()
-                if code and code not in seen:
-                    seen.add(code)
-                    sid = t.get("spotify_track_id")
-                    candidates.append({"source": "spotify", "isrc": code,
-                                       "title": t.get("title", ""), "artist": t.get("artist", ""),
-                                       "url": f"https://open.spotify.com/track/{sid}" if sid else ""})
-        except Exception as exc:
-            log.warning("Spotify ISRC lookup failed: %s", exc)
-
-    try:
-        for c in lookup_isrcs(artist, title):
-            code = (c.get("isrc") or "").upper()
-            if code and code not in seen:
-                seen.add(code)
-                candidates.append(c)
-    except Exception as exc:
-        log.warning("MusicBrainz ISRC lookup failed: %s", exc)
-
+    client = g.client if g else None
+    candidates = gather_candidates(st.config, client, artist, title)
     return jsonify(candidates=candidates, spotify_search_url=spotify_search_url)
+
+
+def _set_track_isrc(st, file_path: str, isrc: str) -> bool:
+    """Write an ISRC onto a track, preserving its other metadata, and refresh the
+    DB hash so the watcher won't re-analyze the file. Returns False if unknown."""
+    track = st.db.get_track(file_path)
+    if not track:
+        return False
+    tags = {k: track.get(k) for k in ("title", "artist", "album", "album_artist",
+                                       "track_no", "disc_no", "year")}
+    tags["isrc"] = (isrc or "").strip() or None
+    tags["norm_title"] = normalize_title(tags["title"])
+    tags["norm_artist"] = normalize_artist(tags["artist"])
+    write_track_tags(file_path, tags)
+    st.db.update_track_metadata(file_path, file_path, tags, get_file_hash(file_path))
+    return True
+
+
+@tracks_bp.route("/api/track/isrc", methods=["POST"])
+@login_required
+def api_track_isrc():
+    """Set a single track's ISRC (used by the track-detail 'Find ISRC' picker and
+    the bulk-fill unresolved list)."""
+    _check_csrf()
+    st = state()
+    data = request.get_json(force=True, silent=True) or {}
+    path = data.get("file_path", "")
+    if not path:
+        return jsonify(ok=False, error="file_path required"), 400
+    _assert_in_music_dir(path)
+    try:
+        if not _set_track_isrc(st, path, (data.get("isrc") or "").strip()):
+            return jsonify(ok=False, error="not found"), 404
+    except Exception as exc:
+        log.error("UI set-isrc error: %s", exc)
+        return jsonify(ok=False, error=str(exc)), 500
+    return jsonify(ok=True)
+
+
+# ── Bulk ISRC fill (background job) ──────────────────────────────────────────
+_isrc_fill = {"running": False, "total": 0, "done": 0, "filled": 0, "unresolved": []}
+_isrc_fill_lock = threading.Lock()
+
+
+def _run_isrc_fill(st):
+    """Look up every missing-ISRC track; auto-write a confident (duration-matched)
+    single match, else record it with its candidates for the user to choose."""
+    try:
+        tracks = st.db.get_tracks_missing_isrc(limit=2000)
+        with _isrc_fill_lock:
+            _isrc_fill.update(running=True, total=len(tracks), done=0, filled=0, unresolved=[])
+        g = getattr(st.tagger, "grabber", None)
+        client = g.client if g else None
+        for t in tracks:
+            cands = gather_candidates(st.config, client, t.get("artist") or "", t.get("title") or "")
+            isrc = pick_confident(cands, t.get("duration_ms"))
+            if isrc:
+                try:
+                    _set_track_isrc(st, t["file_path"], isrc)
+                    with _isrc_fill_lock:
+                        _isrc_fill["filled"] += 1
+                except Exception as exc:
+                    log.warning("ISRC fill write failed for %s: %s", t.get("file_path"), exc)
+            else:
+                with _isrc_fill_lock:
+                    _isrc_fill["unresolved"].append({
+                        "file_path": t["file_path"], "title": t.get("title") or "",
+                        "artist": t.get("artist") or "", "candidates": cands})
+            with _isrc_fill_lock:
+                _isrc_fill["done"] += 1
+            time.sleep(0.2)  # throttle for external rate limits
+    except Exception as exc:
+        log.error("ISRC fill job failed: %s", exc)
+    finally:
+        with _isrc_fill_lock:
+            _isrc_fill["running"] = False
+
+
+@tracks_bp.route("/api/isrc/fill/start", methods=["POST"])
+@login_required
+def api_isrc_fill_start():
+    _check_csrf()
+    st = state()
+    with _isrc_fill_lock:
+        if _isrc_fill["running"]:
+            return jsonify(ok=False, error="already_running"), 409
+        _isrc_fill.update(running=True, total=0, done=0, filled=0, unresolved=[])
+    threading.Thread(target=_run_isrc_fill, args=(st,), name="isrc-fill", daemon=True).start()
+    return jsonify(ok=True)
+
+
+@tracks_bp.route("/api/isrc/fill/status")
+@login_required
+def api_isrc_fill_status():
+    with _isrc_fill_lock:
+        return jsonify(running=_isrc_fill["running"], total=_isrc_fill["total"],
+                       done=_isrc_fill["done"], filled=_isrc_fill["filled"],
+                       unresolved=list(_isrc_fill["unresolved"]))
 
 
 @tracks_bp.route("/api/trash")

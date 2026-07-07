@@ -42,6 +42,21 @@ export default function TrackDetail() {
   const [metaForm, setMetaForm] = useState({ title: "", artist: "", album: "", album_artist: "", track_no: "", disc_no: "", year: "", isrc: "" });
   const [applyTemplate, setApplyTemplate] = useState(false);
   const [metaMsg, setMetaMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isrcFinding, setIsrcFinding] = useState(false);
+  const [isrcCands, setIsrcCands] = useState<{ source: string; isrc: string; title: string; artist: string; url: string }[] | null>(null);
+  const [isrcSpotifyUrl, setIsrcSpotifyUrl] = useState("");
+  async function findIsrc() {
+    setIsrcFinding(true);
+    setIsrcCands(null);
+    try {
+      const r = await api.get<{ candidates: typeof isrcCands; spotify_search_url: string }>(
+        `/api/isrc/lookup?artist=${encodeURIComponent(metaForm.artist)}&title=${encodeURIComponent(metaForm.title)}`);
+      setIsrcCands(r.candidates || []);
+      setIsrcSpotifyUrl(r.spotify_search_url);
+    } finally {
+      setIsrcFinding(false);
+    }
+  }
 
   const detail = detailQ.data;
   const track = detail?.track;
@@ -422,6 +437,33 @@ export default function TrackDetail() {
                 </label>
               ))}
             </div>
+
+            {/* Find ISRC */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+              <button className="btn btn-ghost btn-sm" disabled={isrcFinding} onClick={findIsrc}>
+                {isrcFinding ? "Finding ISRC…" : "Find ISRC"}
+              </button>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Looks up the ISRC (Deezer / Spotify / MusicBrainz) — pick one, then Save.</span>
+            </div>
+            {isrcCands != null && (
+              <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", marginTop: 8, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
+                {isrcCands.length === 0 ? (
+                  <span style={{ color: "var(--muted)" }}>No ISRC found — refine the title/artist and search again, or open Spotify below.</span>
+                ) : (
+                  isrcCands.map((c) => (
+                    <div key={c.source + c.isrc} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span className="chip chip--neutral">{c.source}</span>
+                      <button className="btn btn-bare btn-sm" style={{ fontFamily: "var(--mono)" }} title="Use this ISRC" onClick={() => { setMetaForm({ ...metaForm, isrc: c.isrc }); setIsrcCands(null); }}>
+                        {c.isrc}
+                      </button>
+                      <span style={{ color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.artist} – {c.title}</span>
+                      {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)", marginLeft: "auto", flexShrink: 0 }}>open ↗</a>}
+                    </div>
+                  ))
+                )}
+                {isrcSpotifyUrl && <a href={isrcSpotifyUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>Open Spotify web player search ↗</a>}
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
                 <input type="checkbox" checked={applyTemplate} onChange={(e) => setApplyTemplate(e.target.checked)} />

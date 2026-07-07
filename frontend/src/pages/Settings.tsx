@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { SettingsMap } from "../lib/types";
@@ -18,10 +18,17 @@ const SIDEBAR = [
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
   ["sec-playback", "Playback"],
+  ["sec-isrc", "ISRC"],
   ["sec-trash", "Trash"],
   ["sec-version", "Version"],
   ["sec-restart", "Restart"],
 ];
+
+interface IsrcCand { source: string; isrc: string; title: string; artist: string; url: string }
+interface FillStatus {
+  running: boolean; total: number; done: number; filled: number;
+  unresolved: { file_path: string; title: string; artist: string; candidates: IsrcCand[] }[];
+}
 
 function fmtBytes(n: number): string {
   if (!n) return "0 B";
@@ -50,6 +57,27 @@ export default function Settings() {
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
   const [purging, setPurging] = useState(false);
+
+  // Bulk ISRC fill: poll status while the job runs; hide rows the user resolves.
+  const fillQ = useQuery({
+    queryKey: ["isrc-fill"],
+    queryFn: () => api.get<FillStatus>("/api/isrc/fill/status"),
+    refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
+  });
+  const [applied, setApplied] = useState<Record<string, string>>({});
+  async function startFill() {
+    await api.post("/api/isrc/fill/start", {});
+    setApplied({});
+    qc.invalidateQueries({ queryKey: ["isrc-fill"] });
+  }
+  const applyIsrc = useMutation({
+    mutationFn: (v: { file_path: string; isrc: string }) => api.post("/api/track/isrc", v),
+    onSuccess: (_d, v) => {
+      setApplied((a) => ({ ...a, [v.file_path]: v.isrc }));
+      qc.invalidateQueries({ queryKey: ["duplicates"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
   async function purgeTrash() {
     if (!window.confirm("Permanently delete everything in the trash? This cannot be undone.")) return;
     setPurging(true);
@@ -644,6 +672,61 @@ export default function Settings() {
                 <SaveButton state={playSaved} label="Save Playback Settings" />
               </div>
             </form>
+          </div>
+
+          {/* ISRC bulk fill */}
+          <div id="sec-isrc" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Fill missing ISRCs</h2>
+              <p>Look up the ISRC for every library track that's missing one (Deezer / Spotify / MusicBrainz) and write it to the tag. A confident, duration-matched single result is filled automatically; anything uncertain or not found is listed below for you to choose.</p>
+            </div>
+            {(() => {
+              const f = fillQ.data;
+              const unresolved = (f?.unresolved ?? []).filter((u) => !applied[u.file_path]);
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startFill}>
+                      {f?.running ? "Filling…" : "Fill missing ISRCs"}
+                    </button>
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} checked · {f.filled} filled · {(f?.unresolved ?? []).length} to review
+                      </span>
+                    )}
+                  </div>
+                  {unresolved.length > 0 && (
+                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                      {unresolved.map((u) => (
+                        <div key={u.file_path} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+                          <div style={{ fontSize: 12, marginBottom: 6 }}>
+                            <span style={{ fontWeight: 500 }}>{u.title || u.file_path}</span>
+                            <span style={{ color: "var(--muted)" }}> · {u.artist}</span>
+                          </div>
+                          {u.candidates.length === 0 ? (
+                            <span style={{ fontSize: 11, color: "var(--muted)" }}>No candidates found — edit the track's title/artist and retry, or leave it.</span>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {u.candidates.map((c) => (
+                                <div key={c.source + c.isrc} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11 }}>
+                                  <span className="chip chip--neutral">{c.source}</span>
+                                  <button className="btn btn-bare btn-sm" style={{ fontFamily: "var(--mono)" }} disabled={applyIsrc.isPending}
+                                    onClick={() => applyIsrc.mutate({ file_path: u.file_path, isrc: c.isrc })}>
+                                    {c.isrc}
+                                  </button>
+                                  <span style={{ color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.artist} – {c.title}</span>
+                                  {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)", marginLeft: "auto", flexShrink: 0 }}>open ↗</a>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Trash */}

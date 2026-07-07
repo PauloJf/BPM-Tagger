@@ -61,6 +61,7 @@ def lookup_isrcs(artist: str, title: str, limit: int = 5) -> list[dict]:
         for code in isrcs:
             out.append({"source": "musicbrainz", "isrc": code,
                         "title": rec.get("title", ""), "artist": _artist_credit(rec),
+                        "duration_ms": rec.get("length"),
                         "url": f"https://musicbrainz.org/recording/{mbid}"})
         if out:
             break

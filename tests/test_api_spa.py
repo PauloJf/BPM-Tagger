@@ -211,6 +211,28 @@ def test_isrc_lookup_empty_query_returns_no_candidates(auth_client):
     assert body["candidates"] == [] and body["spotify_search_url"] == ""
 
 
+def test_track_isrc_sets_isrc(auth_client):
+    path = _seed_track(auth_client, name="song.mp3", bpm=120.0)
+    r = auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "usum71234567"},
+                         headers=_csrf(auth_client))
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert _state(auth_client).db.get_track(path)["isrc"] == "usum71234567"
+
+
+def test_track_isrc_requires_csrf(auth_client):
+    path = _seed_track(auth_client, name="song.mp3")
+    assert auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "x"}).status_code == 403
+
+
+def test_isrc_fill_status_idle(auth_client):
+    body = auth_client.get("/api/isrc/fill/status").get_json()
+    assert body["running"] is False and body["unresolved"] == []
+
+
+def test_isrc_fill_status_requires_login(client):
+    assert client.get("/api/isrc/fill/status").status_code == 401
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)
