@@ -19,6 +19,11 @@ GRAB_NONTERMINAL = ("pending", "searching", "awaiting_user", "downloading",
                     "transcoding", "tagging", "analyzing_bpm")
 
 
+def _dupe_signature(paths) -> str:
+    """Stable signature for a duplicate group (its sorted, unique file paths)."""
+    return "\n".join(sorted(set(paths)))
+
+
 class BPMDatabase:
     _SUSPICIOUS_WHERE = """status = 'done' AND locked = 0 AND reviewed = 0 AND (
         needs_review = 1
@@ -233,6 +238,11 @@ class BPMDatabase:
                 scope         TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS dismissed_dupes (
+                signature TEXT PRIMARY KEY
+            )
+        """)
 
     def get_all_file_hashes(self) -> dict:
         """Return {file_path: (file_hash, status, locked)} in one query for bulk filtering."""
@@ -382,6 +392,7 @@ class BPMDatabase:
             fc = {
                 "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
                 "locked": "locked = 1",
+                "no_isrc": "(isrc IS NULL OR isrc = '')",
             }.get(filter, "")
             if fc:
                 clauses.append(fc)
@@ -551,7 +562,8 @@ class BPMDatabase:
                     COUNT(CASE WHEN status='deleted' THEN 1 END) AS deleted,
                     COUNT(CASE WHEN needs_review=1 AND status='done' AND locked=0 AND reviewed=0 THEN 1 END) AS needs_review,
                     COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
-                    COUNT(CASE WHEN locked=1         THEN 1 END) AS locked
+                    COUNT(CASE WHEN locked=1         THEN 1 END) AS locked,
+                    COUNT(CASE WHEN (isrc IS NULL OR isrc='') AND status!='deleted' THEN 1 END) AS missing_isrc
                 FROM tracks
             """).fetchone()
             return dict(row)
@@ -697,10 +709,13 @@ class BPMDatabase:
         for fp in tracks:
             clusters.setdefault(find(fp), []).append(tracks[fp])
 
+        dismissed = self.get_dismissed_signatures()
         out = []
         for members in clusters.values():
             if len(members) < 2:
                 continue
+            if _dupe_signature(m["file_path"] for m in members) in dismissed:
+                continue                    # user marked this group "not a duplicate"
             first = members[0]
             out.append({
                 "artist": first.get("norm_artist") or first.get("artist"),
@@ -712,6 +727,19 @@ class BPMDatabase:
             })
         out.sort(key=lambda g: (-g["count"], str(g["artist"] or ""), str(g["title"] or "")))
         return out
+
+    def get_dismissed_signatures(self) -> set:
+        with self._connect() as conn:
+            return {r[0] for r in conn.execute("SELECT signature FROM dismissed_dupes").fetchall()}
+
+    def dismiss_duplicate(self, paths: list) -> None:
+        """Mark a set of tracks as 'not a duplicate' so the group stops showing."""
+        sig = _dupe_signature(paths)
+        if not sig:
+            return
+        with self._connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO dismissed_dupes (signature) VALUES (?)", (sig,))
+            conn.commit()
 
     def update_track_tags(self, file_path: str, tags: dict, file_hash: str) -> None:
         with self._connect() as conn:

@@ -70,6 +70,10 @@ export default function Settings() {
     setApplied({});
     qc.invalidateQueries({ queryKey: ["isrc-fill"] });
   }
+  async function cancelFill() {
+    await api.post("/api/isrc/fill/cancel", {});
+    qc.invalidateQueries({ queryKey: ["isrc-fill"] });
+  }
   const applyIsrc = useMutation({
     mutationFn: (v: { file_path: string; isrc: string }) => api.post("/api/track/isrc", v),
     onSuccess: (_d, v) => {
@@ -689,6 +693,9 @@ export default function Settings() {
                     <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startFill}>
                       {f?.running ? "Filling…" : "Fill missing ISRCs"}
                     </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelFill}>Cancel</button>
+                    )}
                     {f && (f.running || f.total > 0) && (
                       <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
                         {f.done}/{f.total} checked · {f.filled} filled · {(f?.unresolved ?? []).length} to review

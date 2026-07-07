@@ -42,6 +42,7 @@ export interface TracksPage {
   review_count: number;
   locked_count: number;
   deleted_count: number;
+  no_isrc_count: number;
 }
 
 export interface TrackDetailResponse {

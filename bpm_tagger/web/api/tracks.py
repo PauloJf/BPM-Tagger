@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -24,6 +25,20 @@ from ..state import _assert_in_music_dir, state
 log = logging.getLogger(__name__)
 
 tracks_bp = Blueprint("api_tracks", __name__)
+
+
+_ISRC_RE = re.compile(r"^[A-Za-z]{2}[A-Za-z0-9]{3}\d{7}$")
+
+
+def _normalize_isrc(code: str) -> str:
+    return re.sub(r"[\s-]", "", code or "").upper()
+
+
+def _isrc_error(code: str):
+    """Return an error string if a (non-empty) ISRC is malformed, else None."""
+    if code and not _ISRC_RE.match(code):
+        return "Invalid ISRC — expected 12 chars: 2-letter country, 3 alphanumeric, 2-digit year, 5-digit code."
+    return None
 
 
 def _parse_bpm_filter(args) -> tuple:
@@ -236,6 +251,18 @@ def api_duplicates():
     return jsonify(groups=state().db.get_duplicates())
 
 
+@tracks_bp.route("/api/duplicates/dismiss", methods=["POST"])
+@login_required
+def api_duplicates_dismiss():
+    """Mark a group as 'not a duplicate' so it stops appearing."""
+    _check_csrf()
+    paths = (request.get_json(force=True, silent=True) or {}).get("paths") or []
+    if len(paths) < 2:
+        return jsonify(ok=False, error="need at least two paths"), 400
+    state().db.dismiss_duplicate(paths)
+    return jsonify(ok=True)
+
+
 @tracks_bp.route("/api/track/trash", methods=["POST"])
 @login_required
 def api_track_trash():
@@ -311,8 +338,12 @@ def api_track_isrc():
     if not path:
         return jsonify(ok=False, error="file_path required"), 400
     _assert_in_music_dir(path)
+    isrc = _normalize_isrc(data.get("isrc") or "")
+    err = _isrc_error(isrc)
+    if err:
+        return jsonify(ok=False, error=err), 400
     try:
-        if not _set_track_isrc(st, path, (data.get("isrc") or "").strip()):
+        if not _set_track_isrc(st, path, isrc):
             return jsonify(ok=False, error="not found"), 404
     except Exception as exc:
         log.error("UI set-isrc error: %s", exc)
@@ -321,7 +352,7 @@ def api_track_isrc():
 
 
 # ── Bulk ISRC fill (background job) ──────────────────────────────────────────
-_isrc_fill = {"running": False, "total": 0, "done": 0, "filled": 0, "unresolved": []}
+_isrc_fill = {"running": False, "total": 0, "done": 0, "filled": 0, "unresolved": [], "cancel": False}
 _isrc_fill_lock = threading.Lock()
 
 
@@ -331,10 +362,13 @@ def _run_isrc_fill(st):
     try:
         tracks = st.db.get_tracks_missing_isrc(limit=2000)
         with _isrc_fill_lock:
-            _isrc_fill.update(running=True, total=len(tracks), done=0, filled=0, unresolved=[])
+            _isrc_fill.update(running=True, total=len(tracks), done=0, filled=0, unresolved=[], cancel=False)
         g = getattr(st.tagger, "grabber", None)
         client = g.client if g else None
         for t in tracks:
+            with _isrc_fill_lock:
+                if _isrc_fill["cancel"]:
+                    break
             cands = gather_candidates(st.config, client, t.get("artist") or "", t.get("title") or "")
             isrc = pick_confident(cands, t.get("duration_ms"))
             if isrc:
@@ -367,8 +401,17 @@ def api_isrc_fill_start():
     with _isrc_fill_lock:
         if _isrc_fill["running"]:
             return jsonify(ok=False, error="already_running"), 409
-        _isrc_fill.update(running=True, total=0, done=0, filled=0, unresolved=[])
+        _isrc_fill.update(running=True, total=0, done=0, filled=0, unresolved=[], cancel=False)
     threading.Thread(target=_run_isrc_fill, args=(st,), name="isrc-fill", daemon=True).start()
+    return jsonify(ok=True)
+
+
+@tracks_bp.route("/api/isrc/fill/cancel", methods=["POST"])
+@login_required
+def api_isrc_fill_cancel():
+    _check_csrf()
+    with _isrc_fill_lock:
+        _isrc_fill["cancel"] = True
     return jsonify(ok=True)
 
 
@@ -438,6 +481,10 @@ def api_track_tags():
     if not track:
         return jsonify(ok=False, error="not found"), 404
 
+    isrc = _normalize_isrc(data.get("isrc") or "")
+    err = _isrc_error(isrc)
+    if err:
+        return jsonify(ok=False, error=err), 400
     tags = {
         "title": (data.get("title") or "").strip() or None,
         "artist": (data.get("artist") or "").strip() or None,
@@ -446,7 +493,7 @@ def api_track_tags():
         "track_no": _int_or_none(data.get("track_no")),
         "disc_no": _int_or_none(data.get("disc_no")),
         "year": _int_or_none(data.get("year")),
-        "isrc": (data.get("isrc") or "").strip() or None,
+        "isrc": isrc or None,
     }
     tags["norm_title"] = normalize_title(tags["title"])
     tags["norm_artist"] = normalize_artist(tags["artist"])
@@ -535,7 +582,8 @@ def api_tracks():
                    all_count=stats.get("total", 0),
                    review_count=stats.get("needs_review", 0),
                    locked_count=stats.get("locked", 0),
-                   deleted_count=stats.get("deleted", 0))
+                   deleted_count=stats.get("deleted", 0),
+                   no_isrc_count=stats.get("missing_isrc", 0))
 
 
 @tracks_bp.route("/api/tracks/paths")

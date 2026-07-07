@@ -201,6 +201,7 @@ export default function Tracks() {
     { key: "", label: "All", count: data?.all_count },
     { key: "review", label: "Review", count: data?.review_count },
     { key: "locked", label: "Locked", count: data?.locked_count },
+    { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
     { key: "deleted", label: "Deleted", count: data?.deleted_count },
   ];
 

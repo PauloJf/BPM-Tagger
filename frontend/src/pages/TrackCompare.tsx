@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Track, TrackDetailResponse } from "../lib/types";
@@ -45,7 +45,7 @@ const ROWS: { key: string; label: string; get: (t: Track) => string }[] = [
 
 interface IsrcCandidate { source: string; isrc: string; title: string; artist: string; url: string }
 
-function ColumnHeader({ track, onTrash, onKeep, showKeep, busy }: { track: Track; onTrash: (p: string) => void; onKeep: (p: string) => void; showKeep: boolean; busy: boolean }) {
+function ColumnHeader({ track, onTrash, onKeep, showKeep, busy, suggested }: { track: Track; onTrash: (p: string) => void; onKeep: (p: string) => void; showKeep: boolean; busy: boolean; suggested: boolean }) {
   const { preview, toggle, isCurrent, playing, audioRef } = usePlayer();
   const qc = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,6 +105,7 @@ function ColumnHeader({ track, onTrash, onKeep, showKeep, busy }: { track: Track
           <div style={{ fontFamily: "var(--mono)", fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={track.file_path}>
             {baseName(track.file_path)}
           </div>
+          {suggested && <span className="chip chip--active" style={{ marginTop: 4, display: "inline-block" }}>suggested keep</span>}
         </div>
         {showKeep && (
           <button className="btn btn-soft btn-sm" disabled={busy} title="Keep this, trash the others" onClick={() => onKeep(track.file_path)}>
@@ -175,6 +176,7 @@ export default function TrackCompare() {
   const [params, setParams] = useSearchParams();
   const paths = params.getAll("path");
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { endPreview } = usePlayer();
   useEffect(() => () => endPreview(), [endPreview]);  // leaving resumes the queue (dec 8)
 
@@ -227,11 +229,31 @@ export default function TrackCompare() {
   // walk Prev/Next through every duplicate group without going back to Stats.
   const dupQ = useQuery({ queryKey: ["duplicates"], queryFn: () => api.get<{ groups: DupGroup[] }>("/api/duplicates") });
   const groups = dupQ.data?.groups ?? [];
-  const key = (ps: string[]) => [...ps].sort().join(" ");
+  const key = (ps: string[]) => [...ps].sort().join("|");
   const currentKey = key(paths);
   const groupIdx = groups.findIndex((g) => key(g.tracks.map((t) => t.file_path)) === currentKey);
   const prevGroup = groupIdx > 0 ? groups[groupIdx - 1] : null;
   const nextGroup = groupIdx >= 0 && groupIdx < groups.length - 1 ? groups[groupIdx + 1] : null;
+
+  const dismiss = useMutation({
+    mutationFn: () => api.post("/api/duplicates/dismiss", { paths }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["duplicates"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      navigate(nextGroup ? compareHref(nextGroup.tracks.map((t) => t.file_path)) : "/stats");
+    },
+  });
+
+  // Suggest the best copy to keep: prefer lossless format, then a known BPM /
+  // higher confidence. Only flag one when it's strictly better than the rest.
+  const LOSSLESS = new Set(["flac", "wav", "wv", "aiff", "aif", "alac", "ape"]);
+  const keepScore = (t: Track) => {
+    const e = (t.file_path.match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+    return (LOSSLESS.has(e) ? 100 : 0) + (t.bpm != null ? 5 : 0) + (t.bpm_confidence ?? 0) * 4;
+  };
+  const scores = tracks.map(keepScore).sort((a, b) => b - a);
+  const uniqueTop = scores.length > 1 && scores[0] > scores[1];
+  const suggestedPath = uniqueTop ? tracks.reduce((a, b) => (keepScore(b) > keepScore(a) ? b : a)).file_path : "";
 
   // Rows whose values are not identical across all columns get highlighted.
   const differs = new Set<string>();
@@ -251,25 +273,34 @@ export default function TrackCompare() {
             {" "}<Link to="/stats" style={{ color: "var(--accent-2)" }}>← Back to duplicates</Link>
           </p>
         </div>
-        {groupIdx >= 0 && groups.length > 1 && (
+        {groupIdx >= 0 && (
           <>
             <div style={{ flex: 1 }} />
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
-                Group <span style={{ color: "var(--text)" }}>{groupIdx + 1} / {groups.length}</span>
-              </span>
-              {prevGroup ? (
-                <Link to={compareHref(prevGroup.tracks.map((t) => t.file_path))} className="btn btn-ghost btn-sm">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,4 7,12 19,20" /><rect x="5" y="4" width="2" height="16" /></svg>
-                  Prev
-                </Link>
-              ) : <button className="btn btn-ghost btn-sm" disabled>Prev</button>}
-              {nextGroup ? (
-                <Link to={compareHref(nextGroup.tracks.map((t) => t.file_path))} className="btn btn-primary btn-sm">
-                  Next
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 17,12 5,20" /><rect x="17" y="4" width="2" height="16" /></svg>
-                </Link>
-              ) : <button className="btn btn-primary btn-sm" disabled>Next</button>}
+              {groups.length > 1 && (
+                <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
+                  Group <span style={{ color: "var(--text)" }}>{groupIdx + 1} / {groups.length}</span>
+                </span>
+              )}
+              <button className="btn btn-ghost btn-sm" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title="These aren't the same recording — stop flagging them">
+                Not a duplicate
+              </button>
+              {groups.length > 1 && (
+                <>
+                  {prevGroup ? (
+                    <Link to={compareHref(prevGroup.tracks.map((t) => t.file_path))} className="btn btn-ghost btn-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,4 7,12 19,20" /><rect x="5" y="4" width="2" height="16" /></svg>
+                      Prev
+                    </Link>
+                  ) : <button className="btn btn-ghost btn-sm" disabled>Prev</button>}
+                  {nextGroup ? (
+                    <Link to={compareHref(nextGroup.tracks.map((t) => t.file_path))} className="btn btn-primary btn-sm">
+                      Next
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 17,12 5,20" /><rect x="17" y="4" width="2" height="16" /></svg>
+                    </Link>
+                  ) : <button className="btn btn-primary btn-sm" disabled>Next</button>}
+                </>
+              )}
             </div>
           </>
         )}
@@ -285,7 +316,7 @@ export default function TrackCompare() {
             {/* Column headers: cover / play / waveform */}
             <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "end", paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
               <div />
-              {tracks.map((t) => <ColumnHeader key={t.file_path} track={t} busy={trash.isPending || keeping} onTrash={(fp) => trash.mutate(fp)} onKeep={keepOnly} showKeep={tracks.length > 1} />)}
+              {tracks.map((t) => <ColumnHeader key={t.file_path} track={t} busy={trash.isPending || keeping} onTrash={(fp) => trash.mutate(fp)} onKeep={keepOnly} showKeep={tracks.length > 1} suggested={t.file_path === suggestedPath} />)}
             </div>
             {/* Field rows */}
             {ROWS.map((r) => (

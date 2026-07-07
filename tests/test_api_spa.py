@@ -216,7 +216,7 @@ def test_track_isrc_sets_isrc(auth_client):
     r = auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "usum71234567"},
                          headers=_csrf(auth_client))
     assert r.status_code == 200 and r.get_json()["ok"] is True
-    assert _state(auth_client).db.get_track(path)["isrc"] == "usum71234567"
+    assert _state(auth_client).db.get_track(path)["isrc"] == "USUM71234567"  # normalized upper
 
 
 def test_track_isrc_requires_csrf(auth_client):
@@ -262,6 +262,44 @@ def test_artist_lists_tracks_and_stats(auth_client):
 
 def test_artist_requires_login(client):
     assert client.get("/api/artist", query_string={"name": "X"}).status_code == 401
+
+
+def test_track_isrc_rejects_invalid_format(auth_client):
+    path = _seed_track(auth_client, name="song.mp3")
+    r = auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "not-an-isrc"},
+                         headers=_csrf(auth_client))
+    assert r.status_code == 400
+    # A valid ISRC with hyphens is normalized and accepted.
+    r2 = auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "US-UM7-12-34567"},
+                          headers=_csrf(auth_client))
+    assert r2.status_code == 200
+    assert _state(auth_client).db.get_track(path)["isrc"] == "USUM71234567"
+
+
+def test_no_isrc_filter_pill(auth_client):
+    with_isrc = _seed_track(auth_client, name="has.mp3")
+    _state(auth_client).db.update_track_metadata(with_isrc, with_isrc, {
+        "title": "H", "artist": "A", "album": "", "album_artist": "", "track_no": None,
+        "disc_no": None, "year": None, "isrc": "USUM71234567", "norm_title": "h", "norm_artist": "a",
+    }, "1:2")
+    _seed_track(auth_client, name="missing.mp3")
+    body = auth_client.get("/api/tracks", query_string={"filter": "no_isrc"}).get_json()
+    names = [t["file_path"] for t in body["tracks"]]
+    assert any(n.endswith("missing.mp3") for n in names)
+    assert not any(n.endswith("has.mp3") for n in names)
+    assert body["no_isrc_count"] >= 1
+
+
+def test_duplicates_dismiss(auth_client):
+    st = _state(auth_client)
+    r = auth_client.post("/api/duplicates/dismiss", json={"paths": ["/music/a.mp3", "/music/b.mp3"]},
+                         headers=_csrf(auth_client))
+    assert r.status_code == 200
+    assert st.db.get_dismissed_signatures()  # signature recorded
+
+
+def test_duplicates_dismiss_requires_csrf(auth_client):
+    assert auth_client.post("/api/duplicates/dismiss", json={"paths": ["/a", "/b"]}).status_code == 403
 
 
 def test_track_review_prev_next(auth_client):
