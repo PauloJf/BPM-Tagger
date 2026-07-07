@@ -89,6 +89,7 @@ export default function Settings() {
   const [pwSaved, setPwSaved] = useState<Saved>("");
   const [pwErr, setPwErr] = useState("");
   const [hashMsg, setHashMsg] = useState("");
+  const [reindexMsg, setReindexMsg] = useState("");
   const [versionMsg, setVersionMsg] = useState<{ text: string; color: string } | null>(null);
   const [restartMsg, setRestartMsg] = useState<{ text: string; color: string } | null>(null);
 
@@ -167,6 +168,18 @@ export default function Settings() {
       setHashMsg(d.ok ? `Done — ${d.updated} hashes updated, ${d.missing} files not found.` : `Error: ${d.error || "unknown"}`);
     } catch {
       setHashMsg("Network error");
+    }
+  }
+
+  async function reindexTags() {
+    setReindexMsg("Re-reading tags…");
+    try {
+      const d = await api.post<{ ok: boolean; cleared?: number; error?: string }>("/api/scan/reindex_tags", {});
+      setReindexMsg(d.ok
+        ? `Re-indexing ${d.cleared} track(s) in the background — refresh Stats shortly to see updated duplicates.`
+        : `Error: ${d.error || "unknown"}`);
+    } catch {
+      setReindexMsg("Network error");
     }
   }
 
@@ -495,6 +508,16 @@ export default function Settings() {
                 Refresh Hashes
               </button>
               <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>{hashMsg}</span>
+            </div>
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Re-index tags</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxWidth: 480, lineHeight: 1.5 }}>
+                Force a full re-read of every file's metadata (title/artist/album/ISRC) into the database. Use this after editing tags outside the app — e.g. adding ISRCs — so duplicate detection and library matching pick them up. A normal scan skips files whose size and modified-time are unchanged.
+              </div>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={reindexTags}>
+                Re-index Tags
+              </button>
+              <span style={{ marginLeft: 10, fontSize: 13, color: "var(--muted)" }}>{reindexMsg}</span>
             </div>
           </div>
 

@@ -147,6 +147,7 @@ export interface QueueItem {
   artist: string | null;
   album: string | null;
   duration_ms: number | null;
+  isrc?: string | null;
   status: string;
   provider: string | null;
   error: string | null;

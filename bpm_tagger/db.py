@@ -310,22 +310,26 @@ class BPMDatabase:
                 "SELECT file_path, file_hash FROM tracks WHERE status = 'done' OR locked = 1"
             ).fetchall()
 
-        updated = missing = 0
-        with self._connect() as conn:
-            for row in rows:
-                fp = row["file_path"]
-                if not os.path.exists(fp):
-                    missing += 1
-                    continue
-                new_hash = get_file_hash(fp)
-                if new_hash != row["file_hash"]:
-                    conn.execute(
-                        "UPDATE tracks SET file_hash = ? WHERE file_path = ?",
-                        (new_hash, fp),
-                    )
-                    updated += 1
-            conn.commit()
-        return updated, missing
+        # Do all the filesystem stat work with NO transaction open, then apply the
+        # changed hashes in one short write. Holding the WAL write lock across
+        # thousands of stat calls would block every other writer meanwhile.
+        missing = 0
+        changed: list[tuple[str, str]] = []
+        for row in rows:
+            fp = row["file_path"]
+            if not os.path.exists(fp):
+                missing += 1
+                continue
+            new_hash = get_file_hash(fp)
+            if new_hash != row["file_hash"]:
+                changed.append((new_hash, fp))
+
+        if changed:
+            with self._connect() as conn:
+                conn.executemany(
+                    "UPDATE tracks SET file_hash = ? WHERE file_path = ?", changed)
+                conn.commit()
+        return len(changed), missing
 
     def approve_track(self, file_path: str) -> None:
         """Clear needs_review and mark as reviewed without changing BPM or locking."""
@@ -555,6 +559,16 @@ class BPMDatabase:
     # ══════════════════════════════════════════════════════════════════════════
 
     # ── Tag indexing ──────────────────────────────────────────────────────────
+    def clear_tag_index(self) -> int:
+        """Forget which tracks have had their tags read, so the next index_tags()
+        pass re-reads every file's metadata from disk. Used to pick up tag edits
+        (e.g. newly-added ISRCs) made outside the app that didn't change mtime."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE tracks SET tags_indexed_hash = NULL WHERE status != 'deleted'")
+            conn.commit()
+            return cur.rowcount
+
     def get_tracks_needing_tag_index(self) -> list[dict]:
         """done/locked tracks whose tags haven't been read for the current hash."""
         with self._connect() as conn:
@@ -592,23 +606,76 @@ class BPMDatabase:
             conn.commit()
 
     def get_duplicates(self) -> list[dict]:
-        """Groups of >1 non-deleted tracks sharing normalized artist+title."""
+        """Groups of >1 non-deleted tracks that are likely the same recording.
+
+        Two tracks are clustered when they share either a normalized artist+title
+        OR the same ISRC. The ISRC edge catches duplicates whose tags/filenames
+        differ (e.g. the same song as an .mp3 and an .m4a) as long as both carry
+        the ISRC — which pure artist+title normalization misses.
+        """
         with self._connect() as conn:
-            groups = conn.execute("""
-                SELECT norm_artist, norm_title, COUNT(*) AS n
-                FROM tracks
-                WHERE status != 'deleted' AND norm_title IS NOT NULL AND norm_title != ''
-                GROUP BY norm_artist, norm_title HAVING n > 1
-                ORDER BY n DESC, norm_artist, norm_title
-            """).fetchall()
-            out = []
-            for g in groups:
-                rows = conn.execute(
-                    "SELECT file_path, title, artist, album, bpm, managed FROM tracks "
-                    "WHERE status != 'deleted' AND norm_artist IS ? AND norm_title = ?",
-                    (g["norm_artist"], g["norm_title"])).fetchall()
-                out.append({"artist": g["norm_artist"], "title": g["norm_title"],
-                            "count": g["n"], "tracks": [dict(r) for r in rows]})
+            rows = conn.execute(
+                "SELECT file_path, title, artist, album, bpm, managed, isrc, "
+                "duration_ms, norm_artist, norm_title FROM tracks "
+                "WHERE status != 'deleted'"
+            ).fetchall()
+
+        # Union-find over the two equivalence keys.
+        parent: dict[str, str] = {}
+
+        def find(x: str) -> str:
+            parent.setdefault(x, x)
+            root = x
+            while parent[root] != root:
+                root = parent[root]
+            while parent[x] != root:      # path compression
+                parent[x], x = root, parent[x]
+            return root
+
+        def union(a: str, b: str) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        tracks: dict[str, dict] = {}
+        by_norm: dict[tuple, str] = {}
+        by_isrc: dict[str, str] = {}
+        for r in rows:
+            fp = r["file_path"]
+            tracks[fp] = dict(r)
+            find(fp)                       # register the node
+            nt = (r["norm_title"] or "").strip()
+            if nt:
+                key = (r["norm_artist"], nt)
+                if key in by_norm:
+                    union(fp, by_norm[key])
+                else:
+                    by_norm[key] = fp
+            isrc = (r["isrc"] or "").strip().upper()
+            if isrc:
+                if isrc in by_isrc:
+                    union(fp, by_isrc[isrc])
+                else:
+                    by_isrc[isrc] = fp
+
+        clusters: dict[str, list] = {}
+        for fp in tracks:
+            clusters.setdefault(find(fp), []).append(tracks[fp])
+
+        out = []
+        for members in clusters.values():
+            if len(members) < 2:
+                continue
+            first = members[0]
+            out.append({
+                "artist": first.get("norm_artist") or first.get("artist"),
+                "title": first.get("norm_title") or first.get("title"),
+                "count": len(members),
+                "tracks": [{k: m.get(k) for k in
+                            ("file_path", "title", "artist", "album", "bpm",
+                             "managed", "isrc", "duration_ms")} for m in members],
+            })
+        out.sort(key=lambda g: (-g["count"], str(g["artist"] or ""), str(g["title"] or "")))
         return out
 
     def update_track_tags(self, file_path: str, tags: dict, file_hash: str) -> None:
@@ -889,6 +956,17 @@ class BPMDatabase:
             conn.execute(
                 "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
                 (item_id, status, detail, now),
+            )
+            conn.commit()
+
+    def add_grab_event(self, item_id: int, event: str, detail: str = "") -> None:
+        """Append an audit event to a queue item without changing its status
+        (e.g. a non-fatal tag/cover warning during an otherwise-successful grab)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
+                (item_id, event, detail, now),
             )
             conn.commit()
 

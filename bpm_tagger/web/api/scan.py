@@ -85,6 +85,29 @@ def api_refresh_hashes():
     return jsonify(ok=True, updated=updated, missing=missing)
 
 
+@scan_bp.route("/api/scan/reindex_tags", methods=["POST"])
+@login_required
+def api_reindex_tags():
+    """Force a full re-read of every track's file tags into the DB (title/artist/
+    album/ISRC/normalized keys). Needed to pick up tags edited outside the app —
+    e.g. ISRCs added by an external tagger — which a normal scan skips when the
+    file's size:mtime is unchanged."""
+    _check_csrf()
+    st = state()
+    if st.tagger is None:
+        return jsonify(ok=False, error="tagger not available")
+    if st.progress and st.progress.is_scanning:
+        return jsonify(ok=False, error="cannot reindex while a scan is running")
+    cleared = st.db.clear_tag_index()
+
+    def _run():
+        updated = st.tagger.index_tags()
+        log.info("Manual tag reindex: cleared %d, re-read %d", cleared, updated)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify(ok=True, cleared=cleared)
+
+
 @scan_bp.route("/api/scan/pause", methods=["POST"])
 @login_required
 def api_scan_pause():

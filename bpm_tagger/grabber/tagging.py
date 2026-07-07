@@ -22,8 +22,26 @@ def _track_disc(n) -> str:
     return str(n) if n else ""
 
 
-def write_track_tags(file_path: str, meta: dict) -> None:
-    """Write descriptive tags (title/artist/album/album_artist/track/disc/year/isrc)."""
+def sniff_image_mime(data: bytes) -> str:
+    """Best-effort image MIME from magic bytes; defaults to JPEG."""
+    if not data:
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def write_track_tags(file_path: str, meta: dict) -> str | None:
+    """Write descriptive tags (title/artist/album/album_artist/track/disc/year/isrc).
+
+    Returns None on success, or a short warning string on failure so callers can
+    surface it (the download itself still succeeded)."""
     ext = os.path.splitext(file_path)[1].lower()
     try:
         if ext == ".mp3":
@@ -58,6 +76,8 @@ def write_track_tags(file_path: str, meta: dict) -> None:
             audio.save()
     except Exception as exc:
         log.warning("Tag write failed for %s: %s", os.path.basename(file_path), exc)
+        return f"tag write failed: {exc}"
+    return None
 
 
 def resize_cover(image_bytes: bytes, max_px: int = 1200) -> bytes:
@@ -122,9 +142,15 @@ def read_cover(file_path: str) -> tuple[bytes, str] | None:
     return None
 
 
-def embed_cover(file_path: str, image_bytes: bytes, mime: str = "image/jpeg") -> None:
+def embed_cover(file_path: str, image_bytes: bytes, mime: str | None = None) -> str | None:
+    """Embed cover art. Returns None on success or a warning string on failure."""
     if not image_bytes:
-        return
+        return None
+    # Derive the MIME from the actual bytes unless the caller forced one — a small
+    # PNG cover skips resize_cover's JPEG re-encode, so a hardcoded image/jpeg
+    # label would mis-tag it (and set the wrong MP4Cover format flag).
+    if mime is None:
+        mime = sniff_image_mime(image_bytes)
     ext = os.path.splitext(file_path)[1].lower()
     try:
         if ext == ".mp3":
@@ -159,3 +185,5 @@ def embed_cover(file_path: str, image_bytes: bytes, mime: str = "image/jpeg") ->
             audio.save()
     except Exception as exc:
         log.warning("Cover embed failed for %s: %s", os.path.basename(file_path), exc)
+        return f"cover embed failed: {exc}"
+    return None

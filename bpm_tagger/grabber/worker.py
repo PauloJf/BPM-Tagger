@@ -182,12 +182,18 @@ class GrabPipeline:
         if warn:
             self.db.transition(item_id, "transcoding", warn)
 
-        # 4 — descriptive tags + cover
+        # 4 — descriptive tags + cover. Tag/cover writes are non-fatal (the audio
+        #     is fine), but record any failure as a warning event so it's visible
+        #     instead of buried in the logs.
         self.db.transition(item_id, "tagging")
-        write_track_tags(out_path, meta)
+        tag_warn = write_track_tags(out_path, meta)
+        if tag_warn:
+            self.db.add_grab_event(item_id, "warning", tag_warn)
         cover = fetch_cover(meta.get("cover_url"))
         if cover:
-            embed_cover(out_path, cover)
+            cover_warn = embed_cover(out_path, cover)
+            if cover_warn:
+                self.db.add_grab_event(item_id, "warning", cover_warn)
 
         # 5 — BPM: detect + write tag on the *staged* file (still in tmp_dir).
         #     Doing this before the file enters music_dir means a crash can't
