@@ -13,6 +13,8 @@ from ...bpm.waveform import compute_waveform_peaks
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
+from ...integrations.navidrome import _trigger_navidrome_rescan
+from ...trash import move_to_trash, purge_trash, trash_stats
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 
@@ -209,6 +211,49 @@ def api_track():
 def api_duplicates():
     """Groups of library tracks sharing normalized artist+title (possible dupes)."""
     return jsonify(groups=state().db.get_duplicates())
+
+
+@tracks_bp.route("/api/track/trash", methods=["POST"])
+@login_required
+def api_track_trash():
+    """Soft-delete: move the file to the trash, mark the row deleted, and ask
+    Navidrome to rescan so the removed track drops out of the library."""
+    _check_csrf()
+    st = state()
+    file_path = (request.get_json(force=True, silent=True) or {}).get("file_path", "")
+    if not file_path:
+        return jsonify(ok=False, error="file_path required"), 400
+    _assert_in_music_dir(file_path)
+    row = st.db.get_track(file_path)
+    if row and row.get("locked"):
+        return jsonify(ok=False, error="Track is locked — unlock it before deleting."), 400
+    try:
+        if os.path.exists(file_path):
+            move_to_trash(st.config, file_path)
+        st.db.mark_deleted(file_path)
+    except Exception as exc:
+        log.error("UI trash error: %s", exc)
+        return jsonify(ok=False, error=str(exc)), 500
+    try:
+        _trigger_navidrome_rescan(st.config)
+    except Exception:
+        pass
+    return jsonify(ok=True)
+
+
+@tracks_bp.route("/api/trash")
+@login_required
+def api_trash():
+    """Current trash contents (count + bytes) for the Settings panel."""
+    return jsonify(trash_stats(state().config))
+
+
+@tracks_bp.route("/api/trash/purge", methods=["POST"])
+@login_required
+def api_trash_purge():
+    """Permanently empty the trash."""
+    _check_csrf()
+    return jsonify(ok=True, **purge_trash(state().config))
 
 
 @tracks_bp.route("/api/review")

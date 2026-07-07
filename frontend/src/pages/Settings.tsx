@@ -18,9 +18,18 @@ const SIDEBAR = [
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
   ["sec-playback", "Playback"],
+  ["sec-trash", "Trash"],
   ["sec-version", "Version"],
   ["sec-restart", "Restart"],
 ];
+
+function fmtBytes(n: number): string {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  let v = n, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
 
 const MODES = ["watch", "watch_all", "scan_unscanned", "scan_all", "scan_review", "report"];
 
@@ -39,6 +48,14 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const grabberStatus = useGrabberStatus();
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
+  const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
+  const [purging, setPurging] = useState(false);
+  async function purgeTrash() {
+    if (!window.confirm("Permanently delete everything in the trash? This cannot be undone.")) return;
+    setPurging(true);
+    try { await api.post("/api/trash/purge", {}); qc.invalidateQueries({ queryKey: ["trash"] }); }
+    finally { setPurging(false); }
+  }
   const cfg = settingsQ.data?.settings;
   const envLocked = settingsQ.data?.env_locked ?? [];
   const isLocked = (key: string) => envLocked.includes(key);
@@ -627,6 +644,27 @@ export default function Settings() {
                 <SaveButton state={playSaved} label="Save Playback Settings" />
               </div>
             </form>
+          </div>
+
+          {/* Trash */}
+          <div id="sec-trash" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Trash</h2>
+              <p>Files removed via duplicate resolution are moved here and stay recoverable until you purge. Purging deletes them permanently from disk.</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--muted)", fontSize: 13, fontFamily: "var(--mono)" }}>
+                {trashQ.isLoading ? "Loading…" : `${trashQ.data?.count ?? 0} file(s) · ${fmtBytes(trashQ.data?.bytes ?? 0)}`}
+              </span>
+              <button
+                className="btn btn-danger btn-sm"
+                type="button"
+                disabled={purging || !trashQ.data?.count}
+                onClick={purgeTrash}
+              >
+                {purging ? "Purging…" : "Purge trash"}
+              </button>
+            </div>
           </div>
 
           {/* Version */}

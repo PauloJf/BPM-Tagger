@@ -154,6 +154,49 @@ def test_track_paths_respects_review_filter(auth_client):
     assert len(paths) == 1 and paths[0].endswith("flag.mp3")
 
 
+# ---------------------------------------------------------------------------
+# /api/track/trash + /api/trash (soft-delete duplicate resolution)
+# ---------------------------------------------------------------------------
+
+def _csrf(client):
+    return {"X-CSRF-Token": client._csrf}
+
+
+def test_trash_moves_file_marks_deleted_and_reports(auth_client):
+    path = _seed_track(auth_client, name="dupe.mp3", bpm=120.0)
+    r = auth_client.post("/api/track/trash", json={"file_path": path}, headers=_csrf(auth_client))
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert not os.path.exists(path)                                   # moved out of the library
+    assert _state(auth_client).db.get_track(path)["status"] == "deleted"
+    info = auth_client.get("/api/trash").get_json()
+    assert info["count"] == 1 and info["bytes"] >= 1
+
+
+def test_trash_refuses_locked_track(auth_client):
+    path = _seed_track(auth_client, name="keep.mp3", bpm=120.0)
+    _state(auth_client).db.lock_track(path, 120.0)
+    r = auth_client.post("/api/track/trash", json={"file_path": path}, headers=_csrf(auth_client))
+    assert r.status_code == 400 and os.path.exists(path)              # locked → protected
+
+
+def test_trash_requires_csrf(auth_client):
+    path = _seed_track(auth_client, name="x.mp3")
+    assert auth_client.post("/api/track/trash", json={"file_path": path}).status_code == 403
+
+
+def test_trash_outside_music_dir_forbidden(auth_client):
+    assert auth_client.post("/api/track/trash", json={"file_path": "/etc/passwd"},
+                            headers=_csrf(auth_client)).status_code == 403
+
+
+def test_trash_purge_empties(auth_client):
+    path = _seed_track(auth_client, name="dupe.mp3", bpm=120.0)
+    auth_client.post("/api/track/trash", json={"file_path": path}, headers=_csrf(auth_client))
+    r = auth_client.post("/api/trash/purge", headers=_csrf(auth_client))
+    assert r.status_code == 200 and r.get_json()["removed"] == 1
+    assert auth_client.get("/api/trash").get_json()["count"] == 0
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)
