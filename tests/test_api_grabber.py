@@ -282,6 +282,27 @@ def test_queue_retry_failed_requires_csrf(grab):
     assert client.post("/api/queue/retry-failed").status_code == 403
 
 
+def test_inbox_research_all_requeues_every_awaiting(grab):
+    client, st, _ = grab
+    ids = []
+    for i in range(3):
+        iid = st.db.enqueue_grab({"spotify_track_id": f"amb{i}", "title": f"A{i}", "artist": "X"})
+        st.db.transition(iid, "awaiting_user", "test")
+        ids.append(iid)
+    # give one an override to prove it's cleared
+    client.post(f"/api/inbox/{ids[0]}/search", json={"query": "x"}, headers={"X-CSRF-Token": client._csrf})
+    st.db.transition(ids[0], "awaiting_user", "reset")
+    r = client.post("/api/inbox/research-all", headers={"X-CSRF-Token": client._csrf})
+    assert r.status_code == 200 and r.get_json()["requeued"] == 3
+    assert all(st.db.get_grab_item(i)["status"] == "pending" for i in ids)
+    assert not st.db.get_grab_item(ids[0])["search_override"]
+
+
+def test_inbox_research_all_requires_csrf(grab):
+    client, _, _ = grab
+    assert client.post("/api/inbox/research-all").status_code == 403
+
+
 def test_inbox_skip(grab):
     client, st, _ = grab
     iid = _awaiting_item(st.db)

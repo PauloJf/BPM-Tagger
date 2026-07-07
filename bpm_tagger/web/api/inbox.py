@@ -99,6 +99,22 @@ def research(item_id):
     return jsonify(ok=True)
 
 
+@inbox_bp.route("/api/inbox/research-all", methods=["POST"])
+@login_required
+def research_all():
+    """Re-run the default search for every item waiting in the inbox at once
+    (e.g. after enabling a new provider)."""
+    _check_csrf()
+    db = state().db
+    n = 0
+    for it in db.get_queue("awaiting_user"):
+        db.update_grab(it["id"], search_override=None, chosen_candidate_id=None)
+        db.transition(it["id"], "pending", "search again (all)")
+        n += 1
+    _nudge()
+    return jsonify(ok=True, requeued=n)
+
+
 @inbox_bp.route("/api/inbox/<int:item_id>/skip", methods=["POST"])
 @login_required
 def skip(item_id):

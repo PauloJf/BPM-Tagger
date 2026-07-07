@@ -160,8 +160,9 @@ export default function Inbox() {
   const choose = useMutation({ mutationFn: (v: { id: number; candId: number }) => api.post(`/api/inbox/${v.id}/choose`, { candidate_id: v.candId }), onSuccess: invalidate });
   const search = useMutation({ mutationFn: (v: { id: number; query: string }) => api.post(`/api/inbox/${v.id}/search`, { query: v.query }), onSuccess: invalidate });
   const research = useMutation({ mutationFn: (id: number) => api.post(`/api/inbox/${id}/research`), onSuccess: invalidate });
+  const researchAll = useMutation({ mutationFn: () => api.post("/api/inbox/research-all"), onSuccess: invalidate });
   const skip = useMutation({ mutationFn: (id: number) => api.post(`/api/inbox/${id}/skip`), onSuccess: invalidate });
-  const busy = choose.isPending || search.isPending || research.isPending || skip.isPending;
+  const busy = choose.isPending || search.isPending || research.isPending || researchAll.isPending || skip.isPending;
 
   if (status.data && !status.data.enabled) {
     return (
@@ -176,11 +177,23 @@ export default function Inbox() {
 
   return (
     <>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Inbox</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>
-          Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip.
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Inbox</h1>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>
+            Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip.
+          </p>
+        </div>
+        {items.length > 0 && (
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={busy}
+            onClick={() => researchAll.mutate()}
+            title="Re-run the default search for every item in the inbox"
+          >
+            {researchAll.isPending ? "Searching…" : `Search all again (${items.length})`}
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
