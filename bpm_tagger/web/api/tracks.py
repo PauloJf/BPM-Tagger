@@ -244,6 +244,25 @@ def api_artist():
     return jsonify(name=name, tracks=rows, stats=stats)
 
 
+@tracks_bp.route("/api/album")
+@login_required
+def api_album():
+    """An album's tracks (disc/track-ordered) + a small summary."""
+    album = request.args.get("album", "").strip()
+    album_artist = request.args.get("album_artist", "").strip()
+    if not album:
+        return jsonify(album="", album_artist="", tracks=[], stats={})
+    rows = state().db.get_album_tracks(album, album_artist or None)
+    bpms = [r["bpm"] for r in rows if r.get("bpm")]
+    aa = album_artist or (rows[0].get("album_artist") if rows else "") or ""
+    stats = {
+        "tracks": len(rows),
+        "avg_bpm": round(sum(bpms) / len(bpms), 1) if bpms else None,
+        "year": (rows[0].get("year") if rows else None),
+    }
+    return jsonify(album=album, album_artist=aa, tracks=rows, stats=stats)
+
+
 @tracks_bp.route("/api/duplicates")
 @login_required
 def api_duplicates():

@@ -93,6 +93,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeat, setRepeat] = useState<RepeatMode>(() => saved?.repeat ?? "off");
   const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
   const volumeRef = useRef(volume);
+  const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
 
   // Ducking preview: while active, the queue track + position + play-state are
   // stashed here and restored when the preview ends or the user leaves.
@@ -415,6 +416,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [play]);
 
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
+
+  // Global keyboard shortcuts (ignored while typing; Space is left for tap-tempo).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!audioRef.current || !current) return;
+      switch (e.key) {
+        case "k": e.preventDefault(); toggle(); break;
+        case "ArrowRight": next(false); break;
+        case "ArrowLeft": prev(); break;
+        case "+": case "=": setVolume(Math.min(1, volumeRef.current + 0.1)); break;
+        case "-": setVolume(Math.max(0, volumeRef.current - 0.1)); break;
+        case "m":
+          if (volumeRef.current > 0) { mutePrev.current = volumeRef.current; setVolume(0); }
+          else setVolume(mutePrev.current || 1);
+          break;
+        default: return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [current, toggle, prev, next, setVolume]);
 
   const queueIndex = pos >= 0 && pos < order.length ? order[pos] : -1;
   const orderedQueue = order.map((i) => queue[i]).filter(Boolean);

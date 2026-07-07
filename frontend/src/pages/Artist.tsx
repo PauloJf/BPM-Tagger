@@ -71,7 +71,11 @@ export default function Artist() {
       ) : (
         albums.map((g) => (
           <div key={g.album} style={{ marginBottom: 18 }}>
-            <div className="section-label"><span>{g.album}</span></div>
+            <div className="section-label">
+              <Link to={`/album?album=${encodeURIComponent(g.album)}&album_artist=${encodeURIComponent(g.tracks[0]?.album_artist || name)}`} style={{ color: "inherit", textDecoration: "none" }}>
+                {g.album}
+              </Link>
+            </div>
             <div className="card" style={{ padding: 4 }}>
               {g.tracks.map((t) => (
                 <div key={t.file_path} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8 }}>

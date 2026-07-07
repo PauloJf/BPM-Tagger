@@ -264,6 +264,25 @@ def test_artist_requires_login(client):
     assert client.get("/api/artist", query_string={"name": "X"}).status_code == 401
 
 
+def test_album_lists_tracks(auth_client):
+    p1 = _seed_track(auth_client, name="a.mp3", bpm=120.0)
+    p2 = _seed_track(auth_client, name="b.mp3", bpm=128.0)
+    st = _state(auth_client)
+    for p, tn in ((p1, 1), (p2, 2)):
+        st.db.update_track_metadata(p, p, {
+            "title": f"T{tn}", "artist": "The Weeknd", "album": "After Hours",
+            "album_artist": "The Weeknd", "track_no": tn, "disc_no": 1, "year": 2020,
+            "isrc": "", "norm_title": f"t{tn}", "norm_artist": "the weeknd",
+        }, "1:2")
+    body = auth_client.get("/api/album", query_string={"album": "After Hours", "album_artist": "The Weeknd"}).get_json()
+    assert body["stats"]["tracks"] == 2 and body["album_artist"] == "The Weeknd"
+    assert [t["file_path"] for t in body["tracks"]] == [p1, p2]  # track-order
+
+
+def test_album_requires_login(client):
+    assert client.get("/api/album", query_string={"album": "X"}).status_code == 401
+
+
 def test_track_isrc_rejects_invalid_format(auth_client):
     path = _seed_track(auth_client, name="song.mp3")
     r = auth_client.post("/api/track/isrc", json={"file_path": path, "isrc": "not-an-isrc"},
