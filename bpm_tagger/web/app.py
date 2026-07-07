@@ -65,7 +65,19 @@ def create_app(config: dict) -> Flask:
     st.settings_path = str(Path(config["db_path"]).parent / "settings.json")
     app.extensions["state"] = st
 
-    secret = config.get("ui_secret_key") or secrets.token_hex(32)
+    # A stable secret key keeps sessions valid across restarts (including the
+    # in-place /api/restart). When none is configured, generate one once and
+    # persist it so users aren't silently logged out on every restart.
+    secret = config.get("ui_secret_key")
+    if not secret:
+        secret = secrets.token_hex(32)
+        config["ui_secret_key"] = secret
+        try:
+            from ..config import save_settings
+            save_settings(st.settings_path, {"ui_secret_key": secret})
+            log.info("UI: generated and persisted a UI_SECRET_KEY for stable sessions")
+        except Exception as exc:  # pragma: no cover - best effort
+            log.warning("UI: could not persist generated secret key: %s", exc)
     app.secret_key = secret
     app.config["UI_PASSWORD"] = config.get("ui_password", "")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
@@ -74,6 +86,11 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_PERMANENT"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+    # Mark the cookie Secure when the UI is served over HTTPS (public URL set to
+    # an https origin behind a reverse proxy). Left off for plain-http/local use
+    # so login still works there.
+    app.config["SESSION_COOKIE_SECURE"] = str(
+        config.get("ui_public_url") or "").lower().startswith("https://")
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp):

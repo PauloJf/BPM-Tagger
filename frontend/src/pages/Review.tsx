@@ -183,21 +183,21 @@ export default function Review() {
 
       {pages > 1 && (
         <div className="pagination" style={{ marginTop: 20 }}>
-          {page > 1 && <a onClick={() => setPage(page - 1)}>← Prev</a>}
+          {page > 1 && <button type="button" onClick={() => setPage(page - 1)}>← Prev</button>}
           {pageNums.map((p, i) =>
             p === "…" ? (
               <span key={`e${i}`}>…</span>
             ) : p === page ? (
-              <span key={p} className="current">
+              <span key={p} className="current" aria-current="page">
                 {p}
               </span>
             ) : (
-              <a key={p} onClick={() => setPage(p)}>
+              <button type="button" key={p} onClick={() => setPage(p)} aria-label={`Page ${p}`}>
                 {p}
-              </a>
+              </button>
             ),
           )}
-          {page < pages && <a onClick={() => setPage(page + 1)}>Next →</a>}
+          {page < pages && <button type="button" onClick={() => setPage(page + 1)}>Next →</button>}
         </div>
       )}
     </>

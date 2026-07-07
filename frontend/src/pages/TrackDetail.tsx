@@ -59,7 +59,10 @@ export default function TrackDetail() {
         album_artist: s(track.album_artist), track_no: s(track.track_no), disc_no: s(track.disc_no),
         year: s(track.year), isrc: s(track.isrc) });
     }
-  }, [track?.file_path, track?.bpm]);
+    // Seed only when the track itself changes. Keying on bpm too would let a
+    // background refetch (interval/focus) overwrite the user's in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.file_path]);
 
   async function saveMeta() {
     setMetaMsg(null);

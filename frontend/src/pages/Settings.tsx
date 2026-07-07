@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -183,6 +183,13 @@ export default function Settings() {
     }
   }
 
+  const reconnectIv = useRef<number | null>(null);
+  // Stop the reconnect poll if the user navigates away mid-restart, otherwise it
+  // keeps hitting /api/progress and can fire an unexpected reload later.
+  useEffect(() => () => {
+    if (reconnectIv.current !== null) window.clearInterval(reconnectIv.current);
+  }, []);
+
   async function restart() {
     if (!window.confirm("Restart the application now?\n\nAny active scan will be stopped. The page will reconnect automatically.")) return;
     setRestartMsg({ text: "Restarting…", color: "var(--warn-fg)" });
@@ -192,10 +199,10 @@ export default function Settings() {
       /* execv may drop the connection before responding — treat as success */
     }
     setRestartMsg({ text: "Reconnecting…", color: "var(--warn-fg)" });
-    const iv = window.setInterval(async () => {
+    reconnectIv.current = window.setInterval(async () => {
       try {
         await api.get("/api/progress");
-        window.clearInterval(iv);
+        if (reconnectIv.current !== null) window.clearInterval(reconnectIv.current);
         window.location.reload();
       } catch {
         /* still down */
@@ -255,7 +262,7 @@ export default function Settings() {
             <div className="settings-fields">
               <div className="field-row">
                 {fieldLabel("Enabled", "Turn the grabber subsystem on. Requires a restart to take effect.")}
-                <Toggle on={grabber.enabled} onChange={(v) => setGrabber({ ...grabber, enabled: v })} />
+                <Toggle on={grabber.enabled} onChange={(v) => setGrabber({ ...grabber, enabled: v })} label="Enable grabber" />
               </div>
               <div className="field-row">
                 {fieldLabel("Spotify")}
@@ -284,7 +291,7 @@ export default function Settings() {
               </div>
               <div className="field-row">
                 {fieldLabel("Dry run", "Match + plan downloads but don't actually download (routes to the inbox)")}
-                <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} />
+                <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} label="Dry run" />
               </div>
               <div className="field-row">
                 {fieldLabel("Output format", "Every download is transcoded to this single format")}
@@ -415,7 +422,7 @@ export default function Settings() {
                 </div>
                 <div className="field-row">
                   {fieldLabel("Notify on review", 'include "N need review" in scan summary')}
-                  <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} />
+                  <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} label="Notify on review" />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <SaveButton state={ntfySaved} label="Save Notification Settings" />
@@ -448,15 +455,15 @@ export default function Settings() {
                 </div>
                 <div className="field-row">
                   {fieldLabel(<>Use deeprhythm <span className="badge badge--neutral" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>+500 MB</span></>, "PyTorch CNN — most accurate")}
-                  <Toggle on={scan.useDr} onChange={(v) => setScan({ ...scan, useDr: v })} />
+                  <Toggle on={scan.useDr} onChange={(v) => setScan({ ...scan, useDr: v })} label="Use deeprhythm" />
                 </div>
                 <div className="field-row">
                   {fieldLabel("Use essentia", "RhythmExtractor2013 — second neural detector")}
-                  <Toggle on={scan.useEs} onChange={(v) => setScan({ ...scan, useEs: v })} />
+                  <Toggle on={scan.useEs} onChange={(v) => setScan({ ...scan, useEs: v })} label="Use essentia" />
                 </div>
                 <div className="field-row">
                   {fieldLabel("Write BPM tags", "Write BPM back to audio file metadata")}
-                  <Toggle on={scan.writeTags} onChange={(v) => setScan({ ...scan, writeTags: v })} />
+                  <Toggle on={scan.writeTags} onChange={(v) => setScan({ ...scan, writeTags: v })} label="Write BPM tags" />
                 </div>
                 <div className="field-row">
                   {fieldLabel(
@@ -465,7 +472,7 @@ export default function Settings() {
                       ? "Locked by the PRESERVE_MTIME environment variable — edit docker-compose to change it"
                       : "Restore the file's modified time after tagging — keeps Navidrome, backups and sort-by-date undisturbed",
                   )}
-                  <Toggle on={scan.preserveMtime} disabled={isLocked("preserve_mtime")} onChange={(v) => setScan({ ...scan, preserveMtime: v })} />
+                  <Toggle on={scan.preserveMtime} disabled={isLocked("preserve_mtime")} onChange={(v) => setScan({ ...scan, preserveMtime: v })} label="Preserve file date" />
                 </div>
                 <div className="field-row">
                   {fieldLabel("Review threshold", "Confidence below this flags a track for review (0–1)")}

@@ -176,50 +176,53 @@ class GrabPipeline:
             return "failed"
         self.db.update_grab(item_id, provider=chosen.provider)
 
-        if True:
-            # 3 — transcode to the single output format
-            self.db.transition(item_id, "transcoding")
-            out_path, warn = transcode(downloaded.path, tmp_dir, self.output_format, f"grab_{item_id}")
-            if warn:
-                self.db.transition(item_id, "transcoding", warn)
+        # 3 — transcode to the single output format
+        self.db.transition(item_id, "transcoding")
+        out_path, warn = transcode(downloaded.path, tmp_dir, self.output_format, f"grab_{item_id}")
+        if warn:
+            self.db.transition(item_id, "transcoding", warn)
 
-            # 4 — descriptive tags + cover
-            self.db.transition(item_id, "tagging")
-            write_track_tags(out_path, meta)
-            cover = fetch_cover(meta.get("cover_url"))
-            if cover:
-                embed_cover(out_path, cover)
+        # 4 — descriptive tags + cover
+        self.db.transition(item_id, "tagging")
+        write_track_tags(out_path, meta)
+        cover = fetch_cover(meta.get("cover_url"))
+        if cover:
+            embed_cover(out_path, cover)
 
-            # 5 — render path + atomically place under music_dir (copy-then-replace:
-            #     /data and /music may be different filesystems)
-            ext = profile_ext(self.output_format)
-            final = unique_path(self.music_dir, render(self.path_template, meta, ext))
-            os.makedirs(os.path.dirname(final), exist_ok=True)
-            part = os.path.join(os.path.dirname(final), f".mg_part_{item_id}.{ext}")
-            shutil.copy2(out_path, part)
-            os.replace(part, final)
-            self.db.update_grab(item_id, final_path=final)
+        # 5 — BPM: detect + write tag on the *staged* file (still in tmp_dir).
+        #     Doing this before the file enters music_dir means a crash can't
+        #     leave an untagged, DB-orphaned file in the library that would be
+        #     re-grabbed as a duplicate on restart.
+        self.db.transition(item_id, "analyzing_bpm")
+        result = detect_bpm(out_path, self.config)
+        if self.config.get("write_tags", True) and result.get("bpm"):
+            write_bpm_tag(out_path, result["bpm"], self.config.get("preserve_mtime", True))
 
-            # 6 — BPM: detect + write tag, then hash AFTER the write (watcher anti-loop)
-            self.db.transition(item_id, "analyzing_bpm")
-            result = detect_bpm(final, self.config)
-            if self.config.get("write_tags", True) and result.get("bpm"):
-                write_bpm_tag(final, result["bpm"], self.config.get("preserve_mtime", True))
-            fresh_hash = get_file_hash(final)
-            self.db.record_managed_track(
-                final, fresh_hash, meta, result.get("bpm"), result.get("bpm_dr"),
-                result.get("bpm_es"), result.get("bpm_lb"), result.get("confidence"),
-                result.get("detector"), meta.get("spotify_track_id") or "")
+        # 6 — render path + atomically place under music_dir (copy-then-replace:
+        #     /data and /music may be different filesystems), then record the DB
+        #     row immediately. copy2 preserves mtime so the hash taken here still
+        #     matches the tagged file the watcher will later see (anti-loop).
+        ext = profile_ext(self.output_format)
+        final = unique_path(self.music_dir, render(self.path_template, meta, ext))
+        os.makedirs(os.path.dirname(final), exist_ok=True)
+        part = os.path.join(os.path.dirname(final), f".mg_part_{item_id}.{ext}")
+        shutil.copy2(out_path, part)
+        os.replace(part, final)
+        fresh_hash = get_file_hash(final)
+        self.db.record_managed_track(
+            final, fresh_hash, meta, result.get("bpm"), result.get("bpm_dr"),
+            result.get("bpm_es"), result.get("bpm_lb"), result.get("confidence"),
+            result.get("detector"), meta.get("spotify_track_id") or "")
 
-            # 7 — done + notify + debounced Navidrome rescan
-            self.db.update_grab(item_id, progress=1.0, final_path=final)
-            self.db.transition(item_id, "done", os.path.basename(final))
-            self._notify_done(item)
-            try:
-                _trigger_navidrome_rescan(self.config)
-            except Exception:
-                pass
-            return "done"
+        # 7 — done + notify + debounced Navidrome rescan
+        self.db.update_grab(item_id, progress=1.0, final_path=final)
+        self.db.transition(item_id, "done", os.path.basename(final))
+        self._notify_done(item)
+        try:
+            _trigger_navidrome_rescan(self.config)
+        except Exception:
+            pass
+        return "done"
 
     # ── notifications (ntfy never fails the pipeline) ──────────────────────────
     def _click_url(self, path):

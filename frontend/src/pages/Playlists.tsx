@@ -127,7 +127,7 @@ export default function Playlists() {
                 </div>
               </Link>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} />
+                <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
                 <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate(p.id)}>
                   {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}
                 </button>

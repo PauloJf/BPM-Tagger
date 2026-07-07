@@ -93,7 +93,7 @@ function InboxCard({ item, onChoose, onSearch, onSkip, busy }: {
         ) : (
           <>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit search</button>
-            <button className="btn btn-danger btn-sm" disabled={busy} onClick={onSkip}>Skip</button>
+            <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => { if (window.confirm(`Skip "${item.title}"? It will be discarded from the queue.`)) onSkip(); }}>Skip</button>
           </>
         )}
       </div>

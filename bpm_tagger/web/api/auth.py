@@ -6,6 +6,7 @@ These mirror the session, CSRF and per-IP lockout semantics of the Jinja
 legacy form routes (``/login`` / ``/logout``) stay intact for the M0 Jinja UI.
 """
 
+import hmac
 import logging
 import time
 
@@ -37,7 +38,8 @@ def api_login():
             st.login_lockout_until[ip] = now + st.lockout_seconds
             st.login_attempts[ip] = []
             return jsonify(ok=False, error="locked_out"), 429
-        if password and password == current_app.config["UI_PASSWORD"]:
+        expected = current_app.config["UI_PASSWORD"]
+        if password and expected and hmac.compare_digest(password, expected):
             st.login_attempts.pop(ip, None)
             st.login_lockout_until.pop(ip, None)
             session["ok"] = True

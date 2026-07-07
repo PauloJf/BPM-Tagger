@@ -838,30 +838,40 @@ class BPMDatabase:
             ).fetchone()
         return row is not None
 
+    _GRAB_INSERT_COLS = ("playlist_track_id, spotify_track_id, title, artist, album, "
+                         "album_artist, duration_ms, isrc, track_no, disc_no, year, "
+                         "cover_url, status, priority, created_at, updated_at")
+
     def enqueue_grab(self, meta: dict) -> Optional[int]:
         """Insert a pending grab_queue item unless a non-terminal one already
-        exists for this spotify_track_id. Returns the new id, or None if skipped."""
+        exists for this spotify_track_id. Returns the new id, or None if skipped.
+
+        The dedupe + insert is a single ``INSERT ... SELECT ... WHERE NOT EXISTS``
+        so two concurrent callers (background sync + a manual enqueue) can't both
+        pass a check-then-insert and create duplicate rows for one track."""
         sid = meta.get("spotify_track_id")
         now = datetime.now(timezone.utc).isoformat()
+        vals = (meta.get("playlist_track_id"), sid, meta.get("title"), meta.get("artist"),
+                meta.get("album"), meta.get("album_artist"), meta.get("duration_ms"),
+                meta.get("isrc"), meta.get("track_no"), meta.get("disc_no"),
+                meta.get("year"), meta.get("cover_url"), "pending",
+                meta.get("priority", 0), now, now)
         with self._connect() as conn:
             if sid:
-                exists = conn.execute(
-                    f"SELECT 1 FROM grab_queue WHERE spotify_track_id = ? "
-                    f"AND status IN ({','.join('?' * len(GRAB_NONTERMINAL))}) LIMIT 1",
-                    (sid, *GRAB_NONTERMINAL),
-                ).fetchone()
-                if exists:
+                placeholders = ",".join("?" * len(GRAB_NONTERMINAL))
+                cur = conn.execute(
+                    f"INSERT INTO grab_queue ({self._GRAB_INSERT_COLS}) "
+                    f"SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? "
+                    f"WHERE NOT EXISTS (SELECT 1 FROM grab_queue "
+                    f"WHERE spotify_track_id = ? AND status IN ({placeholders}))",
+                    (*vals, sid, *GRAB_NONTERMINAL),
+                )
+                if cur.rowcount == 0:
                     return None
-            cur = conn.execute("""
-                INSERT INTO grab_queue
-                    (playlist_track_id, spotify_track_id, title, artist, album, album_artist,
-                     duration_ms, isrc, track_no, disc_no, year, cover_url, status,
-                     priority, created_at, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?, ?, ?)
-            """, (meta.get("playlist_track_id"), sid, meta.get("title"), meta.get("artist"),
-                  meta.get("album"), meta.get("album_artist"), meta.get("duration_ms"),
-                  meta.get("isrc"), meta.get("track_no"), meta.get("disc_no"),
-                  meta.get("year"), meta.get("cover_url"), meta.get("priority", 0), now, now))
+            else:
+                cur = conn.execute(
+                    f"INSERT INTO grab_queue ({self._GRAB_INSERT_COLS}) "
+                    f"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             item_id = cur.lastrowid
             conn.execute(
                 "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
