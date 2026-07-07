@@ -760,6 +760,8 @@ body.has-player .container { padding-bottom: 88px; }
 }
 .player-bar-meta { min-width: 0; width: 200px; flex-shrink: 0; }
 .player-bar-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.player-bar-title { color: var(--text); text-decoration: none; display: block; }
+a.player-bar-title:hover { color: var(--accent-2); }
 .player-bar-artist { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-bar-time { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .player-bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; cursor: pointer; overflow: hidden; }

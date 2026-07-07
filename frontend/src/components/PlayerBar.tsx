@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { Link } from "react-router-dom";
 import { usePlayer } from "../lib/player";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
@@ -35,7 +36,13 @@ export default function PlayerBar() {
         </button>
       )}
       <div className="player-bar-meta">
-        <div className="player-bar-title">{current.title}</div>
+        <Link
+          to={`/track?path=${encodeURIComponent(current.path)}`}
+          className="player-bar-title"
+          title={`Open ${current.title}`}
+        >
+          {current.title}
+        </Link>
         {error ? (
           <div className="player-bar-artist" style={{ color: "var(--err-fg)" }}>{error}</div>
         ) : previewing ? (

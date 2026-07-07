@@ -84,6 +84,24 @@ def retry_item(item_id):
     return jsonify(ok=True)
 
 
+@queue_bp.route("/api/queue/retry-failed", methods=["POST"])
+@login_required
+def retry_failed():
+    """Re-queue every failed item at once — e.g. to search again for all of them
+    after enabling a new provider."""
+    _check_csrf()
+    db = state().db
+    n = 0
+    for it in db.get_queue("failed"):
+        db.update_grab(it["id"], error=None, progress=0)
+        db.transition(it["id"], "pending", "retry (all failed)")
+        n += 1
+    g = _grabber()
+    if g:
+        g.sync.request_sync()
+    return jsonify(ok=True, requeued=n)
+
+
 @queue_bp.route("/api/queue/<int:item_id>/cancel", methods=["POST"])
 @login_required
 def cancel_item(item_id):

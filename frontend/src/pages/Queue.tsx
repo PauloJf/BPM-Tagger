@@ -71,6 +71,7 @@ export default function Queue() {
   };
   const retry = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/retry`), onSuccess: invalidate });
   const cancel = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/cancel`), onSuccess: invalidate });
+  const retryAll = useMutation({ mutationFn: () => api.post("/api/queue/retry-failed"), onSuccess: invalidate });
 
   if (status.data && !status.data.enabled) {
     return (
@@ -88,11 +89,23 @@ export default function Queue() {
 
   return (
     <>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Queue</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>
-          {Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(" · ") || "Nothing queued."}
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Queue</h1>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>
+            {Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(" · ") || "Nothing queued."}
+          </p>
+        </div>
+        {(counts.failed ?? 0) > 0 && (
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={retryAll.isPending}
+            onClick={() => retryAll.mutate()}
+            title="Re-queue every failed item and search again"
+          >
+            {retryAll.isPending ? "Retrying…" : `Retry all failed (${counts.failed})`}
+          </button>
+        )}
       </div>
 
       <div className="tracks-table" style={{ marginBottom: 22 }}>
