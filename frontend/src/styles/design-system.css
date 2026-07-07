@@ -263,11 +263,16 @@ nav.app-nav {
 .nav-mobile-sep { height: 1px; background: var(--border); margin: 6px 2px; }
 .nav-scan-dot-mobile { display: none; flex-shrink: 0; }
 
-@media (max-width: 700px) {
+/* Collapse to the hamburger until the full desktop nav actually fits (~1076px).
+   Below this the nav items would overflow horizontally, stretching the document
+   wider than the viewport and knocking the centered .container off-center. */
+@media (max-width: 1100px) {
   .nav-desktop-only { display: none !important; }
   .nav-hamburger    { display: inline-flex; }
   .nav-scan-dot-mobile { display: inline-block; }
-  nav.app-nav { padding: 0 14px; position: relative; }
+}
+@media (max-width: 700px) {
+  nav.app-nav { padding: 0 14px; }
   .container  { padding: 16px 14px 60px; }
 }
 
