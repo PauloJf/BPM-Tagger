@@ -38,12 +38,14 @@ export default function Settings() {
   const { version } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const grabberStatus = useGrabberStatus();
-  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap }>("/api/settings") });
+  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
   const cfg = settingsQ.data?.settings;
+  const envLocked = settingsQ.data?.env_locked ?? [];
+  const isLocked = (key: string) => envLocked.includes(key);
 
   // Per-section local state, seeded once settings load.
   const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
-  const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, conf: 0.4 });
+  const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, conf: 0.4 });
   const [mode, setMode] = useState("watch");
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
@@ -96,7 +98,7 @@ export default function Settings() {
     const n = (k: string, d: number) => (cfg[k] == null ? d : Number(cfg[k]));
     const b = (k: string, d: boolean) => (cfg[k] == null ? d : Boolean(cfg[k]));
     setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
-    setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), conf: n("review_confidence_threshold", 0.4) });
+    setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
@@ -430,7 +432,7 @@ export default function Settings() {
               <h2>Scan Behavior</h2>
               <p>Tune the BPM detector stack.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/scan", { workers: scan.workers, bpm_min: scan.bpmMin, bpm_max: scan.bpmMax, use_deeprhythm: scan.useDr, use_essentia: scan.useEs, write_tags: scan.writeTags, review_confidence_threshold: scan.conf }, setScanSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/scan", { workers: scan.workers, bpm_min: scan.bpmMin, bpm_max: scan.bpmMax, use_deeprhythm: scan.useDr, use_essentia: scan.useEs, write_tags: scan.writeTags, preserve_mtime: scan.preserveMtime, review_confidence_threshold: scan.conf }, setScanSaved); }}>
               <div className="settings-fields">
                 <div className="field-row">
                   {fieldLabel(<>Workers <span className="badge badge--review" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>⚠ Memory</span></>, "Each deeprhythm worker adds ~500 MB RAM")}
@@ -455,6 +457,15 @@ export default function Settings() {
                 <div className="field-row">
                   {fieldLabel("Write BPM tags", "Write BPM back to audio file metadata")}
                   <Toggle on={scan.writeTags} onChange={(v) => setScan({ ...scan, writeTags: v })} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel(
+                    <>Preserve file date {isLocked("preserve_mtime") && <span className="badge badge--neutral" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>🔒 docker-compose</span>}</>,
+                    isLocked("preserve_mtime")
+                      ? "Locked by the PRESERVE_MTIME environment variable — edit docker-compose to change it"
+                      : "Restore the file's modified time after tagging — keeps Navidrome, backups and sort-by-date undisturbed",
+                  )}
+                  <Toggle on={scan.preserveMtime} disabled={isLocked("preserve_mtime")} onChange={(v) => setScan({ ...scan, preserveMtime: v })} />
                 </div>
                 <div className="field-row">
                   {fieldLabel("Review threshold", "Confidence below this flags a track for review (0–1)")}

@@ -10,6 +10,19 @@ log = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".wv"}
 
+# Settings whose UI control is locked when the matching env var is explicitly
+# set (e.g. in docker-compose). Maps env var name → config key. A locked key is
+# authoritative from the environment: settings.json cannot override it and the
+# web UI cannot change it.
+_ENV_LOCKABLE = {
+    "PRESERVE_MTIME": "preserve_mtime",
+}
+
+
+def env_locked_keys() -> list:
+    """Config keys whose env var is explicitly present — locked from UI edits."""
+    return [cfg_key for env, cfg_key in _ENV_LOCKABLE.items() if env in os.environ]
+
 
 def _read_version() -> str:
     # VERSION lives at the repository / image root, one directory above this package.
@@ -47,7 +60,11 @@ def load_settings_override(config: dict) -> dict:
     if os.path.isfile(path):
         try:
             with open(path) as f:
-                config.update(json.load(f))
+                data = json.load(f)
+            # Env-locked keys stay authoritative from the environment.
+            for key in env_locked_keys():
+                data.pop(key, None)
+            config.update(data)
         except Exception as exc:
             log.warning("Could not load settings override: %s", exc)
     return config
@@ -81,6 +98,7 @@ def build_config() -> dict:
         "ntfy_min_interval":          int(os.environ.get("NTFY_MIN_INTERVAL", "300")),
         "ntfy_notify_review":         os.environ.get("NTFY_NOTIFY_REVIEW", "true").lower() == "true",
         "write_tags":                 os.environ.get("WRITE_TAGS", "true").lower() == "true",
+        "preserve_mtime":             os.environ.get("PRESERVE_MTIME", "true").lower() == "true",
         "extensions":                 extensions,
         "bpm_min":                    float(os.environ.get("BPM_MIN", "60")),
         "bpm_max":                    float(os.environ.get("BPM_MAX", "200")),

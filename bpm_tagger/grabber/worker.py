@@ -204,7 +204,7 @@ class GrabPipeline:
             self.db.transition(item_id, "analyzing_bpm")
             result = detect_bpm(final, self.config)
             if self.config.get("write_tags", True) and result.get("bpm"):
-                write_bpm_tag(final, result["bpm"])
+                write_bpm_tag(final, result["bpm"], self.config.get("preserve_mtime", True))
             fresh_hash = get_file_hash(final)
             self.db.record_managed_track(
                 final, fresh_hash, meta, result.get("bpm"), result.get("bpm_dr"),

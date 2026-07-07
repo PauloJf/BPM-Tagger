@@ -45,6 +45,11 @@ services:
       # Write the detected BPM back to the audio file's metadata tag
       WRITE_TAGS: "true"
 
+      # Restore each file's modified time after writing the tag, so Navidrome
+      # rescans, backups and sort-by-date views aren't disturbed. Setting this
+      # here locks the toggle in the web UI (docker-compose stays authoritative).
+      PRESERVE_MTIME: "true"
+
       # -----------------------------------------------------------------------
       # File extensions to process (comma-separated, include the leading dot)
       # -----------------------------------------------------------------------

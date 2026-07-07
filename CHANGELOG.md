@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.1 — 2026-07-07
+
+**Preserve file modified time when tagging**
+- Writing a BPM tag no longer bumps the file's modified time. The original timestamp is restored after the tag write, so Navidrome rescans, backup tools and sort-by-date views are left undisturbed.
+- New `PRESERVE_MTIME` setting (default `true`), exposed as a "Preserve file date" toggle in the web UI. Setting it in docker-compose locks the toggle — the environment stays authoritative and the UI cannot override it.
+
 ## v2.0.0 — 2026-07-07
 
 Major expansion into a Spotify→library sync + downloader, on a full UI rewrite.

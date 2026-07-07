@@ -9,7 +9,7 @@ import logging
 import requests
 from flask import Blueprint, current_app, jsonify, request
 
-from ...config import __version__, save_settings
+from ...config import __version__, env_locked_keys, save_settings
 from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
 from ..auth import _check_csrf, login_required
@@ -41,7 +41,7 @@ def api_settings_get():
             out[key] = sorted(val)
         else:
             out[key] = val
-    return jsonify(settings=out, version=__version__)
+    return jsonify(settings=out, version=__version__, env_locked=env_locked_keys())
 
 
 @settings_bp.route("/api/settings/ntfy", methods=["POST"])
@@ -98,10 +98,15 @@ def api_settings_scan():
         "use_deeprhythm":              bool(data.get("use_deeprhythm")),
         "use_essentia":                bool(data.get("use_essentia")),
         "write_tags":                  bool(data.get("write_tags")),
+        "preserve_mtime":              bool(data.get("preserve_mtime", True)),
         "review_confidence_threshold": conf_thr,
         "bpm_min":                     bpm_min,
         "bpm_max":                     bpm_max,
     }
+    # Env-locked settings are controlled by docker-compose — ignore client edits
+    # so they are neither applied nor persisted to settings.json.
+    for key in env_locked_keys():
+        updates.pop(key, None)
     st.config.update(updates)
     if st.tagger is not None:
         st.tagger.config.update(updates)
@@ -109,6 +114,7 @@ def api_settings_scan():
     st.bpm_min = bpm_min
     st.bpm_max = bpm_max
     st.write_tags = updates["write_tags"]
+    st.preserve_mtime = st.config.get("preserve_mtime", True)
     save_settings(st.settings_path, updates)
     return jsonify(ok=True)
 

@@ -55,6 +55,7 @@ def create_app(config: dict) -> Flask:
     st.db = BPMDatabase(config["db_path"])
     st.music_dir = config["music_dir"]
     st.write_tags = config.get("write_tags", True)
+    st.preserve_mtime = config.get("preserve_mtime", True)
     st.conf_threshold = config.get("review_confidence_threshold", 0.4)
     st.bpm_min = float(config.get("bpm_min", 60.0))
     st.bpm_max = float(config.get("bpm_max", 200.0))
@@ -108,9 +109,13 @@ def create_app(config: dict) -> Flask:
         # Vite emits external, hashed script bundles, so 'unsafe-inline' is no
         # longer needed for scripts. Inline styles are still used (React style
         # props), so style-src keeps 'unsafe-inline'.
+        # Spotify serves album/playlist art from its image CDNs; allow those
+        # hosts so covers render in the UI (default-src stays same-origin).
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self'; img-src 'self' data:; media-src 'self';"
+            "script-src 'self'; "
+            "img-src 'self' data: https://i.scdn.co https://*.scdn.co "
+            "https://*.spotifycdn.com; media-src 'self';"
         )
         return resp
 

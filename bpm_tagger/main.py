@@ -88,7 +88,7 @@ def main():
         lock_bpm = float(lock_bpm_raw) if lock_bpm_raw else None
         tagger.db.lock_track(file_path, lock_bpm)
         if lock_bpm is not None and config["write_tags"]:
-            write_bpm_tag(file_path, lock_bpm)
+            write_bpm_tag(file_path, lock_bpm, config.get("preserve_mtime", True))
         bpm_msg = f" at {lock_bpm:.1f} BPM" if lock_bpm is not None else " (keeping existing BPM)"
         log.info("Locked %s%s", file_path, bpm_msg)
 

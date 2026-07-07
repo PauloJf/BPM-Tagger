@@ -19,6 +19,7 @@ class AppState:
     db: object = None
     music_dir: str = ""
     write_tags: bool = True
+    preserve_mtime: bool = True
     conf_threshold: float = 0.4
     progress: object = None
     bpm_min: float = 60.0

@@ -13,10 +13,14 @@ from mutagen.oggvorbis import OggVorbis
 log = logging.getLogger(__name__)
 
 
-def write_bpm_tag(file_path: str, bpm: float) -> bool:
+def write_bpm_tag(file_path: str, bpm: float, preserve_mtime: bool = True) -> bool:
     ext = Path(file_path).suffix.lower()
     bpm_str = str(round(bpm))
     try:
+        # Capture the timestamps before the tag write so we can restore them.
+        # Media servers (Navidrome) and backup tools key off mtime; without this
+        # every tagged file looks freshly modified.
+        st = os.stat(file_path) if preserve_mtime else None
         if ext == ".mp3":
             try:
                 tags = ID3(file_path)
@@ -42,6 +46,8 @@ def write_bpm_tag(file_path: str, bpm: float) -> bool:
                 return False
             audio["BPM"] = bpm_str
             audio.save()
+        if st is not None:
+            os.utime(file_path, (st.st_atime, st.st_mtime))
         return True
     except Exception as exc:
         log.error("Failed to write tag for %s: %s", file_path, exc)

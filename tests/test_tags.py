@@ -44,6 +44,25 @@ def test_write_bpm_tag_unsupported_returns_false(tmp_path):
     assert write_bpm_tag(str(f), 120.0) is False
 
 
+def test_write_bpm_tag_preserves_mtime_by_default(tmp_path):
+    f = tmp_path / "song.flac"
+    _write_flac(f)
+    # Backdate the file so a bump would be obvious.
+    old = os.stat(str(f)).st_mtime - 100_000
+    os.utime(str(f), (old, old))
+    assert write_bpm_tag(str(f), 128.0) is True
+    assert os.stat(str(f)).st_mtime == old
+
+
+def test_write_bpm_tag_bumps_mtime_when_disabled(tmp_path):
+    f = tmp_path / "song.flac"
+    _write_flac(f)
+    old = os.stat(str(f)).st_mtime - 100_000
+    os.utime(str(f), (old, old))
+    assert write_bpm_tag(str(f), 128.0, preserve_mtime=False) is True
+    assert os.stat(str(f)).st_mtime != old
+
+
 def test_get_file_hash_is_size_colon_mtime(tmp_path):
     f = tmp_path / "x.bin"
     f.write_bytes(b"abc")

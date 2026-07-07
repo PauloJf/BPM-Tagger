@@ -76,7 +76,7 @@ class BPMTagger:
                      bpm, result["confidence"], result["detector"], review_flag)
 
             if self.config["write_tags"]:
-                write_bpm_tag(file_path, bpm)
+                write_bpm_tag(file_path, bpm, self.config.get("preserve_mtime", True))
                 # Re-read hash after tagging so the stored value matches the
                 # post-tag file state; otherwise the next scan sees a mismatch
                 # and re-analyzes an already-tagged file.

@@ -55,7 +55,7 @@ def api_save_bpm():
     try:
         st.db.lock_track(file_path, bpm)
         if st.write_tags:
-            write_bpm_tag(file_path, bpm)
+            write_bpm_tag(file_path, bpm, st.preserve_mtime)
         log.info("UI: locked %s at %.1f BPM", Path(file_path).name, bpm)
         return jsonify(ok=True)
     except Exception as exc:
