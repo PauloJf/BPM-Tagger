@@ -10,6 +10,7 @@ export interface PlayerTrack {
 interface PlayerState {
   current: PlayerTrack | null;
   playing: boolean;
+  error: string | null;
   audioRef: RefObject<HTMLAudioElement>;
   play(track: PlayerTrack): void;
   toggle(): void;
@@ -24,12 +25,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [current, setCurrent] = useState<PlayerTrack | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pendingPlay = useRef(false);
 
   // Load the source whenever the current track changes; auto-play if requested.
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !current) return;
+    setError(null);
     a.src = audioUrl(current.path);
     a.load();
     if (pendingPlay.current) {
@@ -46,16 +49,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onPlay = () => setPlaying(true);
+    const onPlay = () => { setPlaying(true); setError(null); };
     const onPause = () => setPlaying(false);
     const onEnded = () => setPlaying(false);
+    // A failed stream (404, decode error, network drop) would otherwise leave
+    // the UI stuck in a "playing" state with no feedback — surface it instead.
+    const onError = () => { setPlaying(false); setError("Playback failed — the file may be missing or unsupported."); };
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
     a.addEventListener("ended", onEnded);
+    a.addEventListener("error", onError);
     return () => {
       a.removeEventListener("play", onPlay);
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
+      a.removeEventListener("error", onError);
     };
   }, []);
 
@@ -86,7 +94,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
 
   return (
-    <Ctx.Provider value={{ current, playing, audioRef, play, toggle, stop, isCurrent }}>
+    <Ctx.Provider value={{ current, playing, error, audioRef, play, toggle, stop, isCurrent }}>
       {children}
       <audio ref={audioRef} preload="auto" />
     </Ctx.Provider>

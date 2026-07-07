@@ -4,7 +4,7 @@ import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 
 export default function PlayerBar() {
-  const { current, playing, audioRef, toggle, stop } = usePlayer();
+  const { current, playing, error, audioRef, toggle, stop } = usePlayer();
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Hooks must run unconditionally; disabled until a track is loaded.
@@ -23,7 +23,11 @@ export default function PlayerBar() {
       </button>
       <div className="player-bar-meta">
         <div className="player-bar-title">{current.title}</div>
-        {current.artist ? <div className="player-bar-artist">{current.artist}</div> : null}
+        {error ? (
+          <div className="player-bar-artist" style={{ color: "var(--err-fg)" }}>{error}</div>
+        ) : current.artist ? (
+          <div className="player-bar-artist">{current.artist}</div>
+        ) : null}
       </div>
       <span className="player-bar-time">{fmtTime(time)}</span>
       <canvas ref={canvasRef} className="player-bar-wave" />

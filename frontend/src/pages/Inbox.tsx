@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { GrabCandidate, InboxItem } from "../lib/types";
@@ -11,15 +11,32 @@ function durationDelta(itemMs: number | null, candMs: number | null): string {
   return `${d > 0 ? "+" : ""}${d}s`;
 }
 
-function CandidateCard({ cand, itemMs, onChoose, busy }: {
-  cand: GrabCandidate; itemMs: number | null; onChoose: () => void; busy: boolean;
+function fmtDur(ms: number | null): string {
+  if (!ms) return "—";
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function CandidateCard({ cand, item, onChoose, busy }: {
+  cand: GrabCandidate; item: InboxItem; onChoose: () => void; busy: boolean;
 }) {
   const [open, setOpen] = useState(false);
   let breakdown: Record<string, unknown> = {};
   try { breakdown = cand.score_breakdown ? JSON.parse(cand.score_breakdown) : {}; } catch { /* ignore */ }
   const pct = cand.score != null ? Math.round(cand.score * 100) : 0;
+  const itemMs = item.duration_ms;
   const delta = durationDelta(itemMs, cand.duration_ms);
   const deltaBad = delta !== "—" && Math.abs(parseInt(delta)) > 10;
+
+  // Field-by-field comparison of the Spotify source vs this candidate.
+  const isrcMatch = !!item.isrc && !!cand.isrc && item.isrc.toUpperCase() === cand.isrc.toUpperCase();
+  const compareRows: { label: string; source: string; cand: string; match: boolean }[] = [
+    { label: "Title", source: item.title || "—", cand: cand.title || "—", match: (item.title || "").toLowerCase() === (cand.title || "").toLowerCase() },
+    { label: "Artist", source: item.artist || "—", cand: cand.artist || "—", match: (item.artist || "").toLowerCase() === (cand.artist || "").toLowerCase() },
+    { label: "Album", source: item.album || "—", cand: cand.album || "—", match: (item.album || "").toLowerCase() === (cand.album || "").toLowerCase() },
+    { label: "Duration", source: fmtDur(itemMs), cand: fmtDur(cand.duration_ms), match: !deltaBad && delta !== "—" },
+    { label: "ISRC", source: item.isrc || "—", cand: cand.isrc || "—", match: isrcMatch },
+  ];
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", background: "var(--surface-2)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -38,10 +55,29 @@ function CandidateCard({ cand, itemMs, onChoose, busy }: {
         <span style={{ color: "var(--muted)" }}> · {cand.artist}{cand.album ? ` · ${cand.album}` : ""}</span>
       </div>
       {open && (
-        <div style={{ marginTop: 8, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {Object.entries(breakdown).map(([k, v]) => (
-            <span key={k}>{k}: <span style={{ color: "var(--text)" }}>{String(v)}</span></span>
-          ))}
+        <div style={{ marginTop: 10 }}>
+          {/* Source (Spotify) vs candidate, field by field. */}
+          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: "4px 12px", fontSize: 12, alignItems: "baseline" }}>
+            <div />
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>Spotify</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>Candidate</div>
+            {compareRows.map((r) => (
+              <Fragment key={r.label}>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{r.label}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", wordBreak: "break-word" }}>{r.source}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: r.match ? "var(--ok-fg)" : "var(--warn-fg)", wordBreak: "break-word" }}>
+                  {r.cand}{r.match ? " ✓" : ""}
+                </div>
+              </Fragment>
+            ))}
+          </div>
+          {Object.keys(breakdown).length > 0 && (
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {Object.entries(breakdown).map(([k, v]) => (
+                <span key={k}>{k}: <span style={{ color: "var(--text)" }}>{String(v)}</span></span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -70,7 +106,7 @@ function InboxCard({ item, onChoose, onSearch, onSkip, busy }: {
           <div style={{ color: "var(--muted)", fontSize: 13 }}>No candidates found — try a different search.</div>
         ) : (
           item.candidates.map((c) => (
-            <CandidateCard key={c.id} cand={c} itemMs={item.duration_ms} busy={busy} onChoose={() => onChoose(c.id)} />
+            <CandidateCard key={c.id} cand={c} item={item} busy={busy} onChoose={() => onChoose(c.id)} />
           ))
         )}
       </div>
@@ -93,7 +129,7 @@ function InboxCard({ item, onChoose, onSearch, onSkip, busy }: {
         ) : (
           <>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit search</button>
-            <button className="btn btn-danger btn-sm" disabled={busy} onClick={onSkip}>Skip</button>
+            <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => { if (window.confirm(`Skip "${item.title}"? It will be discarded from the queue.`)) onSkip(); }}>Skip</button>
           </>
         )}
       </div>

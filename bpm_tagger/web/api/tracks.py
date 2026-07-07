@@ -315,8 +315,8 @@ def api_track_cover_put():
     if not image:
         return jsonify(ok=False, error="empty body"), 400
     try:
-        image = resize_cover(image)  # normalize to <=1200px JPEG
-        embed_cover(path, image, mime="image/jpeg")
+        image = resize_cover(image)  # normalize to <=1200px (JPEG if re-encoded)
+        embed_cover(path, image)  # MIME sniffed from the actual bytes
         st.db.refresh_track_hash(path, get_file_hash(path))  # hash only; keep tags
         return jsonify(ok=True)
     except Exception as exc:

@@ -337,6 +337,16 @@ nav.app-nav {
 .btn-bare:hover { color: var(--text); }
 .btn:disabled, .btn[disabled] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 
+/* ── Keyboard focus ───────────────────────────────────────────────────────────
+   Visible focus ring for keyboard users on every interactive element. Uses
+   :focus-visible so it doesn't show on mouse clicks. */
+a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+.toggle-wrap:focus-visible, .filter-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ── Flash messages ───────────────────────────────────────────────────────── */
 .flash {
   padding: 10px 14px; border-radius: 8px; margin-bottom: 14px;
@@ -358,12 +368,12 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 
 /* ── Pagination ───────────────────────────────────────────────────────────── */
 .pagination { display: flex; gap: 4px; align-items: center; margin-top: 14px; }
-.pagination a, .pagination span {
+.pagination a, .pagination button, .pagination span {
   padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border);
-  color: var(--muted); text-decoration: none; font-size: 12px;
-  font-family: var(--mono); cursor: pointer;
+  background: transparent; color: var(--muted); text-decoration: none;
+  font-size: 12px; font-family: var(--mono); cursor: pointer; line-height: 1.4;
 }
-.pagination a:hover { border-color: var(--accent-border); color: var(--text); }
+.pagination a:hover, .pagination button:hover { border-color: var(--accent-border); color: var(--text); }
 .pagination .current { background: var(--accent); border-color: var(--accent); color: white; }
 .pagination .disabled { opacity: 0.4; pointer-events: none; }
 
@@ -764,3 +774,16 @@ body.has-player .container { padding-bottom: 88px; }
   transition: background 0.12s, border-color 0.12s;
 }
 .row-play:hover { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); }
+
+/* ── Reduced motion ───────────────────────────────────────────────────────────
+   Honour the OS "reduce motion" preference: near-instant transitions and no
+   looping decorative animation (spinners, pulses, scan bars) for users who are
+   motion-sensitive. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

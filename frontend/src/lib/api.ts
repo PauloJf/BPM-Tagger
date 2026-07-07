@@ -13,6 +13,15 @@ export function getCsrfToken() {
   return csrfToken;
 }
 
+// Invoked whenever a request comes back 401 (session expired). The AuthProvider
+// registers a handler that flips auth state so the app shows the login screen
+// instead of stranding the user on a page full of generic errors.
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -46,6 +55,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const resp = await fetch(path, opts);
   const data = await parse(resp);
   if (!resp.ok) {
+    // Session expired mid-session: let the app drop back to the login screen.
+    // The login endpoint returns 401 on a wrong password too — don't treat
+    // that as a session expiry.
+    if (resp.status === 401 && path !== "/api/login") onUnauthorized?.();
     const msg =
       (data && typeof data === "object" && "error" in data && String((data as { error: unknown }).error)) ||
       `HTTP ${resp.status}`;

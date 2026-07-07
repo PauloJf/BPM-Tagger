@@ -5,7 +5,7 @@ import logging
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Optional
 
@@ -110,19 +110,53 @@ class BPMTagger:
     def _process_files_parallel(self, file_paths: list[str], force: bool) -> dict:
         workers = int(self.config.get("workers", 1))
         counts = {"tagged": 0, "skipped": 0, "errors": 0, "needs_review": 0}
+        paths = iter(file_paths)
+
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            for i in range(0, len(file_paths), workers):
-                if self._stop_event.is_set():
-                    break
-                self._pause_event.wait()   # blocks here while paused
-                if self._stop_event.is_set():
-                    break
-                batch = file_paths[i : i + workers]
-                futures = {executor.submit(self.process_file, fp, force): fp for fp in batch}
-                batch_counts = self._count_results(futures)
-                for k in counts:
-                    counts[k] += batch_counts[k]
+            in_flight: set = set()
+
+            def fill():
+                """Top the pool back up to `workers` in-flight tasks. Honours
+                pause (blocks) and stop (submits nothing more)."""
+                while len(in_flight) < workers:
+                    if self._stop_event.is_set():
+                        return
+                    self._pause_event.wait()   # blocks here while paused
+                    if self._stop_event.is_set():
+                        return
+                    fp = next(paths, None)
+                    if fp is None:
+                        return
+                    in_flight.add(executor.submit(self.process_file, fp, force))
+
+            fill()
+            # Sliding window: as each file finishes, immediately submit the next
+            # instead of waiting for a whole batch — the slowest file no longer
+            # stalls the others.
+            while in_flight:
+                done, still = wait(in_flight, return_when=FIRST_COMPLETED)
+                in_flight.difference_update(done)
+                self._tally(done, counts)
+                fill()
         return counts
+
+    def _tally(self, futures, counts: dict) -> None:
+        """Fold a set of completed futures into the running counts dict."""
+        for future in futures:
+            try:
+                result = future.result()
+            except Exception as exc:
+                log.error("Worker exception: %s", exc)
+                counts["errors"] += 1
+                continue
+            if result["status"] == "tagged":
+                counts["tagged"] += 1
+                if result.get("needs_review"):
+                    counts["needs_review"] += 1
+            elif result["status"] == "error":
+                counts["errors"] += 1
+            else:
+                counts["skipped"] += 1
 
     def _finish_scan(self, counts: dict, label: str):
         if self.notifier:
@@ -138,31 +172,6 @@ class BPMTagger:
         # Worker threads have exited; their thread-local model instances are eligible
         # for collection. Run GC explicitly to reclaim torch weights promptly.
         import gc; gc.collect()
-
-    def _count_results(self, futures) -> dict:
-        """Drain a dict of futures and return tallied counts."""
-        tagged = errors = skipped = needs_review_count = 0
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-            except Exception as exc:
-                log.error("Worker exception: %s", exc)
-                errors += 1
-            else:
-                if result["status"] == "tagged":
-                    tagged += 1
-                    if result.get("needs_review"):
-                        needs_review_count += 1
-                elif result["status"] == "error":
-                    errors += 1
-                else:
-                    skipped += 1
-            if self._stop_event.is_set():
-                for f in futures:
-                    f.cancel()
-                break
-        return {"tagged": tagged, "skipped": skipped, "errors": errors,
-                "needs_review": needs_review_count}
 
     def _needs_analysis_fast(self, fp: str, tracked: dict) -> bool:
         """Check if a file needs analysis against bulk-loaded DB data."""

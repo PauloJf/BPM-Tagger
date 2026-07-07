@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, ApiError, setCsrfToken } from "./api";
+import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "./api";
 import type { Me } from "./types";
 
 interface AuthState {
@@ -37,6 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => setAuthenticated(false))
       .finally(() => setReady(true));
   }, [refresh]);
+
+  // Any 401 from a protected endpoint means the session lapsed — flip to logged
+  // out so the router shows the login screen rather than a wall of errors.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setAuthenticated(false));
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   const login = useCallback(
     async (password: string) => {

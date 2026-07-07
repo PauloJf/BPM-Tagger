@@ -9,6 +9,7 @@ SpotifyAuthError so the sync loop can mark disconnected instead of crashing.
 
 import base64
 import logging
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -50,6 +51,10 @@ class SpotifyClient:
         self.redirect_uri = config.get("spotify_redirect_uri", "")
         self._access_token = None
         self._access_expiry = 0.0  # epoch seconds
+        # The client is shared by the background sync thread and the web request
+        # threads; serialize token refresh so concurrent callers don't both spend
+        # (and, under Spotify token rotation, invalidate) the refresh token.
+        self._token_lock = threading.Lock()
 
     # ── configuration / status ────────────────────────────────────────────────
     def is_configured(self) -> bool:
@@ -129,8 +134,12 @@ class SpotifyClient:
         self._store_tokens(resp.json())
 
     def _bearer(self) -> str:
+        # Double-checked under the lock: if another thread refreshed while we
+        # waited, the second check short-circuits and we reuse its token.
         if not self._access_token or time.time() >= self._access_expiry:
-            self._refresh()
+            with self._token_lock:
+                if not self._access_token or time.time() >= self._access_expiry:
+                    self._refresh()
         return self._access_token
 
     # ── API ──────────────────────────────────────────────────────────────────
