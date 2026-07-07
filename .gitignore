@@ -10,6 +10,9 @@ __pycache__/
 data/
 *.csv
 
+# Internal build plan — kept locally, not shipped in the public repo
+PLAN.md
+
 # Demo / dev helpers (not part of the shipped codebase)
 demo_music/
 seed_demo.py
