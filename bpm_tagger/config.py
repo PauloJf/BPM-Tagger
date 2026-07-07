@@ -138,8 +138,12 @@ def build_config() -> dict:
         "monochrome_base_url":        os.environ.get("MONOCHROME_BASE_URL", ""),
         "monochrome_api_key":         os.environ.get("MONOCHROME_API_KEY", ""),
         "monochrome_quality":         os.environ.get("MONOCHROME_QUALITY", "LOSSLESS"),
-        "provider_order":             os.environ.get("PROVIDER_ORDER", "monochrome,ytdlp"),
-        "output_format":              os.environ.get("OUTPUT_FORMAT", "mp3-320"),
+        # Deezer (streamrip): free-tier ARL yields full tracks at MP3 128 kbps;
+        # MP3_320 / FLAC require a paid Deezer subscription. ARL is env/config only.
+        "deezer_arl":                 os.environ.get("DEEZER_ARL", ""),
+        "deezer_quality":             os.environ.get("DEEZER_QUALITY", "MP3_128"),
+        "provider_order":             os.environ.get("PROVIDER_ORDER", "deezer,ytdlp"),
+        "output_format":              os.environ.get("OUTPUT_FORMAT", "mp3-128"),
         "path_template":              os.environ.get(
             "PATH_TEMPLATE", "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"),
         "grab_workers":               int(os.environ.get("GRAB_WORKERS", "1")),

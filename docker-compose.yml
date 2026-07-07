@@ -157,13 +157,15 @@ services:
       # Read file tags into the DB for library matching (leave on)
       INDEX_TAGS: "true"
 
-      # Download providers / pipeline (used from M4). PROVIDER_ORDER is tried in
-      # order; OUTPUT_FORMAT is the single transcode target for every download.
-      # MONOCHROME_BASE_URL: ""     # self-hosted Tidal proxy base URL
+      # Download providers / pipeline. PROVIDER_ORDER is tried in order;
+      # OUTPUT_FORMAT is the single transcode target for every download.
+      # DEEZER_ARL: ""              # your Deezer ARL token — enables the Deezer provider
+      # DEEZER_QUALITY: "MP3_128"   # MP3_128 (free) | MP3_320 | FLAC (paid subscription)
+      # MONOCHROME_BASE_URL: ""     # self-hosted Tidal proxy base URL (provider on hold)
       # MONOCHROME_API_KEY: ""
       # MONOCHROME_QUALITY: "LOSSLESS"
-      # PROVIDER_ORDER: "monochrome,ytdlp"
-      # OUTPUT_FORMAT: "mp3-320"    # mp3-320 | flac | opus-192
+      # PROVIDER_ORDER: "deezer,ytdlp"
+      # OUTPUT_FORMAT: "mp3-128"    # mp3-128 | mp3-320 | flac | opus-192
       # PATH_TEMPLATE: "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
       # GRAB_WORKERS: "1"           # download/transcode workers (max 3)
       # GRAB_DRY_RUN: "false"       # match + plan without downloading

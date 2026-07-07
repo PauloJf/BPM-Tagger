@@ -8,4 +8,5 @@ flask>=3.0
 waitress>=3.0
 rapidfuzz>=3.9.0
 yt-dlp>=2024.8.0
-pillow>=10.0.0
+streamrip>=2.1.0
+pillow>=10.0.0,<11

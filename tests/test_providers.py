@@ -4,6 +4,7 @@ import pytest
 
 from bpm_tagger.grabber.providers import build_providers
 from bpm_tagger.grabber.providers.base import ProviderCandidate, TrackMeta
+from bpm_tagger.grabber.providers.deezer import DeezerProvider
 from bpm_tagger.grabber.providers.monochrome import MonochromeProvider
 from bpm_tagger.grabber.providers.ytdlp import YtDlpProvider
 
@@ -152,10 +153,95 @@ def test_ytdlp_download_returns_file(tmp_path):
     assert seen[-1] == 1.0
 
 
+# ── Deezer fake (async streamrip client) ──────────────────────────────────────
+class FakeDeezerDownloadable:
+    extension = "mp3"
+    _size = 6
+
+    async def download(self, path, cb):
+        with open(path, "wb") as fh:
+            for chunk in (b"abc", b"def"):
+                fh.write(chunk)
+                cb(len(chunk))
+
+
+class FakeDeezerClient:
+    def __init__(self, arl):
+        self.arl = arl
+        self.logged_in = False
+        self.session = None  # → _close() is a no-op
+
+    async def login(self):
+        if not self.arl:
+            raise RuntimeError("MissingCredentialsError")
+        self.logged_in = True
+
+    async def search(self, media_type, query, limit=200):
+        return [{"total": 2, "data": [
+            {"id": 3380574911, "title": "Voices In My Head",
+             "artist": {"name": "Anyma"},
+             "album": {"title": "Genesys", "cover_xl": "http://cover.xl"},
+             "duration": 146, "isrc": "USUG12500914"},
+            {"id": 2, "title": "Other", "artist": {"name": "X"},
+             "album": {"title": "Y"}, "duration": 100},
+        ]}]
+
+    async def get_downloadable(self, item_id, quality=2):
+        return FakeDeezerDownloadable()
+
+
+def _deezer():
+    p = DeezerProvider({"deezer_arl": "fake-arl", "deezer_quality": "MP3_128"})
+    p._client_factory = FakeDeezerClient
+    return p
+
+
+def test_deezer_search_parses_candidates():
+    p = _deezer()
+    cands = p.search(TrackMeta(title="Voices In My Head", artist="Anyma"))
+    assert len(cands) == 2
+    c = cands[0]
+    assert c.provider == "deezer" and c.provider_track_id == "3380574911"
+    assert c.title == "Voices In My Head" and c.artist == "Anyma"
+    assert c.album == "Genesys" and c.duration_ms == 146000
+    assert c.isrc == "USUG12500914"  # ISRC feeds the matcher
+    assert c.quality == "MP3_128" and c.cover_url == "http://cover.xl"
+
+
+def test_deezer_download_streams_and_reports_progress(tmp_path):
+    p = _deezer()
+    seen = []
+    cand = ProviderCandidate(provider="deezer", provider_track_id="3380574911")
+    df = p.download(cand, str(tmp_path), progress_cb=lambda f: seen.append(f))
+    assert df.ext == "mp3" and df.provider == "deezer" and df.quality == "MP3_128"
+    with open(df.path, "rb") as fh:
+        assert fh.read() == b"abcdef"
+    assert seen and seen[-1] == 1.0
+
+
+def test_deezer_search_empty_without_arl():
+    p = DeezerProvider({"deezer_arl": ""})
+    p._client_factory = FakeDeezerClient
+    assert p.search(TrackMeta(title="x", artist="y")) == []
+
+
+def test_deezer_healthcheck():
+    assert _deezer().healthcheck() is True
+    assert DeezerProvider({"deezer_arl": ""}).healthcheck() is False
+
+
 # ── ordering ──────────────────────────────────────────────────────────────────
-def test_build_providers_order_and_skip_unconfigured():
-    provs = build_providers({"provider_order": "monochrome,ytdlp"})  # no monochrome url
-    assert [p.name for p in provs] == ["ytdlp"]  # monochrome skipped (unconfigured)
+def test_build_providers_monochrome_on_hold():
+    # Monochrome is on hold: skipped even when it's in the order AND configured.
+    provs = build_providers({"provider_order": "monochrome,ytdlp"})
+    assert [p.name for p in provs] == ["ytdlp"]
     provs = build_providers({"provider_order": "ytdlp,monochrome",
                              "monochrome_base_url": "http://m"})
-    assert [p.name for p in provs] == ["ytdlp", "monochrome"]
+    assert [p.name for p in provs] == ["ytdlp"]  # monochrome on hold
+
+
+def test_build_providers_deezer_gated_on_arl():
+    provs = build_providers({"provider_order": "deezer,ytdlp", "deezer_arl": "x"})
+    assert [p.name for p in provs] == ["deezer", "ytdlp"]
+    provs = build_providers({"provider_order": "deezer,ytdlp"})  # no arl
+    assert [p.name for p in provs] == ["ytdlp"]  # deezer skipped (unconfigured)

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+**Deezer download provider; Monochrome on hold**
+- New **Deezer** provider (via [streamrip](https://github.com/nathom/streamrip)) using your own Deezer ARL. A free-tier ARL returns full-length tracks at MP3 128 kbps (MP3 320 / FLAC require a paid subscription). Deezer search also supplies ISRCs, improving library matching. Configure with `DEEZER_ARL` / `DEEZER_QUALITY`; a "Test" button in Settings validates the ARL.
+- Default `PROVIDER_ORDER` is now `deezer,ytdlp`. The **Monochrome/Tidal** provider is on hold pending investigation and is skipped regardless of configuration (`MONOCHROME_ON_HOLD`).
+- Added an `mp3-128` transcode profile; default `OUTPUT_FORMAT` is now `mp3-128` (matches the free Deezer source, avoiding a wasteful upscale — Deezer `.mp3` passes through without re-encoding).
+
 ## v2.0.1 — 2026-07-07
 
 **Preserve file modified time when tagging**

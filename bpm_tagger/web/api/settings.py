@@ -21,7 +21,7 @@ settings_bp = Blueprint("settings", __name__)
 
 # Values that must never be returned to the client in the clear.
 _SECRET_KEYS = {"ui_password", "ui_secret_key", "navidrome_pass",
-                "spotify_client_secret", "monochrome_api_key"}
+                "spotify_client_secret", "monochrome_api_key", "deezer_arl"}
 
 
 def _json_body() -> dict:
@@ -191,19 +191,24 @@ def api_settings_grabber():
             pass
     # Provider / output / path options (env defaults; UI can override at runtime).
     for key in ("output_format", "path_template", "provider_order",
-                "monochrome_base_url", "monochrome_quality"):
+                "monochrome_base_url", "monochrome_quality", "deezer_quality"):
         if key in data:
             updates[key] = str(data[key]).strip()
     # Monochrome API key: only overwrite when a non-masked value is supplied.
     mk = str(data.get("monochrome_api_key", ""))
     if mk and mk != "********":
         updates["monochrome_api_key"] = mk.strip()
+    # Deezer ARL (secret): only overwrite when a non-masked value is supplied.
+    arl = str(data.get("deezer_arl", ""))
+    if arl and arl != "********":
+        updates["deezer_arl"] = arl.strip()
     st.config.update(updates)
     # Live-apply provider changes to the running grabber, if any.
     g = getattr(st.tagger, "grabber", None) if st.tagger else None
     if g is not None and any(k in updates for k in
                              ("provider_order", "output_format", "path_template",
-                              "monochrome_base_url", "monochrome_api_key", "monochrome_quality")):
+                              "monochrome_base_url", "monochrome_api_key", "monochrome_quality",
+                              "deezer_arl", "deezer_quality")):
         try:
             from ...grabber.providers import build_providers
             g.pool.pipeline.providers = build_providers(st.config)
@@ -260,6 +265,22 @@ def api_test_monochrome():
     ok = MonochromeProvider({"monochrome_base_url": base, "monochrome_api_key": key}).healthcheck()
     return jsonify(ok=ok, message="Reachable" if ok else None,
                    error=None if ok else "Health check failed")
+
+
+@settings_bp.route("/api/settings/test-deezer", methods=["POST"])
+@login_required
+def api_test_deezer():
+    _check_csrf()
+    data = _json_body()
+    arl = str(data.get("deezer_arl", ""))
+    if arl == "********" or not arl:
+        arl = state().config.get("deezer_arl", "")
+    if not arl:
+        return jsonify(ok=False, error="ARL required"), 400
+    from ...grabber.providers.deezer import DeezerProvider
+    ok = DeezerProvider({"deezer_arl": arl.strip()}).healthcheck()
+    return jsonify(ok=ok, message="ARL accepted" if ok else None,
+                   error=None if ok else "Login failed (ARL invalid or expired)")
 
 
 @settings_bp.route("/api/settings/password", methods=["POST"])

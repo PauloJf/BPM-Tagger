@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 # profile → (extension, ffmpeg audio args)
 PROFILES = {
     "mp3-320":  ("mp3",  ["-c:a", "libmp3lame", "-b:a", "320k"]),
+    "mp3-128":  ("mp3",  ["-c:a", "libmp3lame", "-b:a", "128k"]),
     "flac":     ("flac", ["-c:a", "flac"]),
     "opus-192": ("opus", ["-c:a", "libopus", "-b:a", "192k"]),
 }

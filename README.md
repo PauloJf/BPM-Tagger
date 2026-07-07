@@ -60,8 +60,8 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 - **Spotify playlist sync** — connect your own Spotify account (one-time OAuth), add playlists by URL, and BPM Tagger reconciles each against your library on a schedule (watch mode) or on demand
 - **Have / missing / queued** — every playlist track is matched to your library by ISRC or a fuzzy title+artist+duration score; the ones you're missing are enqueued automatically
-- **Lossless-first downloading** — tries a self-hosted **Monochrome** (Tidal) proxy first, falls back to **yt-dlp** (YouTube Music); provider order is configurable
-- **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-320`, `flac`, or `opus-192`)
+- **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first, then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
+- **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-128`, `mp3-320`, `flac`, or `opus-192`)
 - **Full tagging + BPM** — writes title/artist/album/track/year/ISRC + embedded cover art, then runs the same 3-detector BPM analysis and tags the result; files land under a customizable **path template** (default `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}`)
 - **Ambiguity inbox** — low-confidence matches wait for you to choose a candidate, refine the search, or skip; you get an ntfy ping with a tap-through link
 - **Queue** — live download progress, retry/cancel, and history
@@ -231,11 +231,13 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `SPOTIFY_SYNC_MINUTES` | `30` | How often watched playlists are re-synced in watch mode. |
 | `UI_PUBLIC_URL` | _(empty)_ | Public base URL used in ntfy click links (e.g. the inbox deep link). |
 | `INDEX_TAGS` | `true` | Read file tags into the DB for library matching. Leave on. |
-| `PROVIDER_ORDER` | `monochrome,ytdlp` | Providers tried in order. Monochrome is skipped unless `MONOCHROME_BASE_URL` is set. |
-| `MONOCHROME_BASE_URL` | _(empty)_ | Base URL of your self-hosted Monochrome (Tidal proxy). |
+| `PROVIDER_ORDER` | `deezer,ytdlp` | Providers tried in order. `deezer` is skipped unless `DEEZER_ARL` is set; `monochrome` is currently on hold and always skipped. |
+| `DEEZER_ARL` | _(empty)_ | Your Deezer ARL token (env/config only, never logged). Enables the Deezer provider. A free-tier ARL returns full tracks at 128 kbps. |
+| `DEEZER_QUALITY` | `MP3_128` | Requested Deezer quality: `MP3_128` (free), `MP3_320` or `FLAC` (require a paid Deezer subscription). |
+| `MONOCHROME_BASE_URL` | _(empty)_ | Base URL of your self-hosted Monochrome (Tidal proxy). _(Provider on hold — see PROVIDER_ORDER.)_ |
 | `MONOCHROME_API_KEY` | _(empty)_ | Monochrome API key (env-only). |
 | `MONOCHROME_QUALITY` | `LOSSLESS` | Requested quality (`LOSSLESS` → `HIGH` → `LOW`). |
-| `OUTPUT_FORMAT` | `mp3-320` | Single transcode target: `mp3-320`, `flac`, or `opus-192`. |
+| `OUTPUT_FORMAT` | `mp3-128` | Single transcode target: `mp3-128`, `mp3-320`, `flac`, or `opus-192`. (128 kbps matches the free Deezer source, so no wasteful upscale.) |
 | `PATH_TEMPLATE` | `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}` | Destination path template for downloaded files. |
 | `GRAB_WORKERS` | `1` | Concurrent download/transcode workers (max 3). |
 | `GRAB_DRY_RUN` | `false` | Match + plan downloads without actually downloading (routes to the inbox). |
@@ -305,7 +307,7 @@ When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Edit search, or Skip.
 
-A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Monochrome.
+A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
 #### All Tracks (`/tracks`)
 Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.

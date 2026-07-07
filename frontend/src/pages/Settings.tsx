@@ -52,7 +52,8 @@ export default function Settings() {
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [grabber, setGrabber] = useState({
     enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
-    outputFormat: "mp3-320", pathTemplate: "", providerOrder: "monochrome,ytdlp",
+    outputFormat: "mp3-128", pathTemplate: "", providerOrder: "deezer,ytdlp",
+    deezerArl: "", deezerQuality: "MP3_128",
     monoUrl: "", monoKey: "", monoQuality: "LOSSLESS",
   });
   const [grabberSaved, setGrabberSaved] = useState<Saved>("");
@@ -106,8 +107,9 @@ export default function Settings() {
     setGrabber({
       enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
       publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
-      outputFormat: s("output_format") || "mp3-320", pathTemplate: s("path_template"),
-      providerOrder: s("provider_order") || "monochrome,ytdlp",
+      outputFormat: s("output_format") || "mp3-128", pathTemplate: s("path_template"),
+      providerOrder: s("provider_order") || "deezer,ytdlp",
+      deezerArl: s("deezer_arl"), deezerQuality: s("deezer_quality") || "MP3_128",
       monoUrl: s("monochrome_base_url"), monoKey: s("monochrome_api_key"),
       monoQuality: s("monochrome_quality") || "LOSSLESS",
     });
@@ -309,6 +311,7 @@ export default function Settings() {
               <div className="field-row">
                 {fieldLabel("Output format", "Every download is transcoded to this single format")}
                 <select value={grabber.outputFormat} onChange={(e) => setGrabber({ ...grabber, outputFormat: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                  <option value="mp3-128">mp3-128</option>
                   <option value="mp3-320">mp3-320</option>
                   <option value="flac">flac</option>
                   <option value="opus-192">opus-192</option>
@@ -326,12 +329,29 @@ export default function Settings() {
                 </div>
               </div>
               <div className="field-row">
-                {fieldLabel("Provider order", "Comma-separated; tried in order (monochrome,ytdlp)")}
+                {fieldLabel("Provider order", "Comma-separated; tried in order (deezer,ytdlp)")}
                 <input type="text" value={grabber.providerOrder} onChange={(e) => setGrabber({ ...grabber, providerOrder: e.target.value })}
                        style={{ maxWidth: 240, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
               </div>
               <div className="field-row">
-                {fieldLabel("Monochrome URL", "Self-hosted Tidal proxy (leave blank to use yt-dlp only)")}
+                {fieldLabel("Deezer ARL", "Your Deezer ARL token (leave blank to use yt-dlp only). Free ARL = 128 kbps full tracks.")}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
+                  <input type="password" value={grabber.deezerArl} placeholder="ARL token"
+                         onChange={(e) => setGrabber({ ...grabber, deezerArl: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <select value={grabber.deezerQuality} onChange={(e) => setGrabber({ ...grabber, deezerQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                      <option value="MP3_128">MP3_128 (free)</option>
+                      <option value="MP3_320">MP3_320 (paid)</option>
+                      <option value="FLAC">FLAC (paid)</option>
+                    </select>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("deezer", "/api/settings/test-deezer", { deezer_arl: grabber.deezerArl })}>Test</button>
+                    {testMsg.deezer && <span style={{ fontSize: 12, color: testMsg.deezer.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.deezer.text}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Monochrome URL", "Self-hosted Tidal proxy — provider currently on hold")}
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
                   <input type="text" value={grabber.monoUrl} placeholder="http://monochrome:8080"
                          onChange={(e) => setGrabber({ ...grabber, monoUrl: e.target.value })}
@@ -370,6 +390,8 @@ export default function Settings() {
                     output_format: grabber.outputFormat,
                     path_template: grabber.pathTemplate,
                     provider_order: grabber.providerOrder,
+                    deezer_arl: grabber.deezerArl,
+                    deezer_quality: grabber.deezerQuality,
                     monochrome_base_url: grabber.monoUrl,
                     monochrome_api_key: grabber.monoKey,
                     monochrome_quality: grabber.monoQuality,
