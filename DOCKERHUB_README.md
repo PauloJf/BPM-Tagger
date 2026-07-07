@@ -123,6 +123,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.3.1** — Inbox "Search all again" (bulk re-search); duplicate resolution now jumps to the next group.
+
 **v2.3.0** — Artist & album pages (Play all/Shuffle). Player queue viewer (jump/remove/reorder), add-to-queue / play-next, queue persistence, volume, and keyboard shortcuts. Library search over indexed tags, a "No ISRC" filter, and a cadence ½×/2× BPM match for running. Duplicate "Keep" / "Not a duplicate" / suggested-keep; ISRC validation + cancellable bulk fill.
 
 **v2.2.0** — ISRC tools: "Find ISRC" (Deezer / Spotify / MusicBrainz) on track-detail & compare views, and a bulk "Fill missing ISRCs" that auto-writes confident duration-matched results and lists the rest to choose. Queue "Retry all failed"; player title links to the track detail.

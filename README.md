@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.3.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.3.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -310,7 +310,7 @@ When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **
 - **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
 - **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
-- **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip.
+- **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.
 
 A **persistent player bar** at the bottom keeps a track playing as you move between pages (play / **add-to-queue** / **play-next** buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view; the bar has prev/next, shuffle, repeat (off/all/one) and volume controls, and a **queue viewer** drawer (jump-to, remove, reorder). The queue **persists across reloads**, and **keyboard shortcuts** work anywhere (`k` play/pause, `←/→` prev/next, `+/-` volume, `m` mute). Playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the title links to the track detail, and the artist links to a per-**artist page** (with album links → per-**album pages**). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 

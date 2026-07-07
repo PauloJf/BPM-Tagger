@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.3.1 — 2026-07-07
+
+- **Inbox:** a **Search all again** button re-runs the default search for every waiting item at once (e.g. after enabling a new provider).
+- **Duplicates:** resolving a group (**Keep**, trash, or **Not a duplicate**) now jumps to the next group — trashing a single copy advances only once the group drops below two tracks — so you can work through them without returning to Stats.
+
 ## v2.3.0 — 2026-07-07
 
 **Browse by artist & album**
