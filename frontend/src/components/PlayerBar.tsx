@@ -6,7 +6,7 @@ import { useWaveform } from "../hooks/useWaveform";
 
 export default function PlayerBar() {
   const { current, playing, error, audioRef, toggle, stop,
-          orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing,
+          orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing, volume, setVolume,
           next, prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat } = usePlayer();
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,6 +118,13 @@ export default function PlayerBar() {
         </svg>
         {repeat === "one" && <span className="player-bar-ctl-badge">1</span>}
       </button>
+      <span className="player-bar-volume player-bar-ctl--optional" title={`Volume ${Math.round(volume * 100)}%`}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--muted)", flexShrink: 0 }}>
+          <path d="M3 9v6h4l5 5V4L7 9H3z" />{volume > 0.05 && <path d="M16 8a5 5 0 0 1 0 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+        </svg>
+        <input type="range" min={0} max={1} step={0.01} value={volume}
+               onChange={(e) => setVolume(+e.target.value)} aria-label="Volume" />
+      </span>
       <button className="player-bar-close" onClick={stop} aria-label="Close player">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1 L13 13 M13 1 L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
       </button>

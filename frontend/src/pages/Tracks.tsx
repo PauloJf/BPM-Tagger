@@ -355,6 +355,18 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
                     </button>
+                    <button
+                      className="row-play"
+                      aria-label="Add to queue"
+                      title="Add to queue"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        player.enqueue({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    </button>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
                         {basename(t.file_path)}

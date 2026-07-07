@@ -25,8 +25,12 @@ interface PlayerState {
   shuffle: boolean;
   repeat: RepeatMode;
   previewing: boolean;     // a detail/compare preview is ducking the main queue
+  volume: number;
+  setVolume(v: number): void;
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
+  enqueue(track: PlayerTrack): void;   // append to the queue
+  playNext(track: PlayerTrack): void;  // insert right after the current track
   preview(track: PlayerTrack): void;   // duck the queue, play track, resume on end/leave
   endPreview(): void;                  // fade back to the saved queue track
   next(): void;
@@ -43,6 +47,17 @@ interface PlayerState {
 
 const Ctx = createContext<PlayerState | null>(null);
 
+const SAVE_KEY = "bpm.player";
+interface SavedPlayer { queue: PlayerTrack[]; order: number[]; pos: number; shuffle: boolean; repeat: RepeatMode; volume: number }
+
+function loadSaved(): SavedPlayer | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    if (s && Array.isArray(s.queue) && s.queue.length && Array.isArray(s.order)) return s;
+  } catch { /* ignore */ }
+  return null;
+}
+
 /** Fisher-Yates shuffle of a copy (browser Math.random). */
 function shuffled(indices: number[]): number[] {
   const a = indices.slice();
@@ -56,7 +71,10 @@ function shuffled(indices: number[]): number[] {
 /** One <audio> element for the whole app, so playback survives route changes. */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [current, setCurrent] = useState<PlayerTrack | null>(null);
+  // Restore the last queue from localStorage (paused — no autoplay on load).
+  const [saved] = useState<SavedPlayer | null>(loadSaved);
+  const [current, setCurrent] = useState<PlayerTrack | null>(() =>
+    saved && saved.pos >= 0 ? (saved.queue[saved.order[saved.pos]] ?? null) : null);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pendingPlay = useRef(false);
@@ -68,11 +86,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Queue state. `order` holds queue indices in playback order (so shuffle can
   // be toggled without losing the current track); `pos` is the position within
   // `order`. queueIndex = order[pos].
-  const [queue, setQueue] = useState<PlayerTrack[]>([]);
-  const [order, setOrder] = useState<number[]>([]);
-  const [pos, setPos] = useState(-1);
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState<RepeatMode>("off");
+  const [queue, setQueue] = useState<PlayerTrack[]>(() => saved?.queue ?? []);
+  const [order, setOrder] = useState<number[]>(() => saved?.order ?? []);
+  const [pos, setPos] = useState(() => saved?.pos ?? -1);
+  const [shuffle, setShuffle] = useState(() => saved?.shuffle ?? false);
+  const [repeat, setRepeat] = useState<RepeatMode>(() => saved?.repeat ?? "off");
+  const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
+  const volumeRef = useRef(volume);
 
   // Ducking preview: while active, the queue track + position + play-state are
   // stashed here and restored when the preview ends or the user leaves.
@@ -83,6 +103,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // stable next/prev callbacks always read the latest values.
   const nav = useRef({ queue, order, pos, repeat, shuffle });
   useEffect(() => { nav.current = { queue, order, pos, repeat, shuffle }; }, [queue, order, pos, repeat, shuffle]);
+
+  // Persist the queue so it survives a reload (restored paused).
+  useEffect(() => {
+    try {
+      if (queue.length) localStorage.setItem(SAVE_KEY, JSON.stringify({ queue, order, pos, shuffle, repeat, volume }));
+      else localStorage.removeItem(SAVE_KEY);
+    } catch { /* ignore */ }
+  }, [queue, order, pos, shuffle, repeat, volume]);
+
+  const setVolume = useCallback((v: number) => {
+    const vol = Math.max(0, Math.min(1, v));
+    volumeRef.current = vol;
+    setVolumeState(vol);
+    if (audioRef.current) audioRef.current.volume = vol;
+  }, []);
 
   // Volume ramp for fades. rAF animates the volume for smoothness, but the
   // completion (`done`) and the final volume are driven by a setTimeout so the
@@ -123,11 +158,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const begin = () => {
       if (seekTo != null && isFinite(seekTo)) { try { a.currentTime = seekTo; } catch { /* ignore */ } }
       if (shouldPlay) {
-        a.volume = doFadeIn ? 0 : 1;
+        a.volume = doFadeIn ? 0 : volumeRef.current;
         a.play().catch(() => {});
-        if (doFadeIn) rampVolume(0, 1, FADE_MS);
+        if (doFadeIn) rampVolume(0, volumeRef.current, FADE_MS);
       } else {
-        a.volume = 1;
+        a.volume = volumeRef.current;
       }
     };
     if (seekTo != null) {
@@ -361,6 +396,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else if (pos === j) setPos(orderPos);
   }, []);
 
+  const enqueue = useCallback((track: PlayerTrack) => {
+    const { queue, order } = nav.current;
+    if (order.length === 0) { play(track); return; }  // nothing playing → start it
+    const idx = queue.length;
+    setQueue([...queue, track]);
+    setOrder([...order, idx]);
+  }, [play]);
+
+  const playNext = useCallback((track: PlayerTrack) => {
+    const { queue, order, pos } = nav.current;
+    if (order.length === 0) { play(track); return; }
+    const idx = queue.length;
+    const newOrder = order.slice();
+    newOrder.splice(pos + 1, 0, idx);
+    setQueue([...queue, track]);
+    setOrder(newOrder);
+  }, [play]);
+
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
 
   const queueIndex = pos >= 0 && pos < order.length ? order[pos] : -1;
@@ -370,8 +423,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       current, playing, error, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
-      hasQueue: order.length > 1, shuffle, repeat, previewing,
-      play, playQueue, preview, endPreview,
+      hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
+      play, playQueue, enqueue, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,
     }}>

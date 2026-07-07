@@ -792,6 +792,8 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-queue-row.current { background: var(--accent-soft); }
 .player-queue-title { flex: 1; min-width: 0; display: flex; align-items: center; background: none; border: none; color: var(--text); cursor: pointer; font-size: 12px; text-align: left; padding: 4px 2px; }
 .player-queue-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.player-bar-volume { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.player-bar-volume input[type=range] { width: 72px; accent-color: var(--accent); cursor: pointer; }
 .player-bar-ctl-badge {
   position: absolute; top: 0; right: 0; font-family: var(--mono); font-size: 8px;
   font-weight: 600; line-height: 1; color: var(--accent-2);
