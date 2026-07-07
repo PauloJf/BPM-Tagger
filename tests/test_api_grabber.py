@@ -247,6 +247,25 @@ def test_inbox_search_sets_override(grab):
     assert item["status"] == "pending" and item["search_override"] == "better query"
 
 
+def test_inbox_research_clears_override_and_requeues(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    csrf = {"X-CSRF-Token": client._csrf}
+    # Give it an override first, then "Search again" should clear it back to default.
+    client.post(f"/api/inbox/{iid}/search", json={"query": "x"}, headers=csrf)
+    st.db.transition(iid, "awaiting_user", "reset for test")
+    r = client.post(f"/api/inbox/{iid}/research", headers=csrf)
+    assert r.status_code == 200
+    item = st.db.get_grab_item(iid)
+    assert item["status"] == "pending" and not item["search_override"]
+
+
+def test_inbox_research_requires_csrf(grab):
+    client, st, _ = grab
+    iid = _awaiting_item(st.db)
+    assert client.post(f"/api/inbox/{iid}/research").status_code == 403
+
+
 def test_inbox_skip(grab):
     client, st, _ = grab
     iid = _awaiting_item(st.db)

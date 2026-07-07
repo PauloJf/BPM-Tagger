@@ -83,6 +83,22 @@ def search(item_id):
     return jsonify(ok=True)
 
 
+@inbox_bp.route("/api/inbox/<int:item_id>/research", methods=["POST"])
+@login_required
+def research(item_id):
+    """Re-run the default search (item's own metadata), clearing any prior
+    override — e.g. to retry after enabling a new provider."""
+    _check_csrf()
+    db = state().db
+    item, err = _item_or_404(item_id)
+    if err:
+        return err
+    db.update_grab(item_id, search_override=None, chosen_candidate_id=None)
+    db.transition(item_id, "pending", "search again (original metadata)")
+    _nudge()
+    return jsonify(ok=True)
+
+
 @inbox_bp.route("/api/inbox/<int:item_id>/skip", methods=["POST"])
 @login_required
 def skip(item_id):

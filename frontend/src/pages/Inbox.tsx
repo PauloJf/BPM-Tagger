@@ -84,14 +84,16 @@ function CandidateCard({ cand, item, onChoose, busy }: {
   );
 }
 
-function InboxCard({ item, onChoose, onSearch, onSkip, busy }: {
+function InboxCard({ item, onChoose, onSearch, onResearch, onSkip, busy }: {
   item: InboxItem;
   onChoose: (candId: number) => void;
   onSearch: (query: string) => void;
+  onResearch: () => void;
   onSkip: () => void;
   busy: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  // Pre-fill the edit box with the original query so a tweak-and-retry is easy.
+  const [query, setQuery] = useState(`${item.artist || ""} ${item.title || ""}`.trim());
   const [editing, setEditing] = useState(false);
   return (
     <div className="card">
@@ -128,6 +130,7 @@ function InboxCard({ item, onChoose, onSearch, onSkip, busy }: {
           </>
         ) : (
           <>
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={onResearch}>Search again</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit search</button>
             <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => { if (window.confirm(`Skip "${item.title}"? It will be discarded from the queue.`)) onSkip(); }}>Skip</button>
           </>
@@ -156,8 +159,9 @@ export default function Inbox() {
   };
   const choose = useMutation({ mutationFn: (v: { id: number; candId: number }) => api.post(`/api/inbox/${v.id}/choose`, { candidate_id: v.candId }), onSuccess: invalidate });
   const search = useMutation({ mutationFn: (v: { id: number; query: string }) => api.post(`/api/inbox/${v.id}/search`, { query: v.query }), onSuccess: invalidate });
+  const research = useMutation({ mutationFn: (id: number) => api.post(`/api/inbox/${id}/research`), onSuccess: invalidate });
   const skip = useMutation({ mutationFn: (id: number) => api.post(`/api/inbox/${id}/skip`), onSuccess: invalidate });
-  const busy = choose.isPending || search.isPending || skip.isPending;
+  const busy = choose.isPending || search.isPending || research.isPending || skip.isPending;
 
   if (status.data && !status.data.enabled) {
     return (
@@ -193,6 +197,7 @@ export default function Inbox() {
               busy={busy}
               onChoose={(candId) => choose.mutate({ id: it.id, candId })}
               onSearch={(query) => search.mutate({ id: it.id, query })}
+              onResearch={() => research.mutate(it.id)}
               onSkip={() => skip.mutate(it.id)}
             />
           ))}
