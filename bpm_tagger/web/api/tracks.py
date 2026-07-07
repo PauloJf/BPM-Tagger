@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 from pathlib import Path
+from urllib.parse import quote
 
 from flask import Blueprint, Response, abort, jsonify, request
 
@@ -13,6 +14,7 @@ from ...bpm.waveform import compute_waveform_peaks
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
+from ...integrations.musicbrainz import lookup_isrcs
 from ...integrations.navidrome import _trigger_navidrome_rescan
 from ...trash import move_to_trash, purge_trash, trash_stats
 from ..auth import _check_csrf, login_required
@@ -239,6 +241,48 @@ def api_track_trash():
     except Exception:
         pass
     return jsonify(ok=True)
+
+
+@tracks_bp.route("/api/isrc/lookup")
+@login_required
+def api_isrc_lookup():
+    """Find candidate ISRCs for an artist+title from Spotify (if connected) and
+    MusicBrainz — used by the 'Find ISRC' action in the compare view."""
+    st = state()
+    artist = request.args.get("artist", "").strip()
+    title = request.args.get("title", "").strip()
+    query = f"{artist} {title}".strip()
+    spotify_search_url = f"https://open.spotify.com/search/{quote(query)}" if query else ""
+    if not query:
+        return jsonify(candidates=[], spotify_search_url=spotify_search_url)
+
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    g = getattr(st.tagger, "grabber", None) if st.tagger else None
+    if g and g.client.is_connected():
+        try:
+            for t in g.client.search_tracks(query, limit=5):
+                code = (t.get("isrc") or "").upper()
+                if code and code not in seen:
+                    seen.add(code)
+                    sid = t.get("spotify_track_id")
+                    candidates.append({"source": "spotify", "isrc": code,
+                                       "title": t.get("title", ""), "artist": t.get("artist", ""),
+                                       "url": f"https://open.spotify.com/track/{sid}" if sid else ""})
+        except Exception as exc:
+            log.warning("Spotify ISRC lookup failed: %s", exc)
+
+    try:
+        for c in lookup_isrcs(artist, title):
+            code = (c.get("isrc") or "").upper()
+            if code and code not in seen:
+                seen.add(code)
+                candidates.append(c)
+    except Exception as exc:
+        log.warning("MusicBrainz ISRC lookup failed: %s", exc)
+
+    return jsonify(candidates=candidates, spotify_search_url=spotify_search_url)
 
 
 @tracks_bp.route("/api/trash")
