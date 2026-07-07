@@ -119,6 +119,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.1.0** — Deezer download provider (streamrip, via your own ARL; Monochrome/Tidal on hold) with a new `mp3-128` default output. Player gains Play all / Shuffle / repeat queueing and a ducking preview from detail/compare views. Duplicate resolution: step through groups and move unwanted copies to a recoverable trash (purged from Settings, triggers a Navidrome rescan). Inbox "Search again". Nav collapses to a hamburger below 1100 px with a pinned header.
+
 **v2.0.0** — Music Grabber + React UI: watch Spotify playlists and download missing tracks (Monochrome/Tidal → yt-dlp fallback), transcode to one format, tag + BPM-analyze, ambiguity inbox, download queue, manual search & grab, metadata editor. Full React SPA (replaces the Jinja UI) with a persistent waveform player bar and light/dark theme.
 
 **v1.1.0** — Deleted file detection: files removed from disk are automatically marked `deleted` in both watch mode (real-time) and scan mode (post-discovery diff). Locked tracks are never marked deleted. Deleted tracks reappear in the queue if the file comes back. New Deleted filter pill and Statistics card in the web UI.

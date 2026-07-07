@@ -63,10 +63,10 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first, then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
 - **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-128`, `mp3-320`, `flac`, or `opus-192`)
 - **Full tagging + BPM** — writes title/artist/album/track/year/ISRC + embedded cover art, then runs the same 3-detector BPM analysis and tags the result; files land under a customizable **path template** (default `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}`)
-- **Ambiguity inbox** — low-confidence matches wait for you to choose a candidate, refine the search, or skip; you get an ntfy ping with a tap-through link
+- **Ambiguity inbox** — low-confidence matches wait for you to choose a candidate, **search again** (re-run the default search) or refine the query, or skip; you get an ntfy ping with a tap-through link
 - **Queue** — live download progress, retry/cancel, and history
 - **Metadata editor** — edit tags + cover on any track and optionally rename it to the path template (the watcher won't re-analyze the edited file)
-- **m3u export & duplicate report** — export a playlist's on-disk tracks; find library duplicates by normalized artist+title
+- **m3u export & duplicate resolution** — export a playlist's on-disk tracks; find library duplicates by normalized artist+title, step through them side-by-side, and move unwanted copies to a recoverable **trash** (purged from Settings)
 - **Managed, never clobbered** — grabbed tracks are marked `managed`; the BPM hash is stamped after tagging so the library watcher leaves them alone
 
 ---
@@ -305,9 +305,9 @@ When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **
 - **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
 - **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, and completed history.
-- **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Edit search, or Skip.
+- **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip.
 
-A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
+A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view, and the bar has prev/next, shuffle and repeat (off/all/one) controls; playing a track from a detail or compare view **previews** it and resumes the queue afterwards. The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
 #### All Tracks (`/tracks`)
 Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.

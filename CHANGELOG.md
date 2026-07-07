@@ -1,11 +1,25 @@
 # Changelog
 
-## Unreleased
+## v2.1.0 — 2026-07-07
 
 **Deezer download provider; Monochrome on hold**
 - New **Deezer** provider (via [streamrip](https://github.com/nathom/streamrip)) using your own Deezer ARL. A free-tier ARL returns full-length tracks at MP3 128 kbps (MP3 320 / FLAC require a paid subscription). Deezer search also supplies ISRCs, improving library matching. Configure with `DEEZER_ARL` / `DEEZER_QUALITY`; a "Test" button in Settings validates the ARL.
 - Default `PROVIDER_ORDER` is now `deezer,ytdlp`. The **Monochrome/Tidal** provider is on hold pending investigation and is skipped regardless of configuration (`MONOCHROME_ON_HOLD`).
 - Added an `mp3-128` transcode profile; default `OUTPUT_FORMAT` is now `mp3-128` (matches the free Deezer source, avoiding a wasteful upscale — Deezer `.mp3` passes through without re-encoding).
+
+**Player: queue, shuffle & ducking preview**
+- **Play all** / **Shuffle** the current filtered library view; the player bar gains prev/next, shuffle and repeat (off/all/one) controls with a queue position indicator.
+- Playing a track from a track detail, review or compare view now **previews** it — the queue fades and ducks, then resumes where it left off when the preview ends or you leave the page.
+
+**Duplicates**
+- Walk duplicate groups with **Prev/Next** directly in the compare view.
+- **Resolve duplicates**: move the unwanted copy to a recoverable **trash** (a soft delete outside the library), which triggers a Navidrome rescan so it drops from the library. A **Trash** panel in Settings shows the current count + size and can **purge** it. Locked tracks are protected from deletion.
+
+**Inbox**
+- **Search again** re-runs a queued match's default search with the item's own metadata (e.g. after enabling a new provider), and the edit-search box is pre-filled with the original query.
+
+**UI**
+- The top navigation collapses to a hamburger below 1100 px (fixes the off-centre layout between 700–1024 px) and the header stays pinned while scrolling.
 
 ## v2.0.1 — 2026-07-07
 
