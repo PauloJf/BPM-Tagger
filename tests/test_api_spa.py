@@ -233,6 +233,18 @@ def test_isrc_fill_status_requires_login(client):
     assert client.get("/api/isrc/fill/status").status_code == 401
 
 
+def test_tracks_search_matches_indexed_metadata(auth_client):
+    # Filename has no artist/title; search must still find it via indexed tags.
+    path = _seed_track(auth_client, name="01 - track.mp3", bpm=120.0)
+    _state(auth_client).db.update_track_metadata(path, path, {
+        "title": "Blinding Lights", "artist": "The Weeknd", "album": "After Hours",
+        "album_artist": "The Weeknd", "track_no": 1, "disc_no": 1, "year": 2020,
+        "isrc": "", "norm_title": "blinding lights", "norm_artist": "the weeknd",
+    }, "1:2")
+    body = auth_client.get("/api/tracks", query_string={"q": "Weeknd"}).get_json()
+    assert any(t["file_path"] == path for t in body["tracks"])
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)

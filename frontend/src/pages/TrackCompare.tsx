@@ -45,7 +45,7 @@ const ROWS: { key: string; label: string; get: (t: Track) => string }[] = [
 
 interface IsrcCandidate { source: string; isrc: string; title: string; artist: string; url: string }
 
-function ColumnHeader({ track, onTrash, busy }: { track: Track; onTrash: (p: string) => void; busy: boolean }) {
+function ColumnHeader({ track, onTrash, onKeep, showKeep, busy }: { track: Track; onTrash: (p: string) => void; onKeep: (p: string) => void; showKeep: boolean; busy: boolean }) {
   const { preview, toggle, isCurrent, playing, audioRef } = usePlayer();
   const qc = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -106,6 +106,11 @@ function ColumnHeader({ track, onTrash, busy }: { track: Track; onTrash: (p: str
             {baseName(track.file_path)}
           </div>
         </div>
+        {showKeep && (
+          <button className="btn btn-soft btn-sm" disabled={busy} title="Keep this, trash the others" onClick={() => onKeep(track.file_path)}>
+            Keep
+          </button>
+        )}
         <button
           className="btn btn-danger btn-sm"
           disabled={busy}
@@ -185,6 +190,29 @@ export default function TrackCompare() {
     },
   });
 
+  const [keeping, setKeeping] = useState(false);
+  async function keepOnly(keepPath: string) {
+    const others = paths.filter((p) => p !== keepPath);
+    if (others.length === 0) return;
+    if (!window.confirm(
+      `Keep this track and move the other ${others.length} to trash?\n\n` +
+      `Recoverable until you purge (Settings → Trash). On Navidrome's next scan those files ` +
+      `leave the library — their favorites, playlist entries and play counts are lost. Locked tracks are skipped.`))
+      return;
+    setKeeping(true);
+    try {
+      for (const p of others) {
+        try { await api.post("/api/track/trash", { file_path: p }); } catch { /* locked/error → skip */ }
+      }
+      setParams(new URLSearchParams([["path", keepPath]]), { replace: true });
+      qc.invalidateQueries({ queryKey: ["duplicates"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: ["tracks"] });
+    } finally {
+      setKeeping(false);
+    }
+  }
+
   const queries = useQueries({
     queries: paths.map((p) => ({
       queryKey: ["track", p],
@@ -257,7 +285,7 @@ export default function TrackCompare() {
             {/* Column headers: cover / play / waveform */}
             <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "end", paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
               <div />
-              {tracks.map((t) => <ColumnHeader key={t.file_path} track={t} busy={trash.isPending} onTrash={(fp) => trash.mutate(fp)} />)}
+              {tracks.map((t) => <ColumnHeader key={t.file_path} track={t} busy={trash.isPending || keeping} onTrash={(fp) => trash.mutate(fp)} onKeep={keepOnly} showKeep={tracks.length > 1} />)}
             </div>
             {/* Field rows */}
             {ROWS.map((r) => (

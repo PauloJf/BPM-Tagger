@@ -386,8 +386,9 @@ class BPMDatabase:
             if fc:
                 clauses.append(fc)
         if q:
-            clauses.append("file_path LIKE ?")
-            params.append(f"%{q}%")
+            like = f"%{q}%"
+            clauses.append("(file_path LIKE ? OR title LIKE ? OR artist LIKE ? OR album LIKE ?)")
+            params.extend([like, like, like, like])
         if bpm_target is not None:
             clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
             params.extend([bpm_target - bpm_tol, bpm_target + bpm_tol])

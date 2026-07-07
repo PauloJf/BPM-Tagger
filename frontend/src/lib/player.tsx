@@ -19,6 +19,8 @@ interface PlayerState {
   // Queue
   queue: PlayerTrack[];
   queueIndex: number;      // index of current track within queue (-1 if none)
+  orderedQueue: PlayerTrack[];  // queue in playback order (respects shuffle)
+  orderPos: number;        // position of the current track within orderedQueue
   hasQueue: boolean;       // more than one track queued
   shuffle: boolean;
   repeat: RepeatMode;
@@ -29,6 +31,9 @@ interface PlayerState {
   endPreview(): void;                  // fade back to the saved queue track
   next(): void;
   prev(): void;
+  jumpTo(orderPos: number): void;      // play a specific queue position
+  removeAt(orderPos: number): void;    // drop a track from the queue
+  moveAt(orderPos: number, dir: -1 | 1): void;  // reorder up/down
   toggleShuffle(): void;
   cycleRepeat(): void;
   toggle(): void;
@@ -321,16 +326,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPos(-1);
   }, []);
 
+  const jumpTo = useCallback((orderPos: number) => {
+    clearPreview();
+    const { order } = nav.current;
+    if (orderPos >= 0 && orderPos < order.length) goToPos(orderPos);
+  }, [goToPos]);
+
+  const removeAt = useCallback((orderPos: number) => {
+    const { order, pos, queue } = nav.current;
+    if (orderPos < 0 || orderPos >= order.length) return;
+    const newOrder = order.filter((_, i) => i !== orderPos);
+    if (newOrder.length === 0) { stop(); return; }
+    if (orderPos < pos) {
+      setOrder(newOrder); setPos(pos - 1);
+    } else if (orderPos > pos) {
+      setOrder(newOrder);
+    } else {
+      // removed the current track → play whatever now sits at this slot (or last)
+      const newPos = Math.min(pos, newOrder.length - 1);
+      setOrder(newOrder); setPos(newPos);
+      pendingPlay.current = true;
+      setCurrent(queue[newOrder[newPos]]);
+    }
+  }, [stop]);
+
+  const moveAt = useCallback((orderPos: number, dir: -1 | 1) => {
+    const { order, pos } = nav.current;
+    const j = orderPos + dir;
+    if (orderPos < 0 || orderPos >= order.length || j < 0 || j >= order.length) return;
+    const newOrder = order.slice();
+    [newOrder[orderPos], newOrder[j]] = [newOrder[j], newOrder[orderPos]];
+    setOrder(newOrder);
+    if (pos === orderPos) setPos(j);
+    else if (pos === j) setPos(orderPos);
+  }, []);
+
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
 
   const queueIndex = pos >= 0 && pos < order.length ? order[pos] : -1;
+  const orderedQueue = order.map((i) => queue[i]).filter(Boolean);
 
   return (
     <Ctx.Provider value={{
       current, playing, error, audioRef,
-      queue, queueIndex, hasQueue: queue.length > 1, shuffle, repeat, previewing,
+      queue, queueIndex, orderedQueue, orderPos: pos,
+      hasQueue: order.length > 1, shuffle, repeat, previewing,
       play, playQueue, preview, endPreview,
-      next: () => next(false), prev, toggleShuffle, cycleRepeat,
+      next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,
     }}>
       {children}
