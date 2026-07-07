@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.2.0 — 2026-07-07
+
+**ISRC tools**
+- **Find ISRC** on the track-detail and duplicate-compare views — look up a track's ISRC from Deezer, Spotify and MusicBrainz and pick a candidate (an Open-in-Spotify search link when nothing matches).
+- **Bulk fill** (Settings → ISRC) — look up every library track missing an ISRC and write it. A confident, **duration-matched** single result is filled automatically; anything uncertain or not found is listed with its candidates for you to choose. The duration guard avoids writing a remix/live version's ISRC.
+- Editable ISRC field per column in the compare view, saved without disturbing other tags.
+
+**Queue & player**
+- **Retry all failed** re-queues every failed grab at once (e.g. after enabling a provider).
+- The player bar's track title now links to that track's detail page.
+
 ## v2.1.0 — 2026-07-07
 
 **Deezer download provider; Monochrome on hold**

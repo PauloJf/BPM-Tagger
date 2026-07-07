@@ -104,6 +104,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, and a ducking **preview** from detail/compare views
 - Duplicate resolution — step through groups side-by-side and move unwanted copies to a recoverable **trash** (purged from Settings)
+- ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis
 - Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors
@@ -120,6 +121,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.2.0** — ISRC tools: "Find ISRC" (Deezer / Spotify / MusicBrainz) on track-detail & compare views, and a bulk "Fill missing ISRCs" that auto-writes confident duration-matched results and lists the rest to choose. Queue "Retry all failed"; player title links to the track detail.
 
 **v2.1.0** — Deezer download provider (streamrip, via your own ARL; Monochrome/Tidal on hold) with a new `mp3-128` default output. Player gains Play all / Shuffle / repeat queueing and a ducking preview from detail/compare views. Duplicate resolution: step through groups and move unwanted copies to a recoverable trash (purged from Settings, triggers a Navidrome rescan). Inbox "Search again". Nav collapses to a hamburger below 1100 px with a pinned header.
 

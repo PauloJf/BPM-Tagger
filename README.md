@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.1.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.2.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -67,6 +67,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Queue** — live download progress, retry/cancel, and history
 - **Metadata editor** — edit tags + cover on any track and optionally rename it to the path template (the watcher won't re-analyze the edited file)
 - **m3u export & duplicate resolution** — export a playlist's on-disk tracks; find library duplicates by normalized artist+title, step through them side-by-side, and move unwanted copies to a recoverable **trash** (purged from Settings)
+- **ISRC lookup & fill** — a **Find ISRC** button on the track-detail and compare views looks up a track's ISRC from Deezer / Spotify / MusicBrainz; a **bulk fill** (Settings → ISRC) fills every track missing one — auto-writing confident, duration-matched results and listing the rest for you to choose. ISRCs sharpen duplicate detection and library matching.
 - **Managed, never clobbered** — grabbed tracks are marked `managed`; the BPM hash is stamped after tagging so the library watcher leaves them alone
 
 ---
@@ -288,6 +289,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
 - **Playback** — seconds of audio to buffer before the detail-page player starts
+- **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
 - **Trash** — current count + size of duplicates moved to trash, with a **Purge** button to delete them permanently
 - **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
 - **Restart** — restarts the application process in-place (re-reads env vars and `settings.json`); any active scan is stopped first; the page reconnects automatically
@@ -307,10 +309,10 @@ When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **
 
 - **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
 - **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
-- **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, and completed history.
+- **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip.
 
-A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view, and the bar has prev/next, shuffle and repeat (off/all/one) controls; playing a track from a detail or compare view **previews** it and resumes the queue afterwards. The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
+A **persistent player bar** at the bottom keeps a track playing as you move between pages (play buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view, and the bar has prev/next, shuffle and repeat (off/all/one) controls; playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the bar's track title links to that track's detail page. The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
 #### All Tracks (`/tracks`)
 Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), or **Locked** tracks; live counts update automatically during a scan.
