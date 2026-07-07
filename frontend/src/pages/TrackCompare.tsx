@@ -183,12 +183,13 @@ export default function TrackCompare() {
   const trash = useMutation({
     mutationFn: (fp: string) => api.post("/api/track/trash", { file_path: fp }),
     onSuccess: (_data, fp) => {
-      // Drop the trashed column from the comparison and refresh the dup lists.
       const remaining = paths.filter((p) => p !== fp);
-      setParams(new URLSearchParams(remaining.map((p) => ["path", p])), { replace: true });
       qc.invalidateQueries({ queryKey: ["duplicates"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
       qc.invalidateQueries({ queryKey: ["tracks"] });
+      // <2 left → group resolved, jump to the next; else keep comparing the rest.
+      if (remaining.length < 2) gotoNextGroup();
+      else setParams(new URLSearchParams(remaining.map((p) => ["path", p])), { replace: true });
     },
   });
 
@@ -206,10 +207,10 @@ export default function TrackCompare() {
       for (const p of others) {
         try { await api.post("/api/track/trash", { file_path: p }); } catch { /* locked/error → skip */ }
       }
-      setParams(new URLSearchParams([["path", keepPath]]), { replace: true });
       qc.invalidateQueries({ queryKey: ["duplicates"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
       qc.invalidateQueries({ queryKey: ["tracks"] });
+      gotoNextGroup();  // group resolved → move on
     } finally {
       setKeeping(false);
     }
@@ -235,12 +236,15 @@ export default function TrackCompare() {
   const prevGroup = groupIdx > 0 ? groups[groupIdx - 1] : null;
   const nextGroup = groupIdx >= 0 && groupIdx < groups.length - 1 ? groups[groupIdx + 1] : null;
 
+  // After resolving a group, step to the next one (or back to Stats when done).
+  const gotoNextGroup = () => navigate(nextGroup ? compareHref(nextGroup.tracks.map((t) => t.file_path)) : "/stats");
+
   const dismiss = useMutation({
     mutationFn: () => api.post("/api/duplicates/dismiss", { paths }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["duplicates"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
-      navigate(nextGroup ? compareHref(nextGroup.tracks.map((t) => t.file_path)) : "/stats");
+      gotoNextGroup();
     },
   });
 
