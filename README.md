@@ -11,11 +11,11 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.0.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.1.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
-**Now with an optional Spotify grabber:** watch your own Spotify playlists, compare them against what's already on disk, and automatically download the tracks you're missing — preferring lossless via a self-hosted Monochrome (Tidal) proxy, falling back to yt-dlp — transcoding to one configured format, writing full tags + cover art, running the same three-detector BPM analysis, and filing them into your library by a customizable path template. Ambiguous matches wait in an inbox and ping you over [ntfy](https://ntfy.sh/).
+**Now with an optional Spotify grabber:** watch your own Spotify playlists, compare them against what's already on disk, and automatically download the tracks you're missing — via **Deezer** (your own ARL) with a **yt-dlp** fallback — transcoding to one configured format, writing full tags + cover art, running the same three-detector BPM analysis, and filing them into your library by a customizable path template. Ambiguous matches wait in an inbox and ping you over [ntfy](https://ntfy.sh/).
 
 > The web UI is now a **React single-page app** (migrated from the original server-rendered pages); Docker serves the pre-built bundle automatically. Screenshots below show the earlier UI and will be refreshed.
 
@@ -281,11 +281,14 @@ Pausing and stopping both take effect between tracks, not mid-file, so the curre
 
 All settings can be changed at runtime — no container restart required. Changes are saved to `/data/settings.json` and survive restarts. Configurable from the UI:
 
+- **Grabber** — enable the subsystem, connect Spotify, set provider order, Deezer ARL + quality (with a **Test** button), output format, path template, sync interval, dry-run, and the public URL for ntfy links
 - **Password** — change the web UI login password
 - **Notifications** — ntfy server URL, topic, batch size, interval, and whether to include review counts
-- **Scan behavior** — worker count, detector toggles (deeprhythm, essentia), tag writing, BPM range, review confidence threshold
+- **Scan behavior** — worker count, detector toggles (deeprhythm, essentia), tag writing, preserve-mtime, BPM range, review confidence threshold
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
-- **Navidrome integration** — URL, username, and password for auto-rescan
+- **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
+- **Playback** — seconds of audio to buffer before the detail-page player starts
+- **Trash** — current count + size of duplicates moved to trash, with a **Purge** button to delete them permanently
 - **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
 - **Restart** — restarts the application process in-place (re-reads env vars and `settings.json`); any active scan is stopped first; the page reconnects automatically
 

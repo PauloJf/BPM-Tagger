@@ -98,10 +98,12 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 > **⚠️ LAN access only by default.** The UI runs over plain HTTP. Place a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it outside your local network.
 
-- Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; hamburger menu on mobile (≤700 px)
+- Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; collapses to a hamburger menu below 1100 px with a pinned header
 - Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
 - Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
+- Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, and a ducking **preview** from detail/compare views
+- Duplicate resolution — step through groups side-by-side and move unwanted copies to a recoverable **trash** (purged from Settings)
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis
 - Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors
