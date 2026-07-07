@@ -127,6 +127,33 @@ def test_track_missing_is_404(auth_client):
     assert auth_client.get("/api/track", query_string={"path": path}).status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# /api/tracks/paths — Play All / Shuffle queue source
+# ---------------------------------------------------------------------------
+
+def test_track_paths_requires_login(client):
+    assert client.get("/api/tracks/paths").status_code == 401
+
+
+def test_track_paths_lists_matching_tracks(auth_client):
+    _seed_track(auth_client, name="a.mp3", bpm=120.0)
+    _seed_track(auth_client, name="b.mp3", bpm=128.0, needs_review=True)
+    body = auth_client.get("/api/tracks/paths").get_json()
+    paths = [t["file_path"] for t in body["tracks"]]
+    assert body["count"] == 2
+    assert any(p.endswith("a.mp3") for p in paths)
+    assert any(p.endswith("b.mp3") for p in paths)
+    assert set(body["tracks"][0].keys()) >= {"file_path", "artist"}  # what the player needs
+
+
+def test_track_paths_respects_review_filter(auth_client):
+    _seed_track(auth_client, name="ok.mp3", bpm=120.0)
+    _seed_track(auth_client, name="flag.mp3", bpm=128.0, needs_review=True)
+    body = auth_client.get("/api/tracks/paths", query_string={"filter": "review"}).get_json()
+    paths = [t["file_path"] for t in body["tracks"]]
+    assert len(paths) == 1 and paths[0].endswith("flag.mp3")
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)

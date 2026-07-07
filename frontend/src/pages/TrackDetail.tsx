@@ -83,11 +83,15 @@ export default function TrackDetail() {
   }
 
   // Playback is driven by the shared footer player so it survives navigation.
+  // Playing here is a *preview*: it ducks/pauses the queue and resumes it when
+  // the preview ends or we leave this page.
   const isPlaying = active && player.playing;
   function togglePlay() {
     if (active) player.toggle();
-    else if (track) player.play({ path, title: basename(track.file_path), artist: track.artist || "" });
+    else if (track) player.preview({ path, title: basename(track.file_path), artist: track.artist || "" });
   }
+  const { endPreview } = player;
+  useEffect(() => () => endPreview(), [endPreview]);  // leaving resumes the queue (dec 8)
 
   function spawnRipple() {
     const btn = tapBtnRef.current;

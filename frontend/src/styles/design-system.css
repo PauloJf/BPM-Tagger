@@ -767,9 +767,22 @@ body.has-player .container { padding-bottom: 88px; }
 .player-bar-wave { flex: 1; height: 40px; display: block; cursor: crosshair; min-width: 0; }
 .player-bar-close { border: none; background: none; color: var(--muted); cursor: pointer; flex-shrink: 0; padding: 4px; }
 .player-bar-close:hover { color: var(--text); }
+.player-bar-ctl {
+  position: relative; border: none; background: none; color: var(--muted);
+  cursor: pointer; flex-shrink: 0; padding: 4px; border-radius: 8px;
+  display: grid; place-items: center; transition: color 0.12s, background 0.12s;
+}
+.player-bar-ctl:hover { color: var(--text); background: var(--chip-bg); }
+.player-bar-ctl.active { color: var(--accent-2); }
+.player-bar-ctl-badge {
+  position: absolute; top: 0; right: 0; font-family: var(--mono); font-size: 8px;
+  font-weight: 600; line-height: 1; color: var(--accent-2);
+}
 @media (max-width: 700px) {
   .player-bar-meta { width: 120px; }
   .player-bar { gap: 8px; padding: 8px 12px; }
+  /* Keep the bar uncluttered on phones: hide shuffle/repeat, keep prev/next. */
+  .player-bar-ctl.player-bar-ctl--optional { display: none; }
 }
 
 /* Small round play button used in track/search rows */

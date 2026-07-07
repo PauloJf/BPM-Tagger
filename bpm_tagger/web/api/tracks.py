@@ -351,3 +351,16 @@ def api_tracks():
                    review_count=stats.get("needs_review", 0),
                    locked_count=stats.get("locked", 0),
                    deleted_count=stats.get("deleted", 0))
+
+
+@tracks_bp.route("/api/tracks/paths")
+@login_required
+def api_track_paths():
+    """Ordered path list for the current filter — used by the player's Play All /
+    Shuffle so the queue matches the library view (capped in the DB layer)."""
+    st = state()
+    q = request.args.get("q", "").strip()
+    filter_by = request.args.get("filter", "")
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    rows = st.db.get_track_paths(q, filter=filter_by, bpm_target=bpm_target, bpm_tol=bpm_tol)
+    return jsonify(tracks=rows, count=len(rows))

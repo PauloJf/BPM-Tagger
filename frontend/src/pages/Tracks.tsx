@@ -130,6 +130,25 @@ export default function Tracks() {
     });
   }
 
+  const [queuing, setQueuing] = useState(false);
+  async function playAll(shuffleMode: boolean) {
+    setQueuing(true);
+    try {
+      const sp = new URLSearchParams();
+      if (q) sp.set("q", q);
+      if (filter) sp.set("filter", filter);
+      if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); }
+      const res = await api.get<{ tracks: { file_path: string; artist: string | null }[] }>(
+        `/api/tracks/paths?${sp.toString()}`);
+      const tracks = res.tracks.map((t) => ({
+        path: t.file_path, title: basename(t.file_path), artist: t.artist || "",
+      }));
+      if (tracks.length) player.playQueue(tracks, 0, { shuffle: shuffleMode });
+    } finally {
+      setQueuing(false);
+    }
+  }
+
   const search = params.toString();
   const tracksQ = useQuery({
     queryKey: ["tracks", search],
@@ -202,6 +221,27 @@ export default function Tracks() {
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
             <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{data?.total ?? 0}</span> tracks
           </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={queuing || !data?.total}
+            onClick={() => playAll(false)}
+            title="Play every track in this view"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
+            Play all
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={queuing || !data?.total}
+            onClick={() => playAll(true)}
+            title="Shuffle every track in this view"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
+            Shuffle
+          </button>
         </div>
 
         <div style={{ flex: 1 }} />

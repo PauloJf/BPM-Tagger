@@ -367,48 +367,61 @@ class BPMDatabase:
             return True
         return track["file_hash"] != file_hash
 
+    @staticmethod
+    def _tracks_filter(q: str, filter: str,
+                       bpm_target: Optional[float], bpm_tol: float) -> tuple[str, list]:
+        """Build the shared WHERE clause + params for the library listing views
+        (paged rows and the full path list). Kept in one place so Play All /
+        Shuffle queue exactly the same set the table shows."""
+        clauses: list[str] = []
+        params: list = []
+        if filter == "deleted":
+            clauses.append("status = 'deleted'")
+        else:
+            clauses.append("status != 'deleted'")
+            fc = {
+                "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
+                "locked": "locked = 1",
+            }.get(filter, "")
+            if fc:
+                clauses.append(fc)
+        if q:
+            clauses.append("file_path LIKE ?")
+            params.append(f"%{q}%")
+        if bpm_target is not None:
+            clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
+            params.extend([bpm_target - bpm_tol, bpm_target + bpm_tol])
+        return "WHERE " + " AND ".join(clauses), params
+
     def get_tracks_page(self, q: str, limit: int, offset: int,
                         filter: str = "",
                         bpm_target: Optional[float] = None,
                         bpm_tol: float = 5.0) -> tuple[list[dict], int]:
-        if filter == "deleted":
-            filter_clause = "status = 'deleted'"
-            hide_deleted = False
-        else:
-            filter_clause = {
-                "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
-                "locked": "locked = 1",
-            }.get(filter, "")
-            hide_deleted = True
-
+        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol)
         with self._connect() as conn:
-            params_count: list = []
-            params_rows:  list = []
-            clauses: list[str] = []
-
-            if hide_deleted:
-                clauses.append("status != 'deleted'")
-            if q:
-                clauses.append("file_path LIKE ?")
-                params_count.append(f"%{q}%")
-                params_rows.append(f"%{q}%")
-            if filter_clause:
-                clauses.append(filter_clause)
-            if bpm_target is not None:
-                clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
-                lo, hi = bpm_target - bpm_tol, bpm_target + bpm_tol
-                params_count.extend([lo, hi])
-                params_rows.extend([lo, hi])
-
-            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
             total = conn.execute(
-                f"SELECT COUNT(*) FROM tracks {where}", params_count
+                f"SELECT COUNT(*) FROM tracks {where}", params
             ).fetchone()[0]
             rows = conn.execute(
                 f"SELECT * FROM tracks {where} ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
-                params_rows + [limit, offset]
+                params + [limit, offset]
             ).fetchall()
         return [dict(r) for r in rows], total
+
+    def get_track_paths(self, q: str = "", filter: str = "",
+                        bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
+                        limit: int = 5000) -> list[dict]:
+        """Ordered (file_path, artist) for every track matching the current
+        filter — feeds the player's Play All / Shuffle. Same ordering as the
+        table; capped so a huge library can't build a pathological queue."""
+        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT file_path, artist FROM tracks {where} "
+                "ORDER BY analyzed_at DESC LIMIT ?",
+                params + [limit]
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_suspicious_count(self, conf_threshold: float, bpm_min: float, bpm_max: float) -> int:
         with self._connect() as conn:
