@@ -572,9 +572,10 @@ def api_tracks():
         per_page = 50
     filter_by = request.args.get("filter", "")
     bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
     rows, total = st.db.get_tracks_page(q, per_page, (page - 1) * per_page,
                                         filter=filter_by,
-                                        bpm_target=bpm_target, bpm_tol=bpm_tol)
+                                        bpm_target=bpm_target, bpm_tol=bpm_tol, bpm_cadence=cadence)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = st.db.get_stats()
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,
@@ -595,5 +596,6 @@ def api_track_paths():
     q = request.args.get("q", "").strip()
     filter_by = request.args.get("filter", "")
     bpm_target, bpm_tol = _parse_bpm_filter(request.args)
-    rows = st.db.get_track_paths(q, filter=filter_by, bpm_target=bpm_target, bpm_tol=bpm_tol)
+    cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
+    rows = st.db.get_track_paths(q, filter=filter_by, bpm_target=bpm_target, bpm_tol=bpm_tol, bpm_cadence=cadence)
     return jsonify(tracks=rows, count=len(rows))

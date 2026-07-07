@@ -302,6 +302,20 @@ def test_duplicates_dismiss_requires_csrf(auth_client):
     assert auth_client.post("/api/duplicates/dismiss", json={"paths": ["/a", "/b"]}).status_code == 403
 
 
+def test_bpm_cadence_matches_half_and_double(auth_client):
+    _seed_track(auth_client, name="full.mp3", bpm=170.0)
+    _seed_track(auth_client, name="half.mp3", bpm=85.0)     # half-time of 170
+    _seed_track(auth_client, name="other.mp3", bpm=120.0)   # unrelated
+    # Without cadence: only ~170 matches.
+    plain = auth_client.get("/api/tracks", query_string={"bpm": "170", "bpm_tol": "5"}).get_json()
+    plain_names = {t["file_path"].split("/")[-1].split("\\")[-1] for t in plain["tracks"]}
+    assert "full.mp3" in plain_names and "half.mp3" not in plain_names
+    # With cadence: the 85 BPM half-time track is included too.
+    cad = auth_client.get("/api/tracks", query_string={"bpm": "170", "bpm_tol": "5", "bpm_cadence": "1"}).get_json()
+    cad_names = {t["file_path"].split("/")[-1].split("\\")[-1] for t in cad["tracks"]}
+    assert {"full.mp3", "half.mp3"} <= cad_names and "other.mp3" not in cad_names
+
+
 def test_track_review_prev_next(auth_client):
     a = _seed_track(auth_client, "a.mp3", needs_review=True, bpm=100.0)
     _seed_track(auth_client, "b.mp3", needs_review=True, bpm=101.0)

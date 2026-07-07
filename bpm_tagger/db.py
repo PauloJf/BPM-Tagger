@@ -379,10 +379,15 @@ class BPMDatabase:
 
     @staticmethod
     def _tracks_filter(q: str, filter: str,
-                       bpm_target: Optional[float], bpm_tol: float) -> tuple[str, list]:
+                       bpm_target: Optional[float], bpm_tol: float,
+                       bpm_cadence: bool = False) -> tuple[str, list]:
         """Build the shared WHERE clause + params for the library listing views
         (paged rows and the full path list). Kept in one place so Play All /
-        Shuffle queue exactly the same set the table shows."""
+        Shuffle queue exactly the same set the table shows.
+
+        With `bpm_cadence`, a BPM target also matches half- and double-time tracks
+        (e.g. a 170 SPM running cadence also matches 85 BPM songs) — you can step
+        to those at half/double tempo."""
         clauses: list[str] = []
         params: list = []
         if filter == "deleted":
@@ -401,15 +406,21 @@ class BPMDatabase:
             clauses.append("(file_path LIKE ? OR title LIKE ? OR artist LIKE ? OR album LIKE ?)")
             params.extend([like, like, like, like])
         if bpm_target is not None:
-            clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
-            params.extend([bpm_target - bpm_tol, bpm_target + bpm_tol])
+            lo, hi = bpm_target - bpm_tol, bpm_target + bpm_tol
+            if bpm_cadence:
+                clauses.append("bpm IS NOT NULL AND (bpm BETWEEN ? AND ? "
+                               "OR bpm BETWEEN ? AND ? OR bpm BETWEEN ? AND ?)")
+                params.extend([lo, hi, lo / 2, hi / 2, lo * 2, hi * 2])
+            else:
+                clauses.append("bpm IS NOT NULL AND bpm BETWEEN ? AND ?")
+                params.extend([lo, hi])
         return "WHERE " + " AND ".join(clauses), params
 
     def get_tracks_page(self, q: str, limit: int, offset: int,
                         filter: str = "",
                         bpm_target: Optional[float] = None,
-                        bpm_tol: float = 5.0) -> tuple[list[dict], int]:
-        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol)
+                        bpm_tol: float = 5.0, bpm_cadence: bool = False) -> tuple[list[dict], int]:
+        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
         with self._connect() as conn:
             total = conn.execute(
                 f"SELECT COUNT(*) FROM tracks {where}", params
@@ -422,11 +433,11 @@ class BPMDatabase:
 
     def get_track_paths(self, q: str = "", filter: str = "",
                         bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
-                        limit: int = 5000) -> list[dict]:
+                        bpm_cadence: bool = False, limit: int = 5000) -> list[dict]:
         """Ordered (file_path, artist) for every track matching the current
         filter — feeds the player's Play All / Shuffle. Same ordering as the
         table; capped so a huge library can't build a pathological queue."""
-        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol)
+        where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT file_path, artist FROM tracks {where} "

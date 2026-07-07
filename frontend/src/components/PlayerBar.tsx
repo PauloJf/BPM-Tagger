@@ -24,7 +24,10 @@ export default function PlayerBar() {
         <div className="player-queue">
           <div className="player-queue-head">
             <span>Queue · {orderedQueue.length}</span>
-            <button className="btn btn-bare btn-sm" onClick={() => setQueueOpen(false)} aria-label="Close queue">✕</button>
+            <span style={{ display: "flex", gap: 4 }}>
+              <button className="btn btn-bare btn-sm" onClick={() => { stop(); setQueueOpen(false); }} title="Clear the queue">Clear</button>
+              <button className="btn btn-bare btn-sm" onClick={() => setQueueOpen(false)} aria-label="Close queue">✕</button>
+            </span>
           </div>
           <div className="player-queue-list">
             {orderedQueue.map((t, i) => (

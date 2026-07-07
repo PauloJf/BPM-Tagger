@@ -81,6 +81,9 @@ export default function Artist() {
                   <button className="row-play" aria-label="Add to queue" title="Add to queue" onClick={() => player.enqueue(toPT(t))}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                   </button>
+                  <button className="row-play" aria-label="Play next" title="Play next" onClick={() => player.playNext(toPT(t))}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
+                  </button>
                   <Link
                     to={`/track?path=${encodeURIComponent(t.file_path)}`}
                     style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}

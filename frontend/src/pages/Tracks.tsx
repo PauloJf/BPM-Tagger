@@ -67,6 +67,7 @@ export default function Tracks() {
   const filter = params.get("filter") || "";
   const bpm = params.get("bpm") || "";
   const bpmTol = params.get("bpm_tol") || "5";
+  const cadence = params.get("bpm_cadence") === "1";
   const page = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
   const perPage = params.get("per_page") || "50";
 
@@ -120,6 +121,16 @@ export default function Tracks() {
     });
   }
 
+  function setCadence(on: boolean) {
+    setParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (on) p.set("bpm_cadence", "1");
+      else p.delete("bpm_cadence");
+      p.set("page", "1");
+      return p;
+    });
+  }
+
   function setFilter(f: string) {
     setParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -137,7 +148,7 @@ export default function Tracks() {
       const sp = new URLSearchParams();
       if (q) sp.set("q", q);
       if (filter) sp.set("filter", filter);
-      if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); }
+      if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
       const res = await api.get<{ tracks: { file_path: string; artist: string | null }[] }>(
         `/api/tracks/paths?${sp.toString()}`);
       const tracks = res.tracks.map((t) => ({
@@ -318,6 +329,13 @@ export default function Tracks() {
                 scheduleApply({ tol: e.target.value });
               }}
             />
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: cadence ? "var(--accent-2)" : "var(--muted)", cursor: bpm ? "pointer" : "default", opacity: bpm ? 1 : 0.5, whiteSpace: "nowrap" }}
+              title="Also match half- and double-time tracks (running cadence)"
+            >
+              <input type="checkbox" checked={cadence} disabled={!bpm} onChange={(e) => setCadence(e.target.checked)} />
+              cadence ½×/2×
+            </label>
           </div>
           <select value={perPage} onChange={(e) => setPerPage(e.target.value)} style={{ fontSize: 12 }}>
             <option value="10">10/page</option>
@@ -367,6 +385,18 @@ export default function Tracks() {
                       }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    </button>
+                    <button
+                      className="row-play"
+                      aria-label="Play next"
+                      title="Play next"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        player.playNext({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
                     </button>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
