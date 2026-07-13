@@ -126,6 +126,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.4.0** — Sectioned, collapsible sidebar navigation with icons (renames: BPM Review, Add Music). Artists & Albums browse views with a Library switcher. Cover art across the UI (rows, cards, artist/album/track pages) with a show/hide toggle, plus artist images from a local `artist.jpg` or an opt-in Deezer fetch. Spotify "Browse my playlists" picker; player restores position across reloads.
+
 **v2.3.1** — Inbox "Search all again" (bulk re-search); duplicate resolution now jumps to the next group.
 
 **v2.3.0** — Artist & album pages (Play all/Shuffle). Player queue viewer (jump/remove/reorder), add-to-queue / play-next, queue persistence, volume, and keyboard shortcuts. Library search over indexed tags, a "No ISRC" filter, and a cadence ½×/2× BPM match for running. Duplicate "Keep" / "Not a duplicate" / suggested-keep; ISRC validation + cancellable bulk fill.

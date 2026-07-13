@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.4.0 — 2026-07-13
 
 - **Navigation:** the top bar is now a **sidebar** with grouped sections — Library, Tagging, Grabber (when enabled) and System — so the tagging workflow, the grabber workflow and app chrome are no longer interleaved. Every entry has an icon and the sidebar **collapses to an icon-only rail** (state remembered), with the player bar starting past it either way. Two renames for clarity: **Review → BPM Review** and **Search → Add Music**. Small screens keep the top bar + hamburger menu, now with the same section headers.
 - **Artwork:** embedded cover art now shows across the library — thumbnails on library rows and the Artists/Albums browse cards, an artist image and per-album covers on the artist page, a cover header on the album and track pages. A **show/hide artwork** toggle (remembered per browser) keeps things light on slow libraries; covers are served with cache headers so grids don't re-extract art on every visit.
