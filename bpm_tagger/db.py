@@ -540,6 +540,24 @@ class BPMDatabase:
             )
             conn.commit()
 
+    def count_deleted(self) -> int:
+        """Number of tracks whose file is gone from the library (status='deleted')."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM tracks WHERE status = 'deleted'"
+            ).fetchone()
+        return row["n"]
+
+    def purge_deleted(self) -> int:
+        """Permanently drop every deleted-status row. Returns the number purged.
+
+        Unrecoverable: these rows track files already removed from the library, so
+        nothing on disk is touched — only the stale DB records are cleared."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM tracks WHERE status = 'deleted'")
+            conn.commit()
+            return cur.rowcount
+
     def bulk_register_pending(self, entries: list[tuple[str, str]], force: bool = False) -> None:
         """Insert/update entries as 'pending'. Locked tracks and (when !force)
         already-done unchanged tracks are left untouched."""

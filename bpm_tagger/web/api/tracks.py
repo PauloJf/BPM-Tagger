@@ -458,6 +458,23 @@ def api_trash_purge():
     return jsonify(ok=True, **purge_trash(state().config))
 
 
+@tracks_bp.route("/api/deleted")
+@login_required
+def api_deleted():
+    """Count of tracks whose files are gone (status='deleted') — for Settings."""
+    return jsonify(count=state().db.count_deleted())
+
+
+@tracks_bp.route("/api/deleted/purge", methods=["POST"])
+@login_required
+def api_deleted_purge():
+    """Permanently drop all deleted-status rows from the database. Unrecoverable;
+    touches no files on disk (they are already removed) — clears stale records only."""
+    _check_csrf()
+    purged = state().db.purge_deleted()
+    return jsonify(ok=True, purged=purged)
+
+
 @tracks_bp.route("/api/review")
 @login_required
 def api_review():

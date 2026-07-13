@@ -20,6 +20,7 @@ const SIDEBAR = [
   ["sec-playback", "Playback"],
   ["sec-isrc", "ISRC"],
   ["sec-trash", "Trash"],
+  ["sec-deleted", "Deleted Tracks"],
   ["sec-version", "Version"],
   ["sec-restart", "Restart"],
 ];
@@ -57,6 +58,8 @@ export default function Settings() {
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
   const [purging, setPurging] = useState(false);
+  const deletedQ = useQuery({ queryKey: ["deleted"], queryFn: () => api.get<{ count: number }>("/api/deleted") });
+  const [purgingDeleted, setPurgingDeleted] = useState(false);
 
   // Bulk ISRC fill: poll status while the job runs; hide rows the user resolves.
   const fillQ = useQuery({
@@ -87,6 +90,20 @@ export default function Settings() {
     setPurging(true);
     try { await api.post("/api/trash/purge", {}); qc.invalidateQueries({ queryKey: ["trash"] }); }
     finally { setPurging(false); }
+  }
+  async function purgeDeleted() {
+    const n = deletedQ.data?.count ?? 0;
+    if (!window.confirm(
+      `Permanently remove ${n} deleted track${n === 1 ? "" : "s"} from the database?\n\n` +
+      "These records are for files already gone from your library. This clears the stale " +
+      "entries only — no files on disk are touched. This action cannot be undone."
+    )) return;
+    setPurgingDeleted(true);
+    try {
+      await api.post("/api/deleted/purge", {});
+      qc.invalidateQueries({ queryKey: ["deleted"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    } finally { setPurgingDeleted(false); }
   }
   const cfg = settingsQ.data?.settings;
   const envLocked = settingsQ.data?.env_locked ?? [];
@@ -753,6 +770,30 @@ export default function Settings() {
                 onClick={purgeTrash}
               >
                 {purging ? "Purging…" : "Purge trash"}
+              </button>
+            </div>
+          </div>
+
+          {/* Deleted tracks */}
+          <div id="sec-deleted" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Deleted Tracks</h2>
+              <p>Records for files that are no longer in your library (removed from disk, or moved to the trash during duplicate resolution). Purging clears these stale database entries only — it does not touch any files on disk.</p>
+            </div>
+            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 14, lineHeight: 1.5, maxWidth: 460 }}>
+              <strong style={{ color: "var(--warn-fg)" }}>This cannot be undone.</strong> The deleted records are dropped permanently. (Files a track pointed at are already gone; recoverable trash copies are managed separately in the Trash section above.)
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--muted)", fontSize: 13, fontFamily: "var(--mono)" }}>
+                {deletedQ.isLoading ? "Loading…" : `${deletedQ.data?.count ?? 0} deleted record(s)`}
+              </span>
+              <button
+                className="btn btn-danger btn-sm"
+                type="button"
+                disabled={purgingDeleted || !deletedQ.data?.count}
+                onClick={purgeDeleted}
+              >
+                {purgingDeleted ? "Purging…" : "Purge deleted tracks"}
               </button>
             </div>
           </div>

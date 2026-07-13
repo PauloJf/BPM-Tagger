@@ -291,6 +291,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Playback** — seconds of audio to buffer before the detail-page player starts
 - **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
 - **Trash** — current count + size of duplicates moved to trash, with a **Purge** button to delete them permanently
+- **Deleted tracks** — permanently purge the database records for tracks whose files are gone from the library (removed from disk, or moved to the trash during duplicate resolution). Clears stale entries only — no files on disk are touched. **Unrecoverable**, so it asks for confirmation first
 - **Version** — shows the current version with a **Check for latest** button that queries GitHub releases
 - **Restart** — restarts the application process in-place (re-reads env vars and `settings.json`); any active scan is stopped first; the page reconnects automatically
 
