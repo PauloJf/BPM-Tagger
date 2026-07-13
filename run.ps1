@@ -33,6 +33,27 @@ $root = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $root) { $root = (Get-Location).Path }
 
+# Load a local .env (KEY=value per line) so your machine-specific config —
+# music path, password, tokens — lives outside git (.env is .gitignored).
+# Existing process env vars win, so an explicitly exported value is never
+# clobbered; command-line params still override everything below.
+$envFile = Join-Path $root '.env'
+if (Test-Path $envFile) {
+    Write-Host "Loading config from .env" -ForegroundColor DarkGray
+    foreach ($line in Get-Content $envFile) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+        $eq = $trimmed.IndexOf('=')
+        if ($eq -lt 1) { continue }
+        $key = $trimmed.Substring(0, $eq).Trim()
+        $val = $trimmed.Substring($eq + 1).Trim().Trim('"').Trim("'")
+        # Don't override a variable already set in this shell session.
+        if (-not [Environment]::GetEnvironmentVariable($key)) {
+            Set-Item -Path "Env:$key" -Value $val
+        }
+    }
+}
+
 # Fill parameters from their matching env var, then a dev default.
 if (-not $MusicDir) { $MusicDir = if ($env:MUSIC_DIR)   { $env:MUSIC_DIR } else { Join-Path $root 'sample_music' } }
 if (-not $DbPath)   { $DbPath   = if ($env:DB_PATH)     { $env:DB_PATH }   else { Join-Path $root 'data\bpm_tagger.db' } }
