@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+
+- **Playlists:** a **Browse my playlists** picker lists your Spotify account's playlists (owned + followed) so you can add one to watch without copy-pasting a URL; already-watched playlists are flagged.
 ## v2.3.1 — 2026-07-07
 
 - **Inbox:** a **Search all again** button re-runs the default search for every waiting item at once (e.g. after enabling a new provider).

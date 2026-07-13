@@ -58,7 +58,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 ### Music grabber (optional, `GRABBER_ENABLED=true`)
 
-- **Spotify playlist sync** — connect your own Spotify account (one-time OAuth), add playlists by URL, and BPM Tagger reconciles each against your library on a schedule (watch mode) or on demand
+- **Spotify playlist sync** — connect your own Spotify account (one-time OAuth), add playlists by URL or pick them from a built-in browser of your account's playlists, and BPM Tagger reconciles each against your library on a schedule (watch mode) or on demand
 - **Have / missing / queued** — every playlist track is matched to your library by ISRC or a fuzzy title+artist+duration score; the ones you're missing are enqueued automatically
 - **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first, then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
 - **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-128`, `mp3-320`, `flac`, or `opus-192`)
@@ -245,7 +245,7 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `AUTO_ACCEPT_THRESHOLD` | `0.85` | Match score at/above which a candidate is downloaded automatically (ISRC match = instant accept). |
 | `ASK_THRESHOLD` | `0.55` | Below auto-accept but at/above this → the track waits in the inbox for a decision. |
 
-**Connecting Spotify:** with the three `SPOTIFY_*` vars set and the grabber enabled, open **Settings → Grabber → Connect Spotify** in the UI, approve the one-time consent, then add playlists on the **Playlists** page. Client Credentials can't read playlist contents post-Feb-2026, so the Authorization Code flow (owner login → stored refresh token → unattended thereafter) is required; keep the owning account Premium.
+**Connecting Spotify:** with the three `SPOTIFY_*` vars set and the grabber enabled, open **Settings → Grabber → Connect Spotify** in the UI, approve the one-time consent, then add playlists on the **Playlists** page (paste a URL/ID or use **Browse my playlists**). Client Credentials can't read playlist contents post-Feb-2026, so the Authorization Code flow (owner login → stored refresh token → unattended thereafter) is required; keep the owning account Premium.
 
 ### Web UI
 
@@ -309,7 +309,7 @@ Summary statistics and charts for your library:
 
 When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **Queue**, and **Inbox** (with a badge for items awaiting review):
 
-- **Playlists** (`/playlists`) — add Spotify playlists by URL, toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
+- **Playlists** (`/playlists`) — add Spotify playlists by URL or via **Browse my playlists** (lists your account's playlists with already-watched ones flagged), toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
 - **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.

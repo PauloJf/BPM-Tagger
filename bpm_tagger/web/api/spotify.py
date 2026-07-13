@@ -80,6 +80,26 @@ def spotify_callback():
     return redirect(_redirect_target("/settings?spotify=connected"))
 
 
+@spotify_bp.route("/api/spotify/playlists")
+@login_required
+def spotify_my_playlists():
+    """The connected user's Spotify playlists, flagged with watched state."""
+    g = _grabber()
+    if not g:
+        return jsonify(error="grabber_disabled"), 409
+    if not g.client.is_connected():
+        return jsonify(error="not_connected"), 400
+    try:
+        playlists = g.client.get_my_playlists()
+    except Exception as exc:
+        log.warning("Spotify playlist listing failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    watched = {p["spotify_id"] for p in state().db.list_playlists()}
+    for p in playlists:
+        p["watched"] = p["spotify_id"] in watched
+    return jsonify(playlists=playlists)
+
+
 @spotify_bp.route("/api/spotify/search")
 @login_required
 def spotify_search():

@@ -33,6 +33,14 @@ class FakeClient:
     def get_playlist_tracks(self, pid):
         return list(self._tracks)
 
+    def get_my_playlists(self):
+        return [
+            {"spotify_id": "PL123", "name": "Running Mix", "image_url": "",
+             "track_count": 42, "owner": "me"},
+            {"spotify_id": "PL456", "name": "Chill", "image_url": "",
+             "track_count": 7, "owner": "me"},
+        ]
+
     def search_tracks(self, query, limit=20):
         return [
             {"spotify_track_id": "sid0", "title": "Blinding Lights", "artist": "The Weeknd",
@@ -138,6 +146,21 @@ def test_add_and_list_playlist(grab):
     assert r.get_json()["playlist"]["spotify_id"] == "PL123"
     listing = client.get("/api/playlists").get_json()["playlists"]
     assert any(p["spotify_id"] == "PL123" for p in listing)
+
+
+def test_browse_my_playlists_flags_watched(grab):
+    client, st, _ = grab
+    st.db.add_playlist("PL123", "Running Mix")
+    body = client.get("/api/spotify/playlists").get_json()
+    by_id = {p["spotify_id"]: p for p in body["playlists"]}
+    assert by_id["PL123"]["watched"] is True
+    assert by_id["PL456"]["watched"] is False
+
+
+def test_browse_my_playlists_requires_connection(grab):
+    client, _, fake = grab
+    fake.connected = False
+    assert client.get("/api/spotify/playlists").status_code == 400
 
 
 def test_sync_classifies_have_and_auto_enqueues_missing(grab):

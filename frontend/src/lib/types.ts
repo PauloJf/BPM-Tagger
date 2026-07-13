@@ -179,6 +179,15 @@ export interface Playlist {
   indexed_count: number;
 }
 
+export interface SpotifyPlaylist {
+  spotify_id: string;
+  name: string;
+  image_url: string;
+  track_count: number;
+  owner: string;
+  watched: boolean;
+}
+
 export interface PlaylistTrack {
   id: number;
   spotify_track_id: string;

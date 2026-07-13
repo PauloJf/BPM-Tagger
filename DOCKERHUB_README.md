@@ -4,7 +4,7 @@ Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/)
 
 Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia** RhythmExtractor2013, and **librosa** — so octave errors are caught automatically and disagreements are flagged for manual review.
 
-**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists, download the tracks you're missing (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings.
+**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists (add by URL or browse your account's playlists in-app), download the tracks you're missing (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings.
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger)
 

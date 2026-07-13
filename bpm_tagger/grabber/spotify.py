@@ -175,6 +175,28 @@ class SpotifyClient:
             "owner": (d.get("owner") or {}).get("display_name", ""),
         }
 
+    def get_my_playlists(self) -> list[dict]:
+        """Return the connected user's playlists (owned + followed), paginated."""
+        out: list[dict] = []
+        url = "/me/playlists"
+        params = {"limit": 50}
+        while url:
+            page = self._get(url, params)
+            for d in page.get("items", []):
+                if not d or not d.get("id"):
+                    continue
+                images = d.get("images") or []
+                out.append({
+                    "spotify_id": d["id"],
+                    "name": d.get("name", ""),
+                    "image_url": images[0]["url"] if images else "",
+                    "track_count": (d.get("tracks") or {}).get("total", 0),
+                    "owner": (d.get("owner") or {}).get("display_name", ""),
+                })
+            url = page.get("next")
+            params = None  # `next` is a full URL already carrying params
+        return out
+
     @staticmethod
     def _parse_track(track: dict) -> dict:
         """Normalize a Spotify track object into our track-meta dict shape."""
