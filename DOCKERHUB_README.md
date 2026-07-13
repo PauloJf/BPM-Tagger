@@ -117,6 +117,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Save & Lock corrected BPM; Unlock for re-analysis
 - Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors; with the grabber on, a **Library sources** card (grabbed vs pre-existing, downloads per provider, duplicates / ISRC / playlist-coverage rollups)
 - Settings — live config changes without restart; `/healthz` JSON endpoint
+- **Installable as an app (PWA)** — add it to your phone's home screen (requires HTTPS in front of the UI); lock-screen/headset media controls via the Media Session API; no offline caching, everything streams live from your server
 
 ---
 

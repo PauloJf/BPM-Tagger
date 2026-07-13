@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+# Local compose overrides (reads .env; see docker-compose.yml for the template)
+docker-compose.override.yml
 
 # Runtime-generated files that may contain secrets or large local data
 *.db

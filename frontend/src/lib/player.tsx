@@ -299,6 +299,39 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [next, endPreview]);
 
+  // Media Session: lock-screen / headset / notification controls (key for the
+  // PWA running use case — the phone is locked mid-run). Metadata mirrors the
+  // current track; cover art 404s are fine (the OS just shows no artwork).
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = current
+      ? new MediaMetadata({
+          title: current.title,
+          artist: current.artist ?? "",
+          artwork: [{ src: `/api/track/cover?path=${encodeURIComponent(current.path)}`, sizes: "512x512" }],
+        })
+      : null;
+  }, [current]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = current ? (playing ? "playing" : "paused") : "none";
+  }, [current, playing]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.setActionHandler("play", () => audioRef.current?.play().catch(() => {}));
+    ms.setActionHandler("pause", () => audioRef.current?.pause());
+    ms.setActionHandler("previoustrack", () => prev());
+    ms.setActionHandler("nexttrack", () => next(false));
+    return () => {
+      for (const a of ["play", "pause", "previoustrack", "nexttrack"] as MediaSessionAction[]) {
+        ms.setActionHandler(a, null);
+      }
+    };
+  }, [prev, next]);
+
   const play = useCallback((track: PlayerTrack) => {
     // One-off play (e.g. a library/search row): becomes a single-item queue so
     // prev/next are inert and shuffle has no stale context. Takes over any preview.

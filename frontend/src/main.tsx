@@ -10,6 +10,14 @@ import "./index.css";
 
 applyTheme(initialTheme());
 
+// PWA install support. Registered in prod only so the dev server never fights
+// a stale worker; sw.js does no caching (see frontend/public/sw.js).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: false, refetchOnWindowFocus: false, staleTime: 5_000 },

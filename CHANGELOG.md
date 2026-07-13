@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Installable web app (PWA):** the UI now ships a web-app manifest, home-screen icons and a minimal service worker, so it can be installed on a phone (Android: Chrome menu → *Install app*; iOS: Share → *Add to Home Screen*) and runs standalone. The service worker does **no caching** — the app and audio always stream from your server, so nothing can go stale. Install requires HTTPS (reverse proxy, or `tailscale serve` for a private tailnet URL). The player also wires the **Media Session API**: lock-screen / headset play-pause-next-prev controls with title, artist and cover art.
+
 ## v2.4.1 — 2026-07-13
 
 - **Lyrics:** fetch plain or **synced (LRC)** lyrics from [LRCLIB](https://lrclib.net) (free, community-run, no account needed). A **Lyrics** card on the track page shows/edits them (paste LRC lines for synced), a **bulk fill** (Settings → Lyrics) covers the whole library — pre-existing embedded lyrics and `.lrc` sidecars are indexed rather than re-fetched, and not-founds are remembered so re-runs stay cheap (a checkbox retries them). Storage is configurable: **embed** in the file tag (`USLT` / `LYRICS=` / `©lyr`) or a **`.lrc` sidecar** — Navidrome reads both. `LYRICS_ENABLED` additionally auto-fetches lyrics for every track the grabber downloads. Lookups match on artist + title + album + **duration**, so a live/remix version's lyrics aren't grabbed for the studio cut.

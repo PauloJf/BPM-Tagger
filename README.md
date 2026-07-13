@@ -278,6 +278,15 @@ Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `
 
 > **Security note:** The web UI runs over plain HTTP. It is designed for access on a trusted local network. If you need to reach it remotely, place a reverse proxy (nginx, Caddy, Traefik) with TLS in front of it. See the [Security](#security) section for the full recommendations.
 
+### Install as an app (PWA)
+
+The UI is an installable web app: open it on your phone and add it to the home screen (**Android/Chrome**: ⋮ menu → *Install app*; **iOS/Safari**: Share → *Add to Home Screen*). It launches standalone with its own icon, and the player exposes **lock-screen / headset controls** (play, pause, next, previous, with title/artist/cover art) via the Media Session API — handy for controlling playback mid-run without unlocking the phone.
+
+Two things to know:
+
+- **Install requires HTTPS.** Any TLS reverse proxy works; for a zero-config private option, `tailscale serve --bg 5000` on the host gives you a `https://<machine>.<tailnet>.ts.net` URL that proxies to the UI and is reachable only from your tailnet (enable *HTTPS Certificates* once in the Tailscale admin console under DNS).
+- **Nothing is cached offline** — by design. The service worker does no caching, so the app shell, API and audio always stream live from your server and can never go stale. You need network connectivity to your server while playing.
+
 ### Navigation & scan controls
 
 On desktop the UI uses a **sidebar** grouped into sections — **Library** (Library, Playlists), **Tagging** (BPM Review, Duplicates), **Grabber** (Add Music, Queue, Inbox — shown when the grabber is enabled), and **System** (Stats, Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
