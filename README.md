@@ -303,6 +303,7 @@ Summary statistics and charts for your library:
 - Mean, median, min, and max BPM across analyzed tracks
 - **BPM histogram** — bar chart showing track distribution across 5-BPM buckets; the peak bucket is highlighted and a vertical median line is shown
 - **Detector breakdown** — share of tracks analyzed by each detector combination
+- **Library sources** _(grabber enabled)_ — how many tracks the grabber downloaded vs were already on disk, completed downloads per provider (Deezer / yt-dlp), duplicate and missing-ISRC rollups with quick links to resolve/fill, and watched-playlist coverage (✓ have / ↓ queued / ✗ missing) plus failed-grab and inbox shortcuts
 
 ### Pages
 

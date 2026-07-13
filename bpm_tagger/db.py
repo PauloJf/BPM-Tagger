@@ -643,6 +643,26 @@ class BPMDatabase:
         return {"avg": r["avg"], "min": r["mn"], "max": r["mx"],
                 "median": round(median, 1), "count": r["n"]}
 
+    def get_source_stats(self) -> dict:
+        """Where the library came from: grabber-managed vs pre-existing tracks,
+        plus completed downloads per provider. For the Stats page (grabber on)."""
+        with self._connect() as conn:
+            src = conn.execute("""
+                SELECT
+                    COUNT(CASE WHEN managed=1 THEN 1 END) AS managed,
+                    COUNT(CASE WHEN managed IS NULL OR managed=0 THEN 1 END) AS unmanaged
+                FROM tracks WHERE status != 'deleted'
+            """).fetchone()
+            providers = conn.execute(
+                "SELECT COALESCE(provider, 'unknown') AS p, COUNT(*) AS n "
+                "FROM grab_queue WHERE status='done' GROUP BY p ORDER BY n DESC"
+            ).fetchall()
+        return {
+            "managed": src["managed"],
+            "unmanaged": src["unmanaged"],
+            "providers": [{"provider": r["p"], "count": r["n"]} for r in providers],
+        }
+
     # ══════════════════════════════════════════════════════════════════════════
     # Grabber (M3+)
     # ══════════════════════════════════════════════════════════════════════════

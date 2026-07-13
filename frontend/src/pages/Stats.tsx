@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
 
@@ -13,10 +13,21 @@ interface StatsResponse {
     reviewed: number;
     pending: number;
     deleted: number;
+    missing_isrc: number;
   };
   bpm_descriptive: { avg: number | null; median: number | null; min: number | null; max: number | null };
   bpm_distribution: { bpm: number; count: number }[];
   detector_distribution: { detector: string; count: number }[];
+  // Present only when the grabber is enabled.
+  grabber?: {
+    managed: number;
+    unmanaged: number;
+    providers: { provider: string; count: number }[];
+    queue: Record<string, number>;
+    duplicate_groups: number;
+    duplicate_tracks: number;
+    playlists: { total: number; watched: number; have: number; missing: number; queued: number };
+  };
 }
 
 const fmt = (v: number | null, dec = 0) => (v == null ? "—" : Number(v).toFixed(dec));
@@ -172,6 +183,104 @@ export default function Stats() {
         </div>
       </div>
 
+      {statsQ.data.grabber && (() => {
+        const g = statsQ.data.grabber;
+        const libTotal = g.managed + g.unmanaged || 1;
+        const dlTotal = g.providers.reduce((a, p) => a + p.count, 0) || 1;
+        const failed = g.queue.failed ?? 0;
+        const inbox = g.queue.awaiting_user ?? 0;
+        return (
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="section-label">
+              <span>Library sources</span>
+              <span className="section-hint">where your tracks came from (grabber)</span>
+            </div>
+
+            <div className="desc-grid">
+              <div>
+                <div className="stat-label">Grabbed</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--accent-2)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {num(g.managed)}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{Math.round((g.managed / libTotal) * 100)}% of library</div>
+              </div>
+              <div>
+                <div className="stat-label">Pre-existing</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {num(g.unmanaged)}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>already on disk</div>
+              </div>
+              <div>
+                <div className="stat-label">Duplicates</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: g.duplicate_groups ? "var(--warn-fg)" : "var(--ok-fg)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {num(g.duplicate_tracks)}
+                </div>
+                <div style={{ fontSize: 11 }}>
+                  {g.duplicate_groups ? (
+                    <Link to="/duplicates" style={{ color: "var(--accent-2)" }}>{g.duplicate_groups} group{g.duplicate_groups === 1 ? "" : "s"} → resolve</Link>
+                  ) : (
+                    <span style={{ color: "var(--muted)" }}>none found</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="stat-label">Missing ISRC</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
+                  {num(s.missing_isrc)}
+                </div>
+                <div style={{ fontSize: 11 }}>
+                  {s.missing_isrc > 0 ? (
+                    <Link to="/settings" style={{ color: "var(--accent-2)" }}>bulk fill in Settings →</Link>
+                  ) : (
+                    <span style={{ color: "var(--muted)" }}>all tagged</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {g.providers.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                  Downloads by provider
+                </div>
+                {g.providers.map((p) => {
+                  const pct = (p.count / dlTotal) * 100;
+                  return (
+                    <div className="det-row" key={p.provider}>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.provider}>
+                        {p.provider}
+                      </span>
+                      <div className="det-bar-track">
+                        <div className="det-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: "linear-gradient(90deg,var(--accent),var(--accent-2))" }} />
+                      </div>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {p.count.toLocaleString()} · {pct.toFixed(1)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted)" }}>
+              <span>
+                <Link to="/playlists" style={{ color: "var(--accent-2)" }}>{g.playlists.watched} watched playlist{g.playlists.watched === 1 ? "" : "s"}</Link>
+                {g.playlists.total > g.playlists.watched ? ` (${g.playlists.total} total)` : ""}:
+              </span>
+              <span className="chip chip--have">✓ {g.playlists.have}</span>
+              <span className="chip chip--queued">↓ {g.playlists.queued}</span>
+              <span className="chip chip--missing">✗ {g.playlists.missing}</span>
+              {failed > 0 && (
+                <Link to="/queue" className="chip chip--failed" style={{ textDecoration: "none" }}>{failed} failed grab{failed === 1 ? "" : "s"} →</Link>
+              )}
+              {inbox > 0 && (
+                <Link to="/inbox" className="chip chip--warn" style={{ textDecoration: "none" }}>{inbox} in inbox →</Link>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

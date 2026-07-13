@@ -108,7 +108,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis
-- Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors
+- Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors; with the grabber on, a **Library sources** card (grabbed vs pre-existing, downloads per provider, duplicates / ISRC / playlist-coverage rollups)
 - Settings — live config changes without restart; `/healthz` JSON endpoint
 
 ---
