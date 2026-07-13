@@ -5,13 +5,17 @@ export function BpmDisplay({
   sizePx = 84,
   pulsing = false,
   beatMs = 500,
+  dotPx,
 }: {
   bpm: number | null;
   sizePx?: number;
   pulsing?: boolean;
   beatMs?: number;
+  /** Override the pulsing-dot diameter (defaults to 14% of sizePx — too small
+   *  for compact placements like the player bar). */
+  dotPx?: number;
 }) {
-  const dotSize = Number((sizePx * 0.14).toFixed(1));
+  const dotSize = dotPx ?? Number((sizePx * 0.14).toFixed(1));
   const gap = Number((sizePx * 0.16).toFixed(1));
   const unitPx = Math.round(sizePx * 0.22);
   const showDot = pulsing && !!bpm;

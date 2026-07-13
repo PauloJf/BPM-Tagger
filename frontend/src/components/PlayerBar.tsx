@@ -1,8 +1,12 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { usePlayer } from "../lib/player";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
+import { BpmDisplay } from "./BpmDisplay";
+import { LyricsPanel } from "./LyricsPanel";
 
 export default function PlayerBar() {
   const { current, playing, error, audioRef, toggle, stop,
@@ -11,8 +15,19 @@ export default function PlayerBar() {
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
   // Hooks must run unconditionally; disabled until a track is loaded.
   useWaveform(canvasRef, audioRef, current?.path || "", !!current, !!current);
+  // Current track's BPM for the pulsing indicator. Own cache key — TrackDetail's
+  // ["track", path] entry carries review-queue navigation this fetch would clobber.
+  const bpmQ = useQuery({
+    queryKey: ["track-bpm", current?.path || ""],
+    queryFn: () => api.get<{ track: { bpm: number | null } }>(
+      `/api/track?path=${encodeURIComponent(current!.path)}`),
+    enabled: !!current,
+    staleTime: 60_000,
+  });
+  const bpm = bpmQ.data?.track?.bpm ?? null;
 
   if (!current) return null;
 
@@ -20,6 +35,9 @@ export default function PlayerBar() {
 
   return (
     <div className="player-bar">
+      {lyricsOpen && (
+        <LyricsPanel path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
+      )}
       {queueOpen && hasQueue && (
         <div className="player-queue">
           <div className="player-queue-head">
@@ -82,10 +100,27 @@ export default function PlayerBar() {
           </Link>
         ) : null}
       </div>
+      {bpm != null && (
+        <span className="player-bar-bpm" title={`${bpm.toFixed(1)} BPM — the dot pulses on the beat`}>
+          <BpmDisplay bpm={bpm} sizePx={17} dotPx={9} pulsing={playing} beatMs={Math.round(60000 / bpm)} />
+        </span>
+      )}
+      <button
+        className={"player-bar-ctl" + (lyricsOpen ? " active" : "")}
+        onClick={() => { setLyricsOpen((o) => !o); setQueueOpen(false); }}
+        title="Lyrics"
+        aria-label="Show lyrics"
+        aria-expanded={lyricsOpen}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+        </svg>
+      </button>
       {hasQueue && (
         <button
           className={"player-bar-ctl player-bar-ctl--optional" + (queueOpen ? " active" : "")}
-          onClick={() => setQueueOpen((o) => !o)}
+          onClick={() => { setQueueOpen((o) => !o); setLyricsOpen(false); }}
           title="Queue"
           aria-label="Show queue"
           aria-expanded={queueOpen}

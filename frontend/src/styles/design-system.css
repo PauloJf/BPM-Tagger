@@ -955,6 +955,29 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-queue-row.current { background: var(--accent-soft); }
 .player-queue-title { flex: 1; min-width: 0; display: flex; align-items: center; background: none; border: none; color: var(--text); cursor: pointer; font-size: 12px; text-align: left; padding: 4px 2px; }
 .player-queue-actions { display: flex; gap: 2px; flex-shrink: 0; }
+/* Lyrics drawer above the player bar (same chrome as the queue drawer) */
+.player-lyrics {
+  position: absolute; right: 12px; bottom: calc(100% + 8px); z-index: 61;
+  width: min(480px, calc(100vw - 24px)); height: min(48vh, 440px); display: flex; flex-direction: column;
+  background: oklch(0.185 0.012 285 / 0.98); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4); backdrop-filter: saturate(180%) blur(10px);
+}
+:root[data-theme="light"] .player-lyrics { background: oklch(0.99 0.004 285 / 0.98); }
+/* Big top/bottom padding lets the first and last lines center in the view. */
+.player-lyrics-body { flex: 1; overflow-y: auto; padding: 30% 16px; }
+.player-lyrics-line {
+  display: block; width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 4px 8px; border-radius: 8px; font-size: 13px; line-height: 1.65; color: var(--muted);
+  transition: color 0.15s, background 0.15s;
+}
+.player-lyrics-line:hover { background: var(--row-hover); }
+.player-lyrics-line.current { color: var(--text); background: var(--accent-soft); font-weight: 550; }
+.player-lyrics-empty { padding: 8px; font-size: 12px; color: var(--muted); text-align: center; }
+
+/* Pulsing BPM readout in the player bar */
+.player-bar-bpm { display: inline-flex; align-items: center; flex-shrink: 0; }
+@media (max-width: 700px) { .player-bar-bpm { display: none; } }
+
 .player-bar-volume { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .player-bar-volume input[type=range] { width: 72px; accent-color: var(--accent); cursor: pointer; }
 .player-bar-ctl-badge {
