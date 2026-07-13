@@ -162,7 +162,78 @@ a { color: inherit; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 @keyframes wf-shimmer { 0%,100%{opacity:0.5} 50%{opacity:0.25} }
 
-/* ── Nav ──────────────────────────────────────────────────────────────────── */
+/* ── Sidebar (desktop) ────────────────────────────────────────────────────── */
+body { --sidebar-w: 220px; }
+body.sidebar-collapsed { --sidebar-w: 62px; }
+.app-sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w); z-index: 55;
+  display: flex; flex-direction: column;
+  background: oklch(0.150 0.012 285 / 0.92);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px 14px;
+  overflow-y: auto; overflow-x: hidden;
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  transition: width 0.18s ease;
+}
+:root[data-theme="light"] .app-sidebar { background: oklch(0.985 0.004 285 / 0.92); }
+.app-sidebar .nav-logo { padding: 2px 6px 10px; }
+.app-main { margin-left: var(--sidebar-w); transition: margin-left 0.18s ease; }
+.sidebar-section { margin-top: 16px; }
+.sidebar-section-label {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  padding: 0 10px; margin-bottom: 4px;
+  white-space: nowrap;
+}
+.sidebar-link {
+  position: relative;
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; border-radius: 8px;
+  color: var(--muted); text-decoration: none;
+  font-size: 13px; font-weight: 500;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+.sidebar-link svg { flex-shrink: 0; }
+.sidebar-link:hover { color: var(--text); background: var(--row-hover); }
+.sidebar-link.active { color: var(--text); background: var(--surface); }
+.sidebar-link.active::before {
+  content: ''; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 2px; border-radius: 1px; background: var(--accent);
+}
+.sidebar-link .nav-badge { margin-left: auto; }
+.sidebar-footer { margin-top: auto; padding-top: 16px; }
+.sidebar-footer .scan-controls { flex-wrap: wrap; }
+.sidebar-footer-row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+
+/* Collapsed rail: icon-only links, tile-only logo, count bubbles on icons. */
+body.sidebar-collapsed .app-sidebar { padding: 16px 10px 14px; }
+body.sidebar-collapsed .nav-logo-text,
+body.sidebar-collapsed .sidebar-link-label,
+body.sidebar-collapsed .sidebar-section-label { display: none; }
+body.sidebar-collapsed .sidebar-section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+body.sidebar-collapsed .sidebar-link { justify-content: center; padding: 8px 0; }
+body.sidebar-collapsed .sidebar-link .nav-badge {
+  position: absolute; top: 1px; right: 2px; margin-left: 0;
+  padding: 0 4px; font-size: 9px;
+}
+body.sidebar-collapsed .sidebar-footer .scan-controls { justify-content: center; padding: 4px 2px; }
+body.sidebar-collapsed .sidebar-footer .scan-label,
+body.sidebar-collapsed .sidebar-footer .btn-label { display: none; }
+body.sidebar-collapsed .sidebar-footer-row { flex-direction: column; gap: 2px; }
+body.sidebar-collapsed .app-sidebar .nav-logo { justify-content: center; padding-left: 0; padding-right: 0; }
+.sidebar-collapse-btn {
+  display: flex; align-items: center; justify-content: flex-start;
+  width: 100%; margin-top: 10px; padding: 7px 10px;
+  border: none; background: none; color: var(--muted);
+  border-radius: 8px; cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.sidebar-collapse-btn:hover { color: var(--text); background: var(--row-hover); }
+body.sidebar-collapsed .sidebar-collapse-btn { justify-content: center; padding: 8px 0; }
+
+/* ── Nav (mobile top bar) ─────────────────────────────────────────────────── */
 nav.app-nav {
   background: oklch(0.165 0.012 285 / 0.85);
   border-bottom: 1px solid var(--border);
@@ -231,7 +302,7 @@ nav.app-nav {
 
 /* ── Mobile nav ───────────────────────────────────────────────────────────── */
 .nav-hamburger {
-  display: none;
+  display: inline-flex;
   width: 36px; height: 36px;
   border: none; background: transparent; color: var(--muted);
   cursor: pointer; border-radius: 8px; flex-shrink: 0;
@@ -261,15 +332,23 @@ nav.app-nav {
 .nav-mobile-link:hover { color: var(--text); background: var(--row-hover); }
 .nav-mobile-link.active { color: var(--text); background: var(--surface); }
 .nav-mobile-sep { height: 1px; background: var(--border); margin: 6px 2px; }
-.nav-scan-dot-mobile { display: none; flex-shrink: 0; }
+.nav-mobile-section {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  padding: 10px 10px 4px;
+}
+.nav-scan-dot-mobile { display: inline-block; flex-shrink: 0; }
 
-/* Collapse to the hamburger until the full desktop nav actually fits (~1076px).
-   Below this the nav items would overflow horizontally, stretching the document
-   wider than the viewport and knocking the centered .container off-center. */
+/* Desktop (>1100px) gets the sidebar; below that it collapses to the mobile
+   top bar + hamburger panel. The threshold matches where the tracks table's
+   fixed column grid still fits beside a 220px sidebar. */
+@media (min-width: 1101px) {
+  nav.app-nav { display: none; }
+}
 @media (max-width: 1100px) {
-  .nav-desktop-only { display: none !important; }
-  .nav-hamburger    { display: inline-flex; }
-  .nav-scan-dot-mobile { display: inline-block; }
+  .app-sidebar { display: none; }
+  /* Also outrank body.sidebar-collapsed — no sidebar means no offset. */
+  body, body.sidebar-collapsed { --sidebar-w: 0px; }
 }
 @media (max-width: 700px) {
   nav.app-nav { padding: 0 14px; }
@@ -435,6 +514,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   .tracks-row .col-detector,
   .tracks-row .col-arrow,
   .tracks-row .row-extra-btn,
+  .tracks-row .row-cover,
   .tracks-row .track-sub,
   .tracks-row .track-folder { display: none; }
 }
@@ -523,6 +603,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .segmented-btn.active { background: var(--accent); color: white; }
 .segmented-btn:not(.active) { background: transparent; color: var(--muted); }
 .segmented-btn:not(.active):hover { color: var(--text); }
+a.segmented-btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* Slider */
 .slider-wrap { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 360px; }
@@ -599,6 +680,38 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   }
   .filter-pills::-webkit-scrollbar { display: none; }
   .filter-pill { flex-shrink: 0; white-space: nowrap; }
+}
+
+/* ── Library browse (artists/albums index) ────────────────────────────────── */
+.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.browse-card {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px;
+  text-decoration: none; color: inherit;
+  transition: border-color 0.15s, background 0.12s;
+}
+.browse-card:hover { border-color: var(--border-strong); background: var(--row-hover); }
+.browse-card-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+
+/* Embedded-cover thumbnail (img) and its no-art placeholder (div). */
+.art-thumb {
+  border-radius: 6px; object-fit: cover; flex-shrink: 0;
+  background: var(--chip-bg); border: 1px solid var(--border);
+  display: grid; place-items: center; color: var(--muted);
+}
+.art-thumb--round { border-radius: 999px; }
+.browse-card-name {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.browse-card-meta {
+  font-size: 11px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.browse-card-bpm {
+  font-family: var(--mono); font-size: 11px; color: var(--accent-2);
+  font-variant-numeric: tabular-nums; min-height: 1.2em;
 }
 
 .search-wrap { position: relative; }
@@ -791,10 +904,13 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
   .q-row { grid-template-columns: 1fr auto; row-gap: 8px; }
 }
 
-/* Persistent player footer bar */
+/* Persistent player footer bar. Starts past the sidebar (--sidebar-w is 0 on
+   mobile, where the sidebar is hidden) so it never covers the sidebar footer.
+   This rule must stay AFTER any earlier .player-bar declarations. */
 body.has-player .container { padding-bottom: 88px; }
 .player-bar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
+  transition: left 0.18s ease;
   display: flex; align-items: center; gap: 12px; padding: 10px 18px;
   background: oklch(0.185 0.012 285 / 0.96); border-top: 1px solid var(--border);
   backdrop-filter: saturate(180%) blur(10px); -webkit-backdrop-filter: saturate(180%) blur(10px);

@@ -98,9 +98,12 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 > **⚠️ LAN access only by default.** The UI runs over plain HTTP. Place a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it outside your local network.
 
-- Scan controls (Start / Pause / Resume / Stop) in the navbar; live status dot; collapses to a hamburger menu below 1100 px with a pinned header
+- **Sidebar navigation** grouped into Library / Tagging / Grabber / System sections with icons, collapsible to an icon-only rail; scan controls (Start / Pause / Resume / Stop) and a live status dot; becomes a hamburger menu below 1100 px with the same sections
 - Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
-- Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
+- **Artists & Albums browse views** — a Tracks | Artists | Albums switcher with filterable card grids (track counts, years, average BPM) linking into the per-artist/per-album pages
+- **Cover art everywhere** — embedded covers on library rows, browse cards, artist/album pages and track detail, with a show/hide toggle and cached delivery
+- **Artist images** — local `artist.jpg` (Navidrome convention), or opt-in fetching from Deezer's public API (`FETCH_ARTIST_IMAGES`), cached on disk; falls back to album art
+- BPM Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
 - **Artist & album pages** and a cadence ½×/2× BPM filter for running

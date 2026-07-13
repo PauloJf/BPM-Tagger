@@ -470,6 +470,37 @@ class BPMDatabase:
                     "ORDER BY disc_no, track_no, file_path", (album,)).fetchall()
         return [dict(r) for r in rows]
 
+    def list_artists(self) -> list[dict]:
+        """Artist index: one row per album artist (falling back to the track
+        artist, so compilation guests don't become top-level entries)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(NULLIF(album_artist, ''), artist) AS name, "
+                "COUNT(*) AS tracks, "
+                "COUNT(DISTINCT NULLIF(album, '')) AS albums, "
+                "ROUND(AVG(NULLIF(bpm, 0)), 1) AS avg_bpm, "
+                "MIN(file_path) AS sample_path "
+                "FROM tracks WHERE status != 'deleted' "
+                "AND COALESCE(NULLIF(album_artist, ''), artist, '') != '' "
+                "GROUP BY name ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_albums(self) -> list[dict]:
+        """Album index: one row per album + album artist pair."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT album, COALESCE(album_artist, '') AS album_artist, "
+                "COUNT(*) AS tracks, MAX(year) AS year, "
+                "ROUND(AVG(NULLIF(bpm, 0)), 1) AS avg_bpm, "
+                "MIN(file_path) AS sample_path "
+                "FROM tracks WHERE status != 'deleted' "
+                "AND COALESCE(album, '') != '' "
+                "GROUP BY album, COALESCE(album_artist, '') "
+                "ORDER BY album COLLATE NOCASE"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_tracks_missing_isrc(self, limit: int = 2000) -> list[dict]:
         """Non-deleted tracks with no ISRC yet — the bulk-fill work list."""
         with self._connect() as conn:

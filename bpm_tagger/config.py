@@ -114,6 +114,7 @@ def build_config() -> dict:
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
+        "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),

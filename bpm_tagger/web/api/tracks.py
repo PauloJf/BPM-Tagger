@@ -1,5 +1,6 @@
 """Track data + per-track mutation endpoints (save/unlock/approve/waveform)."""
 
+import hashlib
 import json
 import logging
 import os
@@ -9,7 +10,8 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-from flask import Blueprint, Response, abort, jsonify, request
+import requests
+from flask import Blueprint, Response, abort, jsonify, request, send_file
 
 from ...bpm.tags import get_file_hash, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
@@ -222,6 +224,20 @@ def api_track():
                    prev_path=prev_path, next_path=next_path,
                    queue_pos=queue_pos, queue_total=queue_total,
                    playback_buffer=st.config.get("playback_buffer", 3))
+
+
+@tracks_bp.route("/api/artists")
+@login_required
+def api_artists():
+    """Artist index for the library browse view."""
+    return jsonify(artists=state().db.list_artists())
+
+
+@tracks_bp.route("/api/albums")
+@login_required
+def api_albums():
+    """Album index for the library browse view."""
+    return jsonify(albums=state().db.list_albums())
 
 
 @tracks_bp.route("/api/artist")
@@ -561,11 +577,93 @@ def api_track_cover_get():
     if not path:
         abort(400)
     _assert_in_music_dir(path)
+    # Cache on the file hash (size:mtime) so thumbnail grids don't re-extract
+    # embedded art on every visit, while cover edits still bust the cache.
+    try:
+        etag = f'"{get_file_hash(path)}"'
+    except OSError:
+        abort(404)
+    cache_headers = {"Cache-Control": "private, max-age=86400", "ETag": etag}
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status=304, headers=cache_headers)
     cover = read_cover(path)
     if not cover:
         abort(404)
     data, mime = cover
-    return Response(data, mimetype=mime, headers={"Cache-Control": "no-cache"})
+    return Response(data, mimetype=mime, headers=cache_headers)
+
+
+_ARTIST_IMG_NAMES = ("artist.jpg", "artist.jpeg", "artist.png", "artist.webp")
+_ARTIST_IMG_MISS_TTL = 86400  # retry failed online lookups daily
+
+
+def _artist_image_cache(name: str) -> tuple[str, str, str]:
+    """(cache_dir, cached_image_path, miss_marker_path) for an artist name."""
+    data_dir = os.path.dirname(state().config.get("db_path", "/data/bpm_tagger.db")) or "."
+    cache_dir = os.path.join(data_dir, "artist_images")
+    slug = hashlib.sha1(name.strip().lower().encode("utf-8")).hexdigest()[:16]
+    return cache_dir, os.path.join(cache_dir, slug + ".img"), os.path.join(cache_dir, slug + ".miss")
+
+
+@tracks_bp.route("/api/artist/image")
+@login_required
+def api_artist_image():
+    """Artist image, resolved in privacy-preserving order: an ``artist.jpg``
+    beside the artist's files (Navidrome convention) → the on-disk cache → an
+    online Deezer lookup (opt-in via ``fetch_artist_images``), cached to disk
+    so each artist is fetched at most once a day. 404 lets the client fall
+    back to album art."""
+    st = state()
+    name = request.args.get("name", "").strip()
+    if not name:
+        abort(400)
+
+    # 1. Local artist.<ext> in the track's folder or its parent.
+    seen: set[str] = set()
+    for row in st.db.get_artist_tracks(name):
+        track_dir = os.path.dirname(row["file_path"])
+        for d in (track_dir, os.path.dirname(track_dir)):
+            if not d or d in seen:
+                continue
+            seen.add(d)
+            for fname in _ARTIST_IMG_NAMES:
+                p = os.path.join(d, fname)
+                if os.path.isfile(p):
+                    return send_file(p, conditional=True, max_age=86400)
+
+    # 2. Previously fetched image on disk.
+    cache_dir, cached, miss = _artist_image_cache(name)
+    if os.path.isfile(cached):
+        return send_file(cached, mimetype="image/jpeg", conditional=True, max_age=86400)
+
+    # 3. Online lookup — only when the user opted in, and not re-tried while a
+    # recent miss marker exists (protects Deezer and page loads alike).
+    if not st.config.get("fetch_artist_images"):
+        abort(404)
+    if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < _ARTIST_IMG_MISS_TTL:
+        abort(404)
+    os.makedirs(cache_dir, exist_ok=True)
+    try:
+        resp = requests.get("https://api.deezer.com/search/artist",
+                            params={"q": name, "limit": 1}, timeout=8)
+        resp.raise_for_status()
+        hits = resp.json().get("data") or []
+        hit = hits[0] if hits else {}
+        url = hit.get("picture_xl") or hit.get("picture_big") or ""
+        # Only accept an exact (caseless) name match — a wrong artist's photo
+        # is worse than the album-art fallback. Deezer's placeholder images
+        # live under /artist//, which also signals "no real picture".
+        if url and "/artist//" not in url and hit.get("name", "").strip().lower() == name.lower():
+            img = requests.get(url, timeout=10)
+            img.raise_for_status()
+            with open(cached, "wb") as f:
+                f.write(img.content)
+            return send_file(cached, mimetype="image/jpeg", conditional=True, max_age=86400)
+    except Exception as exc:
+        log.debug("Artist image lookup failed for %s: %s", name, exc)
+    with open(miss, "wb"):
+        pass
+    abort(404)
 
 
 @tracks_bp.route("/api/track/cover", methods=["PUT"])

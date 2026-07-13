@@ -11,6 +11,7 @@ import { useTapTempo } from "../hooks/useTapTempo";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
+import { Cover, useArtwork } from "../components/Artwork";
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
@@ -27,6 +28,7 @@ export default function TrackDetail() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const player = usePlayer();
+  const [showArt] = useArtwork();
   const active = player.isCurrent(path);          // is this the track loaded in the bar?
   const trackReady = !!detailQ.data?.track;
   const { loading: wfLoading } = useWaveform(canvasRef, player.audioRef, path, trackReady, active);
@@ -87,7 +89,11 @@ export default function TrackDetail() {
       if (!res.ok) { setMetaMsg({ ok: false, text: res.error || "Failed" }); return; }
       qc.invalidateQueries({ queryKey: ["tracks"] });
       if (res.file_path && res.file_path !== path) {
-        navigate(`/track?path=${encodeURIComponent(res.file_path)}&back=${params.get("back") || "tracks"}`, { replace: true });
+        // Keep every back_* param so the Back link still points at the origin
+        // page (artist/album/filtered list) after a rename moved the file.
+        const sp = new URLSearchParams(params);
+        sp.set("path", res.file_path);
+        navigate(`/track?${sp.toString()}`, { replace: true });
       } else {
         qc.invalidateQueries({ queryKey: ["track", path] });
         setMetaMsg({ ok: true, text: "Saved" });
@@ -184,10 +190,17 @@ export default function TrackDetail() {
   if (detailQ.isLoading) return <p style={{ color: "var(--muted)" }}>Loading…</p>;
   if (detailQ.isError || !track) return <p style={{ color: "var(--err-fg)" }}>Track not found.</p>;
 
+  // "artist"/"album" origins are resolved client-side from back_* params (the
+  // API only distinguishes review vs tracks, for review-queue navigation).
+  const backParam = params.get("back") || "tracks";
   const back = detail!.back;
   const backUrl =
     back === "review"
       ? "/review"
+      : backParam === "artist" && params.get("back_name")
+      ? `/artist?name=${encodeURIComponent(params.get("back_name")!)}`
+      : backParam === "album" && params.get("back_album")
+      ? `/album?album=${encodeURIComponent(params.get("back_album")!)}&album_artist=${encodeURIComponent(params.get("back_artist") || "")}`
       : (() => {
           const sp = new URLSearchParams();
           const map: [string, string][] = [
@@ -255,7 +268,9 @@ export default function TrackDetail() {
       </div>
 
       {/* Header */}
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 16 }}>
+        {showArt && <Cover path={track.file_path} size={88} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
           {track.locked ? (
             <span className="badge badge--locked">
@@ -297,6 +312,7 @@ export default function TrackDetail() {
             <path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z" />
           </svg>
           {fdir}
+        </div>
         </div>
       </div>
 

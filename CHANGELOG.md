@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Navigation:** the top bar is now a **sidebar** with grouped sections — Library, Tagging, Grabber (when enabled) and System — so the tagging workflow, the grabber workflow and app chrome are no longer interleaved. Every entry has an icon and the sidebar **collapses to an icon-only rail** (state remembered), with the player bar starting past it either way. Two renames for clarity: **Review → BPM Review** and **Search → Add Music**. Small screens keep the top bar + hamburger menu, now with the same section headers.
+- **Artwork:** embedded cover art now shows across the library — thumbnails on library rows and the Artists/Albums browse cards, an artist image and per-album covers on the artist page, a cover header on the album and track pages. A **show/hide artwork** toggle (remembered per browser) keeps things light on slow libraries; covers are served with cache headers so grids don't re-extract art on every visit.
+- **Artist images:** resolved from an `artist.jpg`/`artist.png` beside the artist's files (Navidrome's convention), else — **opt-in** via `FETCH_ARTIST_IMAGES` or **Settings → Artwork** — fetched once from Deezer's public API (no account needed) and cached under `/data/artist_images/`. Unresolved artists fall back to their album art.
+- **Library:** new **Artists** and **Albums** browse views (a Tracks | Artists | Albums switcher on the Library page) with per-entry track counts, years and average BPM, linking into the existing artist/album pages. Compilation guests are grouped under the album artist.
 - **Playlists:** a **Browse my playlists** picker lists your Spotify account's playlists (owned + followed) so you can add one to watch without copy-pasting a URL; already-watched playlists are flagged.
 - **Player:** reloading the page now restores the current track **at its saved position** and resumes playback if it was playing (browsers may block the auto-resume until you interact — it then stays paused at the right spot).
 ## v2.3.1 — 2026-07-07

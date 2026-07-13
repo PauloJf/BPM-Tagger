@@ -258,6 +258,7 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
 | `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
 | `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
+| `FETCH_ARTIST_IMAGES` | `false` | Fetch artist images for artists without a local `artist.jpg` from Deezer's public API (no account needed) and cache them on disk. Off by default because it sends artist names to Deezer. Also toggleable at runtime in **Settings → Artwork**. |
 
 ---
 
@@ -267,9 +268,11 @@ Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `
 
 > **Security note:** The web UI runs over plain HTTP. It is designed for access on a trusted local network. If you need to reach it remotely, place a reverse proxy (nginx, Caddy, Traefik) with TLS in front of it. See the [Security](#security) section for the full recommendations.
 
-### Navbar scan controls
+### Navigation & scan controls
 
-The navigation bar shows the current scan state at all times and lets you control the scanner without touching the container:
+On desktop the UI uses a **sidebar** grouped into sections — **Library** (Library, Playlists), **Tagging** (BPM Review, Duplicates), **Grabber** (Add Music, Queue, Inbox — shown when the grabber is enabled), and **System** (Stats, Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
+
+The sidebar footer shows the current scan state at all times and lets you control the scanner without touching the container:
 
 - **Stopped** (red dot) — no scan running; **▶ Start Scan** button triggers a pass using the configured mode
 - **Analysing** (pulsing green dot) — scan in progress; **⏸ Pause** and **■ Stop** buttons are shown
@@ -289,6 +292,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
 - **Playback** — seconds of audio to buffer before the detail-page player starts
+- **Artwork** — opt-in online fetching of artist images (Deezer public API, cached on disk)
 - **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
 - **Trash** — current count + size of duplicates moved to trash, with a **Purge** button to delete them permanently
 - **Deleted tracks** — permanently purge the database records for tracks whose files are gone from the library (removed from disk, or moved to the trash during duplicate resolution). Clears stale entries only — no files on disk are touched. **Unrecoverable**, so it asks for confirmation first
@@ -307,24 +311,30 @@ Summary statistics and charts for your library:
 
 ### Pages
 
-When the grabber is enabled, the navbar also shows **Playlists**, **Search**, **Queue**, and **Inbox** (with a badge for items awaiting review):
+When the grabber is enabled, the nav also shows **Playlists**, **Add Music**, **Queue**, and **Inbox** (with a badge for items awaiting review):
 
 - **Playlists** (`/playlists`) — add Spotify playlists by URL or via **Browse my playlists** (lists your account's playlists with already-watched ones flagged), toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
-- **Search** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
+- **Add Music** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.
 
 A **persistent player bar** at the bottom keeps a track playing as you move between pages (play / **add-to-queue** / **play-next** buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view; the bar has prev/next, shuffle, repeat (off/all/one) and volume controls, and a **queue viewer** drawer (jump-to, remove, reorder). The queue **persists across reloads** — restored at the same track and position, resuming playback where the browser allows it — and **keyboard shortcuts** work anywhere (`k` play/pause, `←/→` prev/next, `+/-` volume, `m` mute). Playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the title links to the track detail, and the artist links to a per-**artist page** (with album links → per-**album pages**). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
-#### All Tracks (`/tracks`)
-Paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), **Locked**, **No ISRC**, or **Deleted** tracks; live counts update automatically during a scan.
+#### Library (`/tracks`, `/artists`, `/albums`)
+A **Tracks | Artists | Albums** switcher at the top of the Library picks the view. **Tracks** is a paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Review** (needs human check), **Locked**, **No ISRC**, or **Deleted** tracks; live counts update automatically during a scan.
+
+**Artists** and **Albums** are browsable indexes — filterable card grids with track counts, years, and average BPM per entry, linking into the per-artist and per-album pages. Artists are grouped by album artist, so compilation guests don't clutter the list.
+
+**Artwork** — embedded cover art shows as thumbnails on library rows and browse cards, an artist image and per-album covers on the artist page, and a cover header on the album and track detail pages. A **show/hide artwork** toggle next to the search box (remembered per browser) turns all of it off for slow libraries; covers are served with long-lived cache headers.
+
+**Artist images** resolve in privacy-preserving order: an `artist.jpg` / `artist.png` next to the artist's files (the same convention Navidrome uses) → a disk cache under `/data/artist_images/` → an online Deezer lookup (**opt-in** via `FETCH_ARTIST_IMAGES` or Settings → Artwork; each artist is fetched at most once). Anything unresolved falls back to the artist's album art.
 
 - **Live search** — the search box filters tracks as you type (300 ms debounce); no Enter required
 - **BPM ± filter** — enter a target BPM and an allowance (e.g. `120 ± 5`) to narrow the list to a specific tempo range; a **cadence ½×/2×** toggle also matches half- and double-time tracks (a 170 SPM running cadence surfaces 85 BPM songs)
 - **Error tooltips** — hovering an `error` badge shows the full error message
 - **Back-navigation state** — navigating into a track detail and pressing Back returns to the exact same filter, page, and search query
 
-#### Needs Review (`/review`)
+#### BPM Review (`/review`)
 Filtered view showing only tracks that meet one or more of these criteria:
 - `needs_review = 1` — the primary detectors disagreed beyond the threshold
 - Librosa confidence below `REVIEW_CONFIDENCE_THRESHOLD`

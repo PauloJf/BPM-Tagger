@@ -5,6 +5,42 @@ import { useScan, type ScanState } from "../hooks/useScan";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { applyTheme, type Theme } from "../lib/theme";
 
+/* 15px stroke icons, one per nav destination. */
+const ic = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+const IconLibrary = () => (
+  <svg {...ic}><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+);
+const IconPlaylists = () => (
+  <svg {...ic}><path d="M3 6h11M3 11h11M3 16h6" /><path d="M18 8v8" /><circle cx="15.5" cy="16" r="2.5" /></svg>
+);
+const IconReview = () => (
+  <svg {...ic}><path d="M22 12h-4l-3 8L9 4l-3 8H2" /></svg>
+);
+const IconDuplicates = () => (
+  <svg {...ic}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+);
+const IconAddMusic = () => (
+  <svg {...ic}><path d="M9 17V5l10-1.5V11" /><circle cx="6.5" cy="17" r="2.5" /><path d="M18 15v6M15 18h6" /></svg>
+);
+const IconQueue = () => (
+  <svg {...ic}><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+);
+const IconInbox = () => (
+  <svg {...ic}><path d="M22 13h-5l-2 3h-6l-2-3H2" /><path d="M5.5 5h13L22 13v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5z" /></svg>
+);
+const IconStats = () => (
+  <svg {...ic}><path d="M4 21v-8M10 21V4M16 21v-12M22 21v-5" /></svg>
+);
+const IconSettings = () => (
+  <svg {...ic}><path d="M5 21v-7M5 10V3M12 21v-9M12 8V3M19 21v-5M19 12V3" /><path d="M2 14h6M9 8h6M16 16h6" /></svg>
+);
+const IconAbout = () => (
+  <svg {...ic}><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 12v5" /></svg>
+);
+const IconLogout = () => (
+  <svg {...ic}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg>
+);
+
 function ThemeToggle({ mobile }: { mobile?: boolean }) {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || "dark");
   const toggle = () => {
@@ -30,23 +66,56 @@ function ThemeToggle({ mobile }: { mobile?: boolean }) {
     );
   }
   return (
-    <button className="nav-item btn-bare nav-desktop-only" style={{ border: "none", background: "none" }} onClick={toggle} aria-label="Toggle theme" title="Toggle theme">
+    <button className="btn btn-bare btn-sm" style={{ padding: 6 }} onClick={toggle} aria-label="Toggle theme" title="Toggle theme">
       {icon}
     </button>
   );
 }
 
+interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" | "inbox" }
+interface NavSection { label: string; items: NavItem[] }
 
-interface NavItem { to: string; label: string; badge?: boolean; badgeCount?: number }
+/** Grouped navigation: tagging, grabber and app chrome each get a section. */
+function buildSections(grabberEnabled: boolean): NavSection[] {
+  const library: NavItem[] = [
+    { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
+  ];
+  if (grabberEnabled) library.push({ to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] });
 
-const BASE_LINKS: NavItem[] = [
-  { to: "/tracks", label: "Library" },
-  { to: "/review", label: "Review", badge: true },
-  { to: "/duplicates", label: "Duplicates" },
-  { to: "/stats", label: "Stats" },
-  { to: "/settings", label: "Settings" },
-  { to: "/about", label: "About" },
-];
+  const sections: NavSection[] = [
+    { label: "Library", items: library },
+    {
+      label: "Tagging",
+      items: [
+        { to: "/review", label: "BPM Review", icon: IconReview, match: ["/review"], badge: "review" },
+        { to: "/duplicates", label: "Duplicates", icon: IconDuplicates, match: ["/duplicates", "/compare"] },
+      ],
+    },
+  ];
+  if (grabberEnabled) {
+    sections.push({
+      label: "Grabber",
+      items: [
+        { to: "/search", label: "Add Music", icon: IconAddMusic, match: ["/search"] },
+        { to: "/queue", label: "Queue", icon: IconQueue, match: ["/queue"] },
+        { to: "/inbox", label: "Inbox", icon: IconInbox, match: ["/inbox"], badge: "inbox" },
+      ],
+    });
+  }
+  sections.push({
+    label: "System",
+    items: [
+      { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
+      { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
+      { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
+    ],
+  });
+  return sections;
+}
+
+function isActivePath(pathname: string, match: string[]): boolean {
+  return match.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
 
 function stateColor(s: ScanState): { color: string; pulsing: boolean; label: string; labelColor: string } {
   switch (s) {
@@ -75,25 +144,25 @@ function ScanControls({ state, act, mobile }: { state: ScanState; act: (a: "star
   const btnClass = mobile ? "btn btn-ghost btn-sm" : "btn btn-bare btn-sm";
   return (
     <>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: mobile ? 13 : 12, flexShrink: 0 }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: mobile ? 13 : 12, flexShrink: 0 }} title={info.label}>
         <Dot color={info.color} pulsing={info.pulsing} />
-        <span style={{ color: info.labelColor, fontWeight: 500 }}>{info.label}</span>
+        <span className="scan-label" style={{ color: info.labelColor, fontWeight: 500 }}>{info.label}</span>
       </span>
       {state === "idle" && (
-        <button className={btnClass} style={{ color: "var(--ok-fg)" }} onClick={() => act("start")}>
-          ▶ Start scan
+        <button className={btnClass} style={{ color: "var(--ok-fg)" }} onClick={() => act("start")} title="Start scan">
+          ▶<span className="btn-label"> Start scan</span>
         </button>
       )}
       {state === "analysing" && (
         <>
-          <button className={btnClass} onClick={() => act("pause")}>
+          <button className={btnClass} onClick={() => act("pause")} title="Pause scan">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="4" width="4" height="16" rx="1" />
               <rect x="14" y="4" width="4" height="16" rx="1" />
             </svg>
             {mobile && " Pause"}
           </button>
-          <button className={mobile ? "btn btn-danger btn-sm" : "btn btn-bare btn-sm"} style={mobile ? {} : { color: "var(--err-fg)" }} onClick={() => act("stop")}>
+          <button className={mobile ? "btn btn-danger btn-sm" : "btn btn-bare btn-sm"} style={mobile ? {} : { color: "var(--err-fg)" }} onClick={() => act("stop")} title="Stop scan">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
               <rect x="5" y="5" width="14" height="14" rx="2" />
             </svg>
@@ -102,7 +171,7 @@ function ScanControls({ state, act, mobile }: { state: ScanState; act: (a: "star
         </>
       )}
       {state === "paused" && (
-        <button className={btnClass} style={{ color: "var(--ok-fg)" }} onClick={() => act("resume")}>
+        <button className={btnClass} style={{ color: "var(--ok-fg)" }} onClick={() => act("resume")} title="Resume scan">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="6,4 20,12 6,20" />
           </svg>
@@ -113,24 +182,50 @@ function ScanControls({ state, act, mobile }: { state: ScanState; act: (a: "star
   );
 }
 
+function Logo() {
+  return (
+    <NavLink to="/tracks" className="nav-logo">
+      <div className="nav-logo-tile">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
+          <rect x="7" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
+          <rect x="11" y="3" width="2.4" height="18" rx="1" fill="white" />
+          <rect x="15" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
+          <rect x="19" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
+        </svg>
+      </div>
+      <div className="nav-logo-text">
+        <span className="nav-logo-title">BPM Tagger</span>
+        <span className="nav-logo-sub">for navidrome</span>
+      </div>
+    </NavLink>
+  );
+}
+
+const COLLAPSE_KEY = "bpmtagger.sidebarCollapsed";
+
 export default function Nav() {
   const { reviewCount, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
   const location = useLocation();
   const panelRef = useRef<HTMLDivElement>(null);
   const { state, act } = useScan();
   const dot = stateColor(state);
   const grabber = useGrabberStatus();
 
-  // Insert Playlists + Queue + Inbox after Library when the grabber is enabled.
-  const links: NavItem[] = [...BASE_LINKS];
-  if (grabber.data?.enabled) {
-    links.splice(1, 0,
-      { to: "/playlists", label: "Playlists" },
-      { to: "/search", label: "Search" },
-      { to: "/queue", label: "Queue" },
-      { to: "/inbox", label: "Inbox", badgeCount: grabber.data.inbox_count || 0 });
-  }
+  const sections = buildSections(!!grabber.data?.enabled);
+  const inboxCount = grabber.data?.inbox_count || 0;
+  const badgeCount = (item: NavItem) =>
+    item.badge === "review" ? reviewCount : item.badge === "inbox" ? inboxCount : 0;
+
+  // The collapsed state lives on <body> so .app-main and .player-bar (outside
+  // this component) can follow the sidebar width via --sidebar-w.
+  useEffect(() => {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+    return () => document.body.classList.remove("sidebar-collapsed");
+  }, [collapsed]);
 
   // Close the mobile panel on navigation.
   useEffect(() => setOpen(false), [location.pathname]);
@@ -148,109 +243,124 @@ export default function Nav() {
   }, [open]);
 
   return (
-    <nav className="app-nav">
-      <NavLink to="/tracks" className="nav-logo">
-        <div className="nav-logo-tile">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
-            <rect x="7" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
-            <rect x="11" y="3" width="2.4" height="18" rx="1" fill="white" />
-            <rect x="15" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
-            <rect x="19" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
-          </svg>
-        </div>
-        <div className="nav-logo-text">
-          <span className="nav-logo-title">BPM Tagger</span>
-          <span className="nav-logo-sub">for navidrome</span>
-        </div>
-      </NavLink>
-
-      <div className="nav-divider nav-desktop-only" />
-
-      {links.map((l) => (
-        <NavLink
-          key={l.to}
-          to={l.to}
-          className={({ isActive }) => "nav-item nav-desktop-only" + (isActive ? " active" : "")}
-        >
-          {l.label}
-          {l.badge && reviewCount > 0 && <span className="nav-badge">{reviewCount}</span>}
-          {l.badgeCount ? <span className="nav-badge">{l.badgeCount}</span> : null}
-        </NavLink>
-      ))}
-
-      <span className="nav-spacer nav-desktop-only" />
-
-      <span className="scan-controls nav-desktop-only" style={{ marginRight: 8 }}>
-        <ScanControls state={state} act={act} />
-      </span>
-
-      <ThemeToggle />
-
-      <button
-        className="nav-item btn-bare nav-desktop-only"
-        style={{ color: "var(--err-fg)", border: "none", background: "none" }}
-        onClick={() => logout()}
-      >
-        Logout
-      </button>
-
-      {/* Mobile: status dot + hamburger */}
-      <span
-        className="scan-dot nav-scan-dot-mobile"
-        style={{ background: dot.color, marginLeft: "auto", marginRight: 10, boxShadow: `0 0 0 3px ${dot.color}33` }}
-      />
-      <button
-        id="nav-hamburger"
-        className="nav-hamburger"
-        aria-label="Toggle menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {open ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M1 1 L13 13 M13 1 L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        ) : (
-          <svg width="18" height="13" viewBox="0 0 18 13" fill="none">
-            <rect y="0" width="18" height="2" rx="1" fill="currentColor" />
-            <rect y="5.5" width="18" height="2" rx="1" fill="currentColor" />
-            <rect y="11" width="18" height="2" rx="1" fill="currentColor" />
-          </svg>
-        )}
-      </button>
-
-      <div
-        id="nav-mobile-panel"
-        ref={panelRef}
-        className={"nav-mobile-panel" + (open ? " open" : "")}
-        role="navigation"
-        aria-label="Mobile navigation"
-      >
-        {links.map((l) => (
-          <NavLink
-            key={l.to}
-            to={l.to}
-            className={({ isActive }) => "nav-mobile-link" + (isActive ? " active" : "")}
-          >
-            {l.label}
-            {l.badge && reviewCount > 0 && <span className="nav-badge">{reviewCount}</span>}
-          </NavLink>
+    <>
+      {/* Desktop sidebar */}
+      <aside className="app-sidebar">
+        <Logo />
+        {sections.map((s) => (
+          <div key={s.label} className="sidebar-section">
+            <div className="sidebar-section-label">{s.label}</div>
+            {s.items.map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                title={l.label}
+                className={"sidebar-link" + (isActivePath(location.pathname, l.match) ? " active" : "")}
+              >
+                <l.icon />
+                <span className="sidebar-link-label">{l.label}</span>
+                {badgeCount(l) > 0 && <span className="nav-badge">{badgeCount(l)}</span>}
+              </NavLink>
+            ))}
+          </div>
         ))}
-        <div className="nav-mobile-sep" />
-        <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <ScanControls state={state} act={act} mobile />
-        </div>
-        <div className="nav-mobile-sep" />
-        <ThemeToggle mobile />
         <button
-          className="nav-mobile-link"
-          style={{ width: "100%", color: "var(--err-fg)", border: "none", background: "none", cursor: "pointer", textAlign: "left" }}
-          onClick={() => logout()}
+          className="sidebar-collapse-btn"
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
         >
-          Logout
+          {collapsed ? (
+            <svg {...ic}><path d="M6 17l5-5-5-5M13 17l5-5-5-5" /></svg>
+          ) : (
+            <svg {...ic}><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" /></svg>
+          )}
         </button>
-      </div>
-    </nav>
+        <div className="sidebar-footer">
+          <div className="scan-controls" style={{ justifyContent: "space-between" }}>
+            <ScanControls state={state} act={act} />
+          </div>
+          <div className="sidebar-footer-row">
+            <ThemeToggle />
+            <button
+              className="btn btn-bare btn-sm"
+              style={{ color: "var(--err-fg)" }}
+              onClick={() => logout()}
+              title="Logout"
+            >
+              <IconLogout />
+              <span className="btn-label"> Logout</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Mobile top bar + panel */}
+      <nav className="app-nav">
+        <Logo />
+        <span
+          className="scan-dot nav-scan-dot-mobile"
+          style={{ background: dot.color, marginLeft: "auto", marginRight: 10, boxShadow: `0 0 0 3px ${dot.color}33` }}
+        />
+        <button
+          id="nav-hamburger"
+          className="nav-hamburger"
+          aria-label="Toggle menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 1 L13 13 M13 1 L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="18" height="13" viewBox="0 0 18 13" fill="none">
+              <rect y="0" width="18" height="2" rx="1" fill="currentColor" />
+              <rect y="5.5" width="18" height="2" rx="1" fill="currentColor" />
+              <rect y="11" width="18" height="2" rx="1" fill="currentColor" />
+            </svg>
+          )}
+        </button>
+
+        <div
+          id="nav-mobile-panel"
+          ref={panelRef}
+          className={"nav-mobile-panel" + (open ? " open" : "")}
+          role="navigation"
+          aria-label="Mobile navigation"
+        >
+          {sections.map((s) => (
+            <div key={s.label}>
+              <div className="nav-mobile-section">{s.label}</div>
+              {s.items.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  className={"nav-mobile-link" + (isActivePath(location.pathname, l.match) ? " active" : "")}
+                >
+                  <l.icon />
+                  {l.label}
+                  {badgeCount(l) > 0 && <span className="nav-badge">{badgeCount(l)}</span>}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+          <div className="nav-mobile-sep" />
+          <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <ScanControls state={state} act={act} mobile />
+          </div>
+          <div className="nav-mobile-sep" />
+          <ThemeToggle mobile />
+          <button
+            className="nav-mobile-link"
+            style={{ width: "100%", color: "var(--err-fg)", border: "none", background: "none", cursor: "pointer", textAlign: "left" }}
+            onClick={() => logout()}
+          >
+            <IconLogout />
+            Logout
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }

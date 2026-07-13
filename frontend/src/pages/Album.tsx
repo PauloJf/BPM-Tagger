@@ -5,6 +5,7 @@ import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
+import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 
 interface AlbumResp {
   album: string;
@@ -22,6 +23,7 @@ export default function Album() {
   const albumArtist = params.get("album_artist") || "";
   useTitle(album || "Album");
   const player = usePlayer();
+  const [showArt, toggleArt] = useArtwork();
 
   const q = useQuery({
     queryKey: ["album", album, albumArtist],
@@ -38,8 +40,9 @@ export default function Album() {
   return (
     <>
       <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+        {showArt && tracks.length > 0 && <Cover path={tracks[0].file_path} size={92} />}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Link to="/stats" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Stats</Link>
+          <Link to="/albums" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Albums</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{album || "Album"}</h1>
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
             {aa && <Link to={`/artist?name=${encodeURIComponent(aa)}`} style={{ color: "var(--accent-2)" }}>{aa}</Link>}
@@ -47,6 +50,7 @@ export default function Album() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <ArtToggle show={showArt} onToggle={toggleArt} />
           <button className="btn btn-primary btn-sm" disabled={!tracks.length} onClick={() => playAll(false)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
             Play all
@@ -73,7 +77,7 @@ export default function Album() {
               <button className="row-play" aria-label="Add to queue" title="Add to queue" onClick={() => player.enqueue(toPT(t))}><AddIcon /></button>
               <button className="row-play" aria-label="Play next" title="Play next" onClick={() => player.playNext(toPT(t))}><NextIcon /></button>
               <Link
-                to={`/track?path=${encodeURIComponent(t.file_path)}`}
+                to={`/track?path=${encodeURIComponent(t.file_path)}&back=album&back_album=${encodeURIComponent(album)}&back_artist=${encodeURIComponent(aa)}`}
                 style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 title={t.title || basename(t.file_path)}
               >

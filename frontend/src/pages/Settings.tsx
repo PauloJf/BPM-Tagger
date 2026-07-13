@@ -18,6 +18,7 @@ const SIDEBAR = [
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
   ["sec-playback", "Playback"],
+  ["sec-artwork", "Artwork"],
   ["sec-isrc", "ISRC"],
   ["sec-trash", "Trash"],
   ["sec-deleted", "Deleted Tracks"],
@@ -115,6 +116,7 @@ export default function Settings() {
   const [mode, setMode] = useState("watch");
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
+  const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [grabber, setGrabber] = useState({
     enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
@@ -153,6 +155,7 @@ export default function Settings() {
   const [modeSaved, setModeSaved] = useState<Saved>("");
   const [navSaved, setNavSaved] = useState<Saved>("");
   const [playSaved, setPlaySaved] = useState<Saved>("");
+  const [artworkSaved, setArtworkSaved] = useState<Saved>("");
   const [pwSaved, setPwSaved] = useState<Saved>("");
   const [pwErr, setPwErr] = useState("");
   const [hashMsg, setHashMsg] = useState("");
@@ -170,6 +173,7 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
+    setFetchArtistImages(b("fetch_artist_images", false));
     setGrabber({
       enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
       publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
@@ -691,6 +695,23 @@ export default function Settings() {
               </div>
               <div style={{ marginTop: 14 }}>
                 <SaveButton state={playSaved} label="Save Playback Settings" />
+              </div>
+            </form>
+          </div>
+
+          {/* Artwork */}
+          <div id="sec-artwork" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Artwork</h2>
+              <p>Artist images come from an <code>artist.jpg</code> next to the artist's files when present. Optionally fetch missing ones online.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/artwork", { fetch_artist_images: fetchArtistImages }, setArtworkSaved); }}>
+              <div className="field-row">
+                {fieldLabel("Fetch artist images online", "Look up artists without a local artist.jpg on Deezer's public API (no account needed) and cache the image on disk — each artist is fetched at most once a day. Sends artist names to Deezer, so it's off by default.")}
+                <Toggle on={fetchArtistImages} onChange={setFetchArtistImages} label="Fetch artist images online" />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={artworkSaved} label="Save Artwork Settings" />
               </div>
             </form>
           </div>

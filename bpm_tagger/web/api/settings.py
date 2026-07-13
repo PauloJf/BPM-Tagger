@@ -169,6 +169,17 @@ def api_settings_playback():
     return jsonify(ok=True)
 
 
+@settings_bp.route("/api/settings/artwork", methods=["POST"])
+@login_required
+def api_settings_artwork():
+    _check_csrf()
+    st = state()
+    updates = {"fetch_artist_images": bool(_json_body().get("fetch_artist_images"))}
+    st.config.update(updates)
+    save_settings(st.settings_path, updates)
+    return jsonify(ok=True)
+
+
 @settings_bp.route("/api/settings/grabber", methods=["POST"])
 @login_required
 def api_settings_grabber():

@@ -5,6 +5,7 @@ import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
+import { ArtistImage, ArtToggle, Cover, useArtwork } from "../components/Artwork";
 
 interface ArtistResp {
   name: string;
@@ -17,6 +18,7 @@ export default function Artist() {
   const name = params.get("name") || "";
   useTitle(name || "Artist");
   const player = usePlayer();
+  const [showArt, toggleArt] = useArtwork();
 
   const q = useQuery({
     queryKey: ["artist", name],
@@ -41,8 +43,9 @@ export default function Artist() {
   return (
     <>
       <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+        {showArt && tracks.length > 0 && <ArtistImage name={name} fallbackPath={tracks[0].file_path} size={92} />}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Link to="/tracks" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Library</Link>
+          <Link to="/artists" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Artists</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{name || "Artist"}</h1>
           {stats && (
             <p style={{ fontSize: 13, color: "var(--muted)" }}>
@@ -53,6 +56,7 @@ export default function Artist() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <ArtToggle show={showArt} onToggle={toggleArt} />
           <button className="btn btn-primary btn-sm" disabled={!tracks.length} onClick={() => playAll(false)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
             Play all
@@ -71,7 +75,8 @@ export default function Artist() {
       ) : (
         albums.map((g) => (
           <div key={g.album} style={{ marginBottom: 18 }}>
-            <div className="section-label">
+            <div className="section-label" style={{ justifyContent: "flex-start", alignItems: "center", gap: 8 }}>
+              {showArt && g.tracks.length > 0 && <Cover path={g.tracks[0].file_path} size={26} />}
               <Link to={`/album?album=${encodeURIComponent(g.album)}&album_artist=${encodeURIComponent(g.tracks[0]?.album_artist || name)}`} style={{ color: "inherit", textDecoration: "none" }}>
                 {g.album}
               </Link>
@@ -89,7 +94,7 @@ export default function Artist() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
                   </button>
                   <Link
-                    to={`/track?path=${encodeURIComponent(t.file_path)}`}
+                    to={`/track?path=${encodeURIComponent(t.file_path)}&back=artist&back_name=${encodeURIComponent(name)}`}
                     style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     title={t.title || basename(t.file_path)}
                   >

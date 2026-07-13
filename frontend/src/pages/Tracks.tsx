@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
 import { ArrowIcon, ConfBar, FolderIcon, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import LibraryTabs from "../components/LibraryTabs";
+import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { useTitle } from "../hooks/useTitle";
 import { usePlayer } from "../lib/player";
 
@@ -62,6 +64,7 @@ export default function Tracks() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const player = usePlayer();
+  const [showArt, toggleArt] = useArtwork();
 
   const q = params.get("q") || "";
   const filter = params.get("filter") || "";
@@ -235,6 +238,8 @@ export default function Tracks() {
           </p>
         </div>
 
+        <LibraryTabs />
+
         <div style={{ display: "flex", gap: 8 }}>
           <button
             className="btn btn-primary btn-sm"
@@ -272,6 +277,7 @@ export default function Tracks() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <ArtToggle show={showArt} onToggle={toggleArt} />
           <div className="search-wrap">
             <span className="search-icon">
               <SearchIcon />
@@ -402,6 +408,11 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
                     </button>
+                    {showArt && (
+                      <span className="row-cover">
+                        <Cover path={t.file_path} size={38} />
+                      </span>
+                    )}
                     <div style={{ minWidth: 0 }}>
                       <div className="track-main" style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {title}

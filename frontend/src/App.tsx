@@ -8,7 +8,9 @@ import TrackDetail from "./pages/TrackDetail";
 import TrackCompare from "./pages/TrackCompare";
 import Duplicates from "./pages/Duplicates";
 import Artist from "./pages/Artist";
+import Artists from "./pages/Artists";
 import Album from "./pages/Album";
+import Albums from "./pages/Albums";
 import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
 import Queue from "./pages/Queue";
@@ -23,7 +25,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Nav />
-      <div className="container page-enter">{children}</div>
+      <div className="app-main">
+        <div className="container page-enter">{children}</div>
+      </div>
       <PlayerBar />
     </>
   );
@@ -62,7 +66,9 @@ export default function App() {
         <Route path="/track" element={<TrackDetail />} />
         <Route path="/compare" element={<TrackCompare />} />
         <Route path="/duplicates" element={<Duplicates />} />
+        <Route path="/artists" element={<Artists />} />
         <Route path="/artist" element={<Artist />} />
+        <Route path="/albums" element={<Albums />} />
         <Route path="/album" element={<Album />} />
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlist" element={<PlaylistDetail />} />
