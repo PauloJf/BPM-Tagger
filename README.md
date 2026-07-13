@@ -383,6 +383,7 @@ Full detail page for a single track with:
 - **Re-analyze** — re-runs BPM detection for this track immediately without starting a full library scan; available any time no other scan is running
 - **Save & Lock** — manually enter any BPM value, click Save & Lock to write the tag and prevent future scans from overwriting it
 - **Unlock** — removes the lock so the track is re-analyzed on the next scan
+- **Find metadata** — fills the whole metadata form from **Spotify** (when connected) and **Deezer**: resolved directly **by ISRC** when the field is set, otherwise by artist + title (falling back to the filename). Candidates show cover, album, year, track #, duration Δ against the file, and ISRC; clicking one opens a **detail view** with a large cover and a field-by-field comparison highlighting what would change (with the current value shown alongside). **Use** fills the fields for review before saving. **Find ISRC** still does the ISRC-only lookup (Deezer / Spotify / MusicBrainz).
 - **Lyrics** — shows the track's lyrics (embedded tag or `.lrc` sidecar) with a synced/plain indicator; **Fetch from LRCLIB** looks them up by artist + title + album + duration (synced preferred), **Edit / Add manually** opens a text editor (paste LRC lines for synced lyrics), and **Remove** clears the tag and sidecar
 - **Edit cover** — under the header artwork; opens the same Spotify/Deezer image picker used on the artist and album pages
 

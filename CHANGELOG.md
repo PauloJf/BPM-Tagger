@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Find metadata:** the track metadata editor can now fill every field from **Spotify** (when connected) and **Deezer** instead of hand-typing — resolved directly **by ISRC** when the field is set (both services support exact-recording lookup), otherwise by artist + title, falling back to the filename. Candidates show cover, album, year, track #, ISRC, and a duration Δ against the file; clicking a candidate opens a **detail view** (large cover, every field, differences vs the current form highlighted with the current value alongside). **Use** fills the form for review before saving. Deezer calls go through the shared rate limiter.
 - **Installable web app (PWA):** the UI now ships a web-app manifest, home-screen icons and a minimal service worker, so it can be installed on a phone (Android: Chrome menu → *Install app*; iOS: Share → *Add to Home Screen*) and runs standalone. The service worker does **no caching** — the app and audio always stream from your server, so nothing can go stale. Install requires HTTPS (reverse proxy, or `tailscale serve` for a private tailnet URL). The player also wires the **Media Session API**: lock-screen / headset play-pause-next-prev controls with title, artist and cover art.
 
 ## v2.4.1 — 2026-07-13

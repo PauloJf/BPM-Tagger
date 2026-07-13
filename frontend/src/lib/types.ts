@@ -48,6 +48,21 @@ export interface ImageCandidate {
   thumb_url: string;
 }
 
+export interface MetadataCandidate {
+  source: string;
+  title: string;
+  artist: string;
+  album: string;
+  album_artist: string;
+  track_no: number | null;
+  disc_no: number | null;
+  year: number | null;
+  isrc: string;
+  duration_ms: number | null;
+  cover_url: string;
+  url: string;
+}
+
 export interface TracksPage {
   tracks: Track[];
   total: number;

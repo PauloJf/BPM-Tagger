@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiUpload } from "../lib/api";
 import { basename, dirname } from "../lib/paths";
 import { usePlayer } from "../lib/player";
-import type { LyricsResponse, TrackDetailResponse } from "../lib/types";
+import type { LyricsResponse, MetadataCandidate, TrackDetailResponse } from "../lib/types";
 import { ImagePicker } from "../components/ImagePicker";
 import { BpmDisplay } from "../components/BpmDisplay";
 import { DetectorBar } from "../components/DetectorBar";
@@ -48,6 +48,66 @@ export default function TrackDetail() {
   const [isrcFinding, setIsrcFinding] = useState(false);
   const [isrcCands, setIsrcCands] = useState<{ source: string; isrc: string; title: string; artist: string; url: string }[] | null>(null);
   const [isrcSpotifyUrl, setIsrcSpotifyUrl] = useState("");
+  const [metaFinding, setMetaFinding] = useState(false);
+  const [metaCands, setMetaCands] = useState<MetadataCandidate[] | null>(null);
+  const [detailCand, setDetailCand] = useState<MetadataCandidate | null>(null);
+
+  // Look up full tag sets from Spotify/Deezer — directly by ISRC when the
+  // field is filled, else by artist+title, else by the filename.
+  async function findMetadata() {
+    setMetaFinding(true);
+    setMetaCands(null);
+    setIsrcCands(null);
+    try {
+      const isrc = metaForm.isrc.replace(/[\s-]/g, "");
+      const params = isrc
+        ? `isrc=${encodeURIComponent(isrc)}`
+        : (metaForm.artist.trim() || metaForm.title.trim())
+        ? `artist=${encodeURIComponent(metaForm.artist)}&title=${encodeURIComponent(metaForm.title)}`
+        : `q=${encodeURIComponent(basename(path).replace(/\.[^.]+$/, ""))}`;
+      const r = await api.get<{ candidates: MetadataCandidate[] }>(`/api/metadata/lookup?${params}`);
+      setMetaCands(r.candidates || []);
+    } catch {
+      setMetaCands([]);
+    } finally {
+      setMetaFinding(false);
+    }
+  }
+
+  function applyCandidate(c: MetadataCandidate) {
+    // Fill from the candidate, keeping the current value where it has none.
+    setMetaForm((f) => ({
+      title: c.title || f.title,
+      artist: c.artist || f.artist,
+      album: c.album || f.album,
+      album_artist: c.album_artist || f.album_artist,
+      track_no: c.track_no != null ? String(c.track_no) : f.track_no,
+      disc_no: c.disc_no != null ? String(c.disc_no) : f.disc_no,
+      year: c.year != null ? String(c.year) : f.year,
+      isrc: c.isrc || f.isrc,
+    }));
+    setMetaCands(null);
+    setDetailCand(null);
+    setMetaMsg({ ok: true, text: "Fields filled — review, then Save metadata." });
+  }
+
+  function fmtDur(ms: number | null): string {
+    if (!ms) return "—";
+    return `${Math.floor(ms / 60000)}:${String(Math.round((ms % 60000) / 1000)).padStart(2, "0")}`;
+  }
+
+  useEffect(() => {
+    if (!detailCand) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDetailCand(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailCand]);
+
+  function durDelta(ms: number | null): string {
+    if (!ms || !track?.duration_ms) return "";
+    const d = Math.round((ms - track.duration_ms) / 1000);
+    return d === 0 ? " · Δ0s" : ` · Δ${d > 0 ? "+" : ""}${d}s`;
+  }
   async function findIsrc() {
     setIsrcFinding(true);
     setIsrcCands(null);
@@ -129,6 +189,8 @@ export default function TrackDetail() {
     setUnlockMsg(null);
     setReanalyzeMsg(null);
     setMetaMsg(null);
+    setMetaCands(null);
+    setDetailCand(null);
     setLyricsMsg(null);
     setLyricsEditing(false);
     if (track) {
@@ -527,13 +589,59 @@ export default function TrackDetail() {
               ))}
             </div>
 
-            {/* Find ISRC */}
+            {/* Find metadata / Find ISRC */}
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+              <button className="btn btn-ghost btn-sm" disabled={metaFinding} onClick={findMetadata}>
+                {metaFinding ? "Searching…" : "Find metadata"}
+              </button>
               <button className="btn btn-ghost btn-sm" disabled={isrcFinding} onClick={findIsrc}>
                 {isrcFinding ? "Finding ISRC…" : "Find ISRC"}
               </button>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>Looks up the ISRC (Deezer / Spotify / MusicBrainz) — pick one, then Save.</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                Find metadata fills every field from Spotify/Deezer — by ISRC when set, else by artist + title (or the filename). Find ISRC looks up just the ISRC.
+              </span>
             </div>
+            {metaCands != null && (
+              <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", marginTop: 8, fontSize: 11, display: "flex", flexDirection: "column", gap: 8 }}>
+                {metaCands.length === 0 ? (
+                  <span style={{ color: "var(--muted)" }}>
+                    No matches — refine the artist/title (or check the ISRC) and search again.
+                  </span>
+                ) : (
+                  metaCands.map((c) => (
+                    <div key={c.source + (c.url || c.isrc || c.title)} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <button
+                        onClick={() => setDetailCand(c)}
+                        title="Show full details"
+                        style={{ display: "flex", gap: 10, alignItems: "center", flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit", font: "inherit" }}
+                      >
+                        {c.cover_url ? (
+                          <img src={c.cover_url} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                        ) : (
+                          <div className="art-thumb" style={{ width: 36, height: 36, fontSize: 13 }} aria-hidden>♪</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--text)", fontWeight: 500 }}>{c.title}</span>
+                            <span style={{ color: "var(--muted)" }}> — {c.artist}</span>
+                          </div>
+                          <div style={{ color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.album}
+                            {c.year ? ` (${c.year})` : ""}
+                            {c.track_no != null ? ` · #${c.track_no}` : ""}
+                            {c.duration_ms ? ` · ${fmtDur(c.duration_ms)}${durDelta(c.duration_ms)}` : ""}
+                            {c.isrc ? ` · ${c.isrc}` : ""}
+                          </div>
+                        </div>
+                        <span aria-hidden style={{ color: "var(--muted)", flexShrink: 0 }}>›</span>
+                      </button>
+                      <span className="chip chip--neutral" style={{ flexShrink: 0 }}>{c.source}</span>
+                      <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => applyCandidate(c)}>Use</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
             {isrcCands != null && (
               <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", marginTop: 8, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
                 {isrcCands.length === 0 ? (
@@ -677,6 +785,80 @@ export default function TrackDetail() {
           onClose={() => setCoverPickerOpen(false)}
         />
       )}
+
+      {detailCand && (() => {
+        const c = detailCand;
+        // label · candidate value · current form value (to preview what Use changes)
+        const rows: [string, string, string][] = [
+          ["Title", c.title, metaForm.title],
+          ["Artist", c.artist, metaForm.artist],
+          ["Album", c.album, metaForm.album],
+          ["Album artist", c.album_artist, metaForm.album_artist],
+          ["Track #", c.track_no != null ? String(c.track_no) : "", metaForm.track_no],
+          ["Disc #", c.disc_no != null ? String(c.disc_no) : "", metaForm.disc_no],
+          ["Year", c.year != null ? String(c.year) : "", metaForm.year],
+          ["ISRC", c.isrc, metaForm.isrc],
+        ];
+        return (
+          <div
+            role="dialog"
+            aria-label="Candidate details"
+            onClick={() => setDetailCand(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200, display: "grid", placeItems: "center", padding: 16 }}
+          >
+            <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: "min(600px, 100%)", maxHeight: "88vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.title} <span style={{ color: "var(--muted)", fontWeight: 400 }}>— {c.artist}</span>
+                </h2>
+                <span className="chip chip--neutral" style={{ flexShrink: 0 }}>{c.source}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setDetailCand(null)} aria-label="Close">✕</button>
+              </div>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                {c.cover_url ? (
+                  <img src={c.cover_url} alt="" style={{ width: 210, height: 210, borderRadius: 12, objectFit: "cover", flexShrink: 0, alignSelf: "flex-start" }} />
+                ) : (
+                  <div className="art-thumb" style={{ width: 210, height: 210, fontSize: 64, flexShrink: 0 }} aria-hidden>♪</div>
+                )}
+                <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 7, fontSize: 12 }}>
+                  {rows.map(([label, cand, cur]) => {
+                    const changed = !!cand && cand.trim() !== cur.trim();
+                    return (
+                      <div key={label} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                        <span style={{ width: 86, flexShrink: 0, fontSize: 10, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}</span>
+                        <span style={{ minWidth: 0, wordBreak: "break-word" }}>
+                          <span style={{ color: changed ? "var(--accent-2)" : "var(--text)", fontWeight: changed ? 500 : 400 }}>{cand || "—"}</span>
+                          {changed && cur.trim() && (
+                            <span style={{ color: "var(--muted)", fontSize: 11 }}> (now: {cur})</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                    <span style={{ width: 86, flexShrink: 0, fontSize: 10, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)" }}>Duration</span>
+                    <span style={{ color: "var(--text)" }}>
+                      {fmtDur(c.duration_ms)}
+                      <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                        {durDelta(c.duration_ms) || ""}{track.duration_ms ? ` (file: ${fmtDur(track.duration_ms)})` : ""}
+                      </span>
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+                    Highlighted values differ from the current form. Use fills the form only — nothing is written until you Save metadata.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)", fontSize: 12 }}>Open on {c.source} ↗</a>}
+                <div style={{ flex: 1 }} />
+                <button className="btn btn-ghost btn-sm" onClick={() => setDetailCand(null)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={() => applyCandidate(c)}>Use these fields</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

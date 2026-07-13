@@ -113,6 +113,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - **Artist & album pages** and a cadence ½×/2× BPM filter for running
 - Duplicate resolution — a dedicated **Duplicates** page; step through groups side-by-side (stacked on mobile) and move unwanted copies to a recoverable **trash** (purged from Settings)
 - ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
+- **Find metadata** — fill a track's whole tag set from Spotify/Deezer (directly by ISRC when known, else by artist + title or filename), review, then save
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis
 - Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors; with the grabber on, a **Library sources** card (grabbed vs pre-existing, downloads per provider, duplicates / ISRC / playlist-coverage rollups)

@@ -19,6 +19,7 @@ from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
 from ...integrations.isrc import gather_candidates, pick_confident
+from ...integrations.metadata import gather_metadata
 from ...integrations.navidrome import _trigger_navidrome_rescan
 from ...integrations.ratelimit import deezer_limiter
 from ...trash import move_to_trash, purge_trash, trash_stats
@@ -344,6 +345,27 @@ def api_isrc_lookup():
     client = g.client if g else None
     candidates = gather_candidates(st.config, client, artist, title)
     return jsonify(candidates=candidates, spotify_search_url=spotify_search_url)
+
+
+@tracks_bp.route("/api/metadata/lookup")
+@login_required
+def api_metadata_lookup():
+    """Full-tag candidates for the metadata editor's 'Find metadata' action.
+    With ?isrc= both sources resolve that exact recording; otherwise
+    ?artist=/&title= (or free ?q=) run a text search."""
+    st = state()
+    isrc = _normalize_isrc(request.args.get("isrc", ""))
+    if isrc and _isrc_error(isrc):
+        return jsonify(candidates=[], error=_isrc_error(isrc)), 400
+    artist = request.args.get("artist", "").strip()
+    title = request.args.get("title", "").strip()
+    q = request.args.get("q", "").strip()
+    if not (isrc or artist or title or q):
+        return jsonify(candidates=[])
+    g = getattr(st.tagger, "grabber", None) if st.tagger else None
+    client = g.client if g else None
+    return jsonify(candidates=gather_metadata(client, artist=artist, title=title,
+                                              isrc=isrc, q=q))
 
 
 def _set_track_isrc(st, file_path: str, isrc: str) -> bool:
