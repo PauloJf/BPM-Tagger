@@ -42,6 +42,7 @@ interface NavItem { to: string; label: string; badge?: boolean; badgeCount?: num
 const BASE_LINKS: NavItem[] = [
   { to: "/tracks", label: "Library" },
   { to: "/review", label: "Review", badge: true },
+  { to: "/duplicates", label: "Duplicates" },
   { to: "/stats", label: "Stats" },
   { to: "/settings", label: "Settings" },
   { to: "/about", label: "About" },

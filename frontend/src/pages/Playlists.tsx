@@ -113,20 +113,20 @@ export default function Playlists() {
         ) : (
           playlists.map((p) => (
             <div key={p.id} className="pl-card">
-              <Link to={`/playlist?id=${p.id}`} style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}>
+              <Link to={`/playlist?id=${p.id}`} className="pl-card-main">
                 {p.image_url ? (
                   <img src={p.image_url} alt="" className="pl-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="pl-cover">♪</div>
                 )}
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.name}
                   </div>
                   <Chips p={p} />
                 </div>
               </Link>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <div className="pl-card-actions">
                 <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
                 <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate(p.id)}>
                   {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}

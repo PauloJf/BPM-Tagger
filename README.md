@@ -66,7 +66,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Ambiguity inbox** — low-confidence matches wait for you to choose a candidate, **search again** (re-run the default search) or refine the query, or skip; you get an ntfy ping with a tap-through link
 - **Queue** — live download progress, retry/cancel, and history
 - **Metadata editor** — edit tags + cover on any track and optionally rename it to the path template (the watcher won't re-analyze the edited file)
-- **m3u export & duplicate resolution** — export a playlist's on-disk tracks; find library duplicates by normalized artist+title, step through them side-by-side, and move unwanted copies to a recoverable **trash** (purged from Settings)
+- **m3u export & duplicate resolution** — export a playlist's on-disk tracks; a dedicated **Duplicates** page lists library duplicates (same normalized artist+title or shared ISRC) to step through side-by-side and move unwanted copies to a recoverable **trash** (purged from Settings)
 - **ISRC lookup & fill** — a **Find ISRC** button on the track-detail and compare views looks up a track's ISRC from Deezer / Spotify / MusicBrainz; a **bulk fill** (Settings → ISRC) fills every track missing one — auto-writing confident, duration-matched results and listing the rest for you to choose. ISRCs sharpen duplicate detection and library matching.
 - **Managed, never clobbered** — grabbed tracks are marked `managed`; the BPM hash is stamped after tagging so the library watcher leaves them alone
 
@@ -332,6 +332,9 @@ Filtered view showing only tracks that meet one or more of these criteria:
 - `status = 'error'`
 
 The raw `bpm_dr` (deeprhythm), `bpm_es` (essentia), and `bpm_lb` (librosa) values are shown so you can see exactly what each detector returned.
+
+#### Duplicates (`/duplicates`)
+Lists likely copies of the same recording — grouped by normalized artist + title or a shared ISRC. **Compare** opens each group side-by-side (stacked cards on mobile) with metadata, BPM and waveforms; differing fields are highlighted and the best copy gets a *suggested keep* hint. **Keep** trashes the other copies in one click, **Not a duplicate** dismisses the group, and resolving a group jumps straight to the next one. Trashed copies stay recoverable until purged from Settings.
 
 #### Track Detail (`/track`)
 Full detail page for a single track with:

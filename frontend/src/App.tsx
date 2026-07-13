@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
 import TrackCompare from "./pages/TrackCompare";
+import Duplicates from "./pages/Duplicates";
 import Artist from "./pages/Artist";
 import Album from "./pages/Album";
 import Playlists from "./pages/Playlists";
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
         <Route path="/compare" element={<TrackCompare />} />
+        <Route path="/duplicates" element={<Duplicates />} />
         <Route path="/artist" element={<Artist />} />
         <Route path="/album" element={<Album />} />
         <Route path="/playlists" element={<Playlists />} />

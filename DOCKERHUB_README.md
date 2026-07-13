@@ -104,7 +104,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), reload-persistent queue, keyboard shortcuts, and a ducking **preview** from detail/compare views
 - **Artist & album pages** and a cadence ½×/2× BPM filter for running
-- Duplicate resolution — step through groups side-by-side and move unwanted copies to a recoverable **trash** (purged from Settings)
+- Duplicate resolution — a dedicated **Duplicates** page; step through groups side-by-side (stacked on mobile) and move unwanted copies to a recoverable **trash** (purged from Settings)
 - ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
 - **Re-analyze** button on track detail — re-runs detection for a single track without a full scan
 - Save & Lock corrected BPM; Unlock for re-analysis

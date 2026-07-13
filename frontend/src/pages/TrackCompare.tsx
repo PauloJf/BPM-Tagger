@@ -6,6 +6,7 @@ import type { Track, TrackDetailResponse } from "../lib/types";
 import { usePlayer } from "../lib/player";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 interface DupGroup { tracks: { file_path: string }[] }
 
@@ -177,6 +178,7 @@ export default function TrackCompare() {
   const paths = params.getAll("path");
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { endPreview } = usePlayer();
   useEffect(() => () => endPreview(), [endPreview]);  // leaving resumes the queue (dec 8)
 
@@ -236,8 +238,8 @@ export default function TrackCompare() {
   const prevGroup = groupIdx > 0 ? groups[groupIdx - 1] : null;
   const nextGroup = groupIdx >= 0 && groupIdx < groups.length - 1 ? groups[groupIdx + 1] : null;
 
-  // After resolving a group, step to the next one (or back to Stats when done).
-  const gotoNextGroup = () => navigate(nextGroup ? compareHref(nextGroup.tracks.map((t) => t.file_path)) : "/stats");
+  // After resolving a group, step to the next one (or back to the list when done).
+  const gotoNextGroup = () => navigate(nextGroup ? compareHref(nextGroup.tracks.map((t) => t.file_path)) : "/duplicates");
 
   const dismiss = useMutation({
     mutationFn: () => api.post("/api/duplicates/dismiss", { paths }),
@@ -274,7 +276,7 @@ export default function TrackCompare() {
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Compare tracks</h1>
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
             Side-by-side metadata, BPM and waveform. Differing fields are highlighted.
-            {" "}<Link to="/stats" style={{ color: "var(--accent-2)" }}>← Back to duplicates</Link>
+            {" "}<Link to="/duplicates" style={{ color: "var(--accent-2)" }}>← Back to duplicates</Link>
           </p>
         </div>
         {groupIdx >= 0 && (
@@ -311,9 +313,46 @@ export default function TrackCompare() {
       </div>
 
       {paths.length < 2 ? (
-        <div className="card" style={{ color: "var(--muted)" }}>Select two or more tracks to compare (from Stats → Possible duplicates).</div>
+        <div className="card" style={{ color: "var(--muted)" }}>
+          Select two or more tracks to compare (from the <Link to="/duplicates" style={{ color: "var(--accent-2)" }}>Duplicates</Link> page).
+        </div>
       ) : loading ? (
         <p style={{ color: "var(--muted)" }}>Loading…</p>
+      ) : isMobile ? (
+        /* Mobile: the side-by-side grid can't fit a phone — stack one card per
+           track instead, each with its own field list. Differing fields stay
+           highlighted so the copies are still easy to tell apart. */
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {tracks.map((t) => (
+            <div key={t.file_path} className="card">
+              <ColumnHeader
+                track={t}
+                busy={trash.isPending || keeping}
+                onTrash={(fp) => trash.mutate(fp)}
+                onKeep={keepOnly}
+                showKeep={tracks.length > 1}
+                suggested={t.file_path === suggestedPath}
+              />
+              <div style={{ marginTop: 12 }}>
+                {ROWS.map((r) => (
+                  <div
+                    key={r.key}
+                    style={{
+                      display: "grid", gridTemplateColumns: "104px minmax(0, 1fr)", gap: 10,
+                      padding: "7px 0", borderBottom: "1px solid var(--border)",
+                      background: differs.has(r.key) ? "var(--warn-bg)" : "transparent",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{r.label}</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: differs.has(r.key) ? "var(--warn-fg)" : "var(--text)", wordBreak: "break-word" }}>
+                      {r.get(t)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <div className="card" style={{ minWidth: 520 }}>
