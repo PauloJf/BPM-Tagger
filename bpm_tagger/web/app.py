@@ -18,6 +18,8 @@ from flask import Flask, abort, request, send_file, send_from_directory
 
 from ..db import BPMDatabase
 from .api.auth import api_auth_bp
+from .api.images import images_bp
+from .api.lyrics import lyrics_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
 from .api.inbox import inbox_bp
@@ -93,7 +95,7 @@ def create_app(config: dict) -> Flask:
         config.get("ui_public_url") or "").lower().startswith("https://")
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
-               spotify_bp, playlists_bp, queue_bp, inbox_bp):
+               spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────
@@ -126,13 +128,14 @@ def create_app(config: dict) -> Flask:
         # Vite emits external, hashed script bundles, so 'unsafe-inline' is no
         # longer needed for scripts. Inline styles are still used (React style
         # props), so style-src keeps 'unsafe-inline'.
-        # Spotify serves album/playlist art from its image CDNs; allow those
-        # hosts so covers render in the UI (default-src stays same-origin).
+        # Spotify serves album/playlist art from its image CDNs, and the image
+        # picker shows Deezer candidates from dzcdn; allow those hosts so covers
+        # render in the UI (default-src stays same-origin).
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "img-src 'self' data: https://i.scdn.co https://*.scdn.co "
-            "https://*.spotifycdn.com; media-src 'self';"
+            "https://*.spotifycdn.com https://*.dzcdn.net; media-src 'self';"
         )
         return resp
 

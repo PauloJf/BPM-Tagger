@@ -115,6 +115,14 @@ def build_config() -> dict:
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
         "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
+        # Save fetched/picked artist images as artist.jpg in the artist's own
+        # folder (Navidrome convention) instead of only the app cache. Only
+        # writes when the layout has a folder exclusive to the artist.
+        "artist_images_to_library":   os.environ.get("ARTIST_IMAGES_TO_LIBRARY", "false").lower() == "true",
+        # Lyrics: lyrics_enabled gates the automatic fetch for grabbed tracks;
+        # manual per-track fetch/edit in the UI is always available.
+        "lyrics_enabled":             os.environ.get("LYRICS_ENABLED", "false").lower() == "true",
+        "lyrics_mode":                os.environ.get("LYRICS_MODE", "embed"),  # embed | sidecar
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),

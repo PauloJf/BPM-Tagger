@@ -13,8 +13,10 @@ import shutil
 import threading
 import time
 
+from ..bpm.lyrics import is_synced, write_lyrics
 from ..bpm.pipeline import detect_bpm
 from ..bpm.tags import get_file_hash, write_bpm_tag
+from ..integrations.lrclib import fetch_lyrics
 from ..integrations.navidrome import _trigger_navidrome_rescan
 from .matching import normalize_artist, normalize_title, score
 from .path_template import render, unique_path
@@ -194,6 +196,20 @@ class GrabPipeline:
             cover_warn = embed_cover(out_path, cover)
             if cover_warn:
                 self.db.add_grab_event(item_id, "warning", cover_warn)
+        # Lyrics (opt-in via lyrics_enabled): fetched from LRCLIB and embedded
+        # while the file is still staged. Grabbed files always embed — a sidecar
+        # would need its own move into music_dir. Non-fatal like tags/cover.
+        lyrics_text = ""
+        if self.config.get("lyrics_enabled"):
+            try:
+                lyr = fetch_lyrics(meta.get("artist") or "", meta.get("title") or "",
+                                   meta.get("album") or "", meta.get("duration_ms"))
+                lyrics_text = (lyr or {}).get("synced") or (lyr or {}).get("plain") or ""
+                if lyrics_text and not write_lyrics(out_path, lyrics_text, mode="embed"):
+                    lyrics_text = ""
+            except Exception as exc:
+                self.db.add_grab_event(item_id, "warning", f"lyrics fetch failed: {exc}")
+                lyrics_text = ""
 
         # 5 — BPM: detect + write tag on the *staged* file (still in tmp_dir).
         #     Doing this before the file enters music_dir means a crash can't
@@ -219,6 +235,8 @@ class GrabPipeline:
             final, fresh_hash, meta, result.get("bpm"), result.get("bpm_dr"),
             result.get("bpm_es"), result.get("bpm_lb"), result.get("confidence"),
             result.get("detector"), meta.get("spotify_track_id") or "")
+        if lyrics_text:
+            self.db.set_lyrics_state(final, "fetched", is_synced(lyrics_text))
 
         # 7 — done + notify + debounced Navidrome rescan
         self.db.update_grab(item_id, progress=1.0, final_path=final)

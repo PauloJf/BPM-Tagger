@@ -20,6 +20,7 @@ from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
 from ...integrations.isrc import gather_candidates, pick_confident
 from ...integrations.navidrome import _trigger_navidrome_rescan
+from ...integrations.ratelimit import deezer_limiter
 from ...trash import move_to_trash, purge_trash, trash_stats
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
@@ -597,26 +598,89 @@ _ARTIST_IMG_NAMES = ("artist.jpg", "artist.jpeg", "artist.png", "artist.webp")
 _ARTIST_IMG_MISS_TTL = 86400  # retry failed online lookups daily
 
 
-def _artist_image_cache(name: str) -> tuple[str, str, str]:
-    """(cache_dir, cached_image_path, miss_marker_path) for an artist name."""
+def _artist_image_cache(name: str) -> tuple[str, str, str, str]:
+    """(cache_dir, custom_image_path, cached_image_path, miss_marker_path) for an
+    artist name. ``custom`` holds an image the user explicitly chose in the UI;
+    ``cached`` holds an automatic online-lookup result."""
     data_dir = os.path.dirname(state().config.get("db_path", "/data/bpm_tagger.db")) or "."
     cache_dir = os.path.join(data_dir, "artist_images")
     slug = hashlib.sha1(name.strip().lower().encode("utf-8")).hexdigest()[:16]
-    return cache_dir, os.path.join(cache_dir, slug + ".img"), os.path.join(cache_dir, slug + ".miss")
+    return (cache_dir, os.path.join(cache_dir, slug + ".custom"),
+            os.path.join(cache_dir, slug + ".img"), os.path.join(cache_dir, slug + ".miss"))
+
+
+def _resolve_artist_dir(st, name: str) -> str | None:
+    """The artist's own folder inside the library, or None when the layout
+    doesn't have one. Only a directory that exclusively contains this artist's
+    tracks qualifies, so flat or shared (compilation) layouts never get a stray
+    artist.jpg written into them."""
+    rows = st.db.get_artist_tracks(name)
+    dirs = sorted({os.path.dirname(r["file_path"]) for r in rows if r.get("file_path")})
+    if not dirs:
+        return None
+    try:
+        common = os.path.commonpath(dirs)
+    except ValueError:  # paths on different drives
+        return None
+    music_root = os.path.realpath(st.music_dir)
+
+    def inside_library(d: str) -> bool:
+        rd = os.path.realpath(d)
+        return rd != music_root and rd.startswith(music_root + os.sep)
+
+    def exclusive(d: str) -> bool:
+        for t in st.db.get_tracks_under(os.path.join(d, "")):
+            owner = t.get("album_artist") or t.get("artist") or ""
+            if owner != name and (t.get("artist") or "") != name:
+                return False
+        return True
+
+    # For a single-album artist ({Artist}/{Album}/…) commonpath is the album
+    # dir — prefer its parent (the artist dir) when that's still safe.
+    for candidate in (os.path.dirname(common), common):
+        if candidate and inside_library(candidate) and os.path.isdir(candidate) \
+                and exclusive(candidate):
+            return candidate
+    return None
+
+
+def _save_artist_image_to_library(st, name: str, image: bytes) -> str | None:
+    """Write an artist image as artist.jpg in the artist's own folder
+    (Navidrome's convention), when ``artist_images_to_library`` is on and the
+    layout has a folder dedicated to the artist. Returns the saved path."""
+    if not st.config.get("artist_images_to_library") or not image:
+        return None
+    target_dir = _resolve_artist_dir(st, name)
+    if not target_dir:
+        return None
+    path = os.path.join(target_dir, "artist.jpg")
+    try:
+        with open(path, "wb") as f:
+            f.write(image)
+        log.info("Artist image saved to library: %s", path)
+        return path
+    except OSError as exc:
+        log.warning("Could not save artist.jpg for %s: %s", name, exc)
+        return None
 
 
 @tracks_bp.route("/api/artist/image")
 @login_required
 def api_artist_image():
-    """Artist image, resolved in privacy-preserving order: an ``artist.jpg``
-    beside the artist's files (Navidrome convention) → the on-disk cache → an
-    online Deezer lookup (opt-in via ``fetch_artist_images``), cached to disk
-    so each artist is fetched at most once a day. 404 lets the client fall
-    back to album art."""
+    """Artist image, resolved in privacy-preserving order: a user-chosen custom
+    image (set via the image picker) → an ``artist.jpg`` beside the artist's
+    files (Navidrome convention) → the on-disk cache → an online Deezer lookup
+    (opt-in via ``fetch_artist_images``), cached to disk so each artist is
+    fetched at most once a day. 404 lets the client fall back to album art."""
     st = state()
     name = request.args.get("name", "").strip()
     if not name:
         abort(400)
+
+    # 0. Explicit user choice always wins.
+    cache_dir, custom, cached, miss = _artist_image_cache(name)
+    if os.path.isfile(custom):
+        return send_file(custom, mimetype="image/jpeg", conditional=True, max_age=86400)
 
     # 1. Local artist.<ext> in the track's folder or its parent.
     seen: set[str] = set()
@@ -632,7 +696,6 @@ def api_artist_image():
                     return send_file(p, conditional=True, max_age=86400)
 
     # 2. Previously fetched image on disk.
-    cache_dir, cached, miss = _artist_image_cache(name)
     if os.path.isfile(cached):
         return send_file(cached, mimetype="image/jpeg", conditional=True, max_age=86400)
 
@@ -644,6 +707,7 @@ def api_artist_image():
         abort(404)
     os.makedirs(cache_dir, exist_ok=True)
     try:
+        deezer_limiter.acquire()  # stay under Deezer's public 50 req / 5 s quota
         resp = requests.get("https://api.deezer.com/search/artist",
                             params={"q": name, "limit": 1}, timeout=8)
         resp.raise_for_status()
@@ -656,6 +720,11 @@ def api_artist_image():
         if url and "/artist//" not in url and hit.get("name", "").strip().lower() == name.lower():
             img = requests.get(url, timeout=10)
             img.raise_for_status()
+            # Optionally file it as artist.jpg beside the artist's music
+            # (Navidrome sees it too, and step 1 finds it on every next load).
+            saved = _save_artist_image_to_library(st, name, img.content)
+            if saved:
+                return send_file(saved, mimetype="image/jpeg", conditional=True, max_age=86400)
             with open(cached, "wb") as f:
                 f.write(img.content)
             return send_file(cached, mimetype="image/jpeg", conditional=True, max_age=86400)

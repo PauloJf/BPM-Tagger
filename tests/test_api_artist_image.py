@@ -85,6 +85,61 @@ def test_artist_image_online_fetch_then_cache(client, monkeypatch):
     assert len(calls) == 2
 
 
+def test_artist_image_saved_to_library_when_enabled(client, base_config, monkeypatch):
+    """With artist_images_to_library on, the fetched image lands as artist.jpg
+    in the artist's own folder (found by step 1 on every later request)."""
+    _login(client)
+    st = client.application.extensions["state"]
+    st.config["fetch_artist_images"] = True
+    st.config["artist_images_to_library"] = True
+    music = base_config["music_dir"]
+    album_dir = os.path.join(music, "Daft Punk", "Discovery")
+    os.makedirs(album_dir)
+    _insert_track(base_config["db_path"], os.path.join(album_dir, "one.mp3"), "Daft Punk")
+
+    def fake_get(url, **kwargs):
+        if "api.deezer.com" in url:
+            return _FakeResp(json_data={"data": [
+                {"name": "Daft Punk", "picture_xl": "https://cdn.example/img.jpg"}]})
+        return _FakeResp(content=b"IMGBYTES")
+
+    monkeypatch.setattr(tracks_mod.requests, "get", fake_get)
+
+    resp = client.get("/api/artist/image?name=Daft Punk")
+    assert resp.status_code == 200 and resp.data == b"IMGBYTES"
+    saved = os.path.join(music, "Daft Punk", "artist.jpg")
+    assert os.path.isfile(saved)
+    with open(saved, "rb") as f:
+        assert f.read() == b"IMGBYTES"
+
+
+def test_artist_image_not_saved_to_shared_folder(client, base_config, monkeypatch):
+    """A folder holding another artist's tracks never gets an artist.jpg —
+    the image falls back to the app cache."""
+    _login(client)
+    st = client.application.extensions["state"]
+    st.config["fetch_artist_images"] = True
+    st.config["artist_images_to_library"] = True
+    music = base_config["music_dir"]
+    shared = os.path.join(music, "Compilations")
+    os.makedirs(shared)
+    _insert_track(base_config["db_path"], os.path.join(shared, "dp.mp3"), "Daft Punk")
+    _insert_track(base_config["db_path"], os.path.join(shared, "abba.mp3"), "ABBA")
+
+    def fake_get(url, **kwargs):
+        if "api.deezer.com" in url:
+            return _FakeResp(json_data={"data": [
+                {"name": "Daft Punk", "picture_xl": "https://cdn.example/img.jpg"}]})
+        return _FakeResp(content=b"IMGBYTES")
+
+    monkeypatch.setattr(tracks_mod.requests, "get", fake_get)
+
+    resp = client.get("/api/artist/image?name=Daft Punk")
+    assert resp.status_code == 200 and resp.data == b"IMGBYTES"
+    assert not os.path.isfile(os.path.join(shared, "artist.jpg"))
+    assert not os.path.isfile(os.path.join(music, "artist.jpg"))
+
+
 def test_artist_image_wrong_match_rejected_and_miss_cached(client, monkeypatch):
     _login(client)
     st = client.application.extensions["state"]

@@ -174,8 +174,32 @@ def api_settings_playback():
 def api_settings_artwork():
     _check_csrf()
     st = state()
-    updates = {"fetch_artist_images": bool(_json_body().get("fetch_artist_images"))}
+    data = _json_body()
+    updates = {
+        "fetch_artist_images":      bool(data.get("fetch_artist_images")),
+        "artist_images_to_library": bool(data.get("artist_images_to_library")),
+    }
     st.config.update(updates)
+    save_settings(st.settings_path, updates)
+    return jsonify(ok=True)
+
+
+@settings_bp.route("/api/settings/lyrics", methods=["POST"])
+@login_required
+def api_settings_lyrics():
+    _check_csrf()
+    st = state()
+    data = _json_body()
+    mode = str(data.get("lyrics_mode", "embed")).strip()
+    if mode not in ("embed", "sidecar"):
+        mode = "embed"
+    updates = {
+        "lyrics_enabled": bool(data.get("lyrics_enabled")),
+        "lyrics_mode":    mode,
+    }
+    st.config.update(updates)
+    if st.tagger is not None:
+        st.tagger.config.update(updates)
     save_settings(st.settings_path, updates)
     return jsonify(ok=True)
 

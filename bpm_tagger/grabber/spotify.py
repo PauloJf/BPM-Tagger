@@ -247,6 +247,52 @@ class SpotifyClient:
             params = None  # `next` is a full URL already carrying params
         return out
 
+    def search_artists(self, query: str, limit: int = 8) -> list[dict]:
+        """Search Spotify's catalog for artists (image picker)."""
+        if not query.strip():
+            return []
+        data = self._get("/search", {"q": query, "type": "artist",
+                                     "limit": min(50, max(1, limit))})
+        items = ((data.get("artists") or {}).get("items")) or []
+        out = []
+        for a in items:
+            if not a:
+                continue
+            images = a.get("images") or []
+            if not images:
+                continue
+            out.append({
+                "name": a.get("name", ""),
+                "image_url": images[0]["url"],
+                "thumb_url": images[-1]["url"],
+                "url": (a.get("external_urls") or {}).get("spotify", ""),
+            })
+        return out
+
+    def search_albums(self, query: str, limit: int = 8) -> list[dict]:
+        """Search Spotify's catalog for albums (cover picker)."""
+        if not query.strip():
+            return []
+        data = self._get("/search", {"q": query, "type": "album",
+                                     "limit": min(50, max(1, limit))})
+        items = ((data.get("albums") or {}).get("items")) or []
+        out = []
+        for al in items:
+            if not al:
+                continue
+            images = al.get("images") or []
+            if not images:
+                continue
+            artists = ", ".join(a["name"] for a in al.get("artists", []) if a.get("name"))
+            out.append({
+                "name": al.get("name", ""),
+                "artist": artists,
+                "image_url": images[0]["url"],
+                "thumb_url": images[-1]["url"],
+                "url": (al.get("external_urls") or {}).get("spotify", ""),
+            })
+        return out
+
     def search_tracks(self, query: str, limit: int = 20) -> list[dict]:
         """Search Spotify's catalog for tracks (manual search & grab)."""
         if not query.strip():

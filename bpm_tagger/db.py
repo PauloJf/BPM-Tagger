@@ -115,6 +115,9 @@ class BPMDatabase:
             ("managed",        "INTEGER DEFAULT 0"),
             ("spotify_track_id", "TEXT"),
             ("tags_indexed_hash", "TEXT"),  # file_hash at last tag-read pass
+            # ── Lyrics ────────────────────────────────────────────────────────
+            ("lyrics_status",  "TEXT"),     # embedded | fetched | not_found | instrumental
+            ("lyrics_synced",  "INTEGER DEFAULT 0"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -457,6 +460,19 @@ class BPMDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_tracks_under(self, dir_prefix: str) -> list[dict]:
+        """(file_path, artist, album_artist) for every non-deleted track whose
+        path starts with dir_prefix — used to check whether a folder belongs
+        exclusively to one artist before writing an artist.jpg into it."""
+        esc = dir_prefix.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, artist, album_artist FROM tracks "
+                "WHERE status != 'deleted' AND file_path LIKE ? ESCAPE '!'",
+                (esc + "%",)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_album_tracks(self, album: str, album_artist: Optional[str] = None) -> list[dict]:
         """Tracks on an album (optionally scoped to an album artist), disc/track ordered."""
         with self._connect() as conn:
@@ -498,6 +514,30 @@ class BPMDatabase:
                 "AND COALESCE(album, '') != '' "
                 "GROUP BY album, COALESCE(album_artist, '') "
                 "ORDER BY album COLLATE NOCASE"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_lyrics_state(self, file_path: str, status: str | None, synced: bool = False) -> None:
+        """Record a track's lyrics state (embedded/fetched/not_found/instrumental)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET lyrics_status = ?, lyrics_synced = ? WHERE file_path = ?",
+                (status, int(synced), file_path))
+            conn.commit()
+
+    def get_tracks_missing_lyrics(self, limit: int = 2000,
+                                  retry_not_found: bool = False) -> list[dict]:
+        """Non-deleted tracks with no lyrics yet — the bulk-fill work list.
+        Tracks without title+artist tags are skipped (nothing to look up)."""
+        skip = ("embedded", "fetched", "instrumental") if retry_not_found else \
+               ("embedded", "fetched", "instrumental", "not_found")
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT file_path, title, artist, album, duration_ms FROM tracks "
+                f"WHERE status != 'deleted' "
+                f"AND COALESCE(title, '') != '' AND COALESCE(artist, '') != '' "
+                f"AND COALESCE(lyrics_status, '') NOT IN ({','.join('?' * len(skip))}) "
+                f"ORDER BY analyzed_at DESC LIMIT ?", (*skip, limit)
             ).fetchall()
         return [dict(r) for r in rows]
 
