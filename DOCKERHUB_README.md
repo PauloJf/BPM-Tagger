@@ -111,7 +111,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
 - **Artist & album pages** and a cadence ½×/2× BPM filter for running
-- **Run mode** — a tempo-run player page: pick a target cadence (±1/±5, four configurable presets), auto-queue octave-folded BPM matches (**starred tracks** first), and **tempo-lock** playback so every song stretches onto your step, pitch preserved
+- **Run mode** — a full-screen tempo-run player: cover art, big target-BPM readout with a `native · stretch × octave → result` breakdown, ±1/±5 steps or four **named presets**, waveform + large transport; auto-queues octave-folded BPM matches (**starred tracks** first) and **locks the tempo** so every song stretches onto your step, pitch preserved
 - Duplicate resolution — a dedicated **Duplicates** page; step through groups side-by-side (stacked on mobile) and move unwanted copies to a recoverable **trash** (purged from Settings)
 - ISRC lookup (Deezer / Spotify / MusicBrainz) on track detail & compare, plus a **bulk "Fill missing ISRCs"** with a duration-match guard
 - **Find metadata** — fill a track's whole tag set from Spotify/Deezer (directly by ISRC when known, else by artist + title or filename), review, then save

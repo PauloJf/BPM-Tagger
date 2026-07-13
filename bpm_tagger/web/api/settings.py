@@ -182,13 +182,19 @@ def api_settings_run():
         except (ValueError, TypeError):
             return dflt
 
-    defaults = [140, 150, 160, 170]
+    from ...config import RUN_PRESET_DEFAULTS
     presets = []
     raw = data.get("run_presets", [])
     if isinstance(raw, list):
         for p in raw[:4]:
-            presets.append(int(_num(p, 30, 300, defaults[len(presets)])))
-    presets += defaults[len(presets):]
+            dflt_name, dflt_bpm = RUN_PRESET_DEFAULTS[len(presets)]
+            if isinstance(p, dict):
+                name = str(p.get("name", "")).strip()[:20] or dflt_name
+                bpm = int(_num(p.get("bpm"), 30, 300, dflt_bpm))
+            else:  # legacy shape: plain number
+                name, bpm = dflt_name, int(_num(p, 30, 300, dflt_bpm))
+            presets.append({"name": name, "bpm": bpm})
+    presets += [{"name": n, "bpm": b} for n, b in RUN_PRESET_DEFAULTS[len(presets):]]
 
     updates = {
         "run_presets":           presets,

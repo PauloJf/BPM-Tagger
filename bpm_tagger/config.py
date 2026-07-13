@@ -50,17 +50,26 @@ def _read_version() -> str:
 __version__ = _read_version()
 
 
+RUN_PRESET_DEFAULTS = [("Warmup", 120), ("Easy", 155), ("Steady", 165), ("Tempo", 175)]
+
+
 def _parse_run_presets(raw: str) -> list:
-    """Comma-separated BPM presets → exactly 4 ints (padded from defaults)."""
-    defaults = [140, 150, 160, 170]
+    """``"Name:bpm,Name:bpm,..."`` (bare ``bpm`` allowed) → exactly 4
+    ``{name, bpm}`` presets, padded from the defaults."""
     out = []
     for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        name, _, val = part.rpartition(":")
         try:
-            out.append(max(30, min(300, int(float(part.strip())))))
+            bpm = max(30, min(300, int(float(val or part))))
         except (ValueError, TypeError):
             continue
+        dflt_name = RUN_PRESET_DEFAULTS[min(len(out), 3)][0]
+        out.append({"name": (name.strip() or dflt_name)[:20], "bpm": bpm})
     out = out[:4]
-    return out + defaults[len(out):]
+    return out + [{"name": n, "bpm": b} for n, b in RUN_PRESET_DEFAULTS[len(out):]]
 
 
 def settings_file_path(db_path: str) -> str:
@@ -128,7 +137,8 @@ def build_config() -> dict:
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
         # ── Run mode (tempo-locked playback) — normally edited from the UI ────
-        "run_presets":                _parse_run_presets(os.environ.get("RUN_PRESETS", "140,150,160,170")),
+        "run_presets":                _parse_run_presets(os.environ.get(
+            "RUN_PRESETS", "Warmup:120,Easy:155,Steady:165,Tempo:175")),
         "run_octave_fold":            os.environ.get("RUN_OCTAVE_FOLD", "true").lower() == "true",
         "run_prefer_starred":         os.environ.get("RUN_PREFER_STARRED", "true").lower() == "true",
         "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),

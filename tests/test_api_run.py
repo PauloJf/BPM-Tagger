@@ -118,7 +118,12 @@ def test_run_queue_prefers_starred_within_count(client, base_config):
 def test_settings_run_sanitizes_and_persists(client, base_config, app):
     csrf = _login(client)
     r = client.post("/api/settings/run", json={
-        "run_presets": [1000, 10, "junk", 165],
+        "run_presets": [
+            {"name": "Sprint", "bpm": 1000},        # bpm clamped to 300
+            {"name": "", "bpm": 10},                # empty name → default, bpm → 30
+            150,                                    # legacy plain number
+            {"name": "X" * 40, "bpm": "junk"},      # name truncated, bpm → default
+        ],
         "run_octave_fold": False,
         "run_prefer_starred": False,
         "run_queue_size": 9999,
@@ -127,7 +132,12 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
     }, headers=csrf)
     assert r.status_code == 200
     cfg = app.extensions["state"].config
-    assert cfg["run_presets"] == [300, 30, 160, 165]   # clamped / default-filled
+    assert cfg["run_presets"] == [
+        {"name": "Sprint", "bpm": 300},
+        {"name": "Easy", "bpm": 30},
+        {"name": "Steady", "bpm": 150},
+        {"name": "X" * 20, "bpm": 175},
+    ]
     assert cfg["run_octave_fold"] is False
     assert cfg["run_prefer_starred"] is False
     assert cfg["run_queue_size"] == 200                # clamped
@@ -135,4 +145,18 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
     assert cfg["run_stretch_limit_pct"] == 1.0         # clamped
 
     settings = client.get("/api/settings").get_json()["settings"]
-    assert settings["run_presets"] == [300, 30, 160, 165]
+    assert settings["run_presets"][0] == {"name": "Sprint", "bpm": 300}
+
+
+def test_settings_run_short_list_pads_defaults(client):
+    csrf = _login(client)
+    r = client.post("/api/settings/run", json={"run_presets": [{"name": "Hill", "bpm": 172}]},
+                    headers=csrf)
+    assert r.status_code == 200
+    presets = client.get("/api/settings").get_json()["settings"]["run_presets"]
+    assert presets == [
+        {"name": "Hill", "bpm": 172},
+        {"name": "Easy", "bpm": 155},
+        {"name": "Steady", "bpm": 165},
+        {"name": "Tempo", "bpm": 175},
+    ]

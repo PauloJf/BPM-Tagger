@@ -137,7 +137,9 @@ export default function Settings() {
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
   const [run, setRun] = useState({
-    presets: [140, 150, 160, 170], octave: true, preferStarred: true,
+    presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
+              { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
+    octave: true, preferStarred: true,
     queueSize: 20, tolerance: 4, stretchLimit: 15,
   });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
@@ -202,10 +204,19 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
+    const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
+                            { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
     setRun({
-      presets: Array.isArray(cfg.run_presets)
-        ? [0, 1, 2, 3].map((i) => Number((cfg.run_presets as unknown[])[i] ?? [140, 150, 160, 170][i]))
-        : [140, 150, 160, 170],
+      // Accept both shapes: {name,bpm} dicts and the legacy plain-number list.
+      presets: [0, 1, 2, 3].map((i) => {
+        const raw = Array.isArray(cfg.run_presets) ? (cfg.run_presets as unknown[])[i] : undefined;
+        if (raw && typeof raw === "object") {
+          const p = raw as { name?: unknown; bpm?: unknown };
+          return { name: String(p.name ?? presetDefaults[i].name), bpm: Number(p.bpm ?? presetDefaults[i].bpm) };
+        }
+        if (typeof raw === "number") return { name: presetDefaults[i].name, bpm: raw };
+        return presetDefaults[i];
+      }),
       octave: b("run_octave_fold", true),
       preferStarred: b("run_prefer_starred", true),
       queueSize: n("run_queue_size", 20),
@@ -758,12 +769,17 @@ export default function Settings() {
               }, setRunSaved);
             }}>
               <div className="field-row">
-                {fieldLabel("BPM presets", "Four one-tap cadence targets shown on the Run page — e.g. your easy, steady, tempo and interval cadences.")}
-                <div style={{ display: "flex", gap: 6 }}>
+                {fieldLabel("BPM presets", "Four named one-tap cadence targets shown on the Run page — e.g. your warmup, easy, steady and tempo cadences.")}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {run.presets.map((p, i) => (
-                    <input key={i} type="number" min={30} max={300} step={1} value={p}
-                           onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? +e.target.value : x)) })}
-                           style={{ width: 64, fontFamily: "var(--mono)", textAlign: "center" }} />
+                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <input type="text" maxLength={20} value={p.name} placeholder="Name" aria-label={`Preset ${i + 1} name`}
+                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+                             style={{ width: 86, fontSize: 12, textAlign: "center" }} />
+                      <input type="number" min={30} max={300} step={1} value={p.bpm} aria-label={`Preset ${i + 1} BPM`}
+                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, bpm: +e.target.value } : x)) })}
+                             style={{ width: 86, fontFamily: "var(--mono)", textAlign: "center" }} />
+                    </div>
                   ))}
                 </div>
               </div>

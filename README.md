@@ -48,7 +48,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Review flagging** — tracks where detectors genuinely disagree, confidence is low, or only the fallback was used are flagged `needs_review` in the DB; approving or locking a flagged track marks it `reviewed` (green badge) so it stays out of the queue
 - **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button; live search and BPM ± tolerance filter; Prev/Next navigation moves through the review queue without returning to the list; back navigation preserves filter, page, and search state
 - **Lyrics** — fetch plain or synced (LRC) lyrics from [LRCLIB](https://lrclib.net) (free, community-run, no account) per track or in bulk, view/edit them on the track page, and store them embedded in the tag or as a `.lrc` sidecar; Navidrome and most players pick them up
-- **Run mode** — a tempo-run player page: pick a target cadence (±1/±5 nudges, four configurable presets), auto-queue the tracks whose octave-folded BPM matches it — starred tracks first — and **tempo-lock** playback so every song stretches onto your step, pitch preserved
+- **Run mode** — a full-screen tempo-run player: cover art, a big target-BPM readout with a `native · stretch × octave → result` breakdown, ±1/±5 steps or four **named presets**, waveform scrubbing and large transport buttons; auto-queues the tracks whose octave-folded BPM matches the target — starred tracks first — and **locks the tempo** so every song stretches onto your step, pitch preserved
 - **Starred tracks** — star favourites from the library, track page, or mid-run; a **Starred** filter pill in the library, and run queues prefer them
 - **Image editing** — change any track's cover, set an album cover across **all** of its tracks at once, or pick a custom artist image — searching Spotify (when connected) and Deezer for candidates, pasting a URL, or uploading a file
 - **Re-analyze on demand** — re-run BPM detection for a single track from its detail page without starting a full library scan
@@ -291,13 +291,13 @@ Two things to know:
 
 ### Run mode (`/run`)
 
-A tempo-run player, like the cadence apps — but drawing on your own library and your own BPM tags:
+A full-screen tempo-run player, like the cadence apps — but drawing on your own library and your own BPM tags. Top to bottom: a **BPM Locked / Unlocked** pill, the playing track's **cover art, title and artist**, the big **target BPM** readout, then a line showing exactly what you're hearing — `NATIVE 78 · 0.99× ×2 → 155 BPM` (native BPM, stretch factor, octave multiplier, resulting cadence) with a dot pulsing on your step. Below that, a **waveform** with elapsed/remaining time, big **play / prev / next** buttons, and the queue.
 
-1. **Pick a target cadence** — big ±1 / ±5 buttons and four one-tap presets (define them in Settings → Run Mode; e.g. easy / steady / tempo / interval cadences). The readout pulses on the target beat.
+1. **Pick a target cadence** — switch between **± Steps** (big −5/−1/+1/+5 buttons) and **Presets**: four one-tap presets with a name and a BPM each (define them in Settings → Run Mode; defaults Warmup 120 / Easy 155 / Steady 165 / Tempo 175).
 2. **Start run** — builds a queue of tracks whose BPM matches the target within a tolerance. With **octave matching** on (default), half- and double-time tracks count too: at a 150 cadence a 75 BPM song plays untouched and you step on every beat. **Starred tracks are picked first**, then the closest remaining matches, up to the configured queue size.
-3. **Tempo lock** — stretches every queued track onto the exact target using the browser's pitch-preserving time-stretcher (`playbackRate`). Only the small post-fold remainder is stretched (capped by the **max stretch** setting, default ±15%), so tracks keep sounding natural. Changing the target mid-run re-stretches the current track instantly — the player bar shows a lock icon with the target BPM, pulsing on your step.
+3. **BPM lock** — the pill button stretches every queued track onto the exact target using the browser's pitch-preserving time-stretcher (`playbackRate`). Only the small post-fold remainder is stretched (capped by the **max stretch** setting, default ±15%), so tracks keep sounding natural. Changing the target mid-run re-stretches the current track instantly — the player bar shows a lock icon with the target BPM, pulsing on your step.
 
-Untoggle **tempo lock** to keep the BPM-matched queue but hear every track at native speed. The queue list shows each track's native BPM, the octave fold (⤳), the applied stretch %, and a star toggle so you can star the keepers as you run.
+Unlock to keep the BPM-matched queue but hear every track at native speed. Each queue row shows the same math as the header — native BPM, octave multiplier, stretch factor and the resulting BPM — plus a star toggle so you can star the keepers as you run.
 
 ### Navigation & scan controls
 
@@ -323,7 +323,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
 - **Playback** — seconds of audio to buffer before the detail-page player starts
-- **Run Mode** — the four BPM presets, octave matching, prefer-starred, queue size, match tolerance %, and the max stretch % the tempo lock may apply
+- **Run Mode** — the four named BPM presets (name + value each), octave matching, prefer-starred, queue size, match tolerance %, and the max stretch % the tempo lock may apply
 - **Artwork** — opt-in online fetching of artist images (Deezer public API, rate-limited, cached on disk), and an optional **save into the library** mode that files fetched/picked artist images as `artist.jpg` in the artist's folder (Navidrome-visible; only folders exclusive to the artist)
 - **Lyrics** — auto-fetch for grabbed tracks, embed-vs-sidecar storage, and a **Fetch missing lyrics** bulk job that fills the whole library from LRCLIB (tracks already carrying lyrics are indexed, not re-fetched; a checkbox retries previous not-founds)
 - **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
