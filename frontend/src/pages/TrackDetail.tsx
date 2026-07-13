@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, apiUpload } from "../lib/api";
 import { basename, dirname } from "../lib/paths";
 import { usePlayer } from "../lib/player";
-import type { TrackDetailResponse } from "../lib/types";
+import type { LyricsResponse, TrackDetailResponse } from "../lib/types";
+import { ImagePicker } from "../components/ImagePicker";
 import { BpmDisplay } from "../components/BpmDisplay";
 import { DetectorBar } from "../components/DetectorBar";
 import { useTapTempo } from "../hooks/useTapTempo";
@@ -63,6 +64,64 @@ export default function TrackDetail() {
   const detail = detailQ.data;
   const track = detail?.track;
 
+  // ── Cover editing ──────────────────────────────────────────────────────────
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const [coverV, setCoverV] = useState(0);
+
+  async function applyCover(pick: { url?: string; file?: File }) {
+    if (pick.url) await api.post("/api/track/cover", { file_path: path, url: pick.url });
+    else if (pick.file) await apiUpload(`/api/track/cover?path=${encodeURIComponent(path)}`, pick.file);
+    setCoverV(Date.now());
+    setCoverPickerOpen(false);
+  }
+
+  // ── Lyrics ─────────────────────────────────────────────────────────────────
+  const lyricsQ = useQuery({
+    queryKey: ["lyrics", path],
+    queryFn: () => api.get<LyricsResponse>(`/api/track/lyrics?path=${encodeURIComponent(path)}`),
+    enabled: !!path,
+  });
+  const [lyricsEditing, setLyricsEditing] = useState(false);
+  const [lyricsDraft, setLyricsDraft] = useState("");
+  const [lyricsBusy, setLyricsBusy] = useState(false);
+  const [lyricsMsg, setLyricsMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function fetchLyrics() {
+    setLyricsBusy(true);
+    setLyricsMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; error?: string; status?: string }>(
+        "/api/track/lyrics/fetch", { file_path: path });
+      if (r.ok) {
+        setLyricsMsg({ ok: true, text: r.status === "instrumental" ? "Marked as instrumental." : "Lyrics fetched ✓" });
+        qc.invalidateQueries({ queryKey: ["lyrics", path] });
+        qc.invalidateQueries({ queryKey: ["track", path] });
+      } else {
+        setLyricsMsg({ ok: false, text: r.error || "No lyrics found." });
+      }
+    } catch (e) {
+      setLyricsMsg({ ok: false, text: e instanceof Error ? e.message : "Request failed" });
+    } finally {
+      setLyricsBusy(false);
+    }
+  }
+
+  async function saveLyrics(text: string) {
+    setLyricsBusy(true);
+    setLyricsMsg(null);
+    try {
+      await api.put("/api/track/lyrics", { file_path: path, lyrics: text });
+      setLyricsEditing(false);
+      setLyricsMsg({ ok: true, text: text ? "Lyrics saved ✓" : "Lyrics removed." });
+      qc.invalidateQueries({ queryKey: ["lyrics", path] });
+      qc.invalidateQueries({ queryKey: ["track", path] });
+    } catch (e) {
+      setLyricsMsg({ ok: false, text: e instanceof Error ? e.message : "Request failed" });
+    } finally {
+      setLyricsBusy(false);
+    }
+  }
+
   // Seed the BPM override input + metadata form when the track loads/changes.
   useEffect(() => {
     setBpmInput(track?.bpm ? track.bpm.toFixed(1) : "");
@@ -70,6 +129,8 @@ export default function TrackDetail() {
     setUnlockMsg(null);
     setReanalyzeMsg(null);
     setMetaMsg(null);
+    setLyricsMsg(null);
+    setLyricsEditing(false);
     if (track) {
       const s = (v: unknown) => (v == null ? "" : String(v));
       setMetaForm({ title: s(track.title), artist: s(track.artist), album: s(track.album),
@@ -269,7 +330,14 @@ export default function TrackDetail() {
 
       {/* Header */}
       <div style={{ marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 16 }}>
-        {showArt && <Cover path={track.file_path} size={88} />}
+        {showArt && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <Cover path={track.file_path} size={88} v={coverV} />
+            <button className="btn btn-bare btn-sm" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => setCoverPickerOpen(true)}>
+              Edit cover
+            </button>
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
           {track.locked ? (
@@ -495,6 +563,67 @@ export default function TrackDetail() {
               <button className="btn btn-primary btn-md" onClick={saveMeta}>Save metadata</button>
             </div>
           </div>
+
+          {/* Lyrics */}
+          <div className="card">
+            <div className="section-label">
+              <span>Lyrics</span>
+              <span className="section-hint">
+                {lyricsQ.data?.lyrics
+                  ? `${lyricsQ.data.synced ? "synced (LRC)" : "plain"} · ${lyricsQ.data.source}`
+                  : lyricsQ.data?.status === "instrumental"
+                  ? "instrumental"
+                  : ""}
+              </span>
+            </div>
+            {lyricsEditing ? (
+              <>
+                <textarea
+                  value={lyricsDraft}
+                  onChange={(e) => setLyricsDraft(e.target.value)}
+                  rows={12}
+                  spellCheck={false}
+                  style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6, resize: "vertical" }}
+                  placeholder={"Paste lyrics here — plain text or LRC ([mm:ss.xx] lines) for synced lyrics."}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="btn btn-primary btn-sm" disabled={lyricsBusy} onClick={() => saveLyrics(lyricsDraft)}>Save lyrics</button>
+                  <button className="btn btn-ghost btn-sm" disabled={lyricsBusy} onClick={() => setLyricsEditing(false)}>Cancel</button>
+                  <div style={{ flex: 1 }} />
+                  {lyricsMsg && <span style={{ fontSize: 12, color: lyricsMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{lyricsMsg.text}</span>}
+                </div>
+              </>
+            ) : (
+              <>
+                {lyricsQ.data?.lyrics ? (
+                  <div style={{ maxHeight: 280, overflowY: "auto", whiteSpace: "pre-wrap", fontSize: 12.5, lineHeight: 1.7, color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                    {lyricsQ.data.lyrics}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+                    {lyricsQ.isLoading ? "Loading…" : "No lyrics on this track yet. Fetch them from LRCLIB (free, community-run) or add them manually."}
+                  </p>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost btn-sm" disabled={lyricsBusy} onClick={fetchLyrics}>
+                    {lyricsBusy ? "Fetching…" : "Fetch from LRCLIB"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" disabled={lyricsBusy}
+                    onClick={() => { setLyricsDraft(lyricsQ.data?.lyrics || ""); setLyricsEditing(true); setLyricsMsg(null); }}>
+                    {lyricsQ.data?.lyrics ? "Edit" : "Add manually"}
+                  </button>
+                  {lyricsQ.data?.lyrics ? (
+                    <button className="btn btn-danger btn-sm" disabled={lyricsBusy}
+                      onClick={() => { if (window.confirm("Remove the lyrics from this track (tag and .lrc sidecar)?")) saveLyrics(""); }}>
+                      Remove
+                    </button>
+                  ) : null}
+                  <div style={{ flex: 1 }} />
+                  {lyricsMsg && <span style={{ fontSize: 12, color: lyricsMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{lyricsMsg.text}</span>}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Right column: tap tempo */}
@@ -538,6 +667,16 @@ export default function TrackDetail() {
           </div>
         </div>
       </div>
+
+      {coverPickerOpen && (
+        <ImagePicker
+          kind="track"
+          title={`Cover — ${track.title || fname}`}
+          initialQuery={`${track.artist || ""} ${track.title || ""}`.trim() || fname}
+          onPick={applyCover}
+          onClose={() => setCoverPickerOpen(false)}
+        />
+      )}
     </>
   );
 }

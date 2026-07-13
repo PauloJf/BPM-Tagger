@@ -32,16 +32,17 @@ export function ArtToggle({ show, onToggle }: { show: boolean; onToggle: () => v
   );
 }
 
-/** Artist image (local artist.jpg → cached online fetch, server-resolved),
- *  falling back to the sample track's album cover, then the ♪ placeholder. */
-export function ArtistImage({ name, fallbackPath, size, style }: { name: string; fallbackPath: string; size: number; style?: React.CSSProperties }) {
+/** Artist image (custom pick → local artist.jpg → cached online fetch,
+ *  server-resolved), falling back to the sample track's album cover, then the
+ *  ♪ placeholder. Bump `v` after an image edit to bust the browser cache. */
+export function ArtistImage({ name, fallbackPath, size, style, v }: { name: string; fallbackPath: string; size: number; style?: React.CSSProperties; v?: number }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [name]);
+  useEffect(() => setFailed(false), [name, v]);
   if (failed) return <Cover path={fallbackPath} size={size} round style={style} />;
   return (
     <img
       className="art-thumb art-thumb--round"
-      src={`/api/artist/image?name=${encodeURIComponent(name)}`}
+      src={`/api/artist/image?name=${encodeURIComponent(name)}${v ? `&v=${v}` : ""}`}
       alt=""
       loading="lazy"
       style={{ width: size, height: size, ...style }}
@@ -51,10 +52,11 @@ export function ArtistImage({ name, fallbackPath, size, style }: { name: string;
 }
 
 /** Embedded cover art for a library file, with a ♪ placeholder when the file
- *  has none. The endpoint serves ETag/max-age headers so repeats hit cache. */
-export function Cover({ path, size, round, style }: { path: string; size: number; round?: boolean; style?: React.CSSProperties }) {
+ *  has none. The endpoint serves ETag/max-age headers so repeats hit cache;
+ *  bump `v` after a cover edit to bust it. */
+export function Cover({ path, size, round, style, v }: { path: string; size: number; round?: boolean; style?: React.CSSProperties; v?: number }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [path]);
+  useEffect(() => setFailed(false), [path, v]);
   const cls = "art-thumb" + (round ? " art-thumb--round" : "");
   const box = { width: size, height: size, ...style };
   if (failed) {
@@ -67,7 +69,7 @@ export function Cover({ path, size, round, style }: { path: string; size: number
   return (
     <img
       className={cls}
-      src={`/api/track/cover?path=${encodeURIComponent(path)}`}
+      src={`/api/track/cover?path=${encodeURIComponent(path)}${v ? `&v=${v}` : ""}`}
       alt=""
       loading="lazy"
       style={box}

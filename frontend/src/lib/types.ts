@@ -29,6 +29,23 @@ export interface Track {
   duration_ms?: number | null;
   managed?: number;
   spotify_track_id?: string | null;
+  lyrics_status?: string | null;
+  lyrics_synced?: number;
+}
+
+export interface LyricsResponse {
+  lyrics: string;
+  synced: boolean;
+  source: "embedded" | "sidecar" | "none";
+  status: string;
+}
+
+export interface ImageCandidate {
+  source: string;
+  name: string;
+  detail: string;
+  image_url: string;
+  thumb_url: string;
 }
 
 export interface TracksPage {

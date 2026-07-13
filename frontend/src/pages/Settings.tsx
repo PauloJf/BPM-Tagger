@@ -19,6 +19,7 @@ const SIDEBAR = [
   ["sec-navidrome", "Navidrome"],
   ["sec-playback", "Playback"],
   ["sec-artwork", "Artwork"],
+  ["sec-lyrics", "Lyrics"],
   ["sec-isrc", "ISRC"],
   ["sec-trash", "Trash"],
   ["sec-deleted", "Deleted Tracks"],
@@ -30,6 +31,9 @@ interface IsrcCand { source: string; isrc: string; title: string; artist: string
 interface FillStatus {
   running: boolean; total: number; done: number; filled: number;
   unresolved: { file_path: string; title: string; artist: string; candidates: IsrcCand[] }[];
+}
+interface LyricsFillStatus {
+  running: boolean; total: number; done: number; filled: number; not_found: number;
 }
 
 function fmtBytes(n: number): string {
@@ -68,6 +72,21 @@ export default function Settings() {
     queryFn: () => api.get<FillStatus>("/api/isrc/fill/status"),
     refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
   });
+  // Bulk lyrics fill: same poll-while-running pattern as the ISRC fill.
+  const lyricsFillQ = useQuery({
+    queryKey: ["lyrics-fill"],
+    queryFn: () => api.get<LyricsFillStatus>("/api/lyrics/fill/status"),
+    refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
+  });
+  async function startLyricsFill() {
+    await api.post("/api/lyrics/fill/start", { retry_not_found: lyricsRetryNotFound });
+    qc.invalidateQueries({ queryKey: ["lyrics-fill"] });
+  }
+  async function cancelLyricsFill() {
+    await api.post("/api/lyrics/fill/cancel", {});
+    qc.invalidateQueries({ queryKey: ["lyrics-fill"] });
+  }
+
   const [applied, setApplied] = useState<Record<string, string>>({});
   async function startFill() {
     await api.post("/api/isrc/fill/start", {});
@@ -117,6 +136,9 @@ export default function Settings() {
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
+  const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
+  const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
+  const [lyricsRetryNotFound, setLyricsRetryNotFound] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [grabber, setGrabber] = useState({
     enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
@@ -156,6 +178,7 @@ export default function Settings() {
   const [navSaved, setNavSaved] = useState<Saved>("");
   const [playSaved, setPlaySaved] = useState<Saved>("");
   const [artworkSaved, setArtworkSaved] = useState<Saved>("");
+  const [lyricsSaved, setLyricsSaved] = useState<Saved>("");
   const [pwSaved, setPwSaved] = useState<Saved>("");
   const [pwErr, setPwErr] = useState("");
   const [hashMsg, setHashMsg] = useState("");
@@ -174,6 +197,8 @@ export default function Settings() {
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
     setFetchArtistImages(b("fetch_artist_images", false));
+    setArtistImagesToLibrary(b("artist_images_to_library", false));
+    setLyricsCfg({ enabled: b("lyrics_enabled", false), mode: s("lyrics_mode", "embed") || "embed" });
     setGrabber({
       enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
       publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
@@ -705,15 +730,70 @@ export default function Settings() {
               <h2>Artwork</h2>
               <p>Artist images come from an <code>artist.jpg</code> next to the artist's files when present. Optionally fetch missing ones online.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/artwork", { fetch_artist_images: fetchArtistImages }, setArtworkSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/artwork", { fetch_artist_images: fetchArtistImages, artist_images_to_library: artistImagesToLibrary }, setArtworkSaved); }}>
               <div className="field-row">
-                {fieldLabel("Fetch artist images online", "Look up artists without a local artist.jpg on Deezer's public API (no account needed) and cache the image on disk — each artist is fetched at most once a day. Sends artist names to Deezer, so it's off by default.")}
+                {fieldLabel("Fetch artist images online", "Look up artists without a local artist.jpg on Deezer's public API (no account needed) and cache the image on disk — each artist is fetched at most once a day, and lookups are rate-limited well under Deezer's quota. Sends artist names to Deezer, so it's off by default.")}
                 <Toggle on={fetchArtistImages} onChange={setFetchArtistImages} label="Fetch artist images online" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Save artist images into the library", "Write fetched or hand-picked artist images as artist.jpg in the artist's own folder, so Navidrome and other players see them too. Only folders that exclusively contain that artist's tracks are written to — flat or shared layouts keep using the app cache.")}
+                <Toggle on={artistImagesToLibrary} onChange={setArtistImagesToLibrary} label="Save artist images into the library" />
               </div>
               <div style={{ marginTop: 14 }}>
                 <SaveButton state={artworkSaved} label="Save Artwork Settings" />
               </div>
             </form>
+          </div>
+
+          {/* Lyrics */}
+          <div id="sec-lyrics" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Lyrics</h2>
+              <p>Lyrics come from <a href="https://lrclib.net" target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>LRCLIB</a> — a free, community-run lyrics database (no account needed). Synced (LRC) lyrics are preferred when available; Navidrome and most players pick them up.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/lyrics", { lyrics_enabled: lyricsCfg.enabled, lyrics_mode: lyricsCfg.mode }, setLyricsSaved); }}>
+              <div className="field-row">
+                {fieldLabel("Auto-fetch for downloaded tracks", "When the Music Grabber downloads a track, also fetch its lyrics from LRCLIB and embed them. Manual fetching from a track's page always works regardless of this toggle.")}
+                <Toggle on={lyricsCfg.enabled} onChange={(v) => setLyricsCfg({ ...lyricsCfg, enabled: v })} label="Auto-fetch lyrics for downloaded tracks" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Storage", "Embed writes the lyrics into the file's tag (travels with the file). Sidecar writes a .lrc text file next to the audio file instead — the file itself is untouched.")}
+                <select value={lyricsCfg.mode} onChange={(e) => setLyricsCfg({ ...lyricsCfg, mode: e.target.value })}>
+                  <option value="embed">Embed in the file tag</option>
+                  <option value="sidecar">.lrc sidecar file</option>
+                </select>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={lyricsSaved} label="Save Lyrics Settings" />
+              </div>
+            </form>
+            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
+                Fetch lyrics for every library track that doesn't have any yet (needs title + artist tags). Tracks already carrying embedded lyrics or a .lrc sidecar are indexed, not re-fetched.
+              </p>
+              {(() => {
+                const f = lyricsFillQ.data;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startLyricsFill}>
+                      {f?.running ? "Fetching…" : "Fetch missing lyrics"}
+                    </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLyricsFill}>Cancel</button>
+                    )}
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={lyricsRetryNotFound} onChange={(e) => setLyricsRetryNotFound(e.target.checked)} disabled={f?.running} />
+                      Retry tracks previously not found
+                    </label>
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} checked · {f.filled} filled · {f.not_found} not found
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* ISRC bulk fill */}

@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, apiUpload } from "../lib/api";
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { ArtistImage, ArtToggle, Cover, useArtwork } from "../components/Artwork";
+import { ImagePicker } from "../components/ImagePicker";
 
 interface ArtistResp {
   name: string;
@@ -19,6 +21,21 @@ export default function Artist() {
   useTitle(name || "Artist");
   const player = usePlayer();
   const [showArt, toggleArt] = useArtwork();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [imgV, setImgV] = useState(0);
+
+  async function applyArtistImage(pick: { url?: string; file?: File }) {
+    if (pick.url) await api.post("/api/artist/image", { name, url: pick.url });
+    else if (pick.file) await apiUpload(`/api/artist/image?name=${encodeURIComponent(name)}`, pick.file);
+    setImgV(Date.now());
+    setPickerOpen(false);
+  }
+
+  async function resetArtistImage() {
+    await api.del("/api/artist/image", { name });
+    setImgV(Date.now());
+    setPickerOpen(false);
+  }
 
   const q = useQuery({
     queryKey: ["artist", name],
@@ -43,7 +60,7 @@ export default function Artist() {
   return (
     <>
       <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-        {showArt && tracks.length > 0 && <ArtistImage name={name} fallbackPath={tracks[0].file_path} size={92} />}
+        {showArt && tracks.length > 0 && <ArtistImage name={name} fallbackPath={tracks[0].file_path} size={92} v={imgV} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Link to="/artists" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Artists</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{name || "Artist"}</h1>
@@ -57,6 +74,12 @@ export default function Artist() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <ArtToggle show={showArt} onToggle={toggleArt} />
+          <button className="btn btn-ghost btn-sm" disabled={!name} onClick={() => setPickerOpen(true)} title="Change artist image">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            Image
+          </button>
           <button className="btn btn-primary btn-sm" disabled={!tracks.length} onClick={() => playAll(false)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
             Play all
@@ -108,6 +131,17 @@ export default function Artist() {
             </div>
           </div>
         ))
+      )}
+
+      {pickerOpen && (
+        <ImagePicker
+          kind="artist"
+          title={`Artist image — ${name}`}
+          initialQuery={name}
+          onPick={applyArtistImage}
+          onReset={resetArtistImage}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </>
   );

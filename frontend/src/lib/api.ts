@@ -75,6 +75,25 @@ export const api = {
   del: <T>(path: string, body?: unknown) => request<T>("DELETE", path, body),
 };
 
+/** Send raw binary data (e.g. an image upload) with the CSRF header. */
+export async function apiUpload<T>(path: string, body: Blob, method = "PUT"): Promise<T> {
+  const resp = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: { "X-CSRF-Token": csrfToken, "Content-Type": "application/octet-stream" },
+    body,
+  });
+  const data = await parse(resp);
+  if (!resp.ok) {
+    if (resp.status === 401) onUnauthorized?.();
+    const msg =
+      (data && typeof data === "object" && "error" in data && String((data as { error: unknown }).error)) ||
+      `HTTP ${resp.status}`;
+    throw new ApiError(resp.status, msg, data);
+  }
+  return data as T;
+}
+
 /** Build an /audio streaming URL for a music-dir file path. */
 export function audioUrl(filePath: string) {
   return `/audio?path=${encodeURIComponent(filePath)}`;

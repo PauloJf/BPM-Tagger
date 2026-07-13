@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, apiUpload } from "../lib/api";
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
+import { ImagePicker } from "../components/ImagePicker";
 
 interface AlbumResp {
   album: string;
@@ -37,20 +39,46 @@ export default function Album() {
   const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path), artist: t.artist || "" });
   const playAll = (shuffle: boolean) => { if (tracks.length) player.playQueue(tracks.map(toPT), 0, { shuffle }); };
 
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [imgV, setImgV] = useState(0);
+  const [coverMsg, setCoverMsg] = useState("");
+
+  async function applyAlbumCover(pick: { url?: string; file?: File }) {
+    let r: { ok: boolean; updated: number; failed: string[] };
+    if (pick.url) {
+      r = await api.post(`/api/album/cover`, { album, album_artist: aa, url: pick.url });
+    } else if (pick.file) {
+      r = await apiUpload(`/api/album/cover?album=${encodeURIComponent(album)}&album_artist=${encodeURIComponent(aa)}`, pick.file);
+    } else return;
+    setImgV(Date.now());
+    setPickerOpen(false);
+    setCoverMsg(r.failed.length
+      ? `Cover set on ${r.updated} track${r.updated === 1 ? "" : "s"} — ${r.failed.length} failed`
+      : `Cover set on ${r.updated} track${r.updated === 1 ? "" : "s"}`);
+    setTimeout(() => setCoverMsg(""), 5000);
+  }
+
   return (
     <>
       <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-        {showArt && tracks.length > 0 && <Cover path={tracks[0].file_path} size={92} />}
+        {showArt && tracks.length > 0 && <Cover path={tracks[0].file_path} size={92} v={imgV} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Link to="/albums" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Albums</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{album || "Album"}</h1>
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
             {aa && <Link to={`/artist?name=${encodeURIComponent(aa)}`} style={{ color: "var(--accent-2)" }}>{aa}</Link>}
             {stats ? `${aa ? " · " : ""}${stats.tracks} tracks${stats.year ? ` · ${stats.year}` : ""}${stats.avg_bpm != null ? ` · avg ${stats.avg_bpm} BPM` : ""}` : ""}
+            {coverMsg && <span style={{ color: "var(--ok-fg)" }}> · {coverMsg}</span>}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <ArtToggle show={showArt} onToggle={toggleArt} />
+          <button className="btn btn-ghost btn-sm" disabled={!tracks.length} onClick={() => setPickerOpen(true)} title="Change the cover on every track of this album">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            Cover
+          </button>
           <button className="btn btn-primary btn-sm" disabled={!tracks.length} onClick={() => playAll(false)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
             Play all
@@ -89,6 +117,16 @@ export default function Album() {
             </div>
           ))}
         </div>
+      )}
+
+      {pickerOpen && (
+        <ImagePicker
+          kind="album"
+          title={`Album cover — ${album}`}
+          initialQuery={`${aa} ${album}`.trim()}
+          onPick={applyAlbumCover}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </>
   );
