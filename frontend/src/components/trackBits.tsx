@@ -1,4 +1,18 @@
 import type { Track } from "../lib/types";
+import { basename } from "../lib/paths";
+
+/** Primary display name: the tag title when present, else the file name. */
+export function trackTitle(t: Track): string {
+  return (t.title && t.title.trim()) || basename(t.file_path);
+}
+
+/** Secondary line: "Artist · Album" using whichever of the two is available. */
+export function trackSubtitle(t: Track): string {
+  const artist = t.artist?.trim();
+  const album = t.album?.trim();
+  if (artist && album) return `${artist} · ${album}`;
+  return artist || album || "";
+}
 
 export function confColor(v: number): string {
   return v >= 0.7 ? "var(--ok-fg)" : v >= 0.4 ? "var(--accent-2)" : "var(--warn-fg)";

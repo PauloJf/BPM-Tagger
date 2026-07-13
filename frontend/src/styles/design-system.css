@@ -419,6 +419,25 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .tracks-row.flagged { background: var(--warn-bg); }
 .tracks-row.flagged:hover { background: var(--warn-bg-hover); }
 .tracks-row-empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.track-folder { display: flex; align-items: center; gap: 6px; }
+
+/* Mobile: collapse the fixed 6-column grid (which overflows a phone viewport)
+   down to Track | BPM | Status. Drop the header, the confidence/detector/arrow
+   columns, the secondary queue buttons, and the artist/folder sub-lines so the
+   track name is never squeezed off-screen. */
+@media (max-width: 700px) {
+  .tracks-header { display: none; }
+  .tracks-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px; padding: 12px 14px;
+  }
+  .tracks-row .col-conf,
+  .tracks-row .col-detector,
+  .tracks-row .col-arrow,
+  .tracks-row .row-extra-btn,
+  .tracks-row .track-sub,
+  .tracks-row .track-folder { display: none; }
+}
 
 /* ── Settings layout ──────────────────────────────────────────────────────── */
 .settings-layout { display: grid; grid-template-columns: 240px 1fr; gap: 24px; }
@@ -570,6 +589,17 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   background: var(--chip-bg); color: var(--muted);
 }
 .filter-pill.active .pill-count { background: var(--accent-soft); color: var(--accent-2); }
+
+/* Mobile: the pill strip must not force horizontal page overflow. Fill the row
+   width and scroll internally; keep each pill on one line ("No ISRC" intact). */
+@media (max-width: 700px) {
+  .filter-pills {
+    width: 100%; overflow-x: auto;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .filter-pills::-webkit-scrollbar { display: none; }
+  .filter-pill { flex-shrink: 0; white-space: nowrap; }
+}
 
 .search-wrap { position: relative; }
 .search-icon {

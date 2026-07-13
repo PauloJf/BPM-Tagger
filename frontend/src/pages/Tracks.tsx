@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
-import { ArrowIcon, ConfBar, FolderIcon, StatusBadge } from "../components/trackBits";
+import { ArrowIcon, ConfBar, FolderIcon, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
 import { useTitle } from "../hooks/useTitle";
 import { usePlayer } from "../lib/player";
 
@@ -360,71 +360,82 @@ export default function Tracks() {
           ) : (
             tracks.map((t) => {
               const flagged = (t.needs_review && !t.reviewed) || t.status === "error";
+              const title = trackTitle(t);
+              const subtitle = trackSubtitle(t);
+              const folder = parentName(t.file_path);
+              const meta = { path: t.file_path, title, artist: t.artist || "" };
               return (
                 <Link key={t.file_path} to={trackHref(t.file_path)} className={"tracks-row" + (flagged ? " flagged" : "")}>
-                  <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="col-track" style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
                     <button
                       className="row-play"
                       aria-label="Play"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        player.play({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                        player.play(meta);
                       }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
                     </button>
                     <button
-                      className="row-play"
+                      className="row-play row-extra-btn"
                       aria-label="Add to queue"
                       title="Add to queue"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        player.enqueue({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                        player.enqueue(meta);
                       }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                     </button>
                     <button
-                      className="row-play"
+                      className="row-play row-extra-btn"
                       aria-label="Play next"
                       title="Play next"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        player.playNext({ path: t.file_path, title: basename(t.file_path), artist: t.artist || "" });
+                        player.playNext(meta);
                       }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
                     </button>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
-                        {basename(t.file_path)}
+                      <div className="track-main" style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {title}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                        <FolderIcon />
-                        <span style={{ fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {parentName(t.file_path)}
-                        </span>
-                      </div>
+                      {subtitle && (
+                        <div className="track-sub" style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 3 }}>
+                          {subtitle}
+                        </div>
+                      )}
+                      {folder && (
+                        <div className="track-folder" style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
+                          <FolderIcon />
+                          <span style={{ fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {folder}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div className="col-bpm" style={{ textAlign: "right" }}>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 600, color: t.bpm ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
                       {t.bpm ? t.bpm.toFixed(1) : "—"}
                     </span>
                   </div>
-                  <div>
+                  <div className="col-conf">
                     <ConfBar value={t.bpm_confidence} />
                   </div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div className="col-detector" style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {t.detector || "—"}
                   </div>
-                  <div>
+                  <div className="col-status">
                     <StatusBadge track={t} />
                   </div>
-                  <div style={{ textAlign: "right", color: "var(--muted)" }}>
+                  <div className="col-arrow" style={{ textAlign: "right", color: "var(--muted)" }}>
                     <ArrowIcon />
                   </div>
                 </Link>
