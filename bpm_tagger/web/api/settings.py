@@ -169,6 +169,40 @@ def api_settings_playback():
     return jsonify(ok=True)
 
 
+@settings_bp.route("/api/settings/run", methods=["POST"])
+@login_required
+def api_settings_run():
+    _check_csrf()
+    st = state()
+    data = _json_body()
+
+    def _num(v, lo, hi, dflt):
+        try:
+            return max(lo, min(hi, float(v)))
+        except (ValueError, TypeError):
+            return dflt
+
+    defaults = [140, 150, 160, 170]
+    presets = []
+    raw = data.get("run_presets", [])
+    if isinstance(raw, list):
+        for p in raw[:4]:
+            presets.append(int(_num(p, 30, 300, defaults[len(presets)])))
+    presets += defaults[len(presets):]
+
+    updates = {
+        "run_presets":           presets,
+        "run_octave_fold":       bool(data.get("run_octave_fold", True)),
+        "run_prefer_starred":    bool(data.get("run_prefer_starred", True)),
+        "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
+        "run_tolerance_pct":     _num(data.get("run_tolerance_pct"), 0.5, 30, 4.0),
+        "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
+    }
+    st.config.update(updates)
+    save_settings(st.settings_path, updates)
+    return jsonify(ok=True)
+
+
 @settings_bp.route("/api/settings/artwork", methods=["POST"])
 @login_required
 def api_settings_artwork():

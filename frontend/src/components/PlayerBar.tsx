@@ -11,7 +11,7 @@ import { LyricsPanel } from "./LyricsPanel";
 export default function PlayerBar() {
   const { current, playing, error, audioRef, toggle, stop,
           orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing, volume, setVolume,
-          next, prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat } = usePlayer();
+          next, prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat, tempoLock } = usePlayer();
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -100,7 +100,21 @@ export default function PlayerBar() {
           </Link>
         ) : null}
       </div>
-      {bpm != null && (
+      {tempoLock ? (
+        // Run mode: the readout shows the locked target cadence, not the
+        // track's native BPM — that's what your feet follow.
+        <Link
+          to="/run"
+          className="player-bar-bpm"
+          style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
+          title={`Tempo locked to ${tempoLock.target} BPM — open Run mode`}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+          <BpmDisplay bpm={tempoLock.target} sizePx={17} dotPx={9} pulsing={playing} beatMs={Math.round(60000 / tempoLock.target)} />
+        </Link>
+      ) : bpm != null && (
         <span className="player-bar-bpm" title={`${bpm.toFixed(1)} BPM — the dot pulses on the beat`}>
           <BpmDisplay bpm={bpm} sizePx={17} dotPx={9} pulsing={playing} beatMs={Math.round(60000 / bpm)} />
         </span>

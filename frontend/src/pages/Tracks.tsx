@@ -200,6 +200,20 @@ export default function Tracks() {
   const data = tracksQ.data;
   const tracks = data?.tracks ?? [];
 
+  async function toggleStar(path: string, starred: boolean) {
+    // Optimistic flip in the cache; the invalidate reconciles with the server.
+    qc.setQueryData<TracksPage>(["tracks", search], (d) => d && {
+      ...d,
+      starred_count: Math.max(0, (d.starred_count ?? 0) + (starred ? 1 : -1)),
+      tracks: d.tracks.map((t) => (t.file_path === path ? { ...t, starred: starred ? 1 : 0 } : t)),
+    });
+    try {
+      await api.post("/api/track/star", { path, starred });
+    } finally {
+      qc.invalidateQueries({ queryKey: ["tracks"] });
+    }
+  }
+
   function trackHref(filePath: string) {
     const sp = new URLSearchParams();
     sp.set("path", filePath);
@@ -213,6 +227,7 @@ export default function Tracks() {
 
   const pills = [
     { key: "", label: "All", count: data?.all_count },
+    { key: "starred", label: "Starred", count: data?.starred_count },
     { key: "review", label: "Review", count: data?.review_count },
     { key: "locked", label: "Locked", count: data?.locked_count },
     { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
@@ -369,7 +384,7 @@ export default function Tracks() {
               const title = trackTitle(t);
               const subtitle = trackSubtitle(t);
               const folder = parentName(t.file_path);
-              const meta = { path: t.file_path, title, artist: t.artist || "" };
+              const meta = { path: t.file_path, title, artist: t.artist || "", bpm: t.bpm };
               return (
                 <Link key={t.file_path} to={trackHref(t.file_path)} className={"tracks-row" + (flagged ? " flagged" : "")}>
                   <div className="col-track" style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
@@ -407,6 +422,23 @@ export default function Tracks() {
                       }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
+                    </button>
+                    <button
+                      /* Stays visible on mobile only when starred (row-extra-btn hides there). */
+                      className={"row-play" + (t.starred ? "" : " row-extra-btn")}
+                      style={t.starred ? { color: "var(--warn-fg)", borderColor: "var(--warn-fg)" } : undefined}
+                      aria-label={t.starred ? "Unstar" : "Star"}
+                      aria-pressed={!!t.starred}
+                      title={t.starred ? "Unstar" : "Star — preferred when building run queues"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleStar(t.file_path, !t.starred);
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill={t.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+                        <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
+                      </svg>
                     </button>
                     {showArt && (
                       <span className="row-cover">

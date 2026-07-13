@@ -18,6 +18,7 @@ const SIDEBAR = [
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
   ["sec-playback", "Playback"],
+  ["sec-run", "Run Mode"],
   ["sec-artwork", "Artwork"],
   ["sec-lyrics", "Lyrics"],
   ["sec-isrc", "ISRC"],
@@ -135,6 +136,10 @@ export default function Settings() {
   const [mode, setMode] = useState("watch");
   const [nav, setNav] = useState({ url: "", user: "", pass: "" });
   const [playback, setPlayback] = useState(3);
+  const [run, setRun] = useState({
+    presets: [140, 150, 160, 170], octave: true, preferStarred: true,
+    queueSize: 20, tolerance: 4, stretchLimit: 15,
+  });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
   const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
@@ -177,6 +182,7 @@ export default function Settings() {
   const [modeSaved, setModeSaved] = useState<Saved>("");
   const [navSaved, setNavSaved] = useState<Saved>("");
   const [playSaved, setPlaySaved] = useState<Saved>("");
+  const [runSaved, setRunSaved] = useState<Saved>("");
   const [artworkSaved, setArtworkSaved] = useState<Saved>("");
   const [lyricsSaved, setLyricsSaved] = useState<Saved>("");
   const [pwSaved, setPwSaved] = useState<Saved>("");
@@ -196,6 +202,16 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
     setPlayback(n("playback_buffer", 3));
+    setRun({
+      presets: Array.isArray(cfg.run_presets)
+        ? [0, 1, 2, 3].map((i) => Number((cfg.run_presets as unknown[])[i] ?? [140, 150, 160, 170][i]))
+        : [140, 150, 160, 170],
+      octave: b("run_octave_fold", true),
+      preferStarred: b("run_prefer_starred", true),
+      queueSize: n("run_queue_size", 20),
+      tolerance: n("run_tolerance_pct", 4),
+      stretchLimit: n("run_stretch_limit_pct", 15),
+    });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
     setLyricsCfg({ enabled: b("lyrics_enabled", false), mode: s("lyrics_mode", "embed") || "embed" });
@@ -720,6 +736,71 @@ export default function Settings() {
               </div>
               <div style={{ marginTop: 14 }}>
                 <SaveButton state={playSaved} label="Save Playback Settings" />
+              </div>
+            </form>
+          </div>
+
+          {/* Run mode */}
+          <div id="sec-run" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Run Mode</h2>
+              <p>Tempo-locked playback for cadence running — configure the <code>/run</code> page's presets and how the queue is matched.</p>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              saveSection("/api/settings/run", {
+                run_presets: run.presets,
+                run_octave_fold: run.octave,
+                run_prefer_starred: run.preferStarred,
+                run_queue_size: run.queueSize,
+                run_tolerance_pct: run.tolerance,
+                run_stretch_limit_pct: run.stretchLimit,
+              }, setRunSaved);
+            }}>
+              <div className="field-row">
+                {fieldLabel("BPM presets", "Four one-tap cadence targets shown on the Run page — e.g. your easy, steady, tempo and interval cadences.")}
+                <div style={{ display: "flex", gap: 6 }}>
+                  {run.presets.map((p, i) => (
+                    <input key={i} type="number" min={30} max={300} step={1} value={p}
+                           onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? +e.target.value : x)) })}
+                           style={{ width: 64, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  ))}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Octave matching", "Count half- and double-time tracks as matches: at a 150 cadence a 75 BPM song plays at native speed and you step on every beat. Off = only tracks whose actual BPM is near the target.")}
+                <Toggle on={run.octave} onChange={(v) => setRun({ ...run, octave: v })} label="Octave matching" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Prefer starred tracks", "Fill the queue with starred tracks first, then top up with the closest unstarred matches.")}
+                <Toggle on={run.preferStarred} onChange={(v) => setRun({ ...run, preferStarred: v })} label="Prefer starred tracks" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Queue size", "How many tracks a run queue preloads.")}
+                <input type="number" min={1} max={200} step={1} value={run.queueSize}
+                       onChange={(e) => setRun({ ...run, queueSize: +e.target.value })}
+                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Match tolerance", "How far (in %) a track's octave-folded BPM may sit from the target and still be queued. The tempo lock stretches this remainder away during playback.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0.5} max={30} step={0.5} value={run.tolerance}
+                         onChange={(e) => setRun({ ...run, tolerance: +e.target.value })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Max stretch", "Upper bound (in %) for how far the tempo lock may speed up or slow down a track. Browser time-stretching starts to sound artificial beyond ~15%.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={1} max={50} step={1} value={run.stretchLimit}
+                         onChange={(e) => setRun({ ...run, stretchLimit: +e.target.value })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={runSaved} label="Save Run Settings" />
               </div>
             </form>
           </div>

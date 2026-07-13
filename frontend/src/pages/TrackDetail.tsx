@@ -427,6 +427,22 @@ export default function TrackDetail() {
             </span>
           ) : null}
           {!track.locked && !flagged && !track.reviewed && track.status !== "error" ? <span className="badge badge--ok">ok</span> : null}
+          <button
+            className="btn btn-bare btn-sm"
+            style={{ padding: "2px 6px", color: track.starred ? "var(--warn-fg)" : "var(--muted)" }}
+            aria-pressed={!!track.starred}
+            aria-label={track.starred ? "Unstar" : "Star"}
+            title={track.starred ? "Unstar" : "Star — preferred when building run queues"}
+            onClick={async () => {
+              await api.post("/api/track/star", { path: track.file_path, starred: !track.starred });
+              qc.invalidateQueries({ queryKey: ["track", path] });
+              qc.invalidateQueries({ queryKey: ["tracks"] });
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={track.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+              <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
+            </svg>
+          </button>
           <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>
             {track.analyzed_at ? track.analyzed_at.slice(0, 16).replace("T", " ") + " UTC" : ""}
           </span>

@@ -17,6 +17,7 @@ import Queue from "./pages/Queue";
 import Inbox from "./pages/Inbox";
 import Search from "./pages/Search";
 import Review from "./pages/Review";
+import Run from "./pages/Run";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/inbox/:id" element={<Inbox />} />
         <Route path="/search" element={<Search />} />
         <Route path="/review" element={<Review />} />
+        <Route path="/run" element={<Run />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/about" element={<About />} />

@@ -48,6 +48,8 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Review flagging** — tracks where detectors genuinely disagree, confidence is low, or only the fallback was used are flagged `needs_review` in the DB; approving or locking a flagged track marks it `reviewed` (green badge) so it stays out of the queue
 - **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button; live search and BPM ± tolerance filter; Prev/Next navigation moves through the review queue without returning to the list; back navigation preserves filter, page, and search state
 - **Lyrics** — fetch plain or synced (LRC) lyrics from [LRCLIB](https://lrclib.net) (free, community-run, no account) per track or in bulk, view/edit them on the track page, and store them embedded in the tag or as a `.lrc` sidecar; Navidrome and most players pick them up
+- **Run mode** — a tempo-run player page: pick a target cadence (±1/±5 nudges, four configurable presets), auto-queue the tracks whose octave-folded BPM matches it — starred tracks first — and **tempo-lock** playback so every song stretches onto your step, pitch preserved
+- **Starred tracks** — star favourites from the library, track page, or mid-run; a **Starred** filter pill in the library, and run queues prefer them
 - **Image editing** — change any track's cover, set an album cover across **all** of its tracks at once, or pick a custom artist image — searching Spotify (when connected) and Deezer for candidates, pasting a URL, or uploading a file
 - **Re-analyze on demand** — re-run BPM detection for a single track from its detail page without starting a full library scan
 - **Login brute-force protection** — IP-based rate limiting locks out repeated failed login attempts
@@ -287,6 +289,16 @@ Two things to know:
 - **Install requires HTTPS.** Any TLS reverse proxy works; for a zero-config private option, `tailscale serve --bg 5000` on the host gives you a `https://<machine>.<tailnet>.ts.net` URL that proxies to the UI and is reachable only from your tailnet (enable *HTTPS Certificates* once in the Tailscale admin console under DNS).
 - **Nothing is cached offline** — by design. The service worker does no caching, so the app shell, API and audio always stream live from your server and can never go stale. You need network connectivity to your server while playing.
 
+### Run mode (`/run`)
+
+A tempo-run player, like the cadence apps — but drawing on your own library and your own BPM tags:
+
+1. **Pick a target cadence** — big ±1 / ±5 buttons and four one-tap presets (define them in Settings → Run Mode; e.g. easy / steady / tempo / interval cadences). The readout pulses on the target beat.
+2. **Start run** — builds a queue of tracks whose BPM matches the target within a tolerance. With **octave matching** on (default), half- and double-time tracks count too: at a 150 cadence a 75 BPM song plays untouched and you step on every beat. **Starred tracks are picked first**, then the closest remaining matches, up to the configured queue size.
+3. **Tempo lock** — stretches every queued track onto the exact target using the browser's pitch-preserving time-stretcher (`playbackRate`). Only the small post-fold remainder is stretched (capped by the **max stretch** setting, default ±15%), so tracks keep sounding natural. Changing the target mid-run re-stretches the current track instantly — the player bar shows a lock icon with the target BPM, pulsing on your step.
+
+Untoggle **tempo lock** to keep the BPM-matched queue but hear every track at native speed. The queue list shows each track's native BPM, the octave fold (⤳), the applied stretch %, and a star toggle so you can star the keepers as you run.
+
 ### Navigation & scan controls
 
 On desktop the UI uses a **sidebar** grouped into sections — **Library** (Library, Playlists), **Tagging** (BPM Review, Duplicates), **Grabber** (Add Music, Queue, Inbox — shown when the grabber is enabled), and **System** (Stats, Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
@@ -311,6 +323,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
 - **Playback** — seconds of audio to buffer before the detail-page player starts
+- **Run Mode** — the four BPM presets, octave matching, prefer-starred, queue size, match tolerance %, and the max stretch % the tempo lock may apply
 - **Artwork** — opt-in online fetching of artist images (Deezer public API, rate-limited, cached on disk), and an optional **save into the library** mode that files fetched/picked artist images as `artist.jpg` in the artist's folder (Navidrome-visible; only folders exclusive to the artist)
 - **Lyrics** — auto-fetch for grabbed tracks, embed-vs-sidecar storage, and a **Fetch missing lyrics** bulk job that fills the whole library from LRCLIB (tracks already carrying lyrics are indexed, not re-fetched; a checkbox retries previous not-founds)
 - **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
@@ -338,7 +351,7 @@ When the grabber is enabled, the nav also shows **Playlists**, **Add Music**, **
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.
 
-The player bar shows the current track's **BPM with a beat-pulsing dot** — the dot flashes once per beat while playing (and sits still when paused), so you can eyeball whether the detected tempo actually matches the music without leaving whatever page you're on.
+The player bar shows the current track's **BPM with a beat-pulsing dot** — the dot flashes once per beat while playing (and sits still when paused), so you can eyeball whether the detected tempo actually matches the music without leaving whatever page you're on. When a run's **tempo lock** is active, the readout switches to the locked target cadence with a lock icon, and tapping it opens the Run page.
 
 A **lyrics drawer** on the player bar (mic icon) shows the current track's lyrics: synced (LRC) lyrics **follow the music** — the active line is highlighted and kept centered, clicking a line seeks to it, and scrolling by hand pauses the auto-follow for a few seconds; plain lyrics are stepped manually (click a line or use ▲/▼). Tracks without lyrics get a **Fetch from LRCLIB** button right in the drawer.
 

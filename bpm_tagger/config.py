@@ -50,6 +50,19 @@ def _read_version() -> str:
 __version__ = _read_version()
 
 
+def _parse_run_presets(raw: str) -> list:
+    """Comma-separated BPM presets → exactly 4 ints (padded from defaults)."""
+    defaults = [140, 150, 160, 170]
+    out = []
+    for part in str(raw).split(","):
+        try:
+            out.append(max(30, min(300, int(float(part.strip())))))
+        except (ValueError, TypeError):
+            continue
+    out = out[:4]
+    return out + defaults[len(out):]
+
+
 def settings_file_path(db_path: str) -> str:
     return str(Path(db_path).parent / "settings.json")
 
@@ -114,6 +127,13 @@ def build_config() -> dict:
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
+        # ── Run mode (tempo-locked playback) — normally edited from the UI ────
+        "run_presets":                _parse_run_presets(os.environ.get("RUN_PRESETS", "140,150,160,170")),
+        "run_octave_fold":            os.environ.get("RUN_OCTAVE_FOLD", "true").lower() == "true",
+        "run_prefer_starred":         os.environ.get("RUN_PREFER_STARRED", "true").lower() == "true",
+        "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),
+        "run_tolerance_pct":          float(os.environ.get("RUN_TOLERANCE_PCT", "4")),
+        "run_stretch_limit_pct":      float(os.environ.get("RUN_STRETCH_LIMIT_PCT", "15")),
         "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
         # Save fetched/picked artist images as artist.jpg in the artist's own
         # folder (Navidrome convention) instead of only the app cache. Only

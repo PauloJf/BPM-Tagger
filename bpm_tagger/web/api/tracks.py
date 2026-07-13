@@ -87,6 +87,23 @@ def api_save_bpm():
         return jsonify(ok=False, error=str(exc))
 
 
+@tracks_bp.route("/api/track/star", methods=["POST"])
+@login_required
+def api_track_star():
+    _check_csrf()
+    st = state()
+    data = request.get_json(force=True, silent=True) or {}
+    path = str(data.get("path", ""))
+    if not path:
+        abort(400)
+    _assert_in_music_dir(path)
+    if not st.db.get_track(path):
+        abort(404)
+    starred = bool(data.get("starred"))
+    st.db.set_starred(path, starred)
+    return jsonify(ok=True, starred=starred)
+
+
 @tracks_bp.route("/api/unlock", methods=["POST"])
 @login_required
 def api_unlock():
@@ -809,7 +826,8 @@ def api_tracks():
                    review_count=stats.get("needs_review", 0),
                    locked_count=stats.get("locked", 0),
                    deleted_count=stats.get("deleted", 0),
-                   no_isrc_count=stats.get("missing_isrc", 0))
+                   no_isrc_count=stats.get("missing_isrc", 0),
+                   starred_count=stats.get("starred", 0))
 
 
 @tracks_bp.route("/api/tracks/paths")

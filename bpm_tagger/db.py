@@ -118,6 +118,8 @@ class BPMDatabase:
             # ── Lyrics ────────────────────────────────────────────────────────
             ("lyrics_status",  "TEXT"),     # embedded | fetched | not_found | instrumental
             ("lyrics_synced",  "INTEGER DEFAULT 0"),
+            # ── Run mode ──────────────────────────────────────────────────────
+            ("starred",        "INTEGER DEFAULT 0"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -401,6 +403,7 @@ class BPMDatabase:
                 "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
                 "locked": "locked = 1",
                 "no_isrc": "(isrc IS NULL OR isrc = '')",
+                "starred": "starred = 1",
             }.get(filter, "")
             if fc:
                 clauses.append(fc)
@@ -446,6 +449,21 @@ class BPMDatabase:
                 f"SELECT file_path, artist FROM tracks {where} "
                 "ORDER BY analyzed_at DESC LIMIT ?",
                 params + [limit]
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_starred(self, file_path: str, starred: bool):
+        with self._connect() as conn:
+            conn.execute("UPDATE tracks SET starred = ? WHERE file_path = ?",
+                         (1 if starred else 0, file_path))
+
+    def get_run_candidates(self) -> list[dict]:
+        """Every analyzed, non-deleted track — feeds the run-queue builder,
+        which octave-folds and scores in Python (cheap even at library scale)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, title, artist, bpm, starred FROM tracks "
+                "WHERE status != 'deleted' AND bpm IS NOT NULL"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -676,7 +694,8 @@ class BPMDatabase:
                     COUNT(CASE WHEN needs_review=1 AND status='done' AND locked=0 AND reviewed=0 THEN 1 END) AS needs_review,
                     COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked,
-                    COUNT(CASE WHEN (isrc IS NULL OR isrc='') AND status!='deleted' THEN 1 END) AS missing_isrc
+                    COUNT(CASE WHEN (isrc IS NULL OR isrc='') AND status!='deleted' THEN 1 END) AS missing_isrc,
+                    COUNT(CASE WHEN starred=1 AND status!='deleted' THEN 1 END) AS starred
                 FROM tracks
             """).fetchone()
             return dict(row)

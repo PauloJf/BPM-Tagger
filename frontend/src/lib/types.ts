@@ -31,6 +31,27 @@ export interface Track {
   spotify_track_id?: string | null;
   lyrics_status?: string | null;
   lyrics_synced?: number;
+  starred?: number;
+}
+
+// ── Run mode ──────────────────────────────────────────────────────────────
+export interface RunTrack {
+  path: string;
+  title: string;
+  artist: string;
+  bpm: number;
+  starred: boolean;
+  run_bpm: number;   // BPM after octave fold (×½/×1/×2)
+  rate: number;      // playbackRate that lands run_bpm on the target
+}
+
+export interface RunQueueResponse {
+  tracks: RunTrack[];
+  target: number;
+  count: number;
+  octave_fold: boolean;
+  tolerance_pct: number;
+  prefer_starred: boolean;
 }
 
 export interface LyricsResponse {
@@ -75,6 +96,7 @@ export interface TracksPage {
   locked_count: number;
   deleted_count: number;
   no_isrc_count: number;
+  starred_count: number;
 }
 
 export interface TrackDetailResponse {

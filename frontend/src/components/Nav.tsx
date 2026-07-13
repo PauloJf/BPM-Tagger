@@ -16,6 +16,9 @@ const IconPlaylists = () => (
 const IconReview = () => (
   <svg {...ic}><path d="M22 12h-4l-3 8L9 4l-3 8H2" /></svg>
 );
+const IconRun = () => (
+  <svg {...ic}><circle cx="12" cy="14" r="7" /><path d="M12 14v-4M9 2h6M12 2v3" /></svg>
+);
 const IconDuplicates = () => (
   <svg {...ic}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
 );
@@ -79,6 +82,7 @@ interface NavSection { label: string; items: NavItem[] }
 function buildSections(grabberEnabled: boolean): NavSection[] {
   const library: NavItem[] = [
     { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
+    { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
   ];
   if (grabberEnabled) library.push({ to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] });
 

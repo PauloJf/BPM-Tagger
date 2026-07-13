@@ -5,6 +5,26 @@ export interface PlayerTrack {
   path: string;
   title: string;
   artist?: string;
+  bpm?: number | null;
+}
+
+/** Run-mode tempo lock: stretch every queued track onto one target BPM. */
+export interface TempoLock {
+  target: number;          // cadence BPM the queue should land on
+  octave: boolean;         // fold ×½/×1/×2 before stretching
+  stretchLimitPct: number; // clamp for how far playbackRate may move from 1
+}
+
+/** playbackRate for a track under a tempo lock: fold its BPM to the octave
+ *  closest to the target, stretch the remainder, clamp to the stretch limit.
+ *  Tracks without a BPM play at native speed. */
+export function lockRate(trackBpm: number | null | undefined, lock: TempoLock | null): number {
+  if (!lock || !trackBpm) return 1;
+  const cands = lock.octave ? [trackBpm, trackBpm / 2, trackBpm * 2] : [trackBpm];
+  const folded = cands.reduce((a, b) =>
+    Math.abs(lock.target / b - 1) < Math.abs(lock.target / a - 1) ? b : a);
+  const lim = lock.stretchLimitPct / 100;
+  return Math.min(1 + lim, Math.max(1 - lim, lock.target / folded));
 }
 
 export type RepeatMode = "off" | "all" | "one";
@@ -27,6 +47,8 @@ interface PlayerState {
   previewing: boolean;     // a detail/compare preview is ducking the main queue
   volume: number;
   setVolume(v: number): void;
+  tempoLock: TempoLock | null;
+  setTempoLock(lock: TempoLock | null): void;
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
   enqueue(track: PlayerTrack): void;   // append to the queue
@@ -52,6 +74,7 @@ interface SavedPlayer {
   queue: PlayerTrack[]; order: number[]; pos: number;
   shuffle: boolean; repeat: RepeatMode; volume: number;
   time?: number; playing?: boolean;
+  tempoLock?: TempoLock | null;
 }
 
 function loadSaved(): SavedPlayer | null {
@@ -98,6 +121,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [pos, setPos] = useState(() => saved?.pos ?? -1);
   const [shuffle, setShuffle] = useState(() => saved?.shuffle ?? false);
   const [repeat, setRepeat] = useState<RepeatMode>(() => saved?.repeat ?? "off");
+  const [tempoLock, setTempoLock] = useState<TempoLock | null>(() => saved?.tempoLock ?? null);
   const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
   const volumeRef = useRef(volume);
   const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
@@ -109,8 +133,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Mirror queue state into a ref so the (once-attached) "ended" handler and the
   // stable next/prev callbacks always read the latest values.
-  const nav = useRef({ queue, order, pos, repeat, shuffle });
-  useEffect(() => { nav.current = { queue, order, pos, repeat, shuffle }; }, [queue, order, pos, repeat, shuffle]);
+  const nav = useRef({ queue, order, pos, repeat, shuffle, tempoLock });
+  useEffect(() => { nav.current = { queue, order, pos, repeat, shuffle, tempoLock }; }, [queue, order, pos, repeat, shuffle, tempoLock]);
 
   // Persist the queue + position + play-state so a reload restores playback
   // where it left off.
@@ -127,10 +151,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         queue, order, pos, shuffle, repeat,
         volume: volumeRef.current, time, playing: isPlaying,
+        tempoLock: nav.current.tempoLock,
       }));
     } catch { /* ignore */ }
   }, []);
-  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, persist]);
+  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, persist]);
 
   // The state effect above can't see time ticking, so capture the exact
   // position when the page is hidden or unloaded (refresh, tab close, mobile
@@ -204,6 +229,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     begin();
   }, [current?.path, rampVolume]);
+
+  // Tempo lock: stretch the current track onto the target BPM (pitch preserved).
+  // defaultPlaybackRate too — load() resets playbackRate to it on track change,
+  // and this effect runs after the load effect above (declaration order).
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const rate = lockRate(current?.bpm, tempoLock);
+    a.defaultPlaybackRate = rate;
+    a.playbackRate = rate;
+    a.preservesPitch = true;
+    (a as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = true;
+  }, [current, tempoLock]);
 
   // Reserve space at the bottom of the page for the bar while a track is loaded.
   useEffect(() => {
@@ -514,6 +552,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current, playing, error, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
+      tempoLock, setTempoLock,
       play, playQueue, enqueue, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,
