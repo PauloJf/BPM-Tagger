@@ -87,6 +87,8 @@ docker compose up -d && docker compose logs -f
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
 | `NTFY_TOPIC` | _(empty)_ | ntfy topic (leave empty to disable) |
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
+| `LYRICS_ENABLED` | `false` | Auto-fetch lyrics (LRCLIB) for tracks the grabber downloads; manual/bulk fetch always available in the UI |
+| `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 
 All variables documented in [`docker-compose.yml`](https://github.com/PauloJf/BPM-Tagger/blob/main/docker-compose.yml).
 
@@ -102,7 +104,9 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - Library table with BPM, confidence, detector info, filter pills (All / Review / Locked / **Deleted**), and `pending` badge before analysis; **live search** as you type; **BPM ± tolerance filter**; error badge tooltips; back navigation restores filter/page/search state
 - **Artists & Albums browse views** — a Tracks | Artists | Albums switcher with filterable card grids (track counts, years, average BPM) linking into the per-artist/per-album pages
 - **Cover art everywhere** — embedded covers on library rows, browse cards, artist/album pages and track detail, with a show/hide toggle and cached delivery
-- **Artist images** — local `artist.jpg` (Navidrome convention), or opt-in fetching from Deezer's public API (`FETCH_ARTIST_IMAGES`), cached on disk; falls back to album art
+- **Artist images** — a custom image you pick, local `artist.jpg` (Navidrome convention), or opt-in, rate-limited fetching from Deezer's public API (`FETCH_ARTIST_IMAGES`), cached on disk; falls back to album art. `ARTIST_IMAGES_TO_LIBRARY` saves fetched/picked images as `artist.jpg` in the artist's folder so Navidrome sees them too
+- **Image editing** — change a track's cover, set an album cover across all its tracks at once, or pick a custom artist image — searching Spotify/Deezer, pasting a URL, or uploading a file
+- **Lyrics** — plain or synced (LRC) lyrics from LRCLIB per track or in bulk, viewable/editable on the track page, stored embedded or as `.lrc` sidecars (Navidrome-compatible); a **player lyrics drawer** follows synced lyrics live (click a line to seek) and steps plain lyrics manually
 - BPM Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
@@ -125,6 +129,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.4.1** — Lyrics from LRCLIB (plain + synced LRC; embed or `.lrc` sidecar; per-track, bulk fill, and grabber auto-fetch) with a live-following player lyrics drawer. Image editing for track covers, whole-album covers, and artist images via a Spotify/Deezer picker; opt-in `artist.jpg` save into the library. Deezer API calls now rate-limited; the player bar shows the track's BPM with a beat-pulsing dot.
 
 **v2.4.0** — Sectioned, collapsible sidebar navigation with icons (renames: BPM Review, Add Music). Artists & Albums browse views with a Library switcher. Cover art across the UI (rows, cards, artist/album/track pages) with a show/hide toggle, plus artist images from a local `artist.jpg` or an opt-in Deezer fetch. Spotify "Browse my playlists" picker; player restores position across reloads.
 

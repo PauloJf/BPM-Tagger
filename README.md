@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.4.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.4.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -47,6 +47,8 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **SQLite tracking** — records every file's path, hash, both raw detector values, final BPM, confidence, and timestamp; re-analyzes only files that are new or changed
 - **Review flagging** — tracks where detectors genuinely disagree, confidence is low, or only the fallback was used are flagged `needs_review` in the DB; approving or locking a flagged track marks it `reviewed` (green badge) so it stays out of the queue
 - **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button; live search and BPM ± tolerance filter; Prev/Next navigation moves through the review queue without returning to the list; back navigation preserves filter, page, and search state
+- **Lyrics** — fetch plain or synced (LRC) lyrics from [LRCLIB](https://lrclib.net) (free, community-run, no account) per track or in bulk, view/edit them on the track page, and store them embedded in the tag or as a `.lrc` sidecar; Navidrome and most players pick them up
+- **Image editing** — change any track's cover, set an album cover across **all** of its tracks at once, or pick a custom artist image — searching Spotify (when connected) and Deezer for candidates, pasting a URL, or uploading a file
 - **Re-analyze on demand** — re-run BPM detection for a single track from its detail page without starting a full library scan
 - **Login brute-force protection** — IP-based rate limiting locks out repeated failed login attempts
 - **Navidrome auto-rescan** — optionally triggers a Navidrome library rescan via the Subsonic API after every scan, and also when the watch-mode queue drains after tagging new files, so new BPM tags appear immediately
@@ -258,7 +260,15 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
 | `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
 | `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
-| `FETCH_ARTIST_IMAGES` | `false` | Fetch artist images for artists without a local `artist.jpg` from Deezer's public API (no account needed) and cache them on disk. Off by default because it sends artist names to Deezer. Also toggleable at runtime in **Settings → Artwork**. |
+| `FETCH_ARTIST_IMAGES` | `false` | Fetch artist images for artists without a local `artist.jpg` from Deezer's public API (no account needed) and cache them on disk. Off by default because it sends artist names to Deezer. Also toggleable at runtime in **Settings → Artwork**. All Deezer API calls (this, the image-picker search) share an app-wide rate limiter (25 requests / 5 s — half of Deezer's public quota), so bulk page loads queue briefly instead of tripping quota errors. |
+| `ARTIST_IMAGES_TO_LIBRARY` | `false` | Save fetched or hand-picked artist images as `artist.jpg` in the artist's own folder, so Navidrome and other players see them too. Only writes to a folder that **exclusively** contains that artist's tracks — flat or shared (compilation) layouts keep using the app cache. Also toggleable in **Settings → Artwork**. |
+
+### Lyrics
+
+| Variable | Default | Description |
+|---|---|---|
+| `LYRICS_ENABLED` | `false` | Automatically fetch lyrics from [LRCLIB](https://lrclib.net) for every track the **Music Grabber** downloads and embed them. Manual fetching from a track's page and the bulk fill in Settings work regardless of this toggle. Sends artist/title/album to lrclib.net. |
+| `LYRICS_MODE` | `embed` | Where fetched/saved lyrics go: `embed` writes them into the file's tag (`USLT` / `LYRICS=` / `©lyr` — travels with the file); `sidecar` writes a `.lrc` text file next to the audio file instead. Synced lyrics are stored as LRC text either way, which Navidrome parses for timed display. |
 
 ---
 
@@ -292,7 +302,8 @@ All settings can be changed at runtime — no container restart required. Change
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
 - **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
 - **Playback** — seconds of audio to buffer before the detail-page player starts
-- **Artwork** — opt-in online fetching of artist images (Deezer public API, cached on disk)
+- **Artwork** — opt-in online fetching of artist images (Deezer public API, rate-limited, cached on disk), and an optional **save into the library** mode that files fetched/picked artist images as `artist.jpg` in the artist's folder (Navidrome-visible; only folders exclusive to the artist)
+- **Lyrics** — auto-fetch for grabbed tracks, embed-vs-sidecar storage, and a **Fetch missing lyrics** bulk job that fills the whole library from LRCLIB (tracks already carrying lyrics are indexed, not re-fetched; a checkbox retries previous not-founds)
 - **ISRC** — **Fill missing ISRCs** across the library (auto-writes confident duration-matched results; lists the rest to choose)
 - **Trash** — current count + size of duplicates moved to trash, with a **Purge** button to delete them permanently
 - **Deleted tracks** — permanently purge the database records for tracks whose files are gone from the library (removed from disk, or moved to the trash during duplicate resolution). Clears stale entries only — no files on disk are touched. **Unrecoverable**, so it asks for confirmation first
@@ -318,6 +329,10 @@ When the grabber is enabled, the nav also shows **Playlists**, **Add Music**, **
 - **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, and completed history.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.
 
+The player bar shows the current track's **BPM with a beat-pulsing dot** — the dot flashes once per beat while playing (and sits still when paused), so you can eyeball whether the detected tempo actually matches the music without leaving whatever page you're on.
+
+A **lyrics drawer** on the player bar (mic icon) shows the current track's lyrics: synced (LRC) lyrics **follow the music** — the active line is highlighted and kept centered, clicking a line seeks to it, and scrolling by hand pauses the auto-follow for a few seconds; plain lyrics are stepped manually (click a line or use ▲/▼). Tracks without lyrics get a **Fetch from LRCLIB** button right in the drawer.
+
 A **persistent player bar** at the bottom keeps a track playing as you move between pages (play / **add-to-queue** / **play-next** buttons appear on every library row). **Play all** / **Shuffle** queue the current filtered view; the bar has prev/next, shuffle, repeat (off/all/one) and volume controls, and a **queue viewer** drawer (jump-to, remove, reorder). The queue **persists across reloads** — restored at the same track and position, resuming playback where the browser allows it — and **keyboard shortcuts** work anywhere (`k` play/pause, `←/→` prev/next, `+/-` volume, `m` mute). Playing a track from a detail or compare view **previews** it and resumes the queue afterwards; the title links to the track detail, and the artist links to a per-**artist page** (with album links → per-**album pages**). The track detail page also has a **Metadata editor** (edit tags + cover, optionally rename to the path template). A **light/dark toggle** lives in the navbar, and Settings has connection-test buttons for ntfy / Navidrome / Deezer.
 
 #### Library (`/tracks`, `/artists`, `/albums`)
@@ -327,7 +342,9 @@ A **Tracks | Artists | Albums** switcher at the top of the Library picks the vie
 
 **Artwork** — embedded cover art shows as thumbnails on library rows and browse cards, an artist image and per-album covers on the artist page, and a cover header on the album and track detail pages. A **show/hide artwork** toggle next to the search box (remembered per browser) turns all of it off for slow libraries; covers are served with long-lived cache headers.
 
-**Artist images** resolve in privacy-preserving order: an `artist.jpg` / `artist.png` next to the artist's files (the same convention Navidrome uses) → a disk cache under `/data/artist_images/` → an online Deezer lookup (**opt-in** via `FETCH_ARTIST_IMAGES` or Settings → Artwork; each artist is fetched at most once). Anything unresolved falls back to the artist's album art.
+**Artist images** resolve in privacy-preserving order: a **custom image you picked** (stored under `/data/artist_images/`) → an `artist.jpg` / `artist.png` next to the artist's files (the same convention Navidrome uses) → a disk cache under `/data/artist_images/` → an online Deezer lookup (**opt-in** via `FETCH_ARTIST_IMAGES` or Settings → Artwork; each artist is fetched at most once, and lookups are rate-limited app-wide to stay under Deezer's public quota). Anything unresolved falls back to the artist's album art. With `ARTIST_IMAGES_TO_LIBRARY` on, fetched and hand-picked artist images are additionally written as `artist.jpg` into the artist's own folder (only when that folder exclusively holds the artist's tracks), so Navidrome picks them up and the app never needs to fetch that artist again.
+
+**Image editing** — an **Image** button on the artist page and a **Cover** button on the album page open a picker that searches **Spotify** (when the grabber is connected) and **Deezer** for candidates, and also accepts a pasted image URL or an uploaded file. The album picker embeds the chosen cover into **every track of the album** in one go; the artist picker sets the custom artist image (with a **Remove custom image** action to fall back to the automatic resolution). Track covers are edited the same way from the track detail page. Every embed refreshes the stored file hash, so the watcher never re-analyzes an edited file.
 
 - **Live search** — the search box filters tracks as you type (300 ms debounce); no Enter required
 - **BPM ± filter** — enter a target BPM and an allowance (e.g. `120 ± 5`) to narrow the list to a specific tempo range; a **cadence ½×/2×** toggle also matches half- and double-time tracks (a 170 SPM running cadence surfaces 85 BPM songs)
@@ -357,6 +374,8 @@ Full detail page for a single track with:
 - **Re-analyze** — re-runs BPM detection for this track immediately without starting a full library scan; available any time no other scan is running
 - **Save & Lock** — manually enter any BPM value, click Save & Lock to write the tag and prevent future scans from overwriting it
 - **Unlock** — removes the lock so the track is re-analyzed on the next scan
+- **Lyrics** — shows the track's lyrics (embedded tag or `.lrc` sidecar) with a synced/plain indicator; **Fetch from LRCLIB** looks them up by artist + title + album + duration (synced preferred), **Edit / Add manually** opens a text editor (paste LRC lines for synced lyrics), and **Remove** clears the tag and sidecar
+- **Edit cover** — under the header artwork; opens the same Spotify/Deezer image picker used on the artist and album pages
 
 #### Health Check (`/healthz`)
 A lightweight JSON endpoint with no authentication required, suitable for Docker or Kubernetes probes:
@@ -496,6 +515,8 @@ Default path: `/data/bpm_tagger.db`. Mount the `/data` volume to persist it acro
 | `locked` | INTEGER | `1` if manually locked (never re-analyzed), `0` otherwise |
 | `reviewed` | INTEGER | `1` if a flagged track was approved or locked via the UI (excluded from review queue), `0` otherwise |
 | `error_message` | TEXT | Exception detail when `status = 'error'` |
+| `lyrics_status` | TEXT | `embedded` (found/saved on the file), `fetched` (written from LRCLIB), `not_found`, `instrumental`, or `NULL` (never checked) |
+| `lyrics_synced` | INTEGER | `1` when the stored lyrics are synced (LRC timestamps), `0` otherwise |
 
 ### Useful Queries
 
