@@ -3,7 +3,7 @@
   "short_name": "BPM Tagger",
   "description": "BPM detection and cadence-synced playback for your Navidrome library",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/run",
   "scope": "/",
   "display": "standalone",
   "background_color": "#131318",
