@@ -173,6 +173,18 @@ services:
       # ASK_THRESHOLD: "0.55"
 
       # -----------------------------------------------------------------------
+      # Run mode (tempo-locked cadence playback on the /run page).
+      # All of these are editable at runtime in Settings → Run Mode; the env
+      # vars only set the initial values.
+      # -----------------------------------------------------------------------
+      # RUN_PRESETS: "Warmup:120,Easy:155,Steady:165,Tempo:175"  # four named presets, Name:bpm
+      # RUN_OCTAVE_FOLD: "true"        # half/double-time tracks count as matches
+      # RUN_PREFER_STARRED: "true"     # fill run queues with starred tracks first
+      # RUN_QUEUE_SIZE: "20"           # tracks per run queue
+      # RUN_TOLERANCE_PCT: "4"         # max % distance from target after octave fold
+      # RUN_STRETCH_LIMIT_PCT: "15"    # cap % for the tempo-lock time stretch
+
+      # -----------------------------------------------------------------------
       # Hash refresh (run once after upgrading from an older version)
       # -----------------------------------------------------------------------
       # Set to "true" to recompute stored size:mtime hashes for all already-

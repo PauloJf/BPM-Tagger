@@ -133,6 +133,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.4.2** — Installable **PWA** (home-screen app, opens straight on the Run page; lock-screen/headset **Media Session** controls; no offline caching by design — requires HTTPS in front of the UI). New **Run mode**: a full-screen tempo-run cadence player — target BPM with ±1/±5 steps or four named presets, octave-folded queue building preferring the new **starred tracks**, waveform scrubbing, and a pitch-preserving **tempo lock** that stretches every song onto your step. **Find metadata** fills a track's whole tag set from Spotify/Deezer (by ISRC when known) with a field-by-field review before saving.
+
 **v2.4.1** — Lyrics from LRCLIB (plain + synced LRC; embed or `.lrc` sidecar; per-track, bulk fill, and grabber auto-fetch) with a live-following player lyrics drawer. Image editing for track covers, whole-album covers, and artist images via a Spotify/Deezer picker; opt-in `artist.jpg` save into the library. Deezer API calls now rate-limited; the player bar shows the track's BPM with a beat-pulsing dot.
 
 **v2.4.0** — Sectioned, collapsible sidebar navigation with icons (renames: BPM Review, Add Music). Artists & Albums browse views with a Library switcher. Cover art across the UI (rows, cards, artist/album/track pages) with a show/hide toggle, plus artist images from a local `artist.jpg` or an opt-in Deezer fetch. Spotify "Browse my playlists" picker; player restores position across reloads.

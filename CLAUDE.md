@@ -11,7 +11,7 @@ Before taking any action that could incur charges on the team plan — including
 | Field | Value |
 |---|---|
 | Name | BPM Tagger |
-| Version | v2.4.1 |
+| Version | v2.4.2 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
 | Author | Paulo (paulo@gatoserio.dev) |
@@ -22,7 +22,7 @@ Before taking any action that could incur charges on the team plan — including
 
 ## What It Does
 
-Automatically detects the BPM of every track in a [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected **React** web UI for reviewing and correcting results.
+Automatically detects the BPM of every track in a [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected **React** web UI for reviewing and correcting results. The UI installs as a **PWA** (opens on `/run`; Media Session lock-screen controls; no offline caching by design) and includes **Run mode** — a tempo-run cadence player: octave-folded BPM queue building preferring **starred** tracks, and a pitch-preserving tempo lock via `playbackRate`.
 
 Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists, reconcile them against the library (by ISRC or fuzzy score), download the missing tracks (Deezer via your own ARL → yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them by a path template — with an ambiguity inbox, download queue, and ntfy pings.
 
@@ -103,14 +103,14 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_migrate()` — safe on existing DBs.
 
-`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Grabber tag-index columns: `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
+`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Grabber tag-index columns: `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
 
 Grabber tables: `playlists`, `playlist_tracks`, `grab_queue`, `grab_candidates` (inbox), `grab_events` (history), `oauth_tokens` (Spotify refresh token), `dismissed_dupes`.
 
 ### Web UI (`bpm_tagger/web/`, React SPA + Flask JSON API)
 
 - **Frontend** is a React SPA (`frontend/`, Vite + TypeScript + Tailwind) built to `frontend/dist`. Flask serves the hashed bundle, static shell, and an `index.html` catch-all for client routes; `web_ui.py` is a back-compat shim.
-- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `spotify`, `playlists`, `queue`, `inbox`.
+- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `spotify`, `playlists`, `queue`, `inbox`, `lyrics`, `images`, `run`.
 - Shared request state lives in `web/state.py` (`AppState`, on `app.extensions["state"]`) — holds `db`, `progress`, `tagger`, config, `settings_path`.
 - All state-changing routes require a per-session CSRF token (`web/auth.py`; SPA fetches it from `/api/me`). File paths are validated against `MUSIC_DIR`.
 - Security: `SameSite=Lax` + `HttpOnly` cookies (`Secure` when `UI_PUBLIC_URL` is https), CSP restricting to same-origin (Spotify image CDNs allowed for cover art), standard hardening headers.

@@ -272,6 +272,19 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `LYRICS_ENABLED` | `false` | Automatically fetch lyrics from [LRCLIB](https://lrclib.net) for every track the **Music Grabber** downloads and embed them. Manual fetching from a track's page and the bulk fill in Settings work regardless of this toggle. Sends artist/title/album to lrclib.net. |
 | `LYRICS_MODE` | `embed` | Where fetched/saved lyrics go: `embed` writes them into the file's tag (`USLT` / `LYRICS=` / `©lyr` — travels with the file); `sidecar` writes a `.lrc` text file next to the audio file instead. Synced lyrics are stored as LRC text either way, which Navidrome parses for timed display. |
 
+### Run Mode
+
+All of these are editable at runtime in **Settings → Run Mode**; the env vars only set the initial values.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RUN_PRESETS` | `Warmup:120,Easy:155,Steady:165,Tempo:175` | The four named one-tap cadence presets on the Run page, as `Name:bpm` pairs (bare `bpm` allowed) |
+| `RUN_OCTAVE_FOLD` | `true` | Count half- and double-time tracks as matches (at a 150 cadence a 75 BPM song plays at native speed) |
+| `RUN_PREFER_STARRED` | `true` | Fill run queues with starred tracks first, then the closest remaining matches |
+| `RUN_QUEUE_SIZE` | `20` | How many tracks a run queue preloads |
+| `RUN_TOLERANCE_PCT` | `4` | How far (%) a track's octave-folded BPM may sit from the target and still be queued |
+| `RUN_STRETCH_LIMIT_PCT` | `15` | Cap (%) on how far the tempo lock may speed up / slow down a track |
+
 ---
 
 ## Web UI
