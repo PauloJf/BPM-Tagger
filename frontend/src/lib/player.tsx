@@ -48,7 +48,11 @@ interface PlayerState {
 const Ctx = createContext<PlayerState | null>(null);
 
 const SAVE_KEY = "bpm.player";
-interface SavedPlayer { queue: PlayerTrack[]; order: number[]; pos: number; shuffle: boolean; repeat: RepeatMode; volume: number }
+interface SavedPlayer {
+  queue: PlayerTrack[]; order: number[]; pos: number;
+  shuffle: boolean; repeat: RepeatMode; volume: number;
+  time?: number; playing?: boolean;
+}
 
 function loadSaved(): SavedPlayer | null {
   try {
@@ -71,17 +75,20 @@ function shuffled(indices: number[]): number[] {
 /** One <audio> element for the whole app, so playback survives route changes. */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  // Restore the last queue from localStorage (paused — no autoplay on load).
+  // Restore the last queue from localStorage, at its saved position. If it was
+  // playing, try to resume — the browser's autoplay policy may veto that, in
+  // which case it stays paused at the right position.
   const [saved] = useState<SavedPlayer | null>(loadSaved);
   const [current, setCurrent] = useState<PlayerTrack | null>(() =>
     saved && saved.pos >= 0 ? (saved.queue[saved.order[saved.pos]] ?? null) : null);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pendingPlay = useRef(false);
+  const pendingPlay = useRef(!!(current && saved?.playing));
   // Set before a setCurrent to seek the freshly-loaded track (used to restore a
   // preview's saved position) and to fade the next play in from silence.
-  const seekTarget = useRef<number | null>(null);
-  const fadeIn = useRef(false);
+  const seekTarget = useRef<number | null>(
+    current && saved?.time && isFinite(saved.time) ? saved.time : null);
+  const fadeIn = useRef(pendingPlay.current);
 
   // Queue state. `order` holds queue indices in playback order (so shuffle can
   // be toggled without losing the current track); `pos` is the position within
@@ -105,13 +112,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const nav = useRef({ queue, order, pos, repeat, shuffle });
   useEffect(() => { nav.current = { queue, order, pos, repeat, shuffle }; }, [queue, order, pos, repeat, shuffle]);
 
-  // Persist the queue so it survives a reload (restored paused).
-  useEffect(() => {
+  // Persist the queue + position + play-state so a reload restores playback
+  // where it left off.
+  const persist = useCallback(() => {
     try {
-      if (queue.length) localStorage.setItem(SAVE_KEY, JSON.stringify({ queue, order, pos, shuffle, repeat, volume }));
-      else localStorage.removeItem(SAVE_KEY);
+      const { queue, order, pos, shuffle, repeat } = nav.current;
+      if (!queue.length) { localStorage.removeItem(SAVE_KEY); return; }
+      const a = audioRef.current;
+      const pv = previewSaved.current;
+      // While a preview is ducking the queue, save the queue track's saved
+      // position/state — not the preview's.
+      const time = pv ? pv.time : a?.currentTime || 0;
+      const isPlaying = pv ? pv.wasPlaying : !!a && !a.paused;
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        queue, order, pos, shuffle, repeat,
+        volume: volumeRef.current, time, playing: isPlaying,
+      }));
     } catch { /* ignore */ }
-  }, [queue, order, pos, shuffle, repeat, volume]);
+  }, []);
+  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, persist]);
+
+  // The state effect above can't see time ticking, so capture the exact
+  // position when the page is hidden or unloaded (refresh, tab close, mobile
+  // app switch) — pagehide + visibilitychange cover desktop and mobile.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") persist(); };
+    window.addEventListener("pagehide", persist);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", persist);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [persist]);
 
   const setVolume = useCallback((v: number) => {
     const vol = Math.max(0, Math.min(1, v));

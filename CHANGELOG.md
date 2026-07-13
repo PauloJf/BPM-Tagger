@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Playlists:** a **Browse my playlists** picker lists your Spotify account's playlists (owned + followed) so you can add one to watch without copy-pasting a URL; already-watched playlists are flagged.
+- **Player:** reloading the page now restores the current track **at its saved position** and resumes playback if it was playing (browsers may block the auto-resume until you interact — it then stays paused at the right spot).
 ## v2.3.1 — 2026-07-07
 
 - **Inbox:** a **Search all again** button re-runs the default search for every waiting item at once (e.g. after enabling a new provider).
