@@ -18,7 +18,7 @@ import random
 
 from flask import Blueprint, jsonify, request
 
-from ..auth import login_required
+from ..auth import _check_csrf, login_required
 from ..state import state
 
 run_bp = Blueprint("api_run", __name__)
@@ -38,6 +38,7 @@ def api_run_queue():
     st = state()
     cfg = st.config
     if request.method == "POST":
+        _check_csrf()
         body = request.get_json(silent=True) or {}
         bpm_raw = body.get("bpm")
         count_raw = body.get("count")

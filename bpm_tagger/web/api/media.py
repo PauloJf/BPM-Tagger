@@ -6,7 +6,7 @@ import os
 import urllib.error
 import urllib.request
 
-from flask import Blueprint, abort, jsonify, request, send_file
+from flask import Blueprint, abort, jsonify, request, send_file, session
 
 from ..auth import login_required
 from ..state import _assert_in_music_dir, state
@@ -50,9 +50,11 @@ def api_version_check():
 
 @media_bp.route("/healthz")
 def healthz():
+    """Liveness probe. Library stats ride along only for authenticated callers —
+    the bare endpoint stays public for Docker healthchecks."""
     st = state()
     try:
-        stats = st.db.get_stats() if st.db else {}
+        stats = (st.db.get_stats() if st.db and session.get("ok") else {})
         return jsonify(status="ok", **stats)
     except Exception as exc:
         return jsonify(status="error", error=str(exc)), 500

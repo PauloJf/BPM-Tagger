@@ -93,7 +93,11 @@ def load_settings_override(config: dict) -> dict:
 
 
 def save_settings(settings_path: str, updates: dict) -> None:
-    """Merge updates into settings.json at settings_path (creating it if absent)."""
+    """Merge updates into settings.json at settings_path (creating it if absent).
+
+    A value of ``None`` removes the key. The file is created/kept at 0600 —
+    it holds secrets (Navidrome password, Deezer ARL, the session secret key).
+    """
     existing = {}
     if os.path.isfile(settings_path):
         try:
@@ -101,9 +105,43 @@ def save_settings(settings_path: str, updates: dict) -> None:
                 existing = json.load(f)
         except Exception:
             pass
-    existing.update(updates)
-    with open(settings_path, "w") as f:
+    for key, val in updates.items():
+        if val is None:
+            existing.pop(key, None)
+        else:
+            existing[key] = val
+    fd = os.open(settings_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(existing, f, indent=2)
+    try:  # pre-existing file keeps its old mode — tighten it too
+        os.chmod(settings_path, 0o600)
+    except OSError:
+        pass
+
+
+def migrate_plaintext_password(settings_path: str, config: dict) -> None:
+    """One-time migration: settings.json used to store the UI password in clear.
+
+    Replace it with a werkzeug hash (``ui_password_hash``) and drop the
+    plaintext key. The UI_PASSWORD env var is untouched — it stays the
+    plaintext fallback until the password is first changed from the UI.
+    """
+    if not os.path.isfile(settings_path):
+        return
+    try:
+        with open(settings_path) as f:
+            stored = json.load(f)
+    except Exception:
+        return
+    plain = stored.get("ui_password")
+    if not plain:
+        return
+    from werkzeug.security import generate_password_hash
+    hashed = generate_password_hash(plain)
+    save_settings(settings_path, {"ui_password_hash": hashed, "ui_password": None})
+    config["ui_password_hash"] = hashed
+    config["ui_password"] = ""
+    log.info("Migrated UI password in settings.json to a hash")
 
 
 def build_config() -> dict:
@@ -155,7 +193,14 @@ def build_config() -> dict:
         "lyrics_mode":                os.environ.get("LYRICS_MODE", "embed"),  # embed | sidecar
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
+        # Set (in settings.json) the first time the password is changed from the
+        # UI; once present it is authoritative and ui_password is ignored.
+        "ui_password_hash":           "",
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),
+        # Number of reverse proxies in front of the UI (X-Forwarded-For depth).
+        # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
+        # so the login brute-force lockout keys on the real client IP.
+        "ui_trusted_proxies":         int(os.environ.get("UI_TRUSTED_PROXIES", "0")),
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
         "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
         "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),

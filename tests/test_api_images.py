@@ -115,6 +115,7 @@ def test_images_search_invalid_kind(imgs):
 
 def test_artist_image_set_from_url_then_serve_and_delete(imgs, monkeypatch):
     client, _st, _music = imgs
+    monkeypatch.setattr(images_mod, "_is_public_host", lambda url: True)
     monkeypatch.setattr(images_mod.requests, "get",
                         lambda url, **kw: _FakeResp(content=JPEG))
 
@@ -211,6 +212,7 @@ def test_album_cover_unknown_album_404(imgs):
 def test_track_cover_from_url(imgs, monkeypatch):
     client, st, music = imgs
     path = _mp3(st, music, "t.mp3", title="T", album="A", album_artist="AA")
+    monkeypatch.setattr(images_mod, "_is_public_host", lambda url: True)
     monkeypatch.setattr(images_mod.requests, "get",
                         lambda url, **kw: _FakeResp(content=JPEG))
 

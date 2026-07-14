@@ -3,16 +3,15 @@
 Persist to settings.json and update live AppState. GET masks secrets.
 """
 
-import hmac
 import logging
 
 import requests
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 
 from ...config import __version__, env_locked_keys, save_settings
 from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
-from ..auth import _check_csrf, login_required
+from ..auth import _check_csrf, login_required, password_stamp, verify_ui_password
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -20,8 +19,9 @@ log = logging.getLogger(__name__)
 settings_bp = Blueprint("settings", __name__)
 
 # Values that must never be returned to the client in the clear.
-_SECRET_KEYS = {"ui_password", "ui_secret_key", "navidrome_pass",
-                "spotify_client_secret", "monochrome_api_key", "deezer_arl"}
+_SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
+                "navidrome_pass", "spotify_client_secret",
+                "monochrome_api_key", "deezer_arl"}
 
 
 def _json_body() -> dict:
@@ -382,13 +382,23 @@ def api_settings_password():
     current = str(data.get("current_password", ""))
     new_pw  = str(data.get("new_password", ""))
     confirm = str(data.get("confirm_password", ""))
-    if not hmac.compare_digest(current, current_app.config["UI_PASSWORD"]):
+    if not verify_ui_password(current):
         return jsonify(ok=False, error="Current password is incorrect."), 400
-    if not new_pw:
-        return jsonify(ok=False, error="New password cannot be empty."), 400
+    if len(new_pw) < 8:
+        return jsonify(ok=False, error="New password must be at least 8 characters."), 400
     if new_pw != confirm:
         return jsonify(ok=False, error="New passwords do not match."), 400
-    current_app.config["UI_PASSWORD"] = new_pw
-    st.config["ui_password"] = new_pw
-    save_settings(st.settings_path, {"ui_password": new_pw})
+    from werkzeug.security import generate_password_hash
+    hashed = generate_password_hash(new_pw)
+    # Only the hash is kept; the plaintext (env fallback / legacy settings key)
+    # stops mattering from here on.
+    current_app.config["UI_PASSWORD"] = ""
+    current_app.config["UI_PASSWORD_HASH"] = hashed
+    st.config["ui_password"] = ""
+    st.config["ui_password_hash"] = hashed
+    save_settings(st.settings_path, {"ui_password_hash": hashed, "ui_password": None})
+    # New stamp invalidates every other session; re-stamp this one so the
+    # device that changed the password stays logged in.
+    current_app.config["PW_STAMP"] = password_stamp(hashed, "")
+    session["pw"] = current_app.config["PW_STAMP"]
     return jsonify(ok=True)

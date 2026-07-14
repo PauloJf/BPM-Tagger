@@ -8,8 +8,11 @@ of the album; artist images land in the on-disk custom store that
 the watcher never re-analyzes an edited file.
 """
 
+import ipaddress
 import logging
 import os
+import socket
+from urllib.parse import urlparse
 
 import requests
 from flask import Blueprint, jsonify, request
@@ -29,9 +32,33 @@ _MAX_IMAGE_BYTES = 15 * 1024 * 1024
 _SEARCH_LIMIT = 8
 
 
+def _is_public_host(url: str) -> bool:
+    """True when every address the URL's host resolves to is publicly routable.
+
+    Candidate image URLs come from the client, so without this check the apply
+    endpoints would fetch attacker-chosen URLs from inside the network (SSRF
+    against LAN services / cloud metadata). Cover-art CDNs are always public.
+    """
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    try:
+        return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+    except ValueError:
+        return False
+
+
 def _fetch_image(url: str) -> bytes | None:
-    """Fetch a candidate image server-side. http(s) only; size-capped."""
+    """Fetch a candidate image server-side. http(s) only; public hosts only;
+    size-capped."""
     if not url or not url.lower().startswith(("http://", "https://")):
+        return None
+    if not _is_public_host(url):
+        log.warning("Image fetch refused (non-public host): %s", url)
         return None
     try:
         resp = requests.get(url, timeout=15, stream=True)

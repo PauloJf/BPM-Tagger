@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.5.3 — 2026-07-14
+
+- **Security hardening for the web UI:**
+  - **Hashed password storage.** Once you change the UI password from **Settings**, only a salted Werkzeug hash is stored in `settings.json` — never the plaintext. A plaintext password left in `settings.json` by an older version is migrated to a hash automatically on first start, and `settings.json` is now written with `0600` permissions since it also holds the Navidrome password, Deezer ARL and session key. New passwords must be at least 8 characters.
+  - **Password changes revoke other sessions.** Changing the password immediately invalidates every session except the one that made the change, so a stolen cookie or a forgotten logged-in device is cut off.
+  - **Reverse-proxy-aware login lockout.** New env var `UI_TRUSTED_PROXIES` (default `0`) — set it to the number of proxies in front of the UI so the brute-force lockout keys on the real client IP from `X-Forwarded-For` instead of the proxy's address (otherwise one user's failed logins could lock out everyone). Left at `0`, a forged header can't spoof the client IP.
+  - **SSRF protection on image fetches.** When the image picker pulls a cover or artist image from a URL, the target host must resolve to a publicly routable address, so it can't be aimed at LAN services or cloud metadata endpoints.
+  - **Smaller fixes:** the Run-queue POST now requires a CSRF token like every other mutating endpoint; embedded cover art with a non-`image/*` type is served as an inert download rather than its declared type; `/healthz` only includes library stats for authenticated callers (the bare liveness probe stays public); and the SPA static-file guard now requires an exact directory-boundary match.
+
 ## v2.5.2 — 2026-07-14
 
 - **Two-way star sync with Navidrome:** stars now flow both ways — tracks you star in BPM Tagger are pushed to Navidrome as favourites, and tracks you star in Navidrome (or any Subsonic client) are pulled into BPM Tagger, feeding the Run-mode queue's starred preference. Enable it in **Settings → Navidrome** and hit **Sync stars now** (manual trigger in v1; each pass reports pulled / pushed / unmatched counts). Under the hood it's a per-track three-way merge against the last-synced baseline, so "starred here" and "un-starred there" are never confused; a failed remote write leaves that track's baseline untouched and retries on the next sync. Songs are matched by path (root differences tolerated) with a metadata fuzzy-match fallback, and resolved Navidrome ids are cached. New env var `NAVIDROME_STAR_SYNC` (default `false`) sets the initial toggle state.

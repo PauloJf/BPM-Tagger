@@ -647,6 +647,10 @@ def api_track_cover_get():
     if not cover:
         abort(404)
     data, mime = cover
+    # The MIME comes from the file's own tag — never let a crafted file serve
+    # itself as text/html (or anything else active) from our origin.
+    if not (mime or "").lower().startswith("image/"):
+        mime = "application/octet-stream"
     return Response(data, mimetype=mime, headers=cache_headers)
 
 

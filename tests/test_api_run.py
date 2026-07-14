@@ -175,23 +175,25 @@ def test_run_queue_get_response_has_recycled_false(client, base_config):
 
 
 def test_run_queue_post_excludes_paths(client, base_config):
-    _login(client)
+    csrf = _login(client)
     _seed(base_config["db_path"], base_config["music_dir"], [
         ("a", 150.0, 0), ("b", 150.0, 0), ("c", 150.0, 0),
     ])
     exclude = [f"{base_config['music_dir']}/a.mp3"]
-    data = client.post("/api/run/queue", json={"bpm": 150, "exclude": exclude}).get_json()
+    data = client.post("/api/run/queue", json={"bpm": 150, "exclude": exclude},
+                       headers=csrf).get_json()
     assert {t["title"] for t in data["tracks"]} == {"b", "c"}
     assert data["recycled"] is False
 
 
 def test_run_queue_recycles_when_exclude_exhausts_pool(client, base_config):
-    _login(client)
+    csrf = _login(client)
     _seed(base_config["db_path"], base_config["music_dir"], [
         ("a", 150.0, 0), ("b", 150.0, 0),
     ])
     exclude = [f"{base_config['music_dir']}/a.mp3", f"{base_config['music_dir']}/b.mp3"]
-    data = client.post("/api/run/queue", json={"bpm": 150, "exclude": exclude}).get_json()
+    data = client.post("/api/run/queue", json={"bpm": 150, "exclude": exclude},
+                       headers=csrf).get_json()
     # Every match was excluded — the server recycles the full pool rather than
     # returning an empty batch.
     assert {t["title"] for t in data["tracks"]} == {"a", "b"}
@@ -199,15 +201,22 @@ def test_run_queue_recycles_when_exclude_exhausts_pool(client, base_config):
 
 
 def test_run_queue_post_bad_exclude_type(client, base_config):
-    _login(client)
+    csrf = _login(client)
     _seed(base_config["db_path"], base_config["music_dir"], [("a", 150.0, 0)])
-    r = client.post("/api/run/queue", json={"bpm": 150, "exclude": "not-a-list"})
+    r = client.post("/api/run/queue", json={"bpm": 150, "exclude": "not-a-list"},
+                    headers=csrf)
     assert r.status_code == 400
 
 
-def test_run_queue_post_requires_target(client):
+def test_run_queue_post_requires_csrf(client, base_config):
     _login(client)
-    r = client.post("/api/run/queue", json={"exclude": []})
+    _seed(base_config["db_path"], base_config["music_dir"], [("a", 150.0, 0)])
+    assert client.post("/api/run/queue", json={"bpm": 150}).status_code == 403
+
+
+def test_run_queue_post_requires_target(client):
+    csrf = _login(client)
+    r = client.post("/api/run/queue", json={"exclude": []}, headers=csrf)
     assert r.status_code == 400
 
 

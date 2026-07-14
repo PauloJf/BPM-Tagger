@@ -10,6 +10,7 @@ are unchanged.
 """
 
 import logging
+import os
 import secrets
 from datetime import timedelta
 from pathlib import Path
@@ -31,7 +32,7 @@ from .api.spotify import spotify_bp
 from .api.stats import stats_bp
 from .api.suggestions import suggestions_bp
 from .api.tracks import tracks_bp
-from .auth import _csrf_token
+from .auth import _csrf_token, password_stamp
 from .state import AppState
 
 log = logging.getLogger(__name__)
@@ -69,6 +70,14 @@ def create_app(config: dict) -> Flask:
     st.settings_path = str(Path(config["db_path"]).parent / "settings.json")
     app.extensions["state"] = st
 
+    # settings.json from older versions stores the UI password in clear —
+    # replace it with a hash on first boot (no-op afterwards).
+    try:
+        from ..config import migrate_plaintext_password
+        migrate_plaintext_password(st.settings_path, config)
+    except Exception as exc:  # pragma: no cover - best effort
+        log.warning("UI: password-hash migration failed: %s", exc)
+
     # A stable secret key keeps sessions valid across restarts (including the
     # in-place /api/restart). When none is configured, generate one once and
     # persist it so users aren't silently logged out on every restart.
@@ -84,6 +93,11 @@ def create_app(config: dict) -> Flask:
             log.warning("UI: could not persist generated secret key: %s", exc)
     app.secret_key = secret
     app.config["UI_PASSWORD"] = config.get("ui_password", "")
+    app.config["UI_PASSWORD_HASH"] = config.get("ui_password_hash", "")
+    # Sessions carry this stamp; login_required rejects sessions minted under a
+    # previous password, so a password change logs out every other device.
+    app.config["PW_STAMP"] = password_stamp(
+        app.config["UI_PASSWORD_HASH"], app.config["UI_PASSWORD"])
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
         hours=int(config.get("ui_session_hours", 24))
     )
@@ -95,6 +109,15 @@ def create_app(config: dict) -> Flask:
     # so login still works there.
     app.config["SESSION_COOKIE_SECURE"] = str(
         config.get("ui_public_url") or "").lower().startswith("https://")
+
+    # Behind a reverse proxy the login lockout must key on the real client IP,
+    # not the proxy's. Opt-in via UI_TRUSTED_PROXIES (= number of proxies) so a
+    # directly exposed instance can't have its IP spoofed by a forged header.
+    trusted = int(config.get("ui_trusted_proxies", 0) or 0)
+    if trusted > 0:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted, x_proto=trusted,
+                                x_host=trusted)
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
@@ -116,7 +139,8 @@ def create_app(config: dict) -> Flask:
         # Serve a real dist file when it exists (e.g. a bundled icon); otherwise
         # hand back index.html so the client router can take over.
         candidate = (_FRONTEND_DIST / path).resolve()
-        if path and candidate.is_file() and str(candidate).startswith(str(_FRONTEND_DIST.resolve())):
+        if path and candidate.is_file() and \
+                str(candidate).startswith(str(_FRONTEND_DIST.resolve()) + os.sep):
             return send_file(candidate)
         index = _FRONTEND_DIST / "index.html"
         if not index.is_file():
@@ -154,8 +178,7 @@ def create_app(config: dict) -> Flask:
 
 
 def start(config: dict, progress=None, tagger=None):
-    password = config.get("ui_password", "")
-    if not password:
+    if not (config.get("ui_password") or config.get("ui_password_hash")):
         log.error("UI: UI_PASSWORD is not set — web UI will not start")
         return
 

@@ -425,11 +425,40 @@ def test_settings_navidrome_keeps_password_when_masked(auth_client):
 def test_settings_password_change_round_trip(auth_client):
     resp = auth_client.post("/api/settings/password",
                             json={"current_password": "s3cret",
-                                  "new_password": "brand-new",
-                                  "confirm_password": "brand-new"},
+                                  "new_password": "brand-new-pw",
+                                  "confirm_password": "brand-new-pw"},
                             headers={"X-CSRF-Token": auth_client._csrf})
     assert resp.status_code == 200
-    assert auth_client.application.config["UI_PASSWORD"] == "brand-new"
+    # Plaintext is dropped; only a verifiable hash is kept.
+    assert auth_client.application.config["UI_PASSWORD"] == ""
+    assert auth_client.application.config["UI_PASSWORD_HASH"]
+    # A fresh client can log in with the new password but not the old one.
+    fresh = auth_client.application.test_client()
+    assert fresh.post("/api/login", json={"password": "s3cret"}).status_code == 401
+    assert fresh.post("/api/login", json={"password": "brand-new-pw"}).status_code == 200
+
+
+def test_settings_password_rejects_short(auth_client):
+    resp = auth_client.post("/api/settings/password",
+                            json={"current_password": "s3cret",
+                                  "new_password": "short7!", "confirm_password": "short7!"},
+                            headers={"X-CSRF-Token": auth_client._csrf})
+    assert resp.status_code == 400
+
+
+def test_password_change_invalidates_other_sessions(auth_client):
+    # A second logged-in device.
+    other = auth_client.application.test_client()
+    assert other.post("/api/login", json={"password": "s3cret"}).status_code == 200
+    assert other.get("/api/tracks").status_code == 200
+    # The first device changes the password…
+    auth_client.post("/api/settings/password",
+                     json={"current_password": "s3cret",
+                           "new_password": "brand-new-pw", "confirm_password": "brand-new-pw"},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    # …the other device's session is now rejected, the changer's still works.
+    assert other.get("/api/tracks").status_code == 401
+    assert auth_client.get("/api/tracks").status_code == 200
 
 
 def test_settings_password_rejects_wrong_current(auth_client):

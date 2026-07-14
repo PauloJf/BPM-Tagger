@@ -271,6 +271,7 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
 | `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
 | `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
+| `UI_TRUSTED_PROXIES` | `0` | Number of reverse proxies in front of the UI. Leave `0` when port 5000 is reached directly; set `1` behind nginx/Caddy/Traefik so the login lockout keys on the real client IP (from `X-Forwarded-For`) instead of the proxy's — otherwise one user's failed logins lock out everyone. |
 | `FETCH_ARTIST_IMAGES` | `false` | Fetch artist images for artists without a local `artist.jpg` from Deezer's public API (no account needed) and cache them on disk. Off by default because it sends artist names to Deezer. Also toggleable at runtime in **Settings → Artwork**. All Deezer API calls (this, the image-picker search) share an app-wide rate limiter (25 requests / 5 s — half of Deezer's public quota), so bulk page loads queue briefly instead of tripping quota errors. |
 | `ARTIST_IMAGES_TO_LIBRARY` | `false` | Save fetched or hand-picked artist images as `artist.jpg` in the artist's own folder, so Navidrome and other players see them too. Only writes to a folder that **exclusively** contains that artist's tracks — flat or shared (compilation) layouts keep using the app cache. Also toggleable in **Settings → Artwork**. |
 
@@ -619,7 +620,10 @@ Notifications are batched to avoid flooding your channel:
 The web UI implements multiple layers of protection:
 
 - **CSRF protection** — every state-changing request requires a per-session CSRF token. Forms include a hidden `csrf_token` field; JavaScript API calls include an `X-CSRF-Token` header. Requests without a valid token are rejected with HTTP 403.
-- **Login brute-force protection** — failed login attempts are tracked per source IP. After `UI_MAX_LOGIN_ATTEMPTS` failures within 60 seconds, that IP is locked out for `UI_LOCKOUT_SECONDS`. Counts reset only after the full lockout period expires.
+- **Hashed password storage** — once you change the UI password from **Settings**, only a salted [Werkzeug](https://werkzeug.palletsprojects.com/) hash is stored (in `settings.json`), never the plaintext. A legacy plaintext password from an older version is migrated to a hash automatically on first start. New passwords must be at least 8 characters. `settings.json` is written with `0600` permissions since it holds secrets (Navidrome password, Deezer ARL, session key).
+- **Password change revokes other sessions** — changing the password immediately invalidates every session except the one that made the change, so a stolen cookie or a forgotten logged-in device is cut off.
+- **Login brute-force protection** — failed login attempts are tracked per source IP. After `UI_MAX_LOGIN_ATTEMPTS` failures within 60 seconds, that IP is locked out for `UI_LOCKOUT_SECONDS`. Counts reset only after the full lockout period expires. Behind a reverse proxy, set `UI_TRUSTED_PROXIES` so this keys on the real client IP.
+- **SSRF protection** — when the image picker fetches a cover/artist image from a URL, the target host must resolve to a publicly routable address, so the fetch can't be pointed at LAN services or cloud metadata endpoints.
 - **Open redirect prevention** — the `?next=` parameter accepted after login is validated to ensure it points to this host only; external URLs are silently ignored.
 - **Path traversal prevention** — the Save BPM and Unlock API endpoints validate that the supplied file path resolves within `MUSIC_DIR` before touching any file or database record.
 - **SameSite=Lax cookie** — session cookies are set with `SameSite=Lax` and `HttpOnly`, blocking cross-site POST forgery and JavaScript cookie theft.
@@ -639,7 +643,7 @@ The web UI implements multiple layers of protection:
   ports:
     - "127.0.0.1:5000:5000"
   ```
-- Put a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it to the internet.
+- Put a reverse proxy (nginx, Caddy) with TLS in front of port 5000 before exposing it to the internet — and set `UI_TRUSTED_PROXIES` to the number of proxies so the login lockout keeps working per real client IP.
 - The Navidrome password is transmitted using Subsonic token authentication (MD5 hash + random salt) rather than as plaintext in the URL, keeping it out of server access logs.
 
 ---

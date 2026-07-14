@@ -212,6 +212,12 @@ services:
       UI_MAX_LOGIN_ATTEMPTS: "5"  # failed attempts before lockout (per IP, per 60 s)
       UI_LOCKOUT_SECONDS: "300"   # how long a locked-out IP must wait
 
+      # Number of reverse proxies in front of the UI. Leave "0" when port 5000
+      # is reached directly. Set "1" behind nginx/traefik/Caddy so the login
+      # lockout keys on the real client IP (from X-Forwarded-For) instead of the
+      # proxy's — otherwise one user's failed logins lock out everyone.
+      UI_TRUSTED_PROXIES: "0"
+
     # Memory limit — prevents a runaway container from crashing Docker on a NAS.
     # 800 MB covers essentia+librosa (USE_DEEPRHYTHM=false).
     # Raise to 1500M if you enable USE_DEEPRHYTHM=true; 3 GB for WORKERS > 1.
