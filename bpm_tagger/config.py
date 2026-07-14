@@ -163,6 +163,9 @@ def build_config() -> dict:
         "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
         "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),
         "navidrome_pass":             os.environ.get("NAVIDROME_PASS", ""),
+        # Two-way star sync (docs/plans/navidrome-star-sync.md): gates the
+        # "Sync stars now" button in Settings. Manual trigger only in v1.
+        "navidrome_star_sync":        os.environ.get("NAVIDROME_STAR_SYNC", "false").lower() == "true",
 
         # ── Grabber (M3+) ─────────────────────────────────────────────────────
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",

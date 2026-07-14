@@ -1,6 +1,24 @@
 # Plan: Two-way star sync with Navidrome
 
-Status: planned, not implemented. Target: TBD.
+Status: implemented (v2.5.2, 2026-07-14) — schema, Subsonic client, merge driver
+(`integrations/star_sync.py`), `POST /api/settings/sync-stars`, Settings toggle +
+"Sync stars now" button, tests (`tests/test_star_sync.py`).
+
+Implementation notes that amend the plan below:
+
+- **Conflicts are unreachable in v1.** With a per-track *boolean* baseline,
+  `local != remote` forces `base` to equal one side, so exactly one side ever
+  counts as "changed" — every disagreement resolves as a push or a pull. The
+  conflict branch and the star-wins policy exist in `merge_star()` (defensive,
+  and ready for a future `starred_at` timestamp merge where real conflicts
+  appear), but no `navidrome_star_policy` config/UI knob was added: it could
+  never do anything.
+- **No `navidrome_path_strip` config either** — `_paths_match()` does
+  segment-aligned suffix matching, which absorbs differing container roots
+  without configuration; the remote→local pass indexes by filename so it stays
+  O(local + remote).
+- Remote stars that match no local row are counted as `unmatched_remote` in the
+  result (surfaced in the Settings toast) rather than a separate mapping test.
 
 ## Goal
 

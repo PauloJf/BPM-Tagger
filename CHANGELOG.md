@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.5.2 — 2026-07-14
+
+- **Two-way star sync with Navidrome:** stars now flow both ways — tracks you star in BPM Tagger are pushed to Navidrome as favourites, and tracks you star in Navidrome (or any Subsonic client) are pulled into BPM Tagger, feeding the Run-mode queue's starred preference. Enable it in **Settings → Navidrome** and hit **Sync stars now** (manual trigger in v1; each pass reports pulled / pushed / unmatched counts). Under the hood it's a per-track three-way merge against the last-synced baseline, so "starred here" and "un-starred there" are never confused; a failed remote write leaves that track's baseline untouched and retries on the next sync. Songs are matched by path (root differences tolerated) with a metadata fuzzy-match fallback, and resolved Navidrome ids are cached. New env var `NAVIDROME_STAR_SYNC` (default `false`) sets the initial toggle state.
+
 ## v2.5.1 — 2026-07-14
 
 - **Queue similar from the player:** a new **similar-tracks** button on the player bar and a **≈ Similar** button on the Run page's queue view list tracks in the style of the now-playing artist (Deezer artist radio, keyless — same source as the Related panel). Tracks **you already have** get a **Queue** button that appends them straight to the **play queue** — "keep this vibe going" without leaving the player; tracks you're missing get a **Grab** button feeding the download queue (grabber only). During a tempo-locked run, in-library matches are **cadence-checked first**: a track whose octave-folded BPM can't stretch onto the active target within the stretch cap shows **off cadence** instead of a Queue button, so a run's queue never picks up a track your feet can't follow. A **Queue all** shortcut queues every eligible in-library match at once; rows already queued show **✓ in queue**, and the 30-second ▶ previews work here too.

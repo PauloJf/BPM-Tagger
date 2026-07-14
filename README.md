@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.5.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.5.2** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -57,6 +57,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Re-analyze on demand** — re-run BPM detection for a single track from its detail page without starting a full library scan
 - **Login brute-force protection** — IP-based rate limiting locks out repeated failed login attempts
 - **Navidrome auto-rescan** — optionally triggers a Navidrome library rescan via the Subsonic API after every scan, and also when the watch-mode queue drains after tagging new files, so new BPM tags appear immediately
+- **Navidrome star sync** — two-way: stars set in BPM Tagger push to Navidrome as favourites, stars set in Navidrome pull in (and feed the Run queue's starred preference). A per-track baseline keeps "starred here" and "un-starred there" apart; **Sync stars now** lives in Settings → Navidrome
 - **Health check endpoint** — `/healthz` returns DB statistics as JSON; no login required, suitable for Docker/k8s probes
 - **ntfy notifications** — batched and rate-limited; scan summaries include a "N need review" count
 - **Manual lock** — pin a track's BPM so future scans never overwrite it
@@ -214,19 +215,22 @@ All settings are environment variables. Every variable has a default and is docu
 | `NTFY_MIN_INTERVAL` | `300` | Minimum seconds between batched tagging notifications (anti-spam) |
 | `NTFY_NOTIFY_REVIEW` | `true` | Include a "N need review" count in the scan-complete summary notification |
 
-### Navidrome Auto-Rescan
+### Navidrome Integration
 
 | Variable | Default | Description |
 |---|---|---|
 | `NAVIDROME_URL` | _(empty)_ | Base URL of your Navidrome instance, e.g. `http://navidrome:4533`. Leave empty to disable. |
 | `NAVIDROME_USER` | _(empty)_ | Navidrome admin username |
 | `NAVIDROME_PASS` | _(empty)_ | Navidrome admin password |
+| `NAVIDROME_STAR_SYNC` | `false` | Initial state of the **two-way star sync** toggle (Settings → Navidrome). |
 
-When all three are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/startScan` endpoint:
+When URL/user/password are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/startScan` endpoint:
 - At the end of every `scan_all`, `scan_unscanned`, and `scan_review` one-shot run
 - In `watch` / `watch_all` mode: once when the pending-file queue drains after tagging new files (60-second cooldown between rescan calls)
 
 This triggers a Navidrome library rescan automatically so the new BPM tags appear in your music player without a manual rescan step.
+
+**Two-way star sync** (enable in Settings → Navidrome, then **Sync stars now**): each pass fetches Navidrome's starred songs in one `getStarred2` call and reconciles them with the app's starred flags via a per-track three-way merge against the last-synced baseline — a star set on either side since the last sync propagates to the other, and an un-star on one side is never mistaken for a star on the other. Songs are matched by file path (differing roots between the two containers are tolerated) with a title/artist/duration fuzzy fallback; resolved Navidrome song ids are cached for later passes. Pushing a locally-starred track that Navidrome hasn't starred uses a `search3` lookup. A failed remote write leaves that track's baseline untouched, so it simply retries on the next sync; the result toast reports pulled / pushed / unmatched / failed counts. Manual trigger only for now.
 
 ### Music Grabber
 
@@ -339,7 +343,7 @@ All settings can be changed at runtime — no container restart required. Change
 - **Notifications** — ntfy server URL, topic, batch size, interval, and whether to include review counts
 - **Scan behavior** — worker count, detector toggles (deeprhythm, essentia), tag writing, preserve-mtime, BPM range, review confidence threshold
 - **Operating mode** — controls both container startup behaviour and what **▶ Start Scan** does: `watch`/`scan_unscanned` scan new/changed files; `watch_all`/`scan_all` re-analyze everything; `scan_review` re-runs flagged and error tracks; `report` writes a CSV with no analysis
-- **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button)
+- **Navidrome integration** — URL, username, and password for auto-rescan (with a **Test** button), plus the **two-way star sync** toggle and its **Sync stars now** action
 - **Playback** — seconds of audio to buffer before the detail-page player starts
 - **Run Mode** — the four named BPM presets (name + value each), octave matching, prefer-starred, queue size, match tolerance %, and the max stretch % the tempo lock may apply
 - **Artwork** — opt-in online fetching of artist images (Deezer public API, rate-limited, cached on disk), and an optional **save into the library** mode that files fetched/picked artist images as `artist.jpg` in the artist's folder (Navidrome-visible; only folders exclusive to the artist)
@@ -671,6 +675,7 @@ volumes:
 **Tips:**
 - Set `user:` in `docker-compose.yml` to match Navidrome's user/group so both containers can read and write the same files without permission conflicts
 - Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan — and also when the watch-mode queue drains — so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
+- With the same credentials, enable **two-way star sync** (Settings → Navidrome) to reconcile BPM Tagger's starred tracks with Navidrome's favourites in both directions — stars set in either app reach the other, and Run-mode queues keep preferring them
 - Use `MODE=watch` (the default) so newly added albums are tagged automatically within seconds of being added to the library; it scans all unprocessed files on startup before entering watch mode
 - After adjusting detection settings, run `MODE=scan_review` to re-analyze only the flagged and error tracks instead of the full library
 

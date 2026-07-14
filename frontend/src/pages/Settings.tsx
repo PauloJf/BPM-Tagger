@@ -134,7 +134,9 @@ export default function Settings() {
   const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
   const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, conf: 0.4 });
   const [mode, setMode] = useState("watch");
-  const [nav, setNav] = useState({ url: "", user: "", pass: "" });
+  const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false });
+  const [starSyncMsg, setStarSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [starSyncing, setStarSyncing] = useState(false);
   const [playback, setPlayback] = useState(3);
   const [run, setRun] = useState({
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -163,6 +165,29 @@ export default function Settings() {
       setTestMsg((m) => ({ ...m, [kind]: { ok: !!r.ok, text: r.ok ? (r.message || "OK") : (r.error || "Failed") } }));
     } catch (e) {
       setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: e instanceof Error ? e.message : "Failed" } }));
+    }
+  }
+
+  async function syncStars() {
+    setStarSyncing(true);
+    setStarSyncMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; error?: string; pushed?: number; pulled?: number;
+                                 conflicts?: number; unmatched_remote?: number; failed?: number }>(
+        "/api/settings/sync-stars");
+      if (r.ok) {
+        const bits = [`pulled ${r.pulled ?? 0}`, `pushed ${r.pushed ?? 0}`];
+        if (r.conflicts) bits.push(`${r.conflicts} conflicts`);
+        if (r.unmatched_remote) bits.push(`${r.unmatched_remote} remote stars unmatched`);
+        if (r.failed) bits.push(`${r.failed} failed (will retry next sync)`);
+        setStarSyncMsg({ ok: !r.failed, text: `Stars synced — ${bits.join(", ")}` });
+      } else {
+        setStarSyncMsg({ ok: false, text: r.error || "Sync failed" });
+      }
+    } catch (e) {
+      setStarSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Sync failed" });
+    } finally {
+      setStarSyncing(false);
     }
   }
 
@@ -202,7 +227,7 @@ export default function Settings() {
     setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
     setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
-    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass") });
+    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false) });
     setPlayback(n("playback_buffer", 3));
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
                             { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
@@ -706,9 +731,9 @@ export default function Settings() {
           <div id="sec-navidrome" className="settings-card card">
             <div className="settings-card-header">
               <h2>Navidrome Integration</h2>
-              <p>Trigger a library rescan after every scan pass.</p>
+              <p>Trigger a library rescan after every scan pass, and keep stars in sync both ways.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass }, setNavSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync }, setNavSaved); }}>
               <div className="settings-fields">
                 <div className="field-row">
                   {fieldLabel("Navidrome URL")}
@@ -722,10 +747,20 @@ export default function Settings() {
                   {fieldLabel("Password")}
                   <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="field-row">
+                  {fieldLabel("Two-way star sync", "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
+                  <Toggle on={nav.starSync} onChange={(v) => setNav({ ...nav, starSync: v })} label="Enable star sync" />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <SaveButton state={navSaved} label="Save Navidrome Settings" />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
                   {testMsg.nav && <span style={{ fontSize: 12, color: testMsg.nav.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.nav.text}</span>}
+                  {nav.starSync && (
+                    <button type="button" className="btn btn-soft btn-sm" disabled={starSyncing || !nav.url || !nav.user} onClick={syncStars}>
+                      {starSyncing ? "Syncing…" : "Sync stars now"}
+                    </button>
+                  )}
+                  {starSyncMsg && <span style={{ fontSize: 12, color: starSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{starSyncMsg.text}</span>}
                 </div>
               </div>
             </form>

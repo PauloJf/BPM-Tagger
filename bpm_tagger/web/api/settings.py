@@ -140,8 +140,9 @@ def api_settings_navidrome():
     st = state()
     data = _json_body()
     updates = {
-        "navidrome_url":  str(data.get("navidrome_url", "")).strip(),
-        "navidrome_user": str(data.get("navidrome_user", "")).strip(),
+        "navidrome_url":       str(data.get("navidrome_url", "")).strip(),
+        "navidrome_user":      str(data.get("navidrome_user", "")).strip(),
+        "navidrome_star_sync": bool(data.get("navidrome_star_sync")),
     }
     # Only overwrite the stored password when a non-masked value is supplied.
     pw = str(data.get("navidrome_pass", ""))
@@ -312,6 +313,20 @@ def api_test_ntfy():
         return jsonify(ok=True, message="Test notification sent")
     except Exception as exc:
         return jsonify(ok=False, error=str(exc))
+
+
+@settings_bp.route("/api/settings/sync-stars", methods=["POST"])
+@login_required
+def api_sync_stars():
+    """One manual two-way star-sync pass against Navidrome (Part: star sync v1).
+    Runs inline on this worker — one getStarred2 call plus a search3 per locally
+    changed star, so it returns quickly even for large libraries."""
+    _check_csrf()
+    st = state()
+    from ...integrations.star_sync import sync_stars
+    result = sync_stars(st.db, st.config)
+    status = 200 if result.get("ok") else 502
+    return jsonify(**result), status
 
 
 @settings_bp.route("/api/settings/test-navidrome", methods=["POST"])

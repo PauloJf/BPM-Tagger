@@ -87,6 +87,7 @@ docker compose up -d && docker compose logs -f
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
 | `NTFY_TOPIC` | _(empty)_ | ntfy topic (leave empty to disable) |
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
+| `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
 | `LYRICS_ENABLED` | `false` | Auto-fetch lyrics (LRCLIB) for tracks the grabber downloads; manual/bulk fetch always available in the UI |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 
@@ -107,6 +108,7 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 - **Artist images** — a custom image you pick, local `artist.jpg` (Navidrome convention), or opt-in, rate-limited fetching from Deezer's public API (`FETCH_ARTIST_IMAGES`), cached on disk; falls back to album art. `ARTIST_IMAGES_TO_LIBRARY` saves fetched/picked images as `artist.jpg` in the artist's folder so Navidrome sees them too
 - **Image editing** — change a track's cover, set an album cover across all its tracks at once, or pick a custom artist image — searching Spotify/Deezer, pasting a URL, or uploading a file
 - **Lyrics** — plain or synced (LRC) lyrics from LRCLIB per track or in bulk, viewable/editable on the track page, stored embedded or as `.lrc` sidecars (Navidrome-compatible); a **player lyrics drawer** follows synced lyrics live (click a line to seek) and steps plain lyrics manually
+- **Navidrome star sync** — two-way: stars set here push to Navidrome as favourites, stars set in Navidrome pull in (feeding Run mode's starred preference); per-track baseline merge, path + fuzzy matching, manual **Sync stars now** trigger
 - BPM Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
@@ -135,6 +137,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.5.2** — **Two-way star sync with Navidrome**: stars flow both ways — starred tracks here become Navidrome favourites, and Navidrome stars pull in (feeding Run mode's starred queue preference). Per-track three-way merge against a last-synced baseline (an un-star on one side is never mistaken for a star on the other); path matching tolerates differing container roots, with fuzzy fallback; failed writes retry next pass. Enable in **Settings → Navidrome**, run with **Sync stars now**. New env var `NAVIDROME_STAR_SYNC`.
 
 **v2.5.1** — **Queue similar from the player**: a similar-tracks button on the player bar and a **≈ Similar** button on the Run page's queue view list tracks in the style of the now-playing artist (Deezer artist radio). In-library matches queue straight onto the **play queue** — cadence-checked during a tempo-locked run, with unstretchable tracks marked **off cadence** — while missing tracks get a grabber-gated **Grab** into the download queue; **Queue all** adds every eligible match at once.
 
