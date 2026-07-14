@@ -362,7 +362,9 @@ def test_related_tracks_flags_and_cache(sug, monkeypatch):
 
     tracks = {t["title"]: t for t in client.get("/api/related/tracks?name=Owner").get_json()["tracks"]}
     assert tracks["Owned Song"]["in_library"] is True and tracks["Owned Song"]["file_path"]
+    assert tracks["Owned Song"]["bpm"] == 120.0     # Part D: enqueue-to-play-queue needs it
     assert tracks["Fresh Cut"]["in_library"] is False
+    assert "bpm" not in tracks["Fresh Cut"]
     # Second call for the same normalized artist hits the cache (no re-fetch).
     client.get("/api/related/tracks?name=owner")
     assert calls["n"] == 1

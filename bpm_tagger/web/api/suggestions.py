@@ -47,8 +47,10 @@ def _queued_norm_keys(db) -> set:
 
 
 def _flag_tracks(tracks: list[dict], db) -> list[dict]:
-    """Add live ``in_library`` (+ ``file_path`` when matched) and ``queued`` flags
-    to a list of track dicts (title/artist/album/duration_ms). Mutates in place."""
+    """Add live ``in_library`` (+ ``file_path``/``bpm`` when matched) and ``queued``
+    flags to a list of track dicts (title/artist/album/duration_ms). Mutates in
+    place. ``bpm`` lets the frontend enqueue a matched track straight into the
+    play queue (the tempo lock stretches by BPM — see Part D of the plan)."""
     queued_keys = _queued_norm_keys(db)
     for t in tracks:
         title = t.get("title") or t.get("name") or ""
@@ -59,6 +61,8 @@ def _flag_tracks(tracks: list[dict], db) -> list[dict]:
         t["in_library"] = bool(path)
         if path:
             t["file_path"] = path
+            row = db.get_track(path)
+            t["bpm"] = row.get("bpm") if row else None
         key = (normalize_title(title), normalize_artist(artist))
         t["queued"] = bool(t.get("queued_at")) or key in queued_keys
     return tracks

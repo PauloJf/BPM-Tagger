@@ -7,6 +7,7 @@ import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 import { BpmDisplay } from "./BpmDisplay";
 import { LyricsPanel } from "./LyricsPanel";
+import QueueSimilar from "./QueueSimilar";
 
 export default function PlayerBar() {
   const { current, playing, error, audioRef, toggle, stop,
@@ -16,6 +17,7 @@ export default function PlayerBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [similarOpen, setSimilarOpen] = useState(false);
   // Ephemeral tracks (30-s Deezer preview clips) have a synthetic path with no
   // library file, so every file-backed lookup below must stay off for them —
   // otherwise waveform/BPM/cover fetches 403 against the fake path.
@@ -41,6 +43,11 @@ export default function PlayerBar() {
     <div className="player-bar">
       {lyricsOpen && (
         <LyricsPanel path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
+      )}
+      {similarOpen && current.artist && (
+        <div className="player-queue">
+          <QueueSimilar artist={current.artist} onClose={() => setSimilarOpen(false)} />
+        </div>
       )}
       {queueOpen && hasQueue && (
         <div className="player-queue">
@@ -132,9 +139,23 @@ export default function PlayerBar() {
           <BpmDisplay bpm={bpm} sizePx={17} dotPx={9} pulsing={playing} beatMs={Math.round(60000 / bpm)} />
         </span>
       )}
+      {!isPreview && current.artist && (
+        <button
+          className={"player-bar-ctl player-bar-ctl--optional" + (similarOpen ? " active" : "")}
+          onClick={() => { setSimilarOpen((o) => !o); setQueueOpen(false); setLyricsOpen(false); }}
+          title="Similar tracks — queue more like this"
+          aria-label="Show similar tracks"
+          aria-expanded={similarOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="2" />
+            <path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14" />
+          </svg>
+        </button>
+      )}
       <button
         className={"player-bar-ctl" + (lyricsOpen ? " active" : "")}
-        onClick={() => { setLyricsOpen((o) => !o); setQueueOpen(false); }}
+        onClick={() => { setLyricsOpen((o) => !o); setQueueOpen(false); setSimilarOpen(false); }}
         title="Lyrics"
         aria-label="Show lyrics"
         aria-expanded={lyricsOpen}
@@ -147,7 +168,7 @@ export default function PlayerBar() {
       {hasQueue && (
         <button
           className={"player-bar-ctl player-bar-ctl--optional" + (queueOpen ? " active" : "")}
-          onClick={() => { setQueueOpen((o) => !o); setLyricsOpen(false); }}
+          onClick={() => { setQueueOpen((o) => !o); setLyricsOpen(false); setSimilarOpen(false); }}
           title="Queue"
           aria-label="Show queue"
           aria-expanded={queueOpen}

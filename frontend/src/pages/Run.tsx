@@ -7,6 +7,7 @@ import { usePlayer, lockRate } from "../lib/player";
 import type { RunQueueResponse, SettingsMap } from "../lib/types";
 import { Cover } from "../components/Artwork";
 import { LyricsPanel } from "../components/LyricsPanel";
+import QueueSimilar from "../components/QueueSimilar";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
@@ -109,6 +110,7 @@ export default function Run() {
   });
   const [lockOn, setLockOn] = useState(true);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [similarOpen, setSimilarOpen] = useState(false);
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState("");
@@ -348,8 +350,24 @@ export default function Run() {
                 {queueInfo.tracks.length < queueSize ? ` · ${queueInfo.tracks.length}/${queueSize}` : ""}
               </span>
             )}
-            <Link to="/settings#sec-run" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "baseline", gap: 10 }}>
+              {current?.artist && (
+                <button
+                  className="btn btn-bare btn-sm"
+                  style={{ padding: 0, fontSize: 11, color: similarOpen ? "var(--accent-2)" : "var(--muted)" }}
+                  onClick={() => setSimilarOpen((o) => !o)}
+                  aria-expanded={similarOpen}
+                  title={`Tracks similar to ${current.artist} — in-library matches queue onto this run's cadence`}
+                >≈ Similar</button>
+              )}
+              <Link to="/settings#sec-run" style={{ fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>
+            </span>
           </div>
+          {similarOpen && current?.artist && (
+            <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)" }}>
+              <QueueSimilar artist={current.artist} onClose={() => setSimilarOpen(false)} />
+            </div>
+          )}
           <div style={{ maxHeight: "clamp(140px, calc(100dvh - 500px), 420px)", overflowY: "auto" }}>
             {player.orderedQueue.length === 0 && (
               <div style={{ padding: 16, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>

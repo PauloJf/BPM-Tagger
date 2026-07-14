@@ -291,6 +291,7 @@ export interface RelatedTrack {
   in_library?: boolean;
   queued?: boolean;
   file_path?: string;
+  bpm?: number | null;   // set when in_library — lets "queue similar" feed the play queue
 }
 
 export interface DeezerArtistInfo {
