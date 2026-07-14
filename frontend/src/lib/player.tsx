@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { audioUrl } from "./api";
+import { api, audioUrl, notifyUnauthorized } from "./api";
 
 export interface PlayerTrack {
   path: string;
@@ -49,6 +49,9 @@ interface PlayerState {
   setVolume(v: number): void;
   tempoLock: TempoLock | null;
   setTempoLock(lock: TempoLock | null): void;
+  /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
+   *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
+  updateTrackBpm(path: string, bpm: number | null): void;
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
   enqueue(track: PlayerTrack): void;   // append to the queue
@@ -107,6 +110,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pendingPlay = useRef(!!(current && saved?.playing));
+  // Path already loaded + started synchronously by goToPos, so the load effect
+  // must not reload it (that would restart the fetch and kill iOS lock-screen
+  // playback — see goToPos).
+  const syncedPath = useRef<string | null>(null);
+  // An auto-advance play() was vetoed (iOS suspended/backgrounded the page at a
+  // track boundary) — resume as soon as the app is visible again.
+  const resumeOnShow = useRef(false);
   // Set before a setCurrent to seek the freshly-loaded track (used to restore a
   // preview's saved position) and to fade the next play in from silence.
   const seekTarget = useRef<number | null>(
@@ -203,10 +213,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }, ms);
   }, []);
 
+  // Play, recovering from a failed source first. A stream error (expired
+  // session, network drop) leaves the element in a dead error state where
+  // play() rejects forever — load() the same URL so a retry re-fetches it.
+  const resumePlay = useCallback(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.error) {
+      setError(null);
+      a.load();
+    }
+    a.play().catch(() => {});
+  }, []);
+
+  // Safety net for the iOS PWA: if an auto-advance play() was vetoed while the
+  // page was suspended, restart playback the moment the app is shown again so
+  // the run doesn't stay silent after unlocking the phone.
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState !== "visible" || !resumeOnShow.current) return;
+      resumeOnShow.current = false;
+      resumePlay();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", onShow);
+    };
+  }, [resumePlay]);
+
   // Load the source whenever the current track changes; seek + fade-in + auto-play as requested.
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !current) return;
+    // goToPos already loaded + started this track synchronously — reloading
+    // here would restart the fetch and cut iOS lock-screen playback.
+    const alreadyStarted = syncedPath.current === current.path;
+    syncedPath.current = null;
+    if (alreadyStarted) { pendingPlay.current = false; return; }
     setError(null);
     a.src = audioUrl(current.path);
     a.load();
@@ -248,6 +293,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle("has-player", !!current);
   }, [current]);
 
+  // Run mode: when the LAST queued track starts, fetch a fresh batch for the
+  // same target and append it, so a run keeps going instead of stopping at the
+  // queue end. Lives here (not in the Run page) so it works with the app on any
+  // route or the phone locked. Skipped when repeat already loops the queue.
+  const extending = useRef(false);
+  useEffect(() => {
+    if (!tempoLock || previewing || repeat !== "off") return;
+    if (order.length === 0 || pos !== order.length - 1) return;
+    if (extending.current) return;
+    extending.current = true;
+    api.get<{ tracks: { path: string; title: string; artist?: string; bpm: number }[] }>(
+      `/api/run/queue?bpm=${tempoLock.target}`)
+      .then((resp) => {
+        const { queue, order, pos } = nav.current;
+        const cur = queue[order[pos]];
+        let batch: PlayerTrack[] = resp.tracks.map((t) =>
+          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm }));
+        // Don't play the same song back-to-back — unless it's the only match.
+        const noRepeat = batch.filter((t) => t.path !== cur?.path);
+        if (noRepeat.length) batch = noRepeat;
+        if (!batch.length) return;
+        const base = queue.length;
+        setQueue([...queue, ...batch]);
+        setOrder([...order, ...batch.map((_, i) => base + i)]);
+      })
+      .catch(() => {})  // a failed refill just means the run ends at the queue end
+      .finally(() => { extending.current = false; });
+  }, [tempoLock, previewing, repeat, pos, order.length]);
+
   const cancelRamp = () => {
     if (rampRef.current != null) { cancelAnimationFrame(rampRef.current); rampRef.current = null; }
     if (rampTimer.current != null) { clearTimeout(rampTimer.current); rampTimer.current = null; }
@@ -256,12 +330,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // any in-flight fade so a pending swap can't clobber the new track.
   const clearPreview = () => { cancelRamp(); previewSaved.current = null; setPreviewing(false); };
 
+  // Queue jumps swap the source and call play() synchronously on the element,
+  // then sync React state. Deferring the swap to the load effect breaks iOS
+  // lock-screen playback: the WebView is only kept alive while audio plays, so
+  // after `ended` fires the page can be suspended before React flushes the
+  // effect — play() never runs and the queue dies mid-run. Starting the next
+  // track inside the same call stack as the media/lock-screen event keeps the
+  // audio session alive.
   const goToPos = useCallback((newPos: number) => {
-    const { queue, order } = nav.current;
+    const { queue, order, tempoLock } = nav.current;
     const track = queue[order[newPos]];
     if (!track) return;
+    const a = audioRef.current;
+    if (a) {
+      setError(null);
+      const rate = lockRate(track.bpm, tempoLock);
+      a.defaultPlaybackRate = rate;   // the load triggered by src= resets playbackRate to this
+      a.src = audioUrl(track.path);
+      a.playbackRate = rate;
+      a.volume = volumeRef.current;
+      a.play().catch(() => {
+        // Vetoed (page suspended at the boundary) — retry when visible again.
+        // Skip if the queue has already moved on (e.g. rapid next presses).
+        const { queue, order, pos } = nav.current;
+        if (queue[order[pos]]?.path === track.path) resumeOnShow.current = true;
+      });
+      syncedPath.current = track.path;
+    } else {
+      pendingPlay.current = true;
+    }
     setPos(newPos);
-    pendingPlay.current = true;
     setCurrent(track);
   }, []);
 
@@ -317,14 +415,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onPlay = () => { setPlaying(true); setError(null); };
+    const onPlay = () => { setPlaying(true); setError(null); resumeOnShow.current = false; };
     const onPause = () => setPlaying(false);
     // Preview ended → resume the queue (dec 2); otherwise auto-advance.
     const onEnded = () => { setPlaying(false); if (previewSaved.current) endPreview(); else next(true); };
     // A failed stream (404, decode error, network drop) would otherwise leave
     // the UI stuck in a "playing" state with no feedback — surface it instead.
     // The saved queue track is kept so leaving still restores it (dec 9).
-    const onError = () => { setPlaying(false); setError("Playback failed — the file may be missing or unsupported."); };
+    // The media element only ever reports SRC_NOT_SUPPORTED, so probe the same
+    // URL to tell an expired session (common in the installed PWA) apart from a
+    // genuinely missing/unsupported file — a 401 routes to the login screen.
+    const onError = () => {
+      setPlaying(false);
+      const src = a.currentSrc || a.src;
+      if (!src) { setError("Playback failed — the file may be missing or unsupported."); return; }
+      fetch(src, { method: "HEAD", credentials: "same-origin" })
+        .then((r) => {
+          // Ignore a stale probe: the element recovered or moved to another track.
+          if (!a.error || (a.currentSrc || a.src) !== src) return;
+          if (r.status === 401) {
+            setError("Session expired — sign in, then press play to resume.");
+            notifyUnauthorized();
+          } else {
+            setError("Playback failed — the file may be missing or unsupported.");
+          }
+        })
+        .catch(() => {
+          if (a.error) setError("Playback failed — check your connection and press play to retry.");
+        });
+    };
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
     a.addEventListener("ended", onEnded);
@@ -359,7 +478,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const ms = navigator.mediaSession;
-    ms.setActionHandler("play", () => audioRef.current?.play().catch(() => {}));
+    ms.setActionHandler("play", resumePlay);
     ms.setActionHandler("pause", () => audioRef.current?.pause());
     ms.setActionHandler("previoustrack", () => prev());
     ms.setActionHandler("nexttrack", () => next(false));
@@ -368,7 +487,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ms.setActionHandler(a, null);
       }
     };
-  }, [prev, next]);
+  }, [prev, next, resumePlay]);
 
   const play = useCallback((track: PlayerTrack) => {
     // One-off play (e.g. a library/search row): becomes a single-item queue so
@@ -379,13 +498,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPos(0);
     setCurrent((prev) => {
       if (prev?.path === track.path) {
-        audioRef.current?.play().catch(() => {});
+        resumePlay();
         return prev;
       }
       pendingPlay.current = true;
       return track;
     });
-  }, []);
+  }, [resumePlay]);
 
   const playQueue = useCallback((tracks: PlayerTrack[], startIndex = 0, opts?: { shuffle?: boolean }) => {
     if (tracks.length === 0) return;
@@ -413,7 +532,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const preview = useCallback((track: PlayerTrack) => {
     const a = audioRef.current;
     if (!a) return;
-    if (current?.path === track.path) { a.play().catch(() => {}); return; }  // same track → control in place (dec 5)
+    if (current?.path === track.path) { resumePlay(); return; }  // same track → control in place (dec 5)
     if (!current) { play(track); return; }                                    // nothing playing → normal play, no duck
     // Save the queue track only on the first duck; a nested preview keeps it (dec 4).
     if (!previewSaved.current) {
@@ -425,7 +544,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       fadeIn.current = true;
       setCurrent(track);
     });
-  }, [current, playing, play, rampVolume]);
+  }, [current, playing, play, rampVolume, resumePlay]);
 
   const toggleShuffle = useCallback(() => {
     const { queue, order, pos } = nav.current;
@@ -451,9 +570,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) a.play().catch(() => {});
+    // An errored element can report paused=false — treat it as resumable.
+    if (a.error || a.paused) resumePlay();
     else a.pause();
-  }, []);
+  }, [resumePlay]);
 
   const stop = useCallback(() => {
     audioRef.current?.pause();
@@ -520,6 +640,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
 
+  // New object, same path: the load effect keys on current.path so playback
+  // doesn't restart, but the tempo-lock effect re-runs with the fresh BPM.
+  const updateTrackBpm = useCallback((path: string, bpm: number | null) => {
+    setQueue((q) => q.map((t) => (t.path === path ? { ...t, bpm } : t)));
+    setCurrent((c) => (c && c.path === path && c.bpm !== bpm ? { ...c, bpm } : c));
+  }, []);
+
   // Global keyboard shortcuts (ignored while typing; Space is left for tap-tempo).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -552,7 +679,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current, playing, error, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
-      tempoLock, setTempoLock,
+      tempoLock, setTempoLock, updateTrackBpm,
       play, playQueue, enqueue, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,

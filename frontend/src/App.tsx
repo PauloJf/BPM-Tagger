@@ -23,13 +23,16 @@ import Settings from "./pages/Settings";
 import About from "./pages/About";
 
 function Layout({ children }: { children: React.ReactNode }) {
+  // Run mode has its own full-screen transport — the global bar would duplicate
+  // it and steal vertical space on phones.
+  const runPage = useLocation().pathname === "/run";
   return (
     <>
       <Nav />
       <div className="app-main">
-        <div className="container page-enter">{children}</div>
+        <div className={"container page-enter" + (runPage ? " container--run" : "")}>{children}</div>
       </div>
-      <PlayerBar />
+      {!runPage && <PlayerBar />}
     </>
   );
 }

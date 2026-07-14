@@ -1,11 +1,13 @@
 """Characterization tests for write_bpm_tag and get_file_hash."""
 
 import os
+import wave
 
 import numpy as np
 import soundfile as sf
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3
+from mutagen.wave import WAVE
 
 from bpm_tagger import get_file_hash, write_bpm_tag
 
@@ -14,6 +16,14 @@ def _write_flac(path):
     sr = 22050
     y = (0.1 * np.sin(2 * np.pi * 220 * np.arange(sr) / sr)).astype("float32")
     sf.write(str(path), y, sr, format="FLAC")
+
+
+def _write_wav(path):
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b"\x00\x00" * 8000)
 
 
 def test_write_bpm_tag_flac_roundtrip(tmp_path):
@@ -36,6 +46,33 @@ def test_write_bpm_tag_mp3_writes_tbpm(tmp_path):
     f.write_bytes(b"")
     assert write_bpm_tag(str(f), 140.0) is True
     assert ID3(str(f))["TBPM"].text == ["140"]
+
+
+def test_write_bpm_tag_wav_writes_tbpm(tmp_path):
+    # WAV exposes ID3 tags via mutagen; a fresh file has no ID3 chunk yet.
+    f = tmp_path / "song.wav"
+    _write_wav(f)
+    assert write_bpm_tag(str(f), 120.0) is True
+    assert WAVE(str(f)).tags["TBPM"].text == ["120"]
+
+
+def test_write_bpm_tag_wav_overwrites_existing(tmp_path):
+    f = tmp_path / "song.wav"
+    _write_wav(f)
+    assert write_bpm_tag(str(f), 120.0) is True
+    assert write_bpm_tag(str(f), 175.0) is True
+    tags = WAVE(str(f)).tags
+    assert tags["TBPM"].text == ["175"]
+    assert len(tags.getall("TBPM")) == 1
+
+
+def test_write_bpm_tag_wav_preserves_mtime(tmp_path):
+    f = tmp_path / "song.wav"
+    _write_wav(f)
+    old = os.stat(str(f)).st_mtime - 100_000
+    os.utime(str(f), (old, old))
+    assert write_bpm_tag(str(f), 120.0) is True
+    assert os.stat(str(f)).st_mtime == old
 
 
 def test_write_bpm_tag_unsupported_returns_false(tmp_path):

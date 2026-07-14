@@ -22,6 +22,11 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn;
 }
 
+/** Report a 401 seen outside the api wrapper (e.g. the <audio> stream). */
+export function notifyUnauthorized() {
+  onUnauthorized?.();
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;

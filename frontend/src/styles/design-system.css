@@ -908,6 +908,10 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
    mobile, where the sidebar is hidden) so it never covers the sidebar footer.
    This rule must stay AFTER any earlier .player-bar declarations. */
 body.has-player .container { padding-bottom: 88px; }
+/* Run mode hides the bar and renders its own transport — reclaim the reserved
+   space and tighten the top so everything fits one phone screen. */
+.container.container--run { padding-top: 14px; padding-bottom: 24px; }
+body.has-player .container.container--run { padding-bottom: 24px; }
 .player-bar {
   position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
   transition: left 0.18s ease;

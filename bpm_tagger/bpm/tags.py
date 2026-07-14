@@ -44,7 +44,14 @@ def write_bpm_tag(file_path: str, bpm: float, preserve_mtime: bool = True) -> bo
             audio = mutagen.File(file_path)
             if audio is None:
                 return False
-            audio["BPM"] = bpm_str
+            if audio.tags is None:
+                audio.add_tags()
+            if isinstance(audio.tags, ID3):
+                # ID3-backed containers (WAV, AIFF, DSF) require Frame
+                # instances, not raw strings.
+                audio.tags.add(TBPM(encoding=3, text=bpm_str))
+            else:
+                audio["BPM"] = bpm_str
             audio.save()
         if st is not None:
             os.utime(file_path, (st.st_atime, st.st_mtime))

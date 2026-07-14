@@ -261,6 +261,9 @@ export default function TrackDetail() {
       if (res.ok) {
         setSaveMsg({ ok: true, text: `Saved & locked at ${bpm.toFixed(1)} BPM` });
         qc.invalidateQueries({ queryKey: ["track", path] });
+        // The player bar + Run page read this key — a live tempo lock re-stretches
+        // onto the corrected BPM as soon as it refetches.
+        qc.invalidateQueries({ queryKey: ["track-bpm", path] });
         qc.invalidateQueries({ queryKey: ["tracks"] });
         qc.invalidateQueries({ queryKey: ["me"] });
       } else {
