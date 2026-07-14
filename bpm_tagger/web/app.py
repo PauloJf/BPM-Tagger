@@ -29,6 +29,7 @@ from .api.run import run_bp
 from .api.settings import settings_bp
 from .api.spotify import spotify_bp
 from .api.stats import stats_bp
+from .api.suggestions import suggestions_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token
 from .state import AppState
@@ -97,7 +98,7 @@ def create_app(config: dict) -> Flask:
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
-               run_bp):
+               run_bp, suggestions_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────
@@ -132,12 +133,15 @@ def create_app(config: dict) -> Flask:
         # props), so style-src keeps 'unsafe-inline'.
         # Spotify serves album/playlist art from its image CDNs, and the image
         # picker shows Deezer candidates from dzcdn; allow those hosts so covers
-        # render in the UI (default-src stays same-origin).
+        # render in the UI (default-src stays same-origin). 30-second track
+        # previews stream from Deezer's cdns-preview-*.dzcdn.net hosts, so
+        # media-src allows *.dzcdn.net too.
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "img-src 'self' data: https://i.scdn.co https://*.scdn.co "
-            "https://*.spotifycdn.com https://*.dzcdn.net; media-src 'self';"
+            "https://*.spotifycdn.com https://*.dzcdn.net; "
+            "media-src 'self' https://*.dzcdn.net;"
         )
         return resp
 

@@ -8,6 +8,7 @@ import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { ArtistImage, ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
+import RelatedPanel from "../components/RelatedPanel";
 
 interface ArtistResp {
   name: string;
@@ -132,6 +133,8 @@ export default function Artist() {
           </div>
         ))
       )}
+
+      {name && <RelatedPanel artist={name} context="artist" />}
 
       {pickerOpen && (
         <ImagePicker

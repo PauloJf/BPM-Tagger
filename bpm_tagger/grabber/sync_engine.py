@@ -142,6 +142,8 @@ class GrabberService:
         self.sync = SpotifySync(config, db, tagger, self.client, notifier)
         from .worker import GrabPool
         self.pool = GrabPool(config, db, tagger, notifier)
+        from .suggestions import SuggestionsEngine
+        self.suggestions = SuggestionsEngine(config, db)
         self._thread_started = False
 
     def start_background(self):

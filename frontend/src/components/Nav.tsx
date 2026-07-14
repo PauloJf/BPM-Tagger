@@ -25,6 +25,9 @@ const IconDuplicates = () => (
 const IconAddMusic = () => (
   <svg {...ic}><path d="M9 17V5l10-1.5V11" /><circle cx="6.5" cy="17" r="2.5" /><path d="M18 15v6M15 18h6" /></svg>
 );
+const IconSuggestions = () => (
+  <svg {...ic}><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5 10.1 7.6z" /><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>
+);
 const IconQueue = () => (
   <svg {...ic}><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
 );
@@ -101,6 +104,7 @@ function buildSections(grabberEnabled: boolean): NavSection[] {
       label: "Grabber",
       items: [
         { to: "/search", label: "Add Music", icon: IconAddMusic, match: ["/search"] },
+        { to: "/suggestions", label: "Suggestions", icon: IconSuggestions, match: ["/suggestions"] },
         { to: "/queue", label: "Queue", icon: IconQueue, match: ["/queue"] },
         { to: "/inbox", label: "Inbox", icon: IconInbox, match: ["/inbox"], badge: "inbox" },
       ],

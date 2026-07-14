@@ -2,10 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { api, audioUrl, notifyUnauthorized } from "./api";
 
 export interface PlayerTrack {
-  path: string;
+  path: string;            // identity key; for previews a synthetic "preview:dz:<id>"
   title: string;
   artist?: string;
   bpm?: number | null;
+  src?: string;            // absolute stream URL; used instead of audioUrl(path) when set
+  ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
 }
 
 /** Run-mode tempo lock: stretch every queued track onto one target BPM. */
@@ -167,6 +169,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const { queue, order, pos, shuffle, repeat } = nav.current;
       if (!queue.length) { localStorage.removeItem(SAVE_KEY); return; }
+      // Ephemeral tracks are one-off external preview clips whose URLs die on
+      // reload; they only ever reach the queue via the "preview with nothing
+      // playing" fallthrough (a single-item queue). Never persist them — filter
+      // them out, and if that leaves nothing, clear the saved queue entirely.
+      if (queue.some((t) => t.ephemeral)) {
+        const survivors = queue.filter((t) => !t.ephemeral);
+        if (!survivors.length) { localStorage.removeItem(SAVE_KEY); return; }
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+          queue: survivors, order: survivors.map((_, i) => i), pos: 0,
+          shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
+          tempoLock: nav.current.tempoLock,
+        }));
+        return;
+      }
       const a = audioRef.current;
       const pv = previewSaved.current;
       // While a preview is ducking the queue, save the queue track's saved
@@ -214,16 +230,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (rampRef.current != null) cancelAnimationFrame(rampRef.current);
     if (rampTimer.current != null) clearTimeout(rampTimer.current);
     const start = performance.now();
-    a.volume = from;
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    a.volume = clamp(from);
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / ms);
-      a.volume = from + (to - from) * t;
+      // The rAF timestamp can land marginally before `start`, making the raw
+      // fraction slightly negative — clamp to [0,1] so a fade-in never writes a
+      // negative volume (HTMLMediaElement.volume throws outside [0,1]).
+      const t = Math.max(0, Math.min(1, (now - start) / ms));
+      a.volume = clamp(from + (to - from) * t);
       if (t < 1) rampRef.current = requestAnimationFrame(step);
     };
     rampRef.current = requestAnimationFrame(step);
     rampTimer.current = window.setTimeout(() => {
       if (rampRef.current != null) { cancelAnimationFrame(rampRef.current); rampRef.current = null; }
-      a.volume = to;
+      a.volume = clamp(to);
       done?.();
     }, ms);
   }, []);
@@ -269,7 +289,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     syncedPath.current = null;
     if (alreadyStarted) { pendingPlay.current = false; return; }
     setError(null);
-    a.src = audioUrl(current.path);
+    a.src = current.src ?? audioUrl(current.path);
     a.load();
     const seekTo = seekTarget.current; seekTarget.current = null;
     const shouldPlay = pendingPlay.current; pendingPlay.current = false;
@@ -369,7 +389,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
       a.defaultPlaybackRate = rate;   // the load triggered by src= resets playbackRate to this
-      a.src = audioUrl(track.path);
+      a.src = track.src ?? audioUrl(track.path);
       a.playbackRate = rate;
       a.volume = volumeRef.current;
       a.play().catch(() => {
@@ -490,7 +510,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? new MediaMetadata({
           title: current.title,
           artist: current.artist ?? "",
-          artwork: [{ src: `/api/track/cover?path=${encodeURIComponent(current.path)}`, sizes: "512x512" }],
+          // Ephemeral preview clips have a synthetic path with no library file,
+          // so skip the cover fetch (it would 403) rather than 404-tolerate it.
+          artwork: current.ephemeral
+            ? []
+            : [{ src: `/api/track/cover?path=${encodeURIComponent(current.path)}`, sizes: "512x512" }],
         })
       : null;
   }, [current]);

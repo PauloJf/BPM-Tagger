@@ -16,6 +16,7 @@ import PlaylistDetail from "./pages/PlaylistDetail";
 import Queue from "./pages/Queue";
 import Inbox from "./pages/Inbox";
 import Search from "./pages/Search";
+import Suggestions from "./pages/Suggestions";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
 import Stats from "./pages/Stats";
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/inbox/:id" element={<Inbox />} />
         <Route path="/search" element={<Search />} />
+        <Route path="/suggestions" element={<Suggestions />} />
         <Route path="/review" element={<Review />} />
         <Route path="/run" element={<Run />} />
         <Route path="/stats" element={<Stats />} />
