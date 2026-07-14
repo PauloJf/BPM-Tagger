@@ -122,6 +122,9 @@ class BPMDatabase:
             # ── Run mode ──────────────────────────────────────────────────────
             ("starred",        "INTEGER DEFAULT 0"),
             ("disliked",       "INTEGER DEFAULT 0"),
+            # ── Navidrome star sync ───────────────────────────────────────────
+            ("nd_song_id",     "TEXT"),               # cached Subsonic song id
+            ("starred_base",   "INTEGER DEFAULT 0"),  # remote 'starred' at last sync (baseline)
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -493,6 +496,34 @@ class BPMDatabase:
         with self._connect() as conn:
             conn.execute("UPDATE tracks SET disliked = ? WHERE file_path = ?",
                          (1 if disliked else 0, file_path))
+
+    def all_tracks_for_star_sync(self) -> list[dict]:
+        """Every non-deleted track with the fields the Navidrome star-sync driver
+        needs: local star state, the last-synced baseline, the cached Subsonic id,
+        and the metadata/norm columns used to resolve a remote song id."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, starred, starred_base, nd_song_id, "
+                "title, artist, album, duration_ms, isrc, norm_title, norm_artist "
+                "FROM tracks WHERE status != 'deleted'"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_star_synced(self, file_path: str, starred: bool, nd_song_id: str | None = None):
+        """Write the reconciled star state and advance the sync baseline in lockstep.
+        Caller advances the baseline ONLY after any required remote write succeeded,
+        so a failed push retries on the next run. Updates nd_song_id when a fresh id
+        was resolved (never clears a cached id with None)."""
+        with self._connect() as conn:
+            if nd_song_id is not None:
+                conn.execute(
+                    "UPDATE tracks SET starred = ?, starred_base = ?, nd_song_id = ? "
+                    "WHERE file_path = ?",
+                    (1 if starred else 0, 1 if starred else 0, nd_song_id, file_path))
+            else:
+                conn.execute(
+                    "UPDATE tracks SET starred = ?, starred_base = ? WHERE file_path = ?",
+                    (1 if starred else 0, 1 if starred else 0, file_path))
 
     def get_run_candidates(self) -> list[dict]:
         """Every analyzed, non-deleted, non-disliked track — feeds the run-queue
