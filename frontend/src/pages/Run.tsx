@@ -202,6 +202,9 @@ export default function Run() {
       return n;
     });
     api.post("/api/track/dislike", { path, disliked: next }).catch(() => {});
+    // Disliking the track that's currently playing skips it right away —
+    // no reason to keep listening to something you just ruled out.
+    if (next && current?.path === path) player.next();
   }
 
   const staleQueue = queueInfo && Math.abs(queueInfo.target - target) > 0.5;
@@ -259,7 +262,11 @@ export default function Run() {
           <Link
             to={`/track?path=${encodeURIComponent(current.path)}`}
             title="Open the track page — review or fix its BPM"
-            style={{ display: "block", fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 2, color: "inherit", textDecoration: "none" }}
+            style={{
+              display: "block", fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 2,
+              color: "inherit", textDecoration: "none",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}
           >
             {current.title}
           </Link>
