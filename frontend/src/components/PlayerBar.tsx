@@ -159,7 +159,29 @@ export default function PlayerBar() {
         </button>
       )}
       <span className="player-bar-time">{fmtTime(time)}</span>
-      <canvas ref={canvasRef} className="player-bar-wave" />
+      {isPreview ? (
+        // Preview clips have no waveform peaks (no library file) — show a plain
+        // seekable progress bar in the same slot instead of an empty canvas.
+        <div
+          className="player-bar-track"
+          onClick={(e) => {
+            const a = audioRef.current;
+            if (!a || !a.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            a.currentTime = ratio * a.duration;
+          }}
+          role="progressbar"
+          aria-label="Preview progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round((dur > 0 ? time / dur : 0) * 100)}
+        >
+          <div className="player-bar-fill" style={{ width: `${(dur > 0 ? time / dur : 0) * 100}%` }} />
+        </div>
+      ) : (
+        <canvas ref={canvasRef} className="player-bar-wave" />
+      )}
       <span className="player-bar-time">{fmtTime(dur)}</span>
       <button
         className={"player-bar-ctl player-bar-ctl--optional" + (shuffle ? " active" : "")}
