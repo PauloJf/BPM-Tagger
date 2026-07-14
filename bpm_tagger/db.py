@@ -120,6 +120,7 @@ class BPMDatabase:
             ("lyrics_synced",  "INTEGER DEFAULT 0"),
             # ── Run mode ──────────────────────────────────────────────────────
             ("starred",        "INTEGER DEFAULT 0"),
+            ("disliked",       "INTEGER DEFAULT 0"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -404,6 +405,7 @@ class BPMDatabase:
                 "locked": "locked = 1",
                 "no_isrc": "(isrc IS NULL OR isrc = '')",
                 "starred": "starred = 1",
+                "disliked": "disliked = 1",
             }.get(filter, "")
             if fc:
                 clauses.append(fc)
@@ -457,13 +459,21 @@ class BPMDatabase:
             conn.execute("UPDATE tracks SET starred = ? WHERE file_path = ?",
                          (1 if starred else 0, file_path))
 
+    def set_disliked(self, file_path: str, disliked: bool):
+        with self._connect() as conn:
+            conn.execute("UPDATE tracks SET disliked = ? WHERE file_path = ?",
+                         (1 if disliked else 0, file_path))
+
     def get_run_candidates(self) -> list[dict]:
-        """Every analyzed, non-deleted track — feeds the run-queue builder,
-        which octave-folds and scores in Python (cheap even at library scale)."""
+        """Every analyzed, non-deleted, non-disliked track — feeds the run-queue
+        builder, which octave-folds and scores in Python (cheap even at library
+        scale). Disliked tracks are dropped here so they never surface in a run,
+        rather than being scored and filtered per-request."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT file_path, title, artist, bpm, starred FROM tracks "
-                "WHERE status != 'deleted' AND bpm IS NOT NULL"
+                "WHERE status != 'deleted' AND bpm IS NOT NULL "
+                "AND (disliked IS NULL OR disliked = 0)"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -695,7 +705,8 @@ class BPMDatabase:
                     COUNT(CASE WHEN reviewed=1       THEN 1 END) AS reviewed,
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked,
                     COUNT(CASE WHEN (isrc IS NULL OR isrc='') AND status!='deleted' THEN 1 END) AS missing_isrc,
-                    COUNT(CASE WHEN starred=1 AND status!='deleted' THEN 1 END) AS starred
+                    COUNT(CASE WHEN starred=1 AND status!='deleted' THEN 1 END) AS starred,
+                    COUNT(CASE WHEN disliked=1 AND status!='deleted' THEN 1 END) AS disliked
                 FROM tracks
             """).fetchone()
             return dict(row)

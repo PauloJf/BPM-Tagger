@@ -32,6 +32,7 @@ export interface Track {
   lyrics_status?: string | null;
   lyrics_synced?: number;
   starred?: number;
+  disliked?: number;
 }
 
 // ── Run mode ──────────────────────────────────────────────────────────────
@@ -98,6 +99,7 @@ export interface TracksPage {
   deleted_count: number;
   no_isrc_count: number;
   starred_count: number;
+  disliked_count: number;
 }
 
 export interface TrackDetailResponse {

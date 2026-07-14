@@ -214,6 +214,19 @@ export default function Tracks() {
     }
   }
 
+  async function toggleDislike(path: string, disliked: boolean) {
+    qc.setQueryData<TracksPage>(["tracks", search], (d) => d && {
+      ...d,
+      disliked_count: Math.max(0, (d.disliked_count ?? 0) + (disliked ? 1 : -1)),
+      tracks: d.tracks.map((t) => (t.file_path === path ? { ...t, disliked: disliked ? 1 : 0 } : t)),
+    });
+    try {
+      await api.post("/api/track/dislike", { path, disliked });
+    } finally {
+      qc.invalidateQueries({ queryKey: ["tracks"] });
+    }
+  }
+
   function trackHref(filePath: string) {
     const sp = new URLSearchParams();
     sp.set("path", filePath);
@@ -228,6 +241,7 @@ export default function Tracks() {
   const pills = [
     { key: "", label: "All", count: data?.all_count },
     { key: "starred", label: "Starred", count: data?.starred_count },
+    { key: "disliked", label: "Disliked", count: data?.disliked_count },
     { key: "review", label: "Review", count: data?.review_count },
     { key: "locked", label: "Locked", count: data?.locked_count },
     { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
@@ -438,6 +452,23 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill={t.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
                         <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
+                      </svg>
+                    </button>
+                    <button
+                      /* Stays visible on mobile only when disliked (row-extra-btn hides there). */
+                      className={"row-play" + (t.disliked ? "" : " row-extra-btn")}
+                      style={t.disliked ? { color: "var(--err-fg)", borderColor: "var(--err-fg)" } : undefined}
+                      aria-label={t.disliked ? "Remove dislike" : "Dislike"}
+                      aria-pressed={!!t.disliked}
+                      title={t.disliked ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleDislike(t.file_path, !t.disliked);
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill={t.disliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
                       </svg>
                     </button>
                     {showArt && (

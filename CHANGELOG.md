@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Dislike toggle:** star's opposite number — dislike a track from the run queue, the track page, or the library so it's never picked for a run again. A **Disliked** filter pill in the library lists (and lets you undo) disliked tracks; the run-queue builder drops them before scoring, so they're excluded from both the initial queue and every auto-refill.
+
 ## v2.4.3 — 2026-07-14
 
 - **Run mode, phone-first:** everything down to the transport now fits a single phone screen — the cover art scales with the viewport, the presets/steps are more compact, and the BPM Locked/Unlocked pill became a **lock icon beside the target BPM**. The global player bar hides on `/run` (the run player is the transport; stream errors surface on the page instead). A new **Queue** option on the Presets/± Steps switcher shows the run queue in place — jump to a track, star the keepers, per-row `native · octave · stretch → result` math — and also lists a queue restored after a reload. A **lyrics** button joins the transport, and the track title links to the track page; **saving a corrected BPM there re-stretches a live tempo lock instantly**, no rebuild needed.

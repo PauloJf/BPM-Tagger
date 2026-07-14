@@ -50,6 +50,25 @@ function Star({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
+/** Dislike toggle used in the queue list — excludes the track from future
+ *  run-queue builds (it stays in the queue it's already in). */
+function Dislike({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="btn btn-bare btn-sm"
+      style={{ padding: 4, color: on ? "var(--err-fg)" : "var(--muted)", flexShrink: 0 }}
+      onClick={onToggle}
+      aria-pressed={on}
+      aria-label={on ? "Remove dislike" : "Dislike"}
+      title={on ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+      </svg>
+    </button>
+  );
+}
+
 export default function Run() {
   useTitle("Run");
   const player = usePlayer();
@@ -90,6 +109,10 @@ export default function Run() {
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState("");
+  // Disliked tracks are excluded server-side from future queue builds, so they
+  // never appear in a fresh queueInfo — this only tracks what got disliked
+  // *this session* on a track that's already sitting in the current queue.
+  const [dislikedPaths, setDislikedPaths] = useState<Set<string>>(() => new Set());
 
   // Keep the playing track's BPM fresh: fixing it on the track page and coming
   // back re-fetches here, and updateTrackBpm re-stretches a live tempo lock.
@@ -166,6 +189,16 @@ export default function Run() {
       tracks: qi.tracks.map((x) => (x.path === path ? { ...x, starred: next } : x)),
     });
     api.post("/api/track/star", { path, starred: next }).catch(() => {});
+  }
+
+  function toggleDislike(path: string, disliked: boolean) {
+    const next = !disliked;
+    setDislikedPaths((s) => {
+      const n = new Set(s);
+      if (next) n.add(path); else n.delete(path);
+      return n;
+    });
+    api.post("/api/track/dislike", { path, disliked: next }).catch(() => {});
   }
 
   const staleQueue = queueInfo && Math.abs(queueInfo.target - target) > 0.5;
@@ -292,6 +325,7 @@ export default function Run() {
             )}
             {player.orderedQueue.map((t, i) => {
               const starred = starredByPath.get(t.path);
+              const disliked = dislikedPaths.has(t.path);
               const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
               const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
               const isCurrentRow = i === player.orderPos;
@@ -300,6 +334,7 @@ export default function Run() {
                   {starred !== undefined && (
                     <Star on={starred} onToggle={() => toggleStar(t.path, starred)} />
                   )}
+                  <Dislike on={disliked} onToggle={() => toggleDislike(t.path, disliked)} />
                   <button
                     style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }}
                     onClick={() => player.jumpTo(i)}

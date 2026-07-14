@@ -104,6 +104,23 @@ def api_track_star():
     return jsonify(ok=True, starred=starred)
 
 
+@tracks_bp.route("/api/track/dislike", methods=["POST"])
+@login_required
+def api_track_dislike():
+    _check_csrf()
+    st = state()
+    data = request.get_json(force=True, silent=True) or {}
+    path = str(data.get("path", ""))
+    if not path:
+        abort(400)
+    _assert_in_music_dir(path)
+    if not st.db.get_track(path):
+        abort(404)
+    disliked = bool(data.get("disliked"))
+    st.db.set_disliked(path, disliked)
+    return jsonify(ok=True, disliked=disliked)
+
+
 @tracks_bp.route("/api/unlock", methods=["POST"])
 @login_required
 def api_unlock():
@@ -827,7 +844,8 @@ def api_tracks():
                    locked_count=stats.get("locked", 0),
                    deleted_count=stats.get("deleted", 0),
                    no_isrc_count=stats.get("missing_isrc", 0),
-                   starred_count=stats.get("starred", 0))
+                   starred_count=stats.get("starred", 0),
+                   disliked_count=stats.get("disliked", 0))
 
 
 @tracks_bp.route("/api/tracks/paths")

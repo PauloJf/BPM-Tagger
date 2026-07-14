@@ -58,6 +58,46 @@ def test_starred_filter_and_count(client, base_config):
     assert data["starred_count"] == 1
 
 
+# ── dislike toggle ────────────────────────────────────────────────────────────
+
+def test_dislike_toggle_roundtrip(client, base_config):
+    csrf = _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"], [("song", 120.0, 0)])
+    path = f"{base_config['music_dir']}/song.mp3"
+
+    r = client.post("/api/track/dislike", json={"path": path, "disliked": True}, headers=csrf)
+    assert r.status_code == 200 and r.get_json()["disliked"] is True
+    assert client.get(f"/api/track?path={quote(path)}").get_json()["track"]["disliked"] == 1
+
+    r = client.post("/api/track/dislike", json={"path": path, "disliked": False}, headers=csrf)
+    assert r.status_code == 200
+    assert client.get(f"/api/track?path={quote(path)}").get_json()["track"]["disliked"] == 0
+
+
+def test_dislike_requires_csrf_and_known_track(client, base_config):
+    csrf = _login(client)
+    path = f"{base_config['music_dir']}/nope.mp3"
+    assert client.post("/api/track/dislike",
+                       json={"path": path, "disliked": True}).status_code in (400, 403)
+    assert client.post("/api/track/dislike", json={"path": path, "disliked": True},
+                       headers=csrf).status_code == 404
+
+
+def test_disliked_filter_and_count(client, base_config):
+    csrf = _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"],
+          [("a", 120.0, 0), ("b", 130.0, 0)])
+    _ = csrf
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'a'")
+    conn.commit()
+    conn.close()
+    data = client.get("/api/tracks?filter=disliked").get_json()
+    assert data["total"] == 1
+    assert data["tracks"][0]["title"] == "a"
+    assert data["disliked_count"] == 1
+
+
 # ── run queue ─────────────────────────────────────────────────────────────────
 
 def test_run_queue_requires_target(client):
@@ -111,6 +151,19 @@ def test_run_queue_prefers_starred_within_count(client, base_config):
     assert len(titles) == 5
     # All three starred tracks selected despite closer unstarred matches.
     assert {"fav0", "fav1", "fav2"} <= titles
+
+
+def test_run_queue_excludes_disliked_tracks(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("liked", 150.0, 0), ("hated", 150.0, 0),
+    ])
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'hated'")
+    conn.commit()
+    conn.close()
+    data = client.get("/api/run/queue?bpm=150").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"liked"}
 
 
 def test_run_queue_get_response_has_recycled_false(client, base_config):
