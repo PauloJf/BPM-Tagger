@@ -2,7 +2,7 @@
   "name": "BPM Tagger",
   "short_name": "BPM Tagger",
   "description": "BPM detection and cadence-synced playback for your Navidrome library",
-  "id": "/bpm-tagger-app",
+  "id": "BPM Tagger",
   "start_url": "/run",
   "scope": "/",
   "display": "standalone",
