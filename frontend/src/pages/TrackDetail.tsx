@@ -13,6 +13,7 @@ import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { Cover, useArtwork } from "../components/Artwork";
+import RelatedPanel from "../components/RelatedPanel";
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
@@ -810,6 +811,8 @@ export default function TrackDetail() {
           </div>
         </div>
       </div>
+
+      {track.artist && <RelatedPanel artist={track.artist} context="track" />}
 
       {coverPickerOpen && (
         <ImagePicker

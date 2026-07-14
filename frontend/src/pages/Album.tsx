@@ -8,6 +8,7 @@ import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
+import RelatedPanel from "../components/RelatedPanel";
 
 interface AlbumResp {
   album: string;
@@ -118,6 +119,11 @@ export default function Album() {
           ))}
         </div>
       )}
+
+      {(() => {
+        const seed = aa || tracks[0]?.artist || "";
+        return seed ? <RelatedPanel artist={seed} context="album" /> : null;
+      })()}
 
       {pickerOpen && (
         <ImagePicker
