@@ -672,4 +672,10 @@ volumes:
 
 ---
 
+## License
+
+BPM Tagger is licensed under the **GNU Affero General Public License v3.0 or later** (AGPL-3.0-or-later). See [LICENSE](LICENSE) for the summary and a link to the full text at [gnu.org](https://www.gnu.org/licenses/agpl-3.0.html).
+
+---
+
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.

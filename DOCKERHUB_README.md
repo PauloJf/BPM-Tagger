@@ -6,7 +6,7 @@ Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia*
 
 **Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists (add by URL or browse your account's playlists in-app), download the tracks you're missing (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings. A **Suggestions** page recommends artists and tracks to grab next, derived from your library via the keyless Deezer catalog.
 
-Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger)
+Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger) · Licensed under [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)
 
 ---
 

@@ -33,25 +33,27 @@ export default function About() {
 
   return (
     <>
-      <div style={{ marginBottom: 28 }}>
-        <div className="section-label" style={{ marginBottom: 10 }}>
-          <span>About</span>
-          <span className="section-hint">v{version}</span>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "stretch", marginBottom: 18 }}>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+          <div className="section-label" style={{ marginBottom: 10 }}>
+            <span>About</span>
+            <span className="section-hint">v{version}</span>
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6 }}>
+            BPM Tagger
+            <span style={{ fontSize: 13, fontWeight: 400, color: "var(--muted)", fontFamily: "var(--mono)", marginLeft: 8 }}>for Navidrome</span>
+          </h1>
+          <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.65, margin: 0 }}>
+            A self-hosted tool that scans your music library and writes accurate BPM tags directly into your audio files — so Navidrome (and any other player) always shows the right tempo without third-party services or manual work.
+          </p>
         </div>
-        <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6 }}>
-          BPM Tagger
-          <span style={{ fontSize: 13, fontWeight: 400, color: "var(--muted)", fontFamily: "var(--mono)", marginLeft: 8 }}>for Navidrome</span>
-        </h1>
-        <p style={{ fontSize: 14, color: "var(--muted)", maxWidth: 560, lineHeight: 1.65 }}>
-          A self-hosted tool that scans your music library and writes accurate BPM tags directly into your audio files — so Navidrome (and any other player) always shows the right tempo without third-party services or manual work.
-        </p>
-      </div>
 
-      <div className="card" style={{ marginBottom: 18, borderLeft: "3px solid var(--accent)", paddingLeft: 24 }}>
-        <div className="about-section-title">Why this exists</div>
-        <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", maxWidth: 680, margin: 0 }}>
-          Built out of a personal necessity: keeping a running playlist where every song sits at exactly the right cadence. Wrong BPMs meant either fighting the beat or constantly editing playlists by hand. BPM Tagger automates the whole thing — scan once, tag forever, and let Navidrome surface the right tracks for any target cadence.
-        </p>
+        <div className="card" style={{ flex: "1 1 320px", minWidth: 0, borderLeft: "3px solid var(--accent)", paddingLeft: 24 }}>
+          <div className="about-section-title">Why this exists</div>
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", margin: 0 }}>
+            Built out of a personal necessity: keeping a running playlist where every song sits at exactly the right cadence. Wrong BPMs meant either fighting the beat or constantly editing playlists by hand. BPM Tagger automates the whole thing — scan once, tag forever, and let Navidrome surface the right tracks for any target cadence.
+          </p>
+        </div>
       </div>
 
       <div className="about-grid">
@@ -113,7 +115,7 @@ export default function About() {
           github.com/paulojf/bpm-tagger
         </a>
         <span style={{ color: "var(--border)" }}>·</span>
-        <span>MIT licence</span>
+        <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener" style={{ color: "inherit", textDecoration: "none" }}>AGPLv3 licence</a>
       </div>
     </>
   );
