@@ -52,6 +52,7 @@ export interface RunQueueResponse {
   octave_fold: boolean;
   tolerance_pct: number;
   prefer_starred: boolean;
+  recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
 }
 
 export interface LyricsResponse {

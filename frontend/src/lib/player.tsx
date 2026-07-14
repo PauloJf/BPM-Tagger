@@ -30,6 +30,10 @@ export function lockRate(trackBpm: number | null | undefined, lock: TempoLock | 
 export type RepeatMode = "off" | "all" | "one";
 
 const FADE_MS = 250;
+// How many of the most-recently-queued tracks the auto-refill tells the server
+// to avoid re-picking. Bounded rather than the whole run's history: only
+// near-term repeats matter, and it keeps the request small on a long run.
+const REFILL_EXCLUDE_WINDOW = 60;
 
 interface PlayerState {
   current: PlayerTrack | null;
@@ -297,20 +301,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // same target and append it, so a run keeps going instead of stopping at the
   // queue end. Lives here (not in the Run page) so it works with the app on any
   // route or the phone locked. Skipped when repeat already loops the queue.
+  // The recently-queued paths are sent as `exclude` so the refill surfaces
+  // unplayed matches first; the server only reshuffles from the full pool
+  // (marking the response `recycled`) once every non-excluded match is gone —
+  // e.g. a small library on a long run — so the queue never dries up.
   const extending = useRef(false);
   useEffect(() => {
     if (!tempoLock || previewing || repeat !== "off") return;
     if (order.length === 0 || pos !== order.length - 1) return;
     if (extending.current) return;
     extending.current = true;
-    api.get<{ tracks: { path: string; title: string; artist?: string; bpm: number }[] }>(
-      `/api/run/queue?bpm=${tempoLock.target}`)
+    const exclude = nav.current.queue.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path);
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number }[] }>(
+      "/api/run/queue", { bpm: tempoLock.target, exclude })
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
         let batch: PlayerTrack[] = resp.tracks.map((t) =>
           ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm }));
-        // Don't play the same song back-to-back — unless it's the only match.
+        // Defense in depth: the exclude window is bounded, so the currently
+        // playing track could in principle fall outside it on a huge queue.
         const noRepeat = batch.filter((t) => t.path !== cur?.path);
         if (noRepeat.length) batch = noRepeat;
         if (!batch.length) return;
