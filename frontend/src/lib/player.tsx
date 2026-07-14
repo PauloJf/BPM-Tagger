@@ -230,16 +230,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (rampRef.current != null) cancelAnimationFrame(rampRef.current);
     if (rampTimer.current != null) clearTimeout(rampTimer.current);
     const start = performance.now();
-    a.volume = from;
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    a.volume = clamp(from);
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / ms);
-      a.volume = from + (to - from) * t;
+      // The rAF timestamp can land marginally before `start`, making the raw
+      // fraction slightly negative — clamp to [0,1] so a fade-in never writes a
+      // negative volume (HTMLMediaElement.volume throws outside [0,1]).
+      const t = Math.max(0, Math.min(1, (now - start) / ms));
+      a.volume = clamp(from + (to - from) * t);
       if (t < 1) rampRef.current = requestAnimationFrame(step);
     };
     rampRef.current = requestAnimationFrame(step);
     rampTimer.current = window.setTimeout(() => {
       if (rampRef.current != null) { cancelAnimationFrame(rampRef.current); rampRef.current = null; }
-      a.volume = to;
+      a.volume = clamp(to);
       done?.();
     }, ms);
   }, []);
@@ -506,7 +510,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? new MediaMetadata({
           title: current.title,
           artist: current.artist ?? "",
-          artwork: [{ src: `/api/track/cover?path=${encodeURIComponent(current.path)}`, sizes: "512x512" }],
+          // Ephemeral preview clips have a synthetic path with no library file,
+          // so skip the cover fetch (it would 403) rather than 404-tolerate it.
+          artwork: current.ephemeral
+            ? []
+            : [{ src: `/api/track/cover?path=${encodeURIComponent(current.path)}`, sizes: "512x512" }],
         })
       : null;
   }, [current]);

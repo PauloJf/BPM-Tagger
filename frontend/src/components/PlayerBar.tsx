@@ -16,15 +16,19 @@ export default function PlayerBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
-  // Hooks must run unconditionally; disabled until a track is loaded.
-  useWaveform(canvasRef, audioRef, current?.path || "", !!current, !!current);
+  // Ephemeral tracks (30-s Deezer preview clips) have a synthetic path with no
+  // library file, so every file-backed lookup below must stay off for them —
+  // otherwise waveform/BPM/cover fetches 403 against the fake path.
+  const isPreview = !!current?.ephemeral;
+  // Hooks must run unconditionally; disabled until a real track is loaded.
+  useWaveform(canvasRef, audioRef, current?.path || "", !!current && !isPreview, !!current && !isPreview);
   // Current track's BPM for the pulsing indicator. Own cache key — TrackDetail's
   // ["track", path] entry carries review-queue navigation this fetch would clobber.
   const bpmQ = useQuery({
     queryKey: ["track-bpm", current?.path || ""],
     queryFn: () => api.get<{ track: { bpm: number | null } }>(
       `/api/track?path=${encodeURIComponent(current!.path)}`),
-    enabled: !!current,
+    enabled: !!current && !isPreview,
     staleTime: 60_000,
   });
   const bpm = bpmQ.data?.track?.bpm ?? null;
@@ -83,21 +87,30 @@ export default function PlayerBar() {
         </button>
       )}
       <div className="player-bar-meta">
-        <Link
-          to={`/track?path=${encodeURIComponent(current.path)}`}
-          className="player-bar-title"
-          title={`Open ${current.title}`}
-        >
-          {current.title}
-        </Link>
+        {isPreview ? (
+          // No library file behind a preview clip — nothing to link to.
+          <span className="player-bar-title" title={current.title}>{current.title}</span>
+        ) : (
+          <Link
+            to={`/track?path=${encodeURIComponent(current.path)}`}
+            className="player-bar-title"
+            title={`Open ${current.title}`}
+          >
+            {current.title}
+          </Link>
+        )}
         {error ? (
           <div className="player-bar-artist" style={{ color: "var(--err-fg)" }}>{error}</div>
         ) : previewing ? (
           <div className="player-bar-artist" style={{ color: "var(--accent-2)" }}>Preview · returns to queue</div>
         ) : current.artist ? (
-          <Link to={`/artist?name=${encodeURIComponent(current.artist)}`} className="player-bar-artist" style={{ color: "inherit", textDecoration: "none" }} title={`View ${current.artist}`}>
-            {current.artist}
-          </Link>
+          isPreview ? (
+            <span className="player-bar-artist">{current.artist}</span>
+          ) : (
+            <Link to={`/artist?name=${encodeURIComponent(current.artist)}`} className="player-bar-artist" style={{ color: "inherit", textDecoration: "none" }} title={`View ${current.artist}`}>
+              {current.artist}
+            </Link>
+          )
         ) : null}
       </div>
       {tempoLock ? (
