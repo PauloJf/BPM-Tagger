@@ -236,6 +236,63 @@ export interface Playlist {
   indexed_count: number;
 }
 
+// ── Suggestions & Related (Deezer-derived) ─────────────────────────────────
+export interface SuggestedArtist {
+  id: number;
+  dz_id: string;
+  name: string;
+  image_url: string;
+  have_tracks: number;   // library tracks already owned (0-2; >=3 is filtered out)
+  seeds: string[];
+  score: number;
+}
+
+export interface SuggestedTrack {
+  id: number;
+  dz_track_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration_ms: number | null;
+  cover_url: string;
+  preview_url: string;
+  seeds: string[];
+  in_library?: boolean;
+  queued?: boolean;
+  file_path?: string;
+}
+
+export interface SuggestionsResponse {
+  enabled: boolean;
+  artists?: SuggestedArtist[];
+  tracks?: SuggestedTrack[];
+  refreshing?: boolean;
+  last_error?: string;
+  computed_at?: string | null;
+  seed_count?: number;
+}
+
+export interface RelatedArtist {
+  dz_id: string;
+  name: string;
+  image_url: string;
+  track_count: number;   // library tracks with this artist as primary (0 = not owned)
+  library_name?: string; // library's display spelling, present when track_count > 0
+}
+
+export interface RelatedTrack {
+  dz_track_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration_ms: number | null;
+  cover_url: string;
+  preview_url: string;
+  in_library?: boolean;
+  queued?: boolean;
+  file_path?: string;
+}
+
 export interface SpotifyPlaylist {
   spotify_id: string;
   name: string;

@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.5.0 — 2026-07-14
+
+- **Suggestions page (grabber):** a new **Suggestions** page (`/suggestions`) recommends **artists you don't have yet** and **tracks worth grabbing**, derived from what's already in your library — your top and **starred** artists weigh heaviest as seeds. Each suggested artist expands to its top tracks, and any track is one click to **Add to queue** (feeding the existing grab pipeline). Artists you already own (3+ tracks) are filtered out; artists you've _sampled_ (1–2 tracks) still surface, badged with what you have; suggested tracks your library already resolves are dropped. Anything you dismiss stays gone across refreshes and restarts. Refresh on demand — it also auto-refreshes when stale (weekly). Powered by the **Deezer public catalog API** (keyless — no account or key, and it works even when Spotify isn't connected); Spotify, when connected, only enriches enqueues with a confident track match for better dedupe. All Deezer traffic shares the existing rate limiter.
+
 ## v2.4.4 — 2026-07-14
 
 - **Dislike toggle:** star's opposite number — dislike a track from the run queue, the track page, or the library so it's never picked for a run again. A **Disliked** filter pill in the library lists (and lets you undo) disliked tracks; the run-queue builder drops them before scoring, so they're excluded from both the initial queue and every auto-refill.

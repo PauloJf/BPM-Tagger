@@ -4,7 +4,7 @@ Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/)
 
 Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia** RhythmExtractor2013, and **librosa** — so octave errors are caught automatically and disagreements are flagged for manual review.
 
-**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists (add by URL or browse your account's playlists in-app), download the tracks you're missing (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings.
+**Optional Spotify grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists (add by URL or browse your account's playlists in-app), download the tracks you're missing (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings. A **Suggestions** page recommends artists and tracks to grab next, derived from your library via the keyless Deezer catalog.
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger)
 
@@ -132,6 +132,8 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.5.0** — A **Suggestions** page (grabber): suggested artists and tracks to grab next, derived from your library's top and starred artists via the keyless **Deezer public catalog** (no account/key, works even without Spotify connected). One-click add-to-queue; owned artists filtered out (sampled ones badged); dismissals persist.
 
 **v2.4.4** — A **dislike toggle**, star's opposite number: dislike a track from the run queue, the track page, or the library and it's never picked for a run again — a **Disliked** filter pill in the library lists (and lets you undo) disliked tracks, and the run-queue builder drops them before scoring so they're excluded from the initial queue and every auto-refill.
 
