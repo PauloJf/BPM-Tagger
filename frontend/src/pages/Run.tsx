@@ -138,6 +138,14 @@ export default function Run() {
   const liveLock = { target, octave, stretchLimitPct };
   const running = !!player.tempoLock;
 
+  // The run queue's current track. While a Similar preview clip ducks the queue,
+  // `player.current` swaps to that ephemeral clip (whose artist is the previewed
+  // track's, not the run track's) — but the queue position never moves, so this
+  // stays pinned to the actual run track. Anchoring the Similar panel here keeps
+  // it from reloading for the clip's artist mid-preview (which unmounted the row
+  // whose Preview button was just pressed, losing its play/pause state).
+  const queueTrack = player.orderedQueue[player.orderPos] ?? current;
+
   function setMode(m: "steps" | "presets" | "queue") {
     setModeState(m);
     localStorage.setItem(MODE_KEY, m);
@@ -351,21 +359,21 @@ export default function Run() {
               </span>
             )}
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "baseline", gap: 10 }}>
-              {current?.artist && (
+              {queueTrack?.artist && (
                 <button
                   className="btn btn-bare btn-sm"
                   style={{ padding: 0, fontSize: 11, color: similarOpen ? "var(--accent-2)" : "var(--muted)" }}
                   onClick={() => setSimilarOpen((o) => !o)}
                   aria-expanded={similarOpen}
-                  title={`Tracks similar to ${current.artist} — in-library matches queue onto this run's cadence`}
+                  title={`Tracks similar to ${queueTrack.artist} — in-library matches queue onto this run's cadence`}
                 >≈ Similar</button>
               )}
               <Link to="/settings#sec-run" style={{ fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>
             </span>
           </div>
-          {similarOpen && current?.artist && (
+          {similarOpen && queueTrack?.artist && (
             <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)" }}>
-              <QueueSimilar artist={current.artist} onClose={() => setSimilarOpen(false)} />
+              <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
             </div>
           )}
           <div style={{ maxHeight: "clamp(140px, calc(100dvh - 500px), 420px)", overflowY: "auto" }}>
