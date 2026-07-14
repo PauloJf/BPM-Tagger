@@ -44,7 +44,7 @@ export default function About() {
             <span style={{ fontSize: 13, fontWeight: 400, color: "var(--muted)", fontFamily: "var(--mono)", marginLeft: 8 }}>for Navidrome</span>
           </h1>
           <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.65, margin: 0 }}>
-            A self-hosted tool that scans your music library and writes accurate BPM tags directly into your audio files — so Navidrome (and any other player) always shows the right tempo without third-party services or manual work.
+            A self-hosted tool that scans your music library and writes accurate BPM tags directly into your audio files — so Navidrome (and any other player) always shows the right tempo without third-party services or manual work. It also bundles optional extras: a built-in library browser and audio player, a full-screen <strong style={{ color: "var(--text)", fontWeight: 600 }}>Run mode</strong> that shifts every track onto one target cadence with the tempo lock (pitch preserved), and — with the grabber enabled — Deezer-powered <strong style={{ color: "var(--text)", fontWeight: 600 }}>suggestions</strong> for artists and tracks to add next.
           </p>
         </div>
 
