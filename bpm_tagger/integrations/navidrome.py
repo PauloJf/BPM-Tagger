@@ -5,6 +5,8 @@ Two concerns live here:
 * Library rescan trigger (`startScan`) and a connection test (`ping`).
 * The Subsonic client used by the two-way star sync (`get_starred`, `resolve_id`,
   `set_star`) — see docs/plans/navidrome-star-sync.md.
+* Scrobbling (`scrobble`) and the full-library song walk (`iter_all_songs`) that
+  feeds the play-count pull.
 
 Subsonic keys songs by an opaque `id`; BPM Tagger keys by `file_path`. Identity is
 resolved fast-path by path suffix and falls back to the grabber's fuzzy matcher.
@@ -166,6 +168,41 @@ def resolve_id(url: str, user: str, pwd: str, track: dict, threshold: float = 0.
         log.warning("Navidrome search3 failed for %r: %s", q, exc)
         return None
     return best_match_id(track, hits, threshold)
+
+
+def scrobble(url: str, user: str, pwd: str, song_id: str) -> bool:
+    """Submit a play for a song id (submission=true → counts as a real play, so
+    Navidrome bumps its play count and forwards to Last.fm/ListenBrainz when the
+    user has scrobbling configured there). Returns True on Subsonic 'ok'."""
+    try:
+        resp = requests.get(
+            f"{url.rstrip('/')}/rest/scrobble",
+            params={**_sub_params(user, pwd), "id": song_id, "submission": "true"},
+            timeout=15,
+        )
+        return _sub_response(resp).get("status") == "ok"
+    except Exception as exc:
+        log.warning("Navidrome scrobble failed for id=%s: %s", song_id, exc)
+        return False
+
+
+def iter_all_songs(url: str, user: str, pwd: str, page_size: int = 500):
+    """Yield every song on the server (raw Subsonic song objects, incl. `path`
+    and `playCount`), paging search3 with an empty query — the standard
+    Subsonic idiom for a full library walk, which Navidrome supports."""
+    offset = 0
+    while True:
+        resp = requests.get(
+            f"{url.rstrip('/')}/rest/search3",
+            params={**_sub_params(user, pwd), "query": '""', "songCount": page_size,
+                    "songOffset": offset, "artistCount": 0, "albumCount": 0},
+            timeout=60,
+        )
+        songs = (_sub_response(resp).get("searchResult3", {}) or {}).get("song", []) or []
+        yield from songs
+        if len(songs) < page_size:
+            return
+        offset += page_size
 
 
 def set_star(url: str, user: str, pwd: str, song_id: str, starred: bool) -> bool:

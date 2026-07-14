@@ -64,10 +64,12 @@ def api_run_queue():
         count = int(cfg.get("run_queue_size", 20))
     octave = bool(cfg.get("run_octave_fold", True))
     prefer_starred = bool(cfg.get("run_prefer_starred", True))
+    prefer_familiar = bool(cfg.get("run_prefer_familiar", False))
     tol = max(0.005, float(cfg.get("run_tolerance_pct", 4.0)) / 100.0)
 
     # Score every candidate: eligibility by post-fold deviation from target
-    # (minus whatever's excluded), selection by (starred first, closest first).
+    # (minus whatever's excluded), selection by (starred first, then most-played
+    # first when familiarity is preferred, closest first).
     def _matches(exclude_paths):
         found = []
         for t in st.db.get_run_candidates():
@@ -77,7 +79,9 @@ def api_run_queue():
             dev = abs(target / folded - 1.0)
             if dev <= tol:
                 found.append((t, folded, dev))
-        found.sort(key=lambda x: (not x[0]["starred"] if prefer_starred else False, x[2]))
+        found.sort(key=lambda x: (not x[0]["starred"] if prefer_starred else False,
+                                  -(x[0]["play_count"] or 0) if prefer_familiar else 0,
+                                  x[2]))
         return found
 
     picked = _matches(exclude_set)
@@ -97,9 +101,11 @@ def api_run_queue():
         "artist":  t["artist"] or "",
         "bpm":     t["bpm"],
         "starred": bool(t["starred"]),
+        "play_count": t["play_count"],
         "run_bpm": round(folded, 2),                  # BPM after octave fold
         "rate":    round(target / folded, 4),         # playbackRate to hit target
     } for (t, folded, _dev) in picked]
     return jsonify(tracks=tracks, target=target, count=len(tracks),
                    octave_fold=octave, tolerance_pct=tol * 100,
-                   prefer_starred=prefer_starred, recycled=recycled)
+                   prefer_starred=prefer_starred, prefer_familiar=prefer_familiar,
+                   recycled=recycled)

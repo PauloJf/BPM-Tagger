@@ -88,6 +88,7 @@ docker compose up -d && docker compose logs -f
 | `NTFY_TOPIC` | _(empty)_ | ntfy topic (leave empty to disable) |
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
 | `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
+| `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `LYRICS_ENABLED` | `false` | Auto-fetch lyrics (LRCLIB) for tracks the grabber downloads; manual/bulk fetch always available in the UI |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 
@@ -111,6 +112,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 - **Image editing** — change a track's cover, set an album cover across all its tracks at once, or pick a custom artist image — searching Spotify/Deezer, pasting a URL, or uploading a file
 - **Lyrics** — plain or synced (LRC) lyrics from LRCLIB per track or in bulk, viewable/editable on the track page, stored embedded or as `.lrc` sidecars (Navidrome-compatible); a **player lyrics drawer** follows synced lyrics live (click a line to seek) and steps plain lyrics manually
 - **Navidrome star sync** — two-way: stars set here push to Navidrome as favourites, stars set in Navidrome pull in (feeding Run mode's starred preference); per-track baseline merge, path + fuzzy matching, manual **Sync stars now** trigger
+- **Navidrome scrobbling & play counts** — opt-in: built-in-player plays (Run mode included) scrobble to Navidrome at the halfway mark (reaching Last.fm/ListenBrainz through it); **Pull play counts** imports Navidrome's play counts, shown per track and usable as a **prefer familiar tracks** run-queue preference. Your BPM tags also power Navidrome **smart playlists** (`.nsp` with a `bpm` range) for cadence playlists in any Subsonic client
 - BPM Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
@@ -139,6 +141,8 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.6.0** — **Navidrome scrobbling & play counts**: opt-in scrobbling reports built-in-player plays (Run mode included) to Navidrome at the halfway mark — play counts, "last played" and Navidrome's Last.fm/ListenBrainz forwarding all see your runs. **Pull play counts** (Settings → Navidrome) imports Navidrome's per-song play counts, shown on the track page and powering a new Run-mode **prefer familiar tracks** queue option (most-played matches first, within the starred preference). New env vars `NAVIDROME_SCROBBLE`, `RUN_PREFER_FAMILIAR`.
 
 **v2.5.2** — **Two-way star sync with Navidrome**: stars flow both ways — starred tracks here become Navidrome favourites, and Navidrome stars pull in (feeding Run mode's starred queue preference). Per-track three-way merge against a last-synced baseline (an un-star on one side is never mistaken for a star on the other); path matching tolerates differing container roots, with fuzzy fallback; failed writes retry next pass. Enable in **Settings → Navidrome**, run with **Sync stars now**. New env var `NAVIDROME_STAR_SYNC`.
 

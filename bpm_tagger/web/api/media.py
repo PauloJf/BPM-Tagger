@@ -8,12 +8,49 @@ import urllib.request
 
 from flask import Blueprint, abort, jsonify, request, send_file, session
 
-from ..auth import login_required
+from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 
 log = logging.getLogger(__name__)
 
 media_bp = Blueprint("media", __name__)
+
+
+@media_bp.route("/api/scrobble", methods=["POST"])
+@login_required
+def api_scrobble():
+    """Report a play from the built-in player (the client posts once per track,
+    at the halfway mark). Forwarded to Navidrome when scrobbling is enabled —
+    which also feeds Last.fm/ListenBrainz if the user wired those up there —
+    and the local play count gets an optimistic +1 so run-queue familiarity
+    stays fresh between pulls. A no-op (ok=False, skipped) when disabled, so
+    the client can always fire and forget."""
+    _check_csrf()
+    st = state()
+    cfg = st.config
+    url = str(cfg.get("navidrome_url", "")).rstrip("/")
+    user = str(cfg.get("navidrome_user", ""))
+    pwd = str(cfg.get("navidrome_pass", ""))
+    if not (cfg.get("navidrome_scrobble") and url and user and pwd):
+        return jsonify(ok=False, skipped=True)
+
+    path = str((request.get_json(silent=True) or {}).get("path", ""))
+    _assert_in_music_dir(path)
+    track = st.db.get_track(path)
+    if not track:
+        abort(404)
+
+    from ...integrations.navidrome import resolve_id, scrobble
+    sid = track.get("nd_song_id")
+    resolved = None
+    if not sid:
+        sid = resolved = resolve_id(url, user, pwd, track)
+    if not sid:
+        return jsonify(ok=False, error="track not matched in Navidrome")
+    if not scrobble(url, user, pwd, sid):
+        return jsonify(ok=False, error="Navidrome rejected the scrobble"), 502
+    st.db.bump_play_count(path, nd_song_id=resolved)
+    return jsonify(ok=True)
 
 
 @media_bp.route("/api/progress")

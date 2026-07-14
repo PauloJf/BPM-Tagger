@@ -125,6 +125,9 @@ class BPMDatabase:
             # ── Navidrome star sync ───────────────────────────────────────────
             ("nd_song_id",     "TEXT"),               # cached Subsonic song id
             ("starred_base",   "INTEGER DEFAULT 0"),  # remote 'starred' at last sync (baseline)
+            # ── Navidrome play counts (pulled; NULL = never pulled) ───────────
+            ("play_count",     "INTEGER"),
+            ("last_played",    "TEXT"),               # OpenSubsonic 'played' timestamp
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
@@ -525,6 +528,30 @@ class BPMDatabase:
                     "UPDATE tracks SET starred = ?, starred_base = ? WHERE file_path = ?",
                     (1 if starred else 0, 1 if starred else 0, file_path))
 
+    def set_play_counts(self, updates: list[tuple]) -> int:
+        """Bulk-write pulled play data: (file_path, play_count, last_played,
+        nd_song_id) tuples. Also warms the star sync's id cache — never clears a
+        cached id with None. Returns the number of rows written."""
+        if not updates:
+            return 0
+        with self._connect() as conn:
+            conn.executemany(
+                "UPDATE tracks SET play_count = ?, last_played = ?, "
+                "nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
+                [(pc, lp, sid, path) for (path, pc, lp, sid) in updates])
+            conn.commit()
+        return len(updates)
+
+    def bump_play_count(self, file_path: str, nd_song_id: str | None = None):
+        """Optimistic +1 after a successful scrobble, so the local count tracks
+        Navidrome's between pulls (the next pull overwrites with the remote
+        truth, which includes this play). Caches the song id when given."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET play_count = COALESCE(play_count, 0) + 1, "
+                "nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
+                (nd_song_id, file_path))
+
     def get_run_candidates(self) -> list[dict]:
         """Every analyzed, non-deleted, non-disliked track — feeds the run-queue
         builder, which octave-folds and scores in Python (cheap even at library
@@ -532,7 +559,7 @@ class BPMDatabase:
         rather than being scored and filtered per-request."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT file_path, title, artist, bpm, starred FROM tracks "
+                "SELECT file_path, title, artist, bpm, starred, play_count FROM tracks "
                 "WHERE status != 'deleted' AND bpm IS NOT NULL "
                 "AND (disliked IS NULL OR disliked = 0)"
             ).fetchall()

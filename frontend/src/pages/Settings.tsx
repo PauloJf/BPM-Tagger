@@ -134,14 +134,16 @@ export default function Settings() {
   const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
   const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, conf: 0.4 });
   const [mode, setMode] = useState("watch");
-  const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false });
+  const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false, scrobble: false });
   const [starSyncMsg, setStarSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [starSyncing, setStarSyncing] = useState(false);
+  const [playPullMsg, setPlayPullMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [playPulling, setPlayPulling] = useState(false);
   const [playback, setPlayback] = useState(3);
   const [run, setRun] = useState({
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
-    octave: true, preferStarred: true,
+    octave: true, preferStarred: true, preferFamiliar: false,
     queueSize: 20, tolerance: 4, stretchLimit: 15,
   });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
@@ -165,6 +167,27 @@ export default function Settings() {
       setTestMsg((m) => ({ ...m, [kind]: { ok: !!r.ok, text: r.ok ? (r.message || "OK") : (r.error || "Failed") } }));
     } catch (e) {
       setTestMsg((m) => ({ ...m, [kind]: { ok: false, text: e instanceof Error ? e.message : "Failed" } }));
+    }
+  }
+
+  async function pullPlayCounts() {
+    setPlayPulling(true);
+    setPlayPullMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; error?: string; remote_songs?: number;
+                                 matched?: number; unmatched_remote?: number }>(
+        "/api/settings/sync-play-counts");
+      if (r.ok) {
+        const bits = [`${r.matched ?? 0} of ${r.remote_songs ?? 0} songs matched`];
+        if (r.unmatched_remote) bits.push(`${r.unmatched_remote} remote-only`);
+        setPlayPullMsg({ ok: true, text: `Play counts pulled — ${bits.join(", ")}` });
+      } else {
+        setPlayPullMsg({ ok: false, text: r.error || "Pull failed" });
+      }
+    } catch (e) {
+      setPlayPullMsg({ ok: false, text: e instanceof Error ? e.message : "Pull failed" });
+    } finally {
+      setPlayPulling(false);
     }
   }
 
@@ -227,7 +250,7 @@ export default function Settings() {
     setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
     setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
-    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false) });
+    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
     setPlayback(n("playback_buffer", 3));
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
                             { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
@@ -244,6 +267,7 @@ export default function Settings() {
       }),
       octave: b("run_octave_fold", true),
       preferStarred: b("run_prefer_starred", true),
+      preferFamiliar: b("run_prefer_familiar", false),
       queueSize: n("run_queue_size", 20),
       tolerance: n("run_tolerance_pct", 4),
       stretchLimit: n("run_stretch_limit_pct", 15),
@@ -731,9 +755,9 @@ export default function Settings() {
           <div id="sec-navidrome" className="settings-card card">
             <div className="settings-card-header">
               <h2>Navidrome Integration</h2>
-              <p>Trigger a library rescan after every scan pass, and keep stars in sync both ways.</p>
+              <p>Trigger a library rescan after every scan pass, keep stars in sync both ways, scrobble plays, and pull play counts.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync }, setNavSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync, navidrome_scrobble: nav.scrobble }, setNavSaved); }}>
               <div className="settings-fields">
                 <div className="field-row">
                   {fieldLabel("Navidrome URL")}
@@ -751,6 +775,10 @@ export default function Settings() {
                   {fieldLabel("Two-way star sync", "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
                   <Toggle on={nav.starSync} onChange={(v) => setNav({ ...nav, starSync: v })} label="Enable star sync" />
                 </div>
+                <div className="field-row">
+                  {fieldLabel("Scrobble plays", "Report tracks played in the built-in player (Run mode included) to Navidrome once they pass the halfway mark — play counts and 'last played' stay accurate, and Navidrome forwards to Last.fm/ListenBrainz if you've connected them there.")}
+                  <Toggle on={nav.scrobble} onChange={(v) => setNav({ ...nav, scrobble: v })} label="Scrobble plays" />
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <SaveButton state={navSaved} label="Save Navidrome Settings" />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
@@ -761,6 +789,10 @@ export default function Settings() {
                     </button>
                   )}
                   {starSyncMsg && <span style={{ fontSize: 12, color: starSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{starSyncMsg.text}</span>}
+                  <button type="button" className="btn btn-soft btn-sm" disabled={playPulling || !nav.url || !nav.user} onClick={pullPlayCounts}>
+                    {playPulling ? "Pulling…" : "Pull play counts"}
+                  </button>
+                  {playPullMsg && <span style={{ fontSize: 12, color: playPullMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{playPullMsg.text}</span>}
                 </div>
               </div>
             </form>
@@ -798,6 +830,7 @@ export default function Settings() {
                 run_presets: run.presets,
                 run_octave_fold: run.octave,
                 run_prefer_starred: run.preferStarred,
+                run_prefer_familiar: run.preferFamiliar,
                 run_queue_size: run.queueSize,
                 run_tolerance_pct: run.tolerance,
                 run_stretch_limit_pct: run.stretchLimit,
@@ -825,6 +858,10 @@ export default function Settings() {
               <div className="field-row">
                 {fieldLabel("Prefer starred tracks", "Fill the queue with starred tracks first, then top up with the closest unstarred matches.")}
                 <Toggle on={run.preferStarred} onChange={(v) => setRun({ ...run, preferStarred: v })} label="Prefer starred tracks" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Prefer familiar tracks", "Among equally-starred matches, pick your most-played tracks first. Uses the play counts pulled from Navidrome (Settings → Navidrome → Pull play counts); tracks with no pulled count sort last.")}
+                <Toggle on={run.preferFamiliar} onChange={(v) => setRun({ ...run, preferFamiliar: v })} label="Prefer familiar tracks" />
               </div>
               <div className="field-row">
                 {fieldLabel("Queue size", "How many tracks a run queue preloads.")}

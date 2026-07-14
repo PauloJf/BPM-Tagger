@@ -58,6 +58,7 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 - **Login brute-force protection** — IP-based rate limiting locks out repeated failed login attempts
 - **Navidrome auto-rescan** — optionally triggers a Navidrome library rescan via the Subsonic API after every scan, and also when the watch-mode queue drains after tagging new files, so new BPM tags appear immediately
 - **Navidrome star sync** — two-way: stars set in BPM Tagger push to Navidrome as favourites, stars set in Navidrome pull in (and feed the Run queue's starred preference). A per-track baseline keeps "starred here" and "un-starred there" apart; **Sync stars now** lives in Settings → Navidrome
+- **Navidrome scrobbling & play counts** — opt-in: tracks played in the built-in player (Run mode included) scrobble to Navidrome once they pass the halfway mark, so play counts and "last played" stay accurate everywhere (and reach Last.fm/ListenBrainz if Navidrome forwards there); **Pull play counts** imports Navidrome's play counts per track, shown on the track page and usable as a run-queue preference (**prefer familiar tracks**)
 - **Health check endpoint** — `/healthz` returns DB statistics as JSON; no login required, suitable for Docker/k8s probes
 - **ntfy notifications** — batched and rate-limited; scan summaries include a "N need review" count
 - **Manual lock** — pin a track's BPM so future scans never overwrite it
@@ -223,6 +224,7 @@ All settings are environment variables. Every variable has a default and is docu
 | `NAVIDROME_USER` | _(empty)_ | Navidrome admin username |
 | `NAVIDROME_PASS` | _(empty)_ | Navidrome admin password |
 | `NAVIDROME_STAR_SYNC` | `false` | Initial state of the **two-way star sync** toggle (Settings → Navidrome). |
+| `NAVIDROME_SCROBBLE` | `false` | Initial state of the **Scrobble plays** toggle (Settings → Navidrome). |
 
 When URL/user/password are set, BPM Tagger calls Navidrome's Subsonic-compatible `/rest/startScan` endpoint:
 - At the end of every `scan_all`, `scan_unscanned`, and `scan_review` one-shot run
@@ -231,6 +233,28 @@ When URL/user/password are set, BPM Tagger calls Navidrome's Subsonic-compatible
 This triggers a Navidrome library rescan automatically so the new BPM tags appear in your music player without a manual rescan step.
 
 **Two-way star sync** (enable in Settings → Navidrome, then **Sync stars now**): each pass fetches Navidrome's starred songs in one `getStarred2` call and reconciles them with the app's starred flags via a per-track three-way merge against the last-synced baseline — a star set on either side since the last sync propagates to the other, and an un-star on one side is never mistaken for a star on the other. Songs are matched by file path (differing roots between the two containers are tolerated) with a title/artist/duration fuzzy fallback; resolved Navidrome song ids are cached for later passes. Pushing a locally-starred track that Navidrome hasn't starred uses a `search3` lookup. A failed remote write leaves that track's baseline untouched, so it simply retries on the next sync; the result toast reports pulled / pushed / unmatched / failed counts. Manual trigger only for now.
+
+**Scrobbling** (enable in Settings → Navidrome): tracks played in the built-in player — the player bar and Run mode alike — are reported to Navidrome once they pass the halfway mark (the Last.fm convention), so play counts, "last played" and Navidrome's own Last.fm/ListenBrainz forwarding all see your runs. Previews and 30-second clips never scrobble. Songs are matched by the same cached-id / path / fuzzy chain as the star sync.
+
+**Play counts** (Settings → Navidrome → **Pull play counts**): a one-way import of Navidrome's per-song play counts and last-played timestamps — Navidrome is the source of truth, since every Subsonic client scrobbles into it. Pulled counts show on the track detail page and power the Run-mode **prefer familiar tracks** option, which fills a queue with your most-played matches first (within the starred preference). Scrobbled plays bump the local count immediately; a pull re-syncs the exact numbers.
+
+#### Smart playlists on your BPM tags
+
+No BPM Tagger feature at all — just a consequence of the tags it writes. Navidrome's [smart playlists](https://www.navidrome.org/docs/usage/smartplaylists/) can filter on the `bpm` field, so once your library is tagged, a `.nsp` file dropped anywhere in the music folder becomes a live cadence playlist in **every** Subsonic client (phone apps, car head units — no BPM Tagger required):
+
+```json
+{
+  "name": "Cadence 170–180",
+  "any": [
+    { "inTheRange": { "bpm": [170, 180] } },
+    { "inTheRange": { "bpm": [85, 90] } }
+  ],
+  "sort": "bpm",
+  "order": "asc"
+}
+```
+
+Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second range mimics Run mode's octave folding — an 85 BPM track steps at 170 with a foot on every beat; drop that block if you only want true-tempo matches. (Unlike Run mode, a smart playlist can't tempo-lock: tracks play at native speed.)
 
 ### Music Grabber
 
@@ -291,6 +315,7 @@ All of these are editable at runtime in **Settings → Run Mode**; the env vars 
 | `RUN_PRESETS` | `Warmup:120,Easy:155,Steady:165,Tempo:175` | The four named one-tap cadence presets on the Run page, as `Name:bpm` pairs (bare `bpm` allowed) |
 | `RUN_OCTAVE_FOLD` | `true` | Count half- and double-time tracks as matches (at a 150 cadence a 75 BPM song plays at native speed) |
 | `RUN_PREFER_STARRED` | `true` | Fill run queues with starred tracks first, then the closest remaining matches |
+| `RUN_PREFER_FAMILIAR` | `false` | Within a star tier, fill run queues most-played-first (uses play counts pulled from Navidrome) |
 | `RUN_QUEUE_SIZE` | `20` | How many tracks a run queue preloads |
 | `RUN_TOLERANCE_PCT` | `4` | How far (%) a track's octave-folded BPM may sit from the target and still be queued |
 | `RUN_STRETCH_LIMIT_PCT` | `15` | Cap (%) on how far the tempo lock may speed up / slow down a track |
@@ -680,6 +705,8 @@ volumes:
 - Set `user:` in `docker-compose.yml` to match Navidrome's user/group so both containers can read and write the same files without permission conflicts
 - Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan — and also when the watch-mode queue drains — so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
 - With the same credentials, enable **two-way star sync** (Settings → Navidrome) to reconcile BPM Tagger's starred tracks with Navidrome's favourites in both directions — stars set in either app reach the other, and Run-mode queues keep preferring them
+- Also enable **Scrobble plays** so runs count in Navidrome (and Last.fm/ListenBrainz through it), and hit **Pull play counts** occasionally so the Run queue's *prefer familiar tracks* option knows what you actually play
+- Your BPM tags also power **Navidrome smart playlists** — see [Smart playlists on your BPM tags](#smart-playlists-on-your-bpm-tags) for a drop-in `.nsp` cadence playlist every Subsonic client can use
 - Use `MODE=watch` (the default) so newly added albums are tagged automatically within seconds of being added to the library; it scans all unprocessed files on startup before entering watch mode
 - After adjusting detection settings, run `MODE=scan_review` to re-analyze only the flagged and error tracks instead of the full library
 

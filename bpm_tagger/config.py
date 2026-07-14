@@ -179,6 +179,9 @@ def build_config() -> dict:
             "RUN_PRESETS", "Warmup:120,Easy:155,Steady:165,Tempo:175")),
         "run_octave_fold":            os.environ.get("RUN_OCTAVE_FOLD", "true").lower() == "true",
         "run_prefer_starred":         os.environ.get("RUN_PREFER_STARRED", "true").lower() == "true",
+        # Within a star tier, fill the queue most-played-first (play counts
+        # pulled from Navidrome). Off = closest BPM first, as before.
+        "run_prefer_familiar":        os.environ.get("RUN_PREFER_FAMILIAR", "false").lower() == "true",
         "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),
         "run_tolerance_pct":          float(os.environ.get("RUN_TOLERANCE_PCT", "4")),
         "run_stretch_limit_pct":      float(os.environ.get("RUN_STRETCH_LIMIT_PCT", "15")),
@@ -211,6 +214,9 @@ def build_config() -> dict:
         # Two-way star sync (docs/plans/navidrome-star-sync.md): gates the
         # "Sync stars now" button in Settings. Manual trigger only in v1.
         "navidrome_star_sync":        os.environ.get("NAVIDROME_STAR_SYNC", "false").lower() == "true",
+        # Scrobble plays from the built-in player to Navidrome (which forwards
+        # to Last.fm/ListenBrainz when configured there).
+        "navidrome_scrobble":         os.environ.get("NAVIDROME_SCROBBLE", "false").lower() == "true",
 
         # ── Grabber (M3+) ─────────────────────────────────────────────────────
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",

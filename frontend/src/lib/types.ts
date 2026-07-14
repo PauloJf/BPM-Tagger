@@ -33,6 +33,9 @@ export interface Track {
   lyrics_synced?: number;
   starred?: number;
   disliked?: number;
+  // Navidrome play data (null until pulled)
+  play_count?: number | null;
+  last_played?: string | null;
 }
 
 // ── Run mode ──────────────────────────────────────────────────────────────
@@ -42,6 +45,7 @@ export interface RunTrack {
   artist: string;
   bpm: number;
   starred: boolean;
+  play_count?: number | null;
   run_bpm: number;   // BPM after octave fold (×½/×1/×2)
   rate: number;      // playbackRate that lands run_bpm on the target
 }
@@ -53,6 +57,7 @@ export interface RunQueueResponse {
   octave_fold: boolean;
   tolerance_pct: number;
   prefer_starred: boolean;
+  prefer_familiar?: boolean;
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
 }
 

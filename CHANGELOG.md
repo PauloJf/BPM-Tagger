@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.0 — 2026-07-14
+
+- **Navidrome scrobbling (opt-in):** tracks played in the built-in player — player bar and Run mode alike — are reported to Navidrome once they pass the halfway mark (the Last.fm convention), so play counts and "last played" stay accurate everywhere, and your runs reach **Last.fm/ListenBrainz** when Navidrome forwards there. Previews and 30-second clips never scrobble; a replay after seeking back to the start counts again. Songs resolve through the same cached-id / path / fuzzy chain as the star sync, and each successful scrobble bumps the local play count immediately. Enable with the **Scrobble plays** toggle in **Settings → Navidrome** (env default `NAVIDROME_SCROBBLE`).
+- **Play counts from Navidrome:** a **Pull play counts** button (Settings → Navidrome) imports every song's play count and last-played timestamp in one pass — Navidrome is the source of truth, since all your Subsonic clients scrobble into it. Counts show on the track detail page (`plays · N`) and feed a new Run-mode option, **prefer familiar tracks** (env default `RUN_PREFER_FAMILIAR`): within the starred preference, queues fill with your most-played matches first instead of purely closest-BPM. The pull also warms the star sync's song-id cache.
+- **README:** documented how the written BPM tags power **Navidrome smart playlists** — a drop-in `.nsp` file with a `bpm` range (plus a half-time range mimicking Run mode's octave folding) gives every Subsonic client a native cadence playlist, no BPM Tagger involved.
+
 ## v2.5.3 — 2026-07-14
 
 - **Security hardening for the web UI:**

@@ -550,6 +550,9 @@ export default function TrackDetail() {
                 </div>
                 <div style={{ marginTop: 14, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
                   detector · <span style={{ color: "var(--text)" }}>{track.detector || "—"}</span>
+                  {track.play_count != null && (
+                    <span style={{ marginLeft: 14 }}>plays · <span style={{ color: "var(--text)" }}>{track.play_count}</span></span>
+                  )}
                 </div>
               </div>
             </div>

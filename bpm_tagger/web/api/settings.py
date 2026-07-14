@@ -143,6 +143,7 @@ def api_settings_navidrome():
         "navidrome_url":       str(data.get("navidrome_url", "")).strip(),
         "navidrome_user":      str(data.get("navidrome_user", "")).strip(),
         "navidrome_star_sync": bool(data.get("navidrome_star_sync")),
+        "navidrome_scrobble":  bool(data.get("navidrome_scrobble")),
     }
     # Only overwrite the stored password when a non-masked value is supplied.
     pw = str(data.get("navidrome_pass", ""))
@@ -201,6 +202,7 @@ def api_settings_run():
         "run_presets":           presets,
         "run_octave_fold":       bool(data.get("run_octave_fold", True)),
         "run_prefer_starred":    bool(data.get("run_prefer_starred", True)),
+        "run_prefer_familiar":   bool(data.get("run_prefer_familiar", False)),
         "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
         "run_tolerance_pct":     _num(data.get("run_tolerance_pct"), 0.5, 30, 4.0),
         "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
@@ -325,6 +327,20 @@ def api_sync_stars():
     st = state()
     from ...integrations.star_sync import sync_stars
     result = sync_stars(st.db, st.config)
+    status = 200 if result.get("ok") else 502
+    return jsonify(**result), status
+
+
+@settings_bp.route("/api/settings/sync-play-counts", methods=["POST"])
+@login_required
+def api_sync_play_counts():
+    """One manual play-count pull from Navidrome. One-way (Navidrome is the
+    source of truth for plays); pages the whole library via search3, so it can
+    take a few seconds on a large library but stays a single request."""
+    _check_csrf()
+    st = state()
+    from ...integrations.play_sync import pull_play_counts
+    result = pull_play_counts(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
 

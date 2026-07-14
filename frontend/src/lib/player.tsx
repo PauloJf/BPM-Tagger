@@ -456,6 +456,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else restore();
   }, [rampVolume]);
 
+  // Scrobble: report a library track as played once it passes the halfway mark
+  // (Last.fm convention). The server forwards to Navidrome when scrobbling is
+  // enabled there and no-ops otherwise, so this always fires and forgets.
+  // Seeking back under 5s re-arms the same track (a genuine replay); previews
+  // and external clips (src set / ephemeral) never scrobble.
+  const currentRef = useRef(current);
+  useEffect(() => { currentRef.current = current; }, [current]);
+  const scrobbledPath = useRef<string | null>(null);
+  useEffect(() => { scrobbledPath.current = null; }, [current?.path]);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => {
+      const c = currentRef.current;
+      if (!c || c.ephemeral || c.src) return;
+      const d = a.duration;
+      if (!isFinite(d) || d < 30) return;   // skip blips and unknown durations
+      if (a.currentTime < 5 && scrobbledPath.current === c.path) scrobbledPath.current = null;
+      if (a.currentTime / d >= 0.5 && scrobbledPath.current !== c.path) {
+        scrobbledPath.current = c.path;
+        api.post("/api/scrobble", { path: c.path }).catch(() => {});
+      }
+    };
+    a.addEventListener("timeupdate", onTime);
+    return () => a.removeEventListener("timeupdate", onTime);
+  }, []);
+
   // Audio element event wiring (attached once).
   useEffect(() => {
     const a = audioRef.current;
