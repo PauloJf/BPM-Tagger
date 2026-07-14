@@ -7,6 +7,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "../components/trackBits";
+import ArtistModal from "../components/ArtistModal";
 
 /** "3 hours ago" style label from an ISO timestamp. */
 function relativeTime(iso?: string | null): string {
@@ -56,10 +57,9 @@ function TrackRow({ t, onAdd, adding, onDismiss }: {
   );
 }
 
-function ArtistCard({ a, expanded, onToggleExpand, onDismiss }: {
+function ArtistCard({ a, onOpen, onDismiss }: {
   a: SuggestedArtist;
-  expanded: boolean;
-  onToggleExpand: () => void;
+  onOpen: () => void;
   onDismiss: () => void;
 }) {
   const sub = a.have_tracks > 0
@@ -72,21 +72,25 @@ function ArtistCard({ a, expanded, onToggleExpand, onDismiss }: {
       <button
         className="btn btn-bare btn-sm"
         title="Dismiss" aria-label="Dismiss"
-        style={{ position: "absolute", top: 4, right: 4, color: "var(--muted)", padding: "2px 6px", lineHeight: 1 }}
+        style={{ position: "absolute", top: 4, right: 4, color: "var(--muted)", padding: "2px 6px", lineHeight: 1, zIndex: 1 }}
         onClick={onDismiss}
       >✕</button>
-      {a.image_url ? (
-        <img src={a.image_url} alt="" loading="lazy" className="art-thumb" style={{ width: "100%", height: "auto", aspectRatio: "1 / 1" }} />
-      ) : (
-        <div className="art-thumb" style={{ width: "100%", aspectRatio: "1 / 1", display: "grid", placeItems: "center", fontSize: 32 }} aria-hidden>♪</div>
-      )}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</div>
-        {sub && <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
-      </div>
-      <button className={"btn btn-sm " + (expanded ? "btn-soft" : "btn-ghost")} style={{ width: "100%" }} onClick={onToggleExpand}>
-        {expanded ? "Hide tracks" : "Top tracks"}
+      <button
+        onClick={onOpen}
+        title={`Explore ${a.name}`}
+        style={{ display: "flex", flexDirection: "column", gap: 8, background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", textAlign: "left" }}
+      >
+        {a.image_url ? (
+          <img src={a.image_url} alt="" loading="lazy" className="art-thumb" style={{ width: "100%", height: "auto", aspectRatio: "1 / 1" }} />
+        ) : (
+          <div className="art-thumb" style={{ width: "100%", aspectRatio: "1 / 1", display: "grid", placeItems: "center", fontSize: 32 }} aria-hidden>♪</div>
+        )}
+        <div style={{ minWidth: 0, width: "100%" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</div>
+          {sub && <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+        </div>
       </button>
+      <button className="btn btn-sm btn-ghost" style={{ width: "100%" }} onClick={onOpen}>View artist</button>
     </div>
   );
 }
@@ -95,7 +99,7 @@ export default function Suggestions() {
   useTitle("Suggestions");
   const qc = useQueryClient();
   const status = useGrabberStatus();
-  const [expanded, setExpanded] = useState<string | null>(null);  // dz_id of the expanded artist
+  const [modalArtist, setModalArtist] = useState<{ dzId: string; name: string } | null>(null);
 
   const q = useQuery({
     queryKey: ["suggestions"],
@@ -126,14 +130,6 @@ export default function Suggestions() {
     },
     onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(["suggestions"], ctx.prev); },
     onSettled: () => qc.invalidateQueries({ queryKey: ["suggestions"] }),
-  });
-
-  // Lazy per-artist top tracks (one expanded at a time).
-  const expandQ = useQuery({
-    queryKey: ["suggestion-artist-tracks", expanded],
-    queryFn: () => api.get<{ tracks: SuggestedTrack[] }>(`/api/suggestions/artists/${expanded}/tracks`),
-    enabled: !!expanded,
-    staleTime: 60_000,
   });
 
   if (status.data && !status.data.enabled) {
@@ -206,31 +202,11 @@ export default function Suggestions() {
                   <ArtistCard
                     key={a.dz_id}
                     a={a}
-                    expanded={expanded === a.dz_id}
-                    onToggleExpand={() => setExpanded((e) => (e === a.dz_id ? null : a.dz_id))}
+                    onOpen={() => setModalArtist({ dzId: a.dz_id, name: a.name })}
                     onDismiss={() => dismiss.mutate({ kind: "artist", key: a.name })}
                   />
                 ))}
               </div>
-              {expanded && (
-                <div className="card" style={{ marginTop: 12, padding: 4 }}>
-                  {expandQ.isLoading ? (
-                    <div className="tracks-row-empty">Loading top tracks…</div>
-                  ) : (expandQ.data?.tracks?.length ?? 0) === 0 ? (
-                    <div className="tracks-row-empty">No top tracks found.</div>
-                  ) : (
-                    expandQ.data!.tracks.map((t) => (
-                      <TrackRow
-                        key={t.dz_track_id}
-                        t={t}
-                        adding={addingId === t.dz_track_id}
-                        onAdd={() => addTrack(t)}
-                        onDismiss={() => dismiss.mutate({ kind: "track", key: t.dz_track_id })}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
             </section>
           )}
 
@@ -251,6 +227,10 @@ export default function Suggestions() {
             </section>
           )}
         </>
+      )}
+
+      {modalArtist && (
+        <ArtistModal dzId={modalArtist.dzId} name={modalArtist.name} onClose={() => setModalArtist(null)} />
       )}
     </>
   );

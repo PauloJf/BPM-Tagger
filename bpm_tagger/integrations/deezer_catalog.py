@@ -131,6 +131,86 @@ def artist_radio(dz_id: str, limit: int = 25) -> list[dict]:
     return [s for s in (_track_shape(t) for t in data) if s]
 
 
+def get_artist(dz_id: str) -> Optional[dict]:
+    """Full artist object: {dz_id, name, image_url, nb_fan, nb_album}. None on failure."""
+    if not dz_id:
+        return None
+    try:
+        d = _get(f"artist/{dz_id}")
+    except Exception as exc:
+        log.debug("Deezer artist fetch failed for %s: %s", dz_id, exc)
+        return None
+    s = _artist_shape(d)
+    if not s:
+        return None
+    s["nb_fan"] = d.get("nb_fan") or 0
+    s["nb_album"] = d.get("nb_album") or 0
+    return s
+
+
+def _album_shape(a: dict) -> Optional[dict]:
+    """Deezer album (list or full) → our album meta. None for junk/errors."""
+    if not a or a.get("error") or not a.get("id"):
+        return None
+    rel = str(a.get("release_date") or "")
+    return {
+        "dz_album_id": str(a.get("id")),
+        "title": a.get("title") or "",
+        "cover_url": a.get("cover_xl") or a.get("cover_big")
+        or a.get("cover_medium") or a.get("cover") or "",
+        # album | single | ep | compilation
+        "record_type": (a.get("record_type") or "album").lower(),
+        "year": int(rel[:4]) if rel[:4].isdigit() else None,
+        "release_date": rel,
+        "nb_tracks": a.get("nb_tracks") or 0,
+        "explicit": bool(a.get("explicit_lyrics")),
+    }
+
+
+def artist_albums(dz_id: str, limit: int = 100) -> list[dict]:
+    """An artist's discography (albums + singles + EPs), newest first. Empty on failure."""
+    if not dz_id:
+        return []
+    try:
+        data = (_get(f"artist/{dz_id}/albums", {"limit": limit}).get("data")) or []
+    except Exception as exc:
+        log.debug("Deezer artist albums failed for %s: %s", dz_id, exc)
+        return []
+    return [s for s in (_album_shape(a) for a in data) if s]
+
+
+def album(album_id: str) -> Optional[dict]:
+    """A full album with its tracklist. Each track carries the album's title +
+    cover (album endpoints don't nest those per track). None on failure."""
+    if not album_id:
+        return None
+    try:
+        d = _get(f"album/{album_id}")
+    except Exception as exc:
+        log.debug("Deezer album fetch failed for %s: %s", album_id, exc)
+        return None
+    shape = _album_shape(d)
+    if not shape:
+        return None
+    album_artist = (d.get("artist") or {}).get("name") or ""
+    tracks = []
+    for t in ((d.get("tracks") or {}).get("data")) or []:
+        if not t or not t.get("id"):
+            continue
+        tracks.append({
+            "dz_track_id": str(t.get("id")),
+            "title": t.get("title_short") or t.get("title") or "",
+            "artist": (t.get("artist") or {}).get("name") or album_artist,
+            "album": shape["title"],
+            "duration_ms": (t.get("duration") or 0) * 1000 or None,
+            "cover_url": shape["cover_url"],
+            "preview_url": t.get("preview") or "",
+        })
+    shape["artist"] = album_artist
+    shape["tracks"] = tracks
+    return shape
+
+
 def track_isrc(dz_track_id: str) -> str:
     """The ISRC for a Deezer track id (upper-cased), "" on failure.
 

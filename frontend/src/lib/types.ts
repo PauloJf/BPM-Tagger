@@ -293,6 +293,37 @@ export interface RelatedTrack {
   file_path?: string;
 }
 
+export interface DeezerArtistInfo {
+  dz_id: string;
+  name: string;
+  image_url: string;
+  nb_fan: number;
+  nb_album: number;
+}
+
+export interface DeezerAlbumMeta {
+  dz_album_id: string;
+  title: string;
+  cover_url: string;
+  record_type: string;   // album | single | ep | compilation
+  year: number | null;
+  release_date: string;
+  nb_tracks: number;
+  explicit: boolean;
+}
+
+export interface DeezerArtistResponse {
+  artist: DeezerArtistInfo;
+  top_tracks: RelatedTrack[];
+  albums: DeezerAlbumMeta[];
+  singles: DeezerAlbumMeta[];
+}
+
+export interface DeezerAlbumDetail extends DeezerAlbumMeta {
+  artist: string;
+  tracks: RelatedTrack[];
+}
+
 export interface SpotifyPlaylist {
   spotify_id: string;
   name: string;

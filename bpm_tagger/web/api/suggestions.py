@@ -215,10 +215,49 @@ def queue_suggestion():
     return jsonify(ok=True, id=item_id)
 
 
+@suggestions_bp.route("/api/suggestions/queue-album", methods=["POST"])
+@login_required
+def queue_album():
+    """Enqueue a whole Deezer album/single — every track not already in the
+    library or the queue. Bulk-friendly: no per-track Spotify/ISRC enrichment
+    (the download worker matches providers by metadata); tracks are deduped
+    within the request and against the current non-terminal queue."""
+    _check_csrf()
+    g = _grabber()
+    if not g:
+        return jsonify(error="grabber_disabled"), 409
+    data = request.get_json(force=True, silent=True) or {}
+    album_id = str(data.get("album_id") or "")
+    if not album_id:
+        return jsonify(error="album_id required"), 400
+    alb = dz.album(album_id)
+    if not alb:
+        return jsonify(ok=False, error="not_found"), 404
+    db = state().db
+    queued_keys = _queued_norm_keys(db)
+    enqueued = 0
+    for t in alb["tracks"]:
+        title, artist = t.get("title") or "", t.get("artist") or ""
+        meta = {"title": title, "artist": artist, "album": t.get("album") or "",
+                "album_artist": alb.get("artist") or artist,
+                "duration_ms": t.get("duration_ms"), "cover_url": t.get("cover_url") or "",
+                "isrc": ""}
+        if library_match(meta, db):
+            continue
+        key = (normalize_title(title), normalize_artist(artist))
+        if key in queued_keys:
+            continue
+        if db.enqueue_grab(meta) is not None:
+            enqueued += 1
+            queued_keys.add(key)   # avoid duplicating repeated titles within the album
+    g.request_sync()
+    return jsonify(ok=True, enqueued=enqueued, total=len(alb["tracks"]))
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Part B — Related panel (login-gated only; NOT grabber-gated)
 # ══════════════════════════════════════════════════════════════════════════
-_CACHE: dict[str, tuple[float, list]] = {}
+_CACHE: dict[str, tuple[float, object]] = {}
 _CACHE_TTL = 24 * 3600
 _CACHE_MAX = 200
 _cache_lock = threading.Lock()
@@ -289,3 +328,76 @@ def related_tracks():
     tracks = [dict(t) for t in payload]  # copy: flags must not pollute the cache
     _flag_tracks(tracks, state().db)
     return jsonify(tracks=tracks)
+
+
+@suggestions_bp.route("/api/related/description")
+@login_required
+def related_description():
+    """A short, best-effort artist description (keyless MusicBrainz→Wikidata→
+    Wikipedia). Empty string when none is found — never an error."""
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify(description="")
+    ck = "bio:" + normalize_artist(name)
+    payload = _cache_get(ck)
+    if payload is None:
+        from ...integrations.artist_info import artist_bio
+        payload = {"description": artist_bio(name)}
+        _cache_put(ck, payload)
+    return jsonify(payload)
+
+
+def _dedupe_albums(albums: list[dict]) -> list[dict]:
+    """Collapse Deezer's frequent duplicate/regional releases by normalized
+    title, keeping the first (newest) occurrence."""
+    seen, out = set(), []
+    for a in albums:
+        key = (a.get("title") or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out
+
+
+@suggestions_bp.route("/api/deezer/artist/<dz_id>")
+@login_required
+def deezer_artist(dz_id):
+    """An artist's profile, top tracks and discography (albums + singles/EPs)
+    from Deezer. Login-gated, read-only — the add actions stay grabber-gated.
+    Deezer payloads are cached; track flags are recomputed per request."""
+    ck = "dzartist:" + str(dz_id)
+    payload = _cache_get(ck)
+    if payload is None:
+        info = dz.get_artist(dz_id)
+        if not info:
+            return jsonify(error="not_found"), 404
+        payload = {
+            "artist": info,
+            "top_tracks": dz.artist_top_tracks(dz_id, limit=10),
+            "albums_all": _dedupe_albums(dz.artist_albums(dz_id, limit=100)),
+        }
+        _cache_put(ck, payload)
+    top = [dict(t) for t in payload["top_tracks"]]
+    _flag_tracks(top, state().db)
+    albums, singles = [], []
+    for a in payload["albums_all"]:
+        (singles if a["record_type"] in ("single", "ep") else albums).append(a)
+    return jsonify(artist=payload["artist"], top_tracks=top, albums=albums, singles=singles)
+
+
+@suggestions_bp.route("/api/deezer/album/<album_id>")
+@login_required
+def deezer_album(album_id):
+    """One album with its tracklist, each track flagged in_library / queued."""
+    ck = "dzalbum:" + str(album_id)
+    payload = _cache_get(ck)
+    if payload is None:
+        alb = dz.album(album_id)
+        if not alb:
+            return jsonify(error="not_found"), 404
+        payload = alb
+        _cache_put(ck, payload)
+    alb = {**payload, "tracks": [dict(t) for t in payload["tracks"]]}
+    _flag_tracks(alb["tracks"], state().db)
+    return jsonify(album=alb)

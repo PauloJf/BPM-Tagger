@@ -373,3 +373,93 @@ def test_related_reachable_with_grabber_disabled(client, base_config):
     assert client.post("/api/login", json={"password": "s3cret"}).status_code == 200
     assert client.get("/api/related/artists?name=").get_json() == {"artists": []}
     assert client.get("/api/related/tracks?name=").get_json() == {"tracks": []}
+
+
+# ── Deezer catalog: artist / albums / album shaping ──────────────────────────
+def test_deezer_album_seconds_to_ms(monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        return _Resp({"id": 10, "title": "Alb", "cover_xl": "c", "record_type": "album",
+                      "release_date": "2019-05-01", "artist": {"name": "A"},
+                      "tracks": {"data": [{"id": 1, "title": "S", "duration": 200,
+                                           "preview": "p", "artist": {"name": "A"}}]}})
+    monkeypatch.setattr(dc.requests, "get", fake_get)
+    alb = dc.album("10")
+    assert alb["title"] == "Alb" and alb["year"] == 2019 and alb["record_type"] == "album"
+    t = alb["tracks"][0]
+    assert t["duration_ms"] == 200000 and t["album"] == "Alb" and t["cover_url"] == "c"
+
+
+def test_deezer_artist_albums_split_record_type(monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        return _Resp({"data": [
+            {"id": 1, "title": "LP", "record_type": "album", "release_date": "2020-01-01",
+             "nb_tracks": 10, "cover": "c"},
+            {"id": 2, "title": "Sng", "record_type": "single", "release_date": "2021-01-01",
+             "nb_tracks": 1, "cover": "c"},
+        ]})
+    monkeypatch.setattr(dc.requests, "get", fake_get)
+    albs = dc.artist_albums("5")
+    assert {a["record_type"] for a in albs} == {"album", "single"}
+    assert next(a for a in albs if a["title"] == "LP")["year"] == 2020
+
+
+# ── API: artist detail / album / queue-album / description ────────────────────
+def test_deezer_artist_endpoint_splits_and_flags(sug, monkeypatch):
+    client, st, _ = sug
+    _seed(st.db, os.path.join(st.music_dir, "own.mp3"), "A", "A", title="Owned")
+    monkeypatch.setattr(dc, "get_artist",
+                        lambda i: {"dz_id": i, "name": "A", "image_url": "", "nb_fan": 10, "nb_album": 2})
+    monkeypatch.setattr(dc, "artist_top_tracks",
+                        lambda i, limit=10: [_trk("t1", "Owned", "A"), _trk("t2", "New", "A")])
+    monkeypatch.setattr(dc, "artist_albums", lambda i, limit=100: [
+        {"dz_album_id": "al1", "title": "LP", "cover_url": "", "record_type": "album",
+         "year": 2020, "release_date": "", "nb_tracks": 10, "explicit": False},
+        {"dz_album_id": "al2", "title": "Sng", "cover_url": "", "record_type": "single",
+         "year": 2021, "release_date": "", "nb_tracks": 1, "explicit": False},
+    ])
+    body = client.get("/api/deezer/artist/99").get_json()
+    assert body["artist"]["name"] == "A" and body["artist"]["nb_fan"] == 10
+    assert [a["title"] for a in body["albums"]] == ["LP"]
+    assert [a["title"] for a in body["singles"]] == ["Sng"]
+    tt = {t["title"]: t for t in body["top_tracks"]}
+    assert tt["Owned"]["in_library"] is True and tt["New"]["in_library"] is False
+
+
+def test_deezer_album_endpoint_flags_tracks(sug, monkeypatch):
+    client, st, _ = sug
+    _seed(st.db, os.path.join(st.music_dir, "own.mp3"), "A", "A", title="Owned")
+    monkeypatch.setattr(dc, "album", lambda aid: {
+        "dz_album_id": aid, "title": "LP", "cover_url": "", "record_type": "album",
+        "year": 2020, "artist": "A", "tracks": [_trk("t1", "Owned", "A"), _trk("t2", "New", "A")]})
+    body = client.get("/api/deezer/album/albX").get_json()
+    tt = {t["title"]: t for t in body["album"]["tracks"]}
+    assert tt["Owned"]["in_library"] is True and tt["New"]["in_library"] is False
+
+
+def test_queue_album_enqueues_missing_only(sug, monkeypatch):
+    client, st, _ = sug
+    _seed(st.db, os.path.join(st.music_dir, "own.mp3"), "A", "A", title="Owned")
+    monkeypatch.setattr(dc, "album", lambda aid: {
+        "dz_album_id": aid, "title": "LP", "cover_url": "", "record_type": "album",
+        "year": 2020, "artist": "A",
+        "tracks": [_trk("t1", "Owned", "A"), _trk("t2", "New Song", "A"), _trk("t3", "Another", "A")]})
+    r = client.post("/api/suggestions/queue-album", json={"album_id": "albQ"},
+                    headers={"X-CSRF-Token": client._csrf})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["enqueued"] == 2 and j["total"] == 3       # the owned track is skipped
+    assert st.db.get_queue_counts().get("pending") == 2
+
+
+def test_queue_album_requires_csrf(sug):
+    client, _, _ = sug
+    assert client.post("/api/suggestions/queue-album", json={"album_id": "x"}).status_code == 403
+
+
+def test_description_endpoint(sug, monkeypatch):
+    client, _, _ = sug
+    import bpm_tagger.integrations.artist_info as ai
+    monkeypatch.setattr(ai, "artist_bio", lambda name: "A test rock band.")
+    body = client.get("/api/related/description?name=Bio Test Band").get_json()
+    assert body["description"] == "A test rock band."
+    assert client.get("/api/related/description?name=").get_json()["description"] == ""

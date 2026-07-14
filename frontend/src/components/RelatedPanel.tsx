@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { RelatedArtist, RelatedTrack, SuggestedTrack } from "../lib/types";
+import type { RelatedArtist, RelatedTrack } from "../lib/types";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "./trackBits";
+import ArtistModal from "./ArtistModal";
 
 /** A single similar/related track row (Search-page style). */
-function TrackRow({ t, grabberEnabled }: { t: RelatedTrack | SuggestedTrack; grabberEnabled: boolean }) {
+function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: boolean }) {
   const add = useSuggestionQueue();
   const adding = add.isPending && add.variables?.dz_track_id === t.dz_track_id;
   return (
@@ -44,61 +45,32 @@ function TrackRow({ t, grabberEnabled }: { t: RelatedTrack | SuggestedTrack; gra
   );
 }
 
-/** One related-artist card: badge by library track_count, optional top-tracks expansion. */
-function ArtistRow({ a, grabberEnabled, expanded, onToggle }: {
-  a: RelatedArtist;
-  grabberEnabled: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const tracksQ = useQuery({
-    queryKey: ["suggestion-artist-tracks", a.dz_id],
-    queryFn: () => api.get<{ tracks: SuggestedTrack[] }>(`/api/suggestions/artists/${a.dz_id}/tracks`),
-    enabled: expanded && grabberEnabled,
-    staleTime: 60_000,
-  });
-
+/** One related-artist row: badge by library track_count, opens the artist modal. */
+function ArtistRow({ a, onOpen }: { a: RelatedArtist; onOpen: () => void }) {
   const badge = a.track_count >= 3 ? (
-    <Link className="chip chip--have" to={`/artist?name=${encodeURIComponent(a.library_name || a.name)}`}>✓ {a.track_count} tracks</Link>
+    <Link className="chip chip--have" to={`/artist?name=${encodeURIComponent(a.library_name || a.name)}`} onClick={(e) => e.stopPropagation()}>✓ {a.track_count} tracks</Link>
   ) : a.track_count > 0 ? (
-    <Link className="chip chip--neutral" to={`/artist?name=${encodeURIComponent(a.library_name || a.name)}`}>
+    <Link className="chip chip--neutral" to={`/artist?name=${encodeURIComponent(a.library_name || a.name)}`} onClick={(e) => e.stopPropagation()}>
       {a.track_count} track{a.track_count === 1 ? "" : "s"}
     </Link>
   ) : null;
 
   return (
-    <div style={{ borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>
+      <button
+        onClick={onOpen}
+        title={`Explore ${a.name}`}
+        style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", textAlign: "left" }}
+      >
         {a.image_url ? (
           <img src={a.image_url} alt="" loading="lazy" className="art-thumb art-thumb--round" style={{ width: 36, height: 36, flexShrink: 0 }} />
         ) : (
           <div className="art-thumb art-thumb--round" style={{ width: 36, height: 36, display: "grid", placeItems: "center", flexShrink: 0 }} aria-hidden>♪</div>
         )}
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</span>
-        {badge}
-        {grabberEnabled && (
-          <button
-            className="btn btn-bare btn-sm"
-            style={{ padding: "2px 8px" }}
-            aria-expanded={expanded}
-            title={expanded ? "Hide top tracks" : "Show top tracks"}
-            onClick={onToggle}
-          >{expanded ? "–" : "+"}</button>
-        )}
-      </div>
-      {expanded && grabberEnabled && (
-        <div style={{ padding: "0 6px 6px" }}>
-          {tracksQ.isLoading ? (
-            <div className="tracks-row-empty">Loading top tracks…</div>
-          ) : (tracksQ.data?.tracks?.length ?? 0) === 0 ? (
-            <div className="tracks-row-empty">No top tracks found.</div>
-          ) : (
-            tracksQ.data!.tracks.map((t) => (
-              <TrackRow key={t.dz_track_id} t={t} grabberEnabled={grabberEnabled} />
-            ))
-          )}
-        </div>
-      )}
+      </button>
+      {badge}
+      <button className="btn btn-bare btn-sm" style={{ padding: "2px 8px" }} onClick={onOpen} title="Explore artist" aria-label="Explore artist">›</button>
     </div>
   );
 }
@@ -109,7 +81,7 @@ function ArtistRow({ a, grabberEnabled, expanded, onToggle }: {
  *  Add-to-queue action only appears when the grabber is enabled. */
 export default function RelatedPanel({ artist }: { artist: string; context?: "artist" | "album" | "track" }) {
   const [open, setOpen] = useState(false);
-  const [expandedArtist, setExpandedArtist] = useState<string | null>(null);
+  const [modalArtist, setModalArtist] = useState<{ dzId: string; name: string } | null>(null);
   const grabber = useGrabberStatus();
   const grabberEnabled = grabber.data?.enabled === true;
   const name = (artist || "").trim();
@@ -165,9 +137,7 @@ export default function RelatedPanel({ artist }: { artist: string; context?: "ar
                       <ArtistRow
                         key={a.dz_id}
                         a={a}
-                        grabberEnabled={grabberEnabled}
-                        expanded={expandedArtist === a.dz_id}
-                        onToggle={() => setExpandedArtist((e) => (e === a.dz_id ? null : a.dz_id))}
+                        onOpen={() => setModalArtist({ dzId: a.dz_id, name: a.name })}
                       />
                     ))}
                   </div>
@@ -186,6 +156,10 @@ export default function RelatedPanel({ artist }: { artist: string; context?: "ar
             </>
           )}
         </div>
+      )}
+
+      {modalArtist && (
+        <ArtistModal dzId={modalArtist.dzId} name={modalArtist.name} onClose={() => setModalArtist(null)} />
       )}
     </div>
   );
