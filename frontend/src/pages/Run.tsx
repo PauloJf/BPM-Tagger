@@ -307,7 +307,7 @@ export default function Run() {
           </button>
         </div>
         {nativeBpm != null && folded != null && shifted != null && (
-          <div style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--muted)", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 4 }}>
             <span style={{ letterSpacing: "0.1em" }}>NATIVE {Math.round(nativeBpm)}</span>
             <span style={{ display: "inline-block", position: "relative", width: 8, height: 8, flexShrink: 0 }} aria-hidden>
               <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", opacity: 0.5 }} />
