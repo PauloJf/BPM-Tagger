@@ -56,6 +56,9 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
     },
   });
   const added = addAlbum.data;
+  // Deezer's artist-albums list omits the track count (it's only on the full
+  // album object), so it arrives as 0. Show the real count once expanded.
+  const nbTracks = detailQ.data?.album.tracks.length ?? (al.nb_tracks || 0);
 
   return (
     <div style={{ borderBottom: "1px solid var(--border)" }}>
@@ -72,7 +75,7 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
         >
           <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{al.title}</div>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>
-            {[al.year, `${al.nb_tracks} track${al.nb_tracks === 1 ? "" : "s"}`, al.explicit ? "explicit" : ""].filter(Boolean).join(" · ")}
+            {[al.year, nbTracks > 0 ? `${nbTracks} track${nbTracks === 1 ? "" : "s"}` : "", al.explicit ? "explicit" : ""].filter(Boolean).join(" · ")}
           </div>
         </button>
         {grabberEnabled && (
