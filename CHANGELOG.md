@@ -1,13 +1,9 @@
 # Changelog
 
-## Unreleased
-
-- **Run queue auto-refill avoids repeats:** the auto-refill introduced in v2.4.3 now tells the server which tracks are already queued (a bounded recent-history window) so it fills in unplayed matches first instead of just reshuffling the same batch. If every eligible match is already queued — a small library on a long run — the server recycles the full pool rather than starving the refill, so the run keeps going either way.
-
 ## v2.4.3 — 2026-07-14
 
 - **Run mode, phone-first:** everything down to the transport now fits a single phone screen — the cover art scales with the viewport, the presets/steps are more compact, and the BPM Locked/Unlocked pill became a **lock icon beside the target BPM**. The global player bar hides on `/run` (the run player is the transport; stream errors surface on the page instead). A new **Queue** option on the Presets/± Steps switcher shows the run queue in place — jump to a track, star the keepers, per-row `native · octave · stretch → result` math — and also lists a queue restored after a reload. A **lyrics** button joins the transport, and the track title links to the track page; **saving a corrected BPM there re-stretches a live tempo lock instantly**, no rebuild needed.
-- **Run queue auto-refill:** when the last queued track starts playing, a fresh batch for the same target is fetched and appended automatically, so the run never goes silent (skipped when repeat is on).
+- **Run queue auto-refill:** when the last queued track starts playing, a fresh batch for the same target is fetched and appended automatically, so the run never goes silent (skipped when repeat is on). The refill tells the server which tracks are already queued (a bounded recent-history window) so it fills in unplayed matches first instead of just reshuffling the same batch; if every eligible match is already queued — a small library on a long run — the server recycles the full pool rather than starving the refill.
 - **Playback resilience:** a failed stream no longer leaves the player dead — pressing play reloads the source and retries; an expired session is told apart from a genuinely missing file, routes to the sign-in screen, and playback resumes with one tap after logging back in. On iOS, queue advance reuses the audio element synchronously so lock-screen playback survives track changes, and an auto-advance vetoed in the background resumes when the app is next visible.
 - **Tag writing:** BPM tags now write correctly to ID3-backed containers (WAV, AIFF, DSF) using proper ID3 frames, and files without any tag header get one created instead of failing.
 
