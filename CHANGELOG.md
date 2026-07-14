@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.4.4 — 2026-07-14
 
 - **Dislike toggle:** star's opposite number — dislike a track from the run queue, the track page, or the library so it's never picked for a run again. A **Disliked** filter pill in the library lists (and lets you undo) disliked tracks; the run-queue builder drops them before scoring, so they're excluded from both the initial queue and every auto-refill.
 

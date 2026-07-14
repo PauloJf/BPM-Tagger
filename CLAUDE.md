@@ -11,7 +11,7 @@ Before taking any action that could incur charges on the team plan — including
 | Field | Value |
 |---|---|
 | Name | BPM Tagger |
-| Version | v2.4.2 |
+| Version | v2.4.4 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
 | Author | Paulo (paulo@gatoserio.dev) |
@@ -103,7 +103,7 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_migrate()` — safe on existing DBs.
 
-`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Grabber tag-index columns: `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
+`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `disliked`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Grabber tag-index columns: `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
 
 Grabber tables: `playlists`, `playlist_tracks`, `grab_queue`, `grab_candidates` (inbox), `grab_events` (history), `oauth_tokens` (Spotify refresh token), `dismissed_dupes`.
 
