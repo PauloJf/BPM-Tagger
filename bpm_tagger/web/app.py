@@ -133,12 +133,15 @@ def create_app(config: dict) -> Flask:
         # props), so style-src keeps 'unsafe-inline'.
         # Spotify serves album/playlist art from its image CDNs, and the image
         # picker shows Deezer candidates from dzcdn; allow those hosts so covers
-        # render in the UI (default-src stays same-origin).
+        # render in the UI (default-src stays same-origin). 30-second track
+        # previews stream from Deezer's cdns-preview-*.dzcdn.net hosts, so
+        # media-src allows *.dzcdn.net too.
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "img-src 'self' data: https://i.scdn.co https://*.scdn.co "
-            "https://*.spotifycdn.com https://*.dzcdn.net; media-src 'self';"
+            "https://*.spotifycdn.com https://*.dzcdn.net; "
+            "media-src 'self' https://*.dzcdn.net;"
         )
         return resp
 

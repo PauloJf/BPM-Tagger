@@ -1,5 +1,6 @@
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
+import { usePlayer, type PlayerTrack } from "../lib/player";
 
 /** Primary display name: the tag title when present, else the file name. */
 export function trackTitle(t: Track): string {
@@ -81,3 +82,37 @@ export const ArrowIcon = () => (
     <path d="M5 12 H19 M13 6 L19 12 L13 18" />
   </svg>
 );
+
+/** A 30-second Deezer preview toggle for any track row carrying a preview_url.
+ *  Runs through the normal ducking player: starting one while music plays fades
+ *  the queue down and auto-resumes when the clip ends. The clip is ephemeral —
+ *  it never persists into the saved queue. */
+export function PreviewButton({ track }: {
+  track: { dz_track_id: string; title: string; artist?: string; preview_url: string };
+}) {
+  const player = usePlayer();
+  const syntheticPath = `preview:dz:${track.dz_track_id}`;
+  const isThis = player.isCurrent(syntheticPath);
+  const playing = isThis && player.playing;
+  const pt: PlayerTrack = {
+    path: syntheticPath, title: track.title, artist: track.artist,
+    src: track.preview_url, ephemeral: true,
+  };
+  return (
+    <button
+      className="btn btn-bare btn-sm"
+      style={{ padding: "2px 6px", color: playing ? "var(--accent-2)" : "var(--muted)" }}
+      title={playing ? "Pause preview" : "Preview (30s clip)"}
+      aria-label={playing ? "Pause preview" : "Preview"}
+      onClick={() => (isThis ? player.toggle() : player.preview(pt))}
+    >
+      {playing ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+      )}
+    </button>
+  );
+}

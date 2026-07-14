@@ -2,10 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { api, audioUrl, notifyUnauthorized } from "./api";
 
 export interface PlayerTrack {
-  path: string;
+  path: string;            // identity key; for previews a synthetic "preview:dz:<id>"
   title: string;
   artist?: string;
   bpm?: number | null;
+  src?: string;            // absolute stream URL; used instead of audioUrl(path) when set
+  ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
 }
 
 /** Run-mode tempo lock: stretch every queued track onto one target BPM. */
@@ -167,6 +169,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const { queue, order, pos, shuffle, repeat } = nav.current;
       if (!queue.length) { localStorage.removeItem(SAVE_KEY); return; }
+      // Ephemeral tracks are one-off external preview clips whose URLs die on
+      // reload; they only ever reach the queue via the "preview with nothing
+      // playing" fallthrough (a single-item queue). Never persist them — filter
+      // them out, and if that leaves nothing, clear the saved queue entirely.
+      if (queue.some((t) => t.ephemeral)) {
+        const survivors = queue.filter((t) => !t.ephemeral);
+        if (!survivors.length) { localStorage.removeItem(SAVE_KEY); return; }
+        localStorage.setItem(SAVE_KEY, JSON.stringify({
+          queue: survivors, order: survivors.map((_, i) => i), pos: 0,
+          shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
+          tempoLock: nav.current.tempoLock,
+        }));
+        return;
+      }
       const a = audioRef.current;
       const pv = previewSaved.current;
       // While a preview is ducking the queue, save the queue track's saved
@@ -269,7 +285,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     syncedPath.current = null;
     if (alreadyStarted) { pendingPlay.current = false; return; }
     setError(null);
-    a.src = audioUrl(current.path);
+    a.src = current.src ?? audioUrl(current.path);
     a.load();
     const seekTo = seekTarget.current; seekTarget.current = null;
     const shouldPlay = pendingPlay.current; pendingPlay.current = false;
@@ -369,7 +385,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
       a.defaultPlaybackRate = rate;   // the load triggered by src= resets playbackRate to this
-      a.src = audioUrl(track.path);
+      a.src = track.src ?? audioUrl(track.path);
       a.playbackRate = rate;
       a.volume = volumeRef.current;
       a.play().catch(() => {

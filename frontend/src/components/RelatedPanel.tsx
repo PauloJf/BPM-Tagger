@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import type { RelatedArtist, RelatedTrack, SuggestedTrack } from "../lib/types";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
+import { PreviewButton } from "./trackBits";
 
 /** A single similar/related track row (Search-page style). */
 function TrackRow({ t, grabberEnabled }: { t: RelatedTrack | SuggestedTrack; grabberEnabled: boolean }) {
@@ -19,6 +20,7 @@ function TrackRow({ t, grabberEnabled }: { t: RelatedTrack | SuggestedTrack; gra
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {t.preview_url && <PreviewButton track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }} />}
         {t.in_library ? (
           t.file_path ? (
             <Link className="chip chip--have" to={`/track?path=${encodeURIComponent(t.file_path)}`}>✓ in library</Link>

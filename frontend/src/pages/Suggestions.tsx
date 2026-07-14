@@ -6,6 +6,7 @@ import type { SuggestedArtist, SuggestedTrack, SuggestionsResponse } from "../li
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
+import { PreviewButton } from "../components/trackBits";
 
 /** "3 hours ago" style label from an ISO timestamp. */
 function relativeTime(iso?: string | null): string {
@@ -37,6 +38,7 @@ function TrackRow({ t, onAdd, adding, onDismiss }: {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {t.preview_url && <PreviewButton track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }} />}
         {t.in_library ? (
           t.file_path ? (
             <Link className="chip chip--have" to={`/track?path=${encodeURIComponent(t.file_path)}`}>✓ in library</Link>
