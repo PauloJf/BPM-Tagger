@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -9,6 +10,7 @@ import { LyricsPanel } from "../components/LyricsPanel";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
+import { useCoverGlow } from "../hooks/useCoverGlow";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -76,6 +78,7 @@ export default function Run() {
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useWaveform(canvasRef, audioRef, current?.path || "", !!current, !!current);
+  const glow = useCoverGlow(current?.path ?? null);
 
   const settingsQ = useQuery({
     queryKey: ["settings"],
@@ -206,6 +209,7 @@ export default function Run() {
   // Star state is only known for queues built this session; a queue restored
   // after a reload renders without the star column.
   const starredByPath = new Map((queueInfo?.tracks ?? []).map((t) => [t.path, t.starred]));
+  const currentDisliked = !!current && dislikedPaths.has(current.path);
 
   // The "NATIVE 78 · 0.99× ×2 → 155 BPM" line for the playing track.
   const nativeBpm = current?.bpm ?? null;
@@ -228,6 +232,24 @@ export default function Run() {
 
   return (
     <div style={{ maxWidth: 520, margin: "0 auto" }}>
+      {/* Ambient glow tinted from the cover art, sitting behind the nav/content
+          (z-index -1 paints above the plain body background, below everything
+          with default stacking). Crossfades between tracks via useCoverGlow.
+          Portaled straight to <body> — `.container` briefly carries a transform
+          during its page-enter animation, and any transformed ancestor becomes
+          the containing block for a `position: fixed` descendant, which would
+          misplace this relative to `.container` instead of the viewport. */}
+      {createPortal(
+        <div
+          aria-hidden
+          style={{
+            position: "fixed", inset: 0, zIndex: -1, pointerEvents: "none",
+            transition: "opacity 0.45s ease",
+            background: glow.background, opacity: glow.opacity,
+          }}
+        />,
+        document.body,
+      )}
       {/* Now playing: cover + track details (hidden while browsing the queue) */}
       {current && mode !== "queue" && (
         <div style={{ textAlign: "center", marginBottom: 12 }}>
@@ -282,7 +304,11 @@ export default function Run() {
             <span style={{ letterSpacing: "0.1em" }}>NATIVE {Math.round(nativeBpm)}</span>
             <span style={{ display: "inline-block", position: "relative", width: 8, height: 8, flexShrink: 0 }} aria-hidden>
               <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", opacity: 0.5 }} />
-              <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", animation: playing ? `pulse-beat ${Math.round(60000 / (lockOn ? target : (folded ?? target)))}ms ease-out infinite` : "none" }} />
+              {/* Locked: pulse to the target cadence (what your feet follow).
+                  Unlocked: pulse to the track's true native BPM — it's playing
+                  at native speed, so the octave-folded value would drift out
+                  of sync with what you actually hear. */}
+              <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", animation: playing ? `pulse-beat ${Math.round(60000 / (lockOn ? target : nativeBpm))}ms ease-out infinite` : "none" }} />
             </span>
             {lockOn && <span>{rate.toFixed(2)}×</span>}
             <span>{foldLabel(nativeBpm, folded)}</span>
@@ -418,6 +444,21 @@ export default function Run() {
             <span>-{fmtTime(Math.max(0, dur - time))}</span>
           </div>
           <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center", gap: 22, marginTop: 10 }}>
+            <button
+              style={{
+                ...ctlBtn, width: 40, height: 40, position: "absolute", left: 0,
+                color: currentDisliked ? "var(--err-fg)" : "var(--muted)",
+                borderColor: currentDisliked ? "var(--err-fg)" : "var(--border)",
+              }}
+              onClick={() => current && toggleDislike(current.path, currentDisliked)}
+              aria-label={currentDisliked ? "Remove dislike" : "Dislike"}
+              aria-pressed={currentDisliked}
+              title={currentDisliked ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={currentDisliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+              </svg>
+            </button>
             <button style={ctlBtn} onClick={player.prev} aria-label="Previous" title="Previous">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14h2V5H6zm3 7l11 7V5l-11 7z" /></svg>
             </button>

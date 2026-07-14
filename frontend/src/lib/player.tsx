@@ -112,6 +112,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<PlayerTrack | null>(() =>
     saved && saved.pos >= 0 ? (saved.queue[saved.order[saved.pos]] ?? null) : null);
   const [playing, setPlaying] = useState(false);
+  // Whether the queue *should* be playing, as distinct from `playing` (whether
+  // the <audio> element literally is right now). They diverge during a track
+  // transition: iOS can veto the auto-advance play() call while the app is
+  // backgrounded, leaving `playing` false — sometimes for as long as the phone
+  // stays locked — even though nothing about user intent changed. Reporting
+  // that gap to the OS as MediaSession "paused" tells iOS this session is
+  // inactive, and it can hand the lock-screen Now Playing widget to a
+  // different app instead. `intendedPlaying` only flips false on a genuine
+  // stop (explicit pause, or the queue truly running out) — see the
+  // MediaSession playbackState effect below.
+  const [intendedPlaying, setIntendedPlaying] = useState(() => !!(current && saved?.playing));
   const [error, setError] = useState<string | null>(null);
   const pendingPlay = useRef(!!(current && saved?.playing));
   // Path already loaded + started synchronously by goToPos, so the load effect
@@ -223,6 +234,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const resumePlay = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
+    setIntendedPlaying(true);
     if (a.error) {
       setError(null);
       a.load();
@@ -352,6 +364,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const track = queue[order[newPos]];
     if (!track) return;
     const a = audioRef.current;
+    setIntendedPlaying(true);
     if (a) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
@@ -379,13 +392,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const { order, pos, repeat } = nav.current;
     if (auto && repeat === "one") {
       if (a) { a.currentTime = 0; a.play().catch(() => {}); }
+      setIntendedPlaying(true);
       return;
     }
-    if (order.length === 0) return;
+    if (order.length === 0) { setIntendedPlaying(false); return; }
     let np = pos + 1;
     if (np >= order.length) {
       if (repeat === "all") np = 0;
-      else return;               // end of queue, no repeat → stop advancing
+      else { setIntendedPlaying(false); return; }               // end of queue, no repeat → stop advancing
     }
     goToPos(np);
   }, [goToPos]);
@@ -414,6 +428,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seekTarget.current = saved.time;
       pendingPlay.current = saved.wasPlaying;   // resume only if it was playing (dec 3/8)
       fadeIn.current = saved.wasPlaying;
+      setIntendedPlaying(saved.wasPlaying);
       setCurrent(saved.track);
     };
     const a = audioRef.current;
@@ -425,7 +440,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onPlay = () => { setPlaying(true); setError(null); resumeOnShow.current = false; };
+    const onPlay = () => { setPlaying(true); setIntendedPlaying(true); setError(null); resumeOnShow.current = false; };
     const onPause = () => setPlaying(false);
     // Preview ended → resume the queue (dec 2); otherwise auto-advance.
     const onEnded = () => { setPlaying(false); if (previewSaved.current) endPreview(); else next(true); };
@@ -482,14 +497,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.playbackState = current ? (playing ? "playing" : "paused") : "none";
-  }, [current, playing]);
+    navigator.mediaSession.playbackState = current ? (intendedPlaying ? "playing" : "paused") : "none";
+  }, [current, intendedPlaying]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const ms = navigator.mediaSession;
     ms.setActionHandler("play", resumePlay);
-    ms.setActionHandler("pause", () => audioRef.current?.pause());
+    ms.setActionHandler("pause", () => { setIntendedPlaying(false); audioRef.current?.pause(); });
     ms.setActionHandler("previoustrack", () => prev());
     ms.setActionHandler("nexttrack", () => next(false));
     return () => {
@@ -506,6 +521,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setQueue([track]);
     setOrder([0]);
     setPos(0);
+    setIntendedPlaying(true);
     setCurrent((prev) => {
       if (prev?.path === track.path) {
         resumePlay();
@@ -536,6 +552,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPos(startPos);
     if (opts?.shuffle !== undefined) setShuffle(useShuffle);
     pendingPlay.current = true;
+    setIntendedPlaying(true);
     setCurrent(tracks[ord[startPos]]);
   }, []);
 
@@ -552,6 +569,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     rampVolume(a.volume, 0, FADE_MS, () => {
       pendingPlay.current = true;
       fadeIn.current = true;
+      setIntendedPlaying(true);
       setCurrent(track);
     });
   }, [current, playing, play, rampVolume, resumePlay]);
@@ -582,7 +600,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!a) return;
     // An errored element can report paused=false — treat it as resumable.
     if (a.error || a.paused) resumePlay();
-    else a.pause();
+    else { setIntendedPlaying(false); a.pause(); }
   }, [resumePlay]);
 
   const stop = useCallback(() => {
@@ -590,6 +608,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     clearPreview();
     setCurrent(null);
     setPlaying(false);
+    setIntendedPlaying(false);
     setQueue([]);
     setOrder([]);
     setPos(-1);
@@ -615,6 +634,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const newPos = Math.min(pos, newOrder.length - 1);
       setOrder(newOrder); setPos(newPos);
       pendingPlay.current = true;
+      setIntendedPlaying(true);
       setCurrent(queue[newOrder[newPos]]);
     }
   }, [stop]);
