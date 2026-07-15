@@ -653,7 +653,13 @@ export default function Run() {
   // viewport-relative max height (the mobile Queue tab).
   const renderQueuePanel = (fill: boolean) => {
     const cardStyle: React.CSSProperties = fill
-      ? { padding: 0, margin: 0, height: "100%", display: "flex", flexDirection: "column" }
+      ? {
+          // Cap to the viewport (minus the header/top + container bottom padding)
+          // so a long queue scrolls inside the panel instead of scrolling the
+          // whole page. Still fills the column height when the queue is short.
+          padding: 0, margin: 0, height: "100%", maxHeight: "calc(100dvh - 210px)",
+          display: "flex", flexDirection: "column",
+        }
       : { padding: 0, marginBottom: 12 };
     const listStyle: React.CSSProperties = fill
       ? { flex: 1, minHeight: 0, overflowY: "auto" }
