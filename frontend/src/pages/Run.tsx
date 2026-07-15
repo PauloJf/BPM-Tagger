@@ -113,9 +113,12 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
     }
   }
 
+  // Fixed height so the card doesn't jump between its states — the locked
+  // warning, the tap UI, and the post-save message all reserve the same box
+  // (tallest state ≈ unlocked + save message).
   const boxStyle: React.CSSProperties = {
     border: "1px solid var(--border)", borderRadius: 12,
-    padding: "11px 13px", background: "var(--surface)",
+    padding: "11px 13px", background: "var(--surface)", minHeight: 226,
   };
   const capLabel: React.CSSProperties = {
     fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em",
@@ -124,7 +127,7 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
 
   if (locked) {
     return (
-      <div style={{ ...boxStyle, textAlign: "center" }}>
+      <div style={{ ...boxStyle, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ ...capLabel, marginBottom: 5 }}>Tap tempo</div>
         <div style={{ fontSize: 11.5, color: "var(--warn-fg)", lineHeight: 1.45 }}>
           Tempo lock is on — playback is stretched, not at the track's true
@@ -167,11 +170,10 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
           {saving ? "Saving…" : "Save & lock"}
         </button>
       </div>
-      {msg && (
-        <div style={{ marginTop: 9, fontSize: 12, textAlign: "center", color: msg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>
-          {msg.text}
-        </div>
-      )}
+      {/* Always reserved so the save/error message doesn't shift the footer. */}
+      <div style={{ minHeight: 16, marginTop: 9, fontSize: 12, textAlign: "center", color: msg ? (msg.ok ? "var(--ok-fg)" : "var(--err-fg)") : undefined }}>
+        {msg?.text}
+      </div>
       <div style={{ marginTop: 7, fontSize: 10, color: "var(--muted)", textAlign: "center" }}>Resets after 3s of silence</div>
     </div>
   );
