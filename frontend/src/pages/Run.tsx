@@ -16,6 +16,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
+import BpmMark from "../components/BpmMark";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -380,13 +381,16 @@ export default function Run() {
   // phone screen (whatever height is left after the fixed-size sections). On
   // desktop the player column is vertically centered with room to spare, so
   // the cover can breathe. Both bump the mobile reserve for the shared header.
+  // Player mode adds a compact brand banner above the cover (the kiosk has no
+  // sidebar); reserve its height so the mobile layout still fits one screen.
+  const bannerReserve = playerMode ? 44 : 0;
   const coverSize = desktop
     ? "clamp(180px, 22vh, 300px)"
     // Reserve = everything below the cover on mobile (title, target with the
     // flanking Rebuild, mode tabs, controls, transport + tight padding). With
     // the header gone and Rebuild flanking the number (no extra row), 605 is the
     // measured worst case (narrow phone, wrapped title) so it never scrolls.
-    : "clamp(64px, calc(100dvh - 605px), 240px)";
+    : `clamp(64px, calc(100dvh - ${605 + bannerReserve}px), 240px)`;
 
   // Ambient glow tinted from the cover art, sitting behind the nav/content
   // (z-index -1 paints above the plain body background, below everything with
@@ -420,11 +424,22 @@ export default function Run() {
     </button>
   );
 
-  // Sign-out for the run-only role (no sidebar to hold the usual logout).
-  const signOutButton = playerMode ? (
-    <button className="btn btn-ghost" style={{ minHeight: 40, whiteSpace: "nowrap" }} onClick={() => logout()} title="Sign out">
-      Sign out
-    </button>
+  // Player mode has no sidebar, so a compact top banner carries the brand + a
+  // "Run mode" note (and the sign-out, since there's no nav to hold it). Kept
+  // short so the run player still fits one screen — see bannerReserve.
+  const playerBanner = playerMode ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
+      <div className="nav-logo-tile" style={{ width: 30, height: 30 }}>
+        <BpmMark size={18} />
+      </div>
+      <div className="nav-logo-text">
+        <span className="nav-logo-title">BPM Tagger</span>
+        <span className="nav-logo-sub">Run mode</span>
+      </div>
+      <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => logout()} title="Sign out">
+        Sign out
+      </button>
+    </div>
   ) : null;
 
   // Desktop shows the full uniform header (title + subtitle + right-aligned
@@ -435,7 +450,7 @@ export default function Run() {
     <PageHeader
       title="Run"
       subtitle="Tempo-matched player — lock every track onto your cadence."
-      actions={<>{signOutButton}{startRebuildButton}</>}
+      actions={startRebuildButton}
     />
   );
 
@@ -846,6 +861,7 @@ export default function Run() {
     return (
       <div className="run-desktop">
         {glowLayer}
+        {playerBanner}
         {pageHeader}
         <div className="run-desktop-body">
           <div className="run-player-col">
@@ -874,16 +890,7 @@ export default function Run() {
   return (
     <div>
       {glowLayer}
-      {playerMode && (
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => logout()}
-          title="Sign out"
-          style={{ position: "fixed", top: 10, right: 10, zIndex: 120 }}
-        >
-          Sign out
-        </button>
-      )}
+      {playerBanner}
       {mode !== "queue" && nowPlaying}
       {/* Tap needs the whole tap pad on screen at once; the target readout (its
           big number + native pill + the build/lock buttons) is dead weight while
