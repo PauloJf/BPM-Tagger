@@ -324,7 +324,7 @@ All of these are editable at runtime in **Settings → Run Mode**; the env vars 
 
 ### Anonymous install count
 
-On first run the web UI asks — once — whether you'll allow a single anonymous "courtesy ping" so I can gauge roughly how many installs exist. It contains **only the app version** — no identifier, no library data, no usage data, no cookies — and the receiver ([GoatCounter](https://www.goatcounter.com)) does not log IP addresses. Declining sends nothing and changes nothing; every feature works either way. You can change your mind anytime under **About**, and the whole mechanism is one small [auditable file](bpm_tagger/install_ping.py).
+On first run the web UI asks — once — whether you'll allow an anonymous "courtesy ping" so I can gauge roughly how many installs exist. If you opt in it fires **once per version** — on install and once more after each update (never on a timer), so upgrades are counted too. It contains **only the app version** — no identifier, no library data, no usage data, no cookies — and the receiver ([GoatCounter](https://www.goatcounter.com)) does not log IP addresses. Declining sends nothing and changes nothing; every feature works either way. You can change your mind anytime under **About**, and the whole mechanism is one small [auditable file](bpm_tagger/install_ping.py).
 
 | Variable | Default | Description |
 |---|---|---|

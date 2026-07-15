@@ -43,15 +43,16 @@ export default function InstallPingCard() {
           Count this install?
         </div>
         <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", margin: "0 0 12px" }}>
-          Would you let BPM Tagger send <strong>one</strong> anonymous ping so I can
-          gauge roughly how many installs are out there? It contains only the app
-          version — <strong>no</strong> identifier, no library or usage data, no
-          cookies, and IP addresses aren&rsquo;t logged.
+          Would you let BPM Tagger send an anonymous ping so I can gauge roughly how
+          many installs are out there? It contains only the app version —{" "}
+          <strong>no</strong> identifier, no library or usage data, no cookies, and
+          IP addresses aren&rsquo;t logged.
         </p>
         <p style={{ fontSize: 13, lineHeight: 1.6, color: "var(--muted)", margin: "0 0 18px" }}>
-          It fires just once. Say no and nothing is sent — every feature works
-          exactly the same either way. You can change your mind later under{" "}
-          <strong>About</strong>. The ping is a few lines of auditable open source.
+          It fires once now and once more after each update — never on a timer. Say
+          no and nothing is sent, ever; every feature works exactly the same either
+          way. You can change your mind anytime under <strong>About</strong>. The
+          ping is a few lines of auditable open source.
         </p>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button

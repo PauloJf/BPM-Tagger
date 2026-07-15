@@ -205,8 +205,10 @@ def build_config() -> dict:
         "install_ping_url":           os.environ.get("INSTALL_PING_URL", INSTALL_PING_URL_DEFAULT),
         # None = not yet asked (UI prompts on first run); True/False = user's answer.
         "install_ping_consent":       _parse_install_consent(),
-        # Set True in settings.json once the ping has been delivered — fired once.
-        "install_ping_sent":          False,
+        # The app version last successfully pinged (persisted to settings.json).
+        # A ping fires when this differs from the running version — i.e. on the
+        # first opt-in and once more after each update.
+        "install_ping_version":       "",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
         # ── Run mode (tempo-locked playback) — normally edited from the UI ────
         "run_presets":                _parse_run_presets(os.environ.get(
