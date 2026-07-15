@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
+import type { Progress } from "../lib/types";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { applyTheme, type Theme } from "../lib/theme";
 import BpmMark from "./BpmMark";
@@ -191,6 +192,53 @@ function ScanControls({ state, act, mobile }: { state: ScanState; act: (a: "star
   );
 }
 
+/** Desktop sidebar footer: the scan status promoted to a small block — state +
+ *  live count on top, a thin progress bar while analysing, full-width controls. */
+function SidebarScan({ state, act, progress }: { state: ScanState; act: (a: "start" | "pause" | "resume" | "stop") => void; progress: Progress | null }) {
+  const info = stateColor(state);
+  const scanning = state === "analysing" && !!progress && progress.total > 0;
+  const pct = scanning ? Math.round((progress!.completed / progress!.total) * 100) : 0;
+  return (
+    <div className="sidebar-scan">
+      <div className="sidebar-scan-head">
+        <Dot color={info.color} pulsing={info.pulsing} />
+        <span className="scan-label" style={{ color: info.labelColor, fontWeight: 500, fontSize: 12 }}>{info.label}</span>
+        {scanning && <span className="sidebar-scan-count">{progress!.completed} / {progress!.total}</span>}
+      </div>
+      {scanning && (
+        <div className="sidebar-scan-track"><div className="sidebar-scan-fill" style={{ width: `${pct}%` }} /></div>
+      )}
+      <div className="sidebar-scan-btns">
+        {state === "idle" && (
+          <button className="btn btn-ghost btn-sm" style={{ color: "var(--ok-fg)" }} onClick={() => act("start")} title="Start scan">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+            <span className="btn-label"> Start scan</span>
+          </button>
+        )}
+        {state === "analysing" && (
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={() => act("pause")} title="Pause scan">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+              <span className="btn-label"> Pause</span>
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => act("stop")} title="Stop scan">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+              <span className="btn-label"> Stop</span>
+            </button>
+          </>
+        )}
+        {state === "paused" && (
+          <button className="btn btn-ghost btn-sm" style={{ color: "var(--ok-fg)" }} onClick={() => act("resume")} title="Resume scan">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
+            <span className="btn-label"> Resume</span>
+          </button>
+        )}
+        {state === "stopping" && <span style={{ fontSize: 12, color: "var(--err-fg)" }}>Stopping…</span>}
+      </div>
+    </div>
+  );
+}
+
 function Logo() {
   return (
     <NavLink to="/tracks" className="nav-logo">
@@ -213,7 +261,7 @@ export default function Nav() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
   const location = useLocation();
   const panelRef = useRef<HTMLDivElement>(null);
-  const { state, act } = useScan();
+  const { state, act, progress } = useScan();
   const dot = stateColor(state);
   const grabber = useGrabberStatus();
 
@@ -280,9 +328,7 @@ export default function Nav() {
           )}
         </button>
         <div className="sidebar-footer">
-          <div className="scan-controls" style={{ justifyContent: "space-between" }}>
-            <ScanControls state={state} act={act} />
-          </div>
+          <SidebarScan state={state} act={act} progress={progress} />
           <div className="sidebar-footer-row">
             <ThemeToggle />
             <button

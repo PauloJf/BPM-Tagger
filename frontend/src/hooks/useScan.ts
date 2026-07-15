@@ -15,11 +15,13 @@ function deriveState(d: Progress): ScanState {
  *  Ports the vanilla-JS scan-controls logic from the Jinja base template. */
 export function useScan() {
   const [state, setState] = useState<ScanState>("idle");
+  const [progress, setProgress] = useState<Progress | null>(null);
 
   const poll = useCallback(async () => {
     try {
       const d = await api.get<Progress>("/api/progress");
       setState(deriveState(d));
+      setProgress(d);
     } catch {
       /* transient — keep last state */
     }
@@ -43,5 +45,5 @@ export function useScan() {
     return () => window.clearInterval(id);
   }, [poll]);
 
-  return { state, act };
+  return { state, act, progress };
 }
