@@ -329,7 +329,7 @@ On first run the web UI asks — once — whether you'll allow a single anonymou
 | Variable | Default | Description |
 |---|---|---|
 | `INSTALL_PING` | _(unset)_ | Preset the choice for headless installs (no UI to ask in): `true` opts in, `false` opts out. Left unset, the UI asks on first run. |
-| `INSTALL_PING_URL` | _(the author's GoatCounter endpoint)_ | Where the ping goes. Set to your own endpoint to point it elsewhere, or `""` to disable the feature entirely (no prompt, nothing sent). |
+| `INSTALL_PING_URL` | _(the author's GoatCounter endpoint)_ | Where the ping goes (GoatCounter's credential-free `/count` pixel). Point it at your own endpoint, or set `""` to disable the feature entirely (no prompt, nothing sent). |
 
 ---
 

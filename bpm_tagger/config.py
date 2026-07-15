@@ -15,10 +15,13 @@ AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".
 # installs exist. It carries ONLY the app version — no identifier, no library
 # data, no usage data, no cookies. See bpm_tagger/install_ping.py.
 #
-# Points at the author's GoatCounter "count" endpoint. GoatCounter is
+# Delivered to GoatCounter's public pixel endpoint (GET /count?p=…), which needs
+# no credential — the right fit for a beacon fired from installs we don't control
+# (embedding any token would only be extractable from the public image, and a
+# self-reported counter is inherently spoofable either way). GoatCounter is
 # privacy-first and does not store IP addresses. Set this empty to make the whole
-# feature dormant (no first-run prompt, nothing ever sent). End users can override
-# it with the INSTALL_PING_URL env var (point it elsewhere, or "" to disable).
+# feature dormant (no first-run prompt, nothing ever sent); override with the
+# INSTALL_PING_URL env var to point it elsewhere or disable it.
 INSTALL_PING_URL_DEFAULT = "https://bpmtagger.goatcounter.com/count"
 
 

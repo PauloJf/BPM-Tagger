@@ -26,13 +26,21 @@ log = logging.getLogger(__name__)
 _TIMEOUT = 8
 
 
+# Presented as a browser-like client so GoatCounter records the beacon in the
+# normal count instead of bucketing this server-side request as bot traffic
+# (which its dashboard hides by default). The app + version still travel in the
+# path (/install/<version>), so nothing about what's sent is obscured.
+_USER_AGENT = "Mozilla/5.0 (compatible; BPM-Tagger install ping)"
+
+
 def _send(url: str, version: str) -> bool:
-    """Fire the ping. Returns True on a 2xx response, False on anything else."""
+    """Fire the ping at GoatCounter's pixel endpoint. Returns True on a 2xx
+    response, False on anything else. The version rides in the counted path."""
     try:
         resp = requests.get(
             url,
             params={"p": f"/install/{version}"},
-            headers={"User-Agent": f"BPM-Tagger/{version} (install-ping)"},
+            headers={"User-Agent": _USER_AGENT},
             timeout=_TIMEOUT,
         )
         return resp.ok
