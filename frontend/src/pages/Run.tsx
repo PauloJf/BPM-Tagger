@@ -847,7 +847,11 @@ export default function Run() {
     <div>
       {glowLayer}
       {mode !== "queue" && nowPlaying}
-      {targetBlock}
+      {/* Tap needs the whole tap pad on screen at once; the target readout (its
+          big number + native pill + the build/lock buttons) is dead weight while
+          tapping — the lock is off in this mode anyway — so drop it here to keep
+          the pad within one screen without scrolling. */}
+      {mode !== "tap" && targetBlock}
       {modeToggle(["presets", "steps", "tap", "queue"], mode)}
       {mode === "queue" ? renderQueuePanel(false)
         : mode === "tap" ? tapControl
