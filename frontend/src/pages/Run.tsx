@@ -770,7 +770,7 @@ export default function Run() {
   // shared design-system .segmented control so the switcher matches the ones on
   // Library and Settings.
   const modeLabel = (m: "presets" | "steps" | "queue" | "tap") =>
-    m === "presets" ? "Presets" : m === "steps" ? "± Steps" : m === "tap" ? "Tap" : "Queue";
+    m === "presets" ? "Presets" : m === "steps" ? "Steps" : m === "tap" ? "Tap" : "Queue";
   const modeToggle = (opts: readonly ("presets" | "steps" | "queue" | "tap")[], active: string) => (
     <div className="segmented" style={{ display: "flex", margin: "0 auto 12px", width: "fit-content", flexWrap: "wrap" }}>
       {opts.map((m) => (
