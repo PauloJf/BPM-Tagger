@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { RelatedTrack } from "../lib/types";
@@ -31,6 +32,12 @@ export function cadenceEligible(bpm: number | null | undefined, lock: TempoLock 
  *  "similar to this artist" rather than to the exact song. */
 export default function QueueSimilar({ artist, onClose }: { artist: string; onClose?: () => void }) {
   const player = usePlayer();
+  const { endPreview } = player;
+  // Closing the panel (toggle off, run end, navigation) drops any preview clip
+  // that's ducking the queue and fades back to the run track — mirrors the
+  // TrackDetail/TrackCompare "leaving resumes the queue" behaviour, and makes
+  // dismissing the panel a reliable escape hatch from a stray preview.
+  useEffect(() => () => endPreview(), [endPreview]);
   const add = useSuggestionQueue();
   const grabber = useGrabberStatus();
   const grabberEnabled = grabber.data?.enabled === true;
