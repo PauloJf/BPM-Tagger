@@ -94,6 +94,10 @@ export function PreviewButton({ track }: {
   const syntheticPath = `preview:dz:${track.dz_track_id}`;
   const isThis = player.isCurrent(syntheticPath);
   const playing = isThis && player.playing;
+  // A live preview that's ducking a queue: the pause gesture ends it and fades
+  // back to the queue track, rather than pausing the clip in place and stranding
+  // the ducked queue with no obvious way back to it.
+  const ducking = playing && player.previewing;
   const pt: PlayerTrack = {
     path: syntheticPath, title: track.title, artist: track.artist,
     src: track.preview_url, ephemeral: true,
@@ -102,9 +106,13 @@ export function PreviewButton({ track }: {
     <button
       className="btn btn-bare btn-sm"
       style={{ padding: "2px 6px", color: playing ? "var(--accent-2)" : "var(--muted)" }}
-      title={playing ? "Pause preview" : "Preview (30s clip)"}
-      aria-label={playing ? "Pause preview" : "Preview"}
-      onClick={() => (isThis ? player.toggle() : player.preview(pt))}
+      title={playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview (30s clip)"}
+      aria-label={playing ? (ducking ? "Stop preview" : "Pause preview") : "Preview"}
+      onClick={() => {
+        if (!isThis) player.preview(pt);
+        else if (ducking) player.endPreview();  // pause gesture → back to the queue
+        else player.toggle();                   // standalone clip, or resume a paused preview
+      }}
     >
       {playing ? (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
