@@ -31,7 +31,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     <>
       <Nav />
       <div className="app-main">
-        <div className={"container page-enter" + (runPage ? " container--run" : "")}>{children}</div>
+        <div className="container page-enter">{children}</div>
       </div>
       {!runPage && <PlayerBar />}
     </>

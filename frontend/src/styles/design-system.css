@@ -928,10 +928,6 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
    mobile, where the sidebar is hidden) so it never covers the sidebar footer.
    This rule must stay AFTER any earlier .player-bar declarations. */
 body.has-player .container { padding-bottom: 88px; }
-/* Run mode hides the bar and renders its own transport — reclaim the reserved
-   space and tighten the top so everything fits one phone screen. */
-.container.container--run { padding-top: 14px; padding-bottom: 24px; }
-body.has-player .container.container--run { padding-bottom: 24px; }
 .player-bar {
   position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
   transition: left 0.18s ease;
@@ -1039,8 +1035,9 @@ a.player-bar-title:hover { color: var(--accent-2); }
 /* ── Run mode: desktop cockpit ───────────────────────────────────────────────
    The Run page renders the single-column phone layout by default; above 900px
    it switches to this two-column cockpit (see the `desktop` flag in
-   pages/Run.tsx). */
-.run-desktop { max-width: 1180px; margin: 0 auto; }
+   pages/Run.tsx). No max-width of its own — it fills the page `.container` so
+   the cockpit aligns with every other page's width. */
+.run-desktop { width: 100%; }
 
 /* Shared page header spans the top; the grid body sits below it. */
 .run-desktop-body {
