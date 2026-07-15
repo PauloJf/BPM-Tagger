@@ -318,12 +318,6 @@ export default function Run() {
     }
   }
 
-  function endRun() {
-    player.setTempoLock(null);
-    player.stop();
-    setQueueInfo(null);
-  }
-
   async function toggleStar(path: string, starred: boolean) {
     const next = !starred;
     // Optimistic: the run has begun, a failed star is not worth interrupting it.
@@ -375,7 +369,11 @@ export default function Run() {
   // the cover can breathe. Both bump the mobile reserve for the shared header.
   const coverSize = desktop
     ? "clamp(180px, 22vh, 300px)"
-    : "clamp(64px, calc(100dvh - 660px), 240px)";
+    // Reserve = everything below the cover on mobile (title, target with the
+    // flanking Rebuild, mode tabs, controls, transport + tight padding). With
+    // the header gone and Rebuild flanking the number (no extra row), 605 is the
+    // measured worst case (narrow phone, wrapped title) so it never scrolls.
+    : "clamp(64px, calc(100dvh - 605px), 240px)";
 
   // Ambient glow tinted from the cover art, sitting behind the nav/content
   // (z-index -1 paints above the plain body background, below everything with
@@ -401,18 +399,23 @@ export default function Run() {
   // action placement every other page uses. Shared by both layouts, so the
   // build/end controls no longer float mid-column (mobile) or sit buried in the
   // controls column (desktop).
+  // Primary action — the only build control. (There's no "End": pause stops
+  // playback and the lock toggle beside the target releases the tempo lock.)
+  const startRebuildButton = (
+    <button className="btn btn-primary" style={{ minHeight: 40, whiteSpace: "nowrap" }} disabled={building} onClick={startRun}>
+      {building ? "Building…" : queueInfo || running ? "Rebuild" : "Start run"}
+    </button>
+  );
+
+  // Desktop shows the full uniform header (title + subtitle + right-aligned
+  // action). Mobile has no header at all — the nav already says you're on Run,
+  // and the screen is tight — so the cover gets that space and the Start/Rebuild
+  // button rides in the mode-toggle row instead (see modeToggle).
   const pageHeader = (
     <PageHeader
       title="Run"
       subtitle="Tempo-matched player — lock every track onto your cadence."
-      actions={<>
-        <button className="btn btn-primary" style={{ minHeight: 40, whiteSpace: "nowrap" }} disabled={building} onClick={startRun}>
-          {building ? "Building…" : queueInfo || running ? "Rebuild" : "Start run"}
-        </button>
-        {(running || current) && (
-          <button className="btn btn-ghost" style={{ minHeight: 40 }} onClick={endRun}>End</button>
-        )}
-      </>}
+      actions={startRebuildButton}
     />
   );
 
@@ -447,6 +450,31 @@ export default function Run() {
         <div style={{ fontFamily: "var(--mono)", fontSize: "min(88px, 12dvh)", fontWeight: 700, letterSpacing: "-0.05em", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
           {Math.round(target)}
         </div>
+        {/* Mobile: the primary build control flanks the target number as a round
+            icon button (mirroring the lock on the right), so it needs no header
+            row and the cover keeps the top of the screen. Desktop keeps the
+            labelled button in the page header. */}
+        {!desktop && (
+          <button
+            onClick={startRun}
+            disabled={building}
+            aria-label={building ? "Building queue" : queueInfo || running ? "Rebuild queue" : "Start run"}
+            title={building ? "Building…" : queueInfo || running ? "Rebuild the queue for this target" : "Start run — build the queue for this target"}
+            style={{
+              position: "absolute", right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: 12,
+              width: 38, height: 38, borderRadius: 999, display: "inline-flex", alignItems: "center",
+              justifyContent: "center", cursor: building ? "default" : "pointer",
+              background: "var(--accent)", border: "none", color: "white",
+              opacity: building ? 0.55 : 1,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6" />
+              <path d="M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={toggleLock}
           aria-pressed={lockOn}
@@ -804,7 +832,6 @@ export default function Run() {
   return (
     <div>
       {glowLayer}
-      {pageHeader}
       {mode !== "queue" && nowPlaying}
       {targetBlock}
       {modeToggle(["presets", "steps", "tap", "queue"], mode)}
