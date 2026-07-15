@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.6.1 — 2026-07-15
+
+- **Uniform page layout:** every top-level page now opens with the same header — a consistent title, optional subtitle, and right-aligned primary action — with search / filter / pagination moved out of the header into their own toolbar row. Repeated markup was consolidated into shared components (the page header, the logo mark, the "grabber disabled" gate, and the empty-state cards), so the pages read as one system and future tweaks land in one place.
+- **Sidebar refinements:** the active menu item is clearer at a glance (accent bar + soft fill + a tinted icon), and the scan status is promoted from a cramped chip to a proper block — current state, a live `completed / total` count, a thin progress bar while analysing, and full-width Pause/Stop — degrading to a centered dot + stacked icon buttons when the sidebar is collapsed. Link spacing was eased slightly.
+- **Run page alignment & polish:** on desktop the Run page now uses the exact same page container (width and vertical position) as every other page — previously its cockpit was capped narrower and inset. Below the desktop breakpoint the single-column layout fills the available width like the rest of the app instead of a fixed narrow column, and the **tap-tempo card holds a constant height across its states**, so it no longer jumps when you toggle the tempo lock or after saving a tapped BPM.
+- **Build fix:** restored the `enabled` parameter the Run page passes to the tap-tempo hook, which had been missing from the committed source and broke the frontend type-check.
+
 ## v2.6.0 — 2026-07-14
 
 - **Navidrome scrobbling (opt-in):** tracks played in the built-in player — player bar and Run mode alike — are reported to Navidrome once they pass the halfway mark (the Last.fm convention), so play counts and "last played" stay accurate everywhere, and your runs reach **Last.fm/ListenBrainz** when Navidrome forwards there. Previews and 30-second clips never scrobble; a replay after seeking back to the start counts again. Songs resolve through the same cached-id / path / fuzzy chain as the star sync, and each successful scrobble bumps the local play count immediately. Enable with the **Scrobble plays** toggle in **Settings → Navidrome** (env default `NAVIDROME_SCROBBLE`).
