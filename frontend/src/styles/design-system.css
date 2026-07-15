@@ -928,6 +928,14 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
    mobile, where the sidebar is hidden) so it never covers the sidebar footer.
    This rule must stay AFTER any earlier .player-bar declarations. */
 body.has-player .container { padding-bottom: 88px; }
+/* Run mode has no fixed player bar and is phone-first: on mobile, tighten the
+   container so the single-column layout fits one screen (the cover-art clamp
+   reserve in pages/Run.tsx is tuned to this padding). Desktop keeps the
+   standard container so the cockpit stays aligned with every other page. */
+@media (max-width: 900px) {
+  .container.container--run,
+  body.has-player .container.container--run { padding-top: 14px; padding-bottom: 24px; }
+}
 .player-bar {
   position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
   transition: left 0.18s ease;
