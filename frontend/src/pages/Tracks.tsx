@@ -8,6 +8,7 @@ import { ArrowIcon, ConfBar, FolderIcon, StatusBadge, trackSubtitle, trackTitle 
 import LibraryTabs from "../components/LibraryTabs";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
 import { usePlayer } from "../lib/player";
 
 const STEPS = ["deeprhythm", "essentia", "librosa"];
@@ -259,17 +260,11 @@ export default function Tracks() {
     <>
       {prog?.is_scanning && <ScanBanner p={prog} />}
 
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginBottom: 20, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Library</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{data?.total ?? 0}</span> tracks
-          </p>
-        </div>
-
-        <LibraryTabs />
-
-        <div style={{ display: "flex", gap: 8 }}>
+      <PageHeader
+        title="Library"
+        subtitle={<><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{data?.total ?? 0}</span> tracks</>}
+        tabs={<LibraryTabs />}
+        actions={<>
           <button
             className="btn btn-primary btn-sm"
             disabled={queuing || !data?.total}
@@ -288,10 +283,10 @@ export default function Tracks() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
             Shuffle
           </button>
-        </div>
+        </>}
+      />
 
-        <div style={{ flex: 1 }} />
-
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div className="filter-pills">
           {pills.map((pl) => (
             <button

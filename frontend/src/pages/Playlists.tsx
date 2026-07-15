@@ -6,6 +6,8 @@ import type { Playlist, SpotifyPlaylist } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { Toggle } from "../components/Toggle";
+import PageHeader from "../components/PageHeader";
+import GrabberGate from "../components/GrabberGate";
 
 function Chips({ p }: { p: Playlist }) {
   return (
@@ -64,27 +66,27 @@ export default function Playlists() {
     onSuccess: invalidate,
   });
 
-  if (status.data && !status.data.enabled) {
-    return (
-      <>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 16 }}>Playlists</h1>
-        <div className="card" style={{ color: "var(--muted)", fontSize: 14 }}>
-          The grabber is disabled. Enable it (and set Spotify credentials) in{" "}
-          <Link to="/settings" style={{ color: "var(--accent-2)" }}>Settings → Grabber</Link>, then restart.
-        </div>
-      </>
-    );
-  }
-
   const connected = status.data?.spotify?.connected;
   const playlists = playlistsQ.data?.playlists ?? [];
+  const enabledCount = playlists.filter((p) => p.enabled).length;
 
   return (
-    <>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Playlists</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>Watched Spotify playlists compared against your library.</p>
-      </div>
+    <GrabberGate
+      title="Playlists"
+      subtitle="Watched Spotify playlists compared against your library."
+      disabledMessage={<>
+        The grabber is disabled. Enable it (and set Spotify credentials) in{" "}
+        <Link to="/settings" style={{ color: "var(--accent-2)" }}>Settings → Grabber</Link>, then restart.
+      </>}
+    >
+      <PageHeader
+        title="Playlists"
+        subtitle={
+          playlists.length > 0
+            ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{enabledCount}</span> auto-syncing · {playlists.length} watched</>
+            : "Watched Spotify playlists compared against your library."
+        }
+      />
 
       {!connected && (
         <div className="flash" style={{ background: "var(--warn-bg)", borderColor: "var(--warn-bd)", color: "var(--warn-fg)" }}>
@@ -196,6 +198,6 @@ export default function Playlists() {
           ))
         )}
       </div>
-    </>
+    </GrabberGate>
   );
 }

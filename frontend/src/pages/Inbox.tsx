@@ -4,6 +4,9 @@ import { api } from "../lib/api";
 import type { GrabCandidate, InboxItem } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import PageHeader from "../components/PageHeader";
+import GrabberGate from "../components/GrabberGate";
+import EmptyState from "../components/EmptyState";
 
 function durationDelta(itemMs: number | null, candMs: number | null): string {
   if (!itemMs || !candMs) return "—";
@@ -164,27 +167,18 @@ export default function Inbox() {
   const skip = useMutation({ mutationFn: (id: number) => api.post(`/api/inbox/${id}/skip`), onSuccess: invalidate });
   const busy = choose.isPending || search.isPending || research.isPending || researchAll.isPending || skip.isPending;
 
-  if (status.data && !status.data.enabled) {
-    return (
-      <>
-        <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 16 }}>Inbox</h1>
-        <div className="card" style={{ color: "var(--muted)" }}>The grabber is disabled.</div>
-      </>
-    );
-  }
-
   const items = inboxQ.data?.items ?? [];
 
   return (
-    <>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Inbox</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip.
-          </p>
-        </div>
-        {items.length > 0 && (
+    <GrabberGate title="Inbox" subtitle="Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip.">
+      <PageHeader
+        title="Inbox"
+        subtitle={
+          items.length > 0
+            ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{items.length}</span> waiting — choose a candidate, refine the search, or skip</>
+            : "Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip."
+        }
+        actions={items.length > 0 ? (
           <button
             className="btn btn-ghost btn-sm"
             disabled={busy}
@@ -193,14 +187,11 @@ export default function Inbox() {
           >
             {researchAll.isPending ? "Searching…" : `Search all again (${items.length})`}
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {items.length === 0 ? (
-        <div style={{ padding: "60px 20px", textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14 }}>
-          <div style={{ fontSize: 32, marginBottom: 12, color: "var(--ok-fg)" }}>✓</div>
-          <div style={{ fontSize: 14, color: "var(--muted)" }}>{inboxQ.isLoading ? "Loading…" : "Nothing needs review."}</div>
-        </div>
+        <EmptyState message={inboxQ.isLoading ? "Loading…" : "Nothing needs review."} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {items.map((it) => (
@@ -216,6 +207,6 @@ export default function Inbox() {
           ))}
         </div>
       )}
-    </>
+    </GrabberGate>
   );
 }

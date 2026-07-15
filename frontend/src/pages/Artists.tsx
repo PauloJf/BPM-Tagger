@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
 import LibraryTabs from "../components/LibraryTabs";
 import { ArtistImage, ArtToggle, useArtwork } from "../components/Artwork";
 
@@ -32,15 +33,13 @@ export default function Artists() {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginBottom: 20, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Artists</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{all.length}</span> artists
-          </p>
-        </div>
-        <LibraryTabs />
-        <div style={{ flex: 1 }} />
+      <PageHeader
+        title="Artists"
+        subtitle={<><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{all.length}</span> artists</>}
+        tabs={<LibraryTabs />}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <ArtToggle show={showArt} onToggle={toggleArt} />
         <div className="search-wrap">
           <span className="search-icon">

@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
+import EmptyState from "../components/EmptyState";
 
 interface DupGroup {
   artist: string;
@@ -18,19 +20,17 @@ export default function Duplicates() {
 
   return (
     <>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Duplicates</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>
-          Likely copies of the same recording — same normalized artist + title, or a shared ISRC.
-          Compare each group side-by-side and keep the best copy; the rest go to a recoverable trash.
-        </p>
-      </div>
+      <PageHeader
+        title="Duplicates"
+        subtitle={
+          groups.length > 0
+            ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{groups.length}</span> group{groups.length === 1 ? "" : "s"} — same normalized artist + title, or a shared ISRC</>
+            : "Likely copies of the same recording — same normalized artist + title, or a shared ISRC."
+        }
+      />
 
       {groups.length === 0 ? (
-        <div style={{ padding: "60px 20px", textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14 }}>
-          <div style={{ fontSize: 32, marginBottom: 12, color: "var(--ok-fg)" }}>✓</div>
-          <div style={{ fontSize: 14, color: "var(--muted)" }}>{dupQ.isLoading ? "Loading…" : "No duplicates found."}</div>
-        </div>
+        <EmptyState message={dupQ.isLoading ? "Loading…" : "No duplicates found."} />
       ) : (
         <div className="card">
           <div className="section-label">

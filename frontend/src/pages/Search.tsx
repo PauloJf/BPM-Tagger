@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import PageHeader from "../components/PageHeader";
+import GrabberGate from "../components/GrabberGate";
 
 interface SearchResult {
   spotify_track_id: string;
@@ -47,23 +49,12 @@ export default function Search() {
     },
   });
 
-  if (status.data && !status.data.enabled) {
-    return (
-      <>
-        <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 16 }}>Search</h1>
-        <div className="card" style={{ color: "var(--muted)" }}>The grabber is disabled.</div>
-      </>
-    );
-  }
   const connected = status.data?.spotify?.connected;
   const results = searchQ.data?.results ?? [];
 
   return (
-    <>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Search &amp; grab</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>Search Spotify's catalog and queue a track for download.</p>
-      </div>
+    <GrabberGate title="Search & grab" subtitle="Search Spotify's catalog and queue a track for download.">
+      <PageHeader title="Search & grab" subtitle="Search Spotify's catalog and queue a track for download." />
 
       {!connected ? (
         <div className="flash" style={{ background: "var(--warn-bg)", borderColor: "var(--warn-bd)", color: "var(--warn-fg)" }}>
@@ -114,6 +105,6 @@ export default function Search() {
           ))
         )}
       </div>
-    </>
+    </GrabberGate>
   );
 }

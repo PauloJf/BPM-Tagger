@@ -7,6 +7,7 @@ import type { SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import PageHeader from "../components/PageHeader";
 
 type Saved = "" | "saving" | "ok" | "err";
 
@@ -407,14 +408,10 @@ export default function Settings() {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginBottom: 24, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Settings</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            All changes apply at runtime · saved to <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>/data/settings.json</span>
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Settings"
+        subtitle={<>Change behaviour at runtime — saved to <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>settings.json</span>.</>}
+      />
 
       <div className="settings-layout">
         <div className="settings-sidebar">

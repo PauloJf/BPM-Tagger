@@ -1015,3 +1015,37 @@ a.player-bar-title:hover { color: var(--accent-2); }
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Run mode: desktop cockpit ───────────────────────────────────────────────
+   The Run page renders the single-column phone layout by default; above 900px
+   it switches to this two-column cockpit (see the `desktop` flag in
+   pages/Run.tsx). */
+.run-desktop { max-width: 1180px; margin: 0 auto; }
+
+/* Shared page header spans the top; the grid body sits below it. */
+.run-desktop-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  align-items: stretch;
+}
+.run-player-col { display: flex; flex-direction: column; min-width: 0; }
+
+/* Track info (cover, details, tap-tempo) | target + presets + steps. */
+.run-cockpit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.run-cockpit-info { text-align: center; min-width: 0; }
+.run-cockpit-controls { align-self: center; min-width: 0; }
+
+/* The run queue owns a full-height column beside the player. */
+.run-queue-col { min-height: 0; display: flex; }
+
+/* Between 900px and ~1040px the 360px queue column crowds the cockpit — drop
+   the cockpit to a single column so the cover/target don't get squeezed. */
+@media (max-width: 1040px) {
+  .run-cockpit { grid-template-columns: 1fr; gap: 18px; }
+}

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { QueueItem } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
+import GrabberGate from "../components/GrabberGate";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
 const ACTIVE = new Set(["pending", "searching", "downloading", "transcoding", "tagging", "analyzing_bpm"]);
@@ -73,30 +75,17 @@ export default function Queue() {
   const cancel = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/cancel`), onSuccess: invalidate });
   const retryAll = useMutation({ mutationFn: () => api.post("/api/queue/retry-failed"), onSuccess: invalidate });
 
-  if (status.data && !status.data.enabled) {
-    return (
-      <>
-        <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 16 }}>Queue</h1>
-        <div className="card" style={{ color: "var(--muted)" }}>The grabber is disabled.</div>
-      </>
-    );
-  }
-
   const items = queueQ.data?.items ?? [];
   const active = items.filter((i) => ACTIVE.has(i.status));
   const history = historyQ.data?.items ?? [];
   const counts = queueQ.data?.counts ?? {};
 
   return (
-    <>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Queue</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            {Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(" · ") || "Nothing queued."}
-          </p>
-        </div>
-        {(counts.failed ?? 0) > 0 && (
+    <GrabberGate title="Queue" subtitle="The grabber is disabled.">
+      <PageHeader
+        title="Queue"
+        subtitle={Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(" · ") || "Nothing queued."}
+        actions={(counts.failed ?? 0) > 0 ? (
           <button
             className="btn btn-ghost btn-sm"
             disabled={retryAll.isPending}
@@ -105,8 +94,8 @@ export default function Queue() {
           >
             {retryAll.isPending ? "Retrying…" : `Retry all failed (${counts.failed})`}
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       <div className="tracks-table" style={{ marginBottom: 22 }}>
         {active.length === 0 ? (
@@ -128,6 +117,6 @@ export default function Queue() {
       <p style={{ marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
         Ambiguous matches wait in the <Link to="/inbox" style={{ color: "var(--accent-2)" }}>inbox</Link>.
       </p>
-    </>
+    </GrabberGate>
   );
 }

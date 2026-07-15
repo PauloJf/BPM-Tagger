@@ -8,6 +8,8 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "../components/trackBits";
 import ArtistModal from "../components/ArtistModal";
+import PageHeader from "../components/PageHeader";
+import GrabberGate from "../components/GrabberGate";
 
 /** "3 hours ago" style label from an ISO timestamp. */
 function relativeTime(iso?: string | null): string {
@@ -132,15 +134,6 @@ export default function Suggestions() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["suggestions"] }),
   });
 
-  if (status.data && !status.data.enabled) {
-    return (
-      <>
-        <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 16 }}>Suggestions</h1>
-        <div className="card" style={{ color: "var(--muted)" }}>The grabber is disabled.</div>
-      </>
-    );
-  }
-
   const data = q.data;
   const artists = data?.artists ?? [];
   const tracks = data?.tracks ?? [];
@@ -153,23 +146,23 @@ export default function Suggestions() {
   });
 
   return (
-    <>
-      <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Suggestions</h1>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            Based on your top and starred artists
-            {data?.computed_at && !refreshing ? ` · updated ${relativeTime(data.computed_at)}` : ""}
-          </p>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm"
-          disabled={refreshing || refresh.isPending}
-          onClick={() => refresh.mutate()}
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
+    <GrabberGate title="Suggestions" subtitle="Based on your top and starred artists">
+      <PageHeader
+        title="Suggestions"
+        subtitle={<>
+          Based on your top and starred artists
+          {data?.computed_at && !refreshing ? ` · updated ${relativeTime(data.computed_at)}` : ""}
+        </>}
+        actions={
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={refreshing || refresh.isPending}
+            onClick={() => refresh.mutate()}
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        }
+      />
 
       {data?.last_error ? (
         <div className="flash" style={{ background: "var(--warn-bg)", borderColor: "var(--warn-bd)", color: "var(--warn-fg)" }}>
@@ -232,6 +225,6 @@ export default function Suggestions() {
       {modalArtist && (
         <ArtistModal dzId={modalArtist.dzId} name={modalArtist.name} onClose={() => setModalArtist(null)} />
       )}
-    </>
+    </GrabberGate>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ApiError } from "../lib/api";
+import BpmMark from "../components/BpmMark";
 
 // Sine-envelope heights for the 40 decorative bars (matches the Jinja original).
 const BAR_HEIGHTS = [
@@ -13,13 +14,7 @@ const Logo = () => (
   <div className="login-logo">
     <div className="login-logo-wrap">
       <div className="tile">
-        <svg width="27" height="27" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
-          <rect x="7" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
-          <rect x="11" y="3" width="2.4" height="18" rx="1" fill="white" />
-          <rect x="15" y="6" width="2.4" height="12" rx="1" fill="white" opacity="0.9" />
-          <rect x="19" y="10" width="2.4" height="4" rx="1" fill="white" opacity="0.7" />
-        </svg>
+        <BpmMark size={27} />
       </div>
       <div className="login-logo-text">
         <span className="login-logo-title">BPM Tagger</span>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
 
 interface StatsResponse {
   summary: {
@@ -75,10 +76,7 @@ export default function Stats() {
 
   return (
     <>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Statistics</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>Library health, BPM distribution, and detector performance.</p>
-      </div>
+      <PageHeader title="Statistics" subtitle="Library health, BPM distribution, and detector performance." />
 
       <div className="stat-grid">
         <StatCard label="Total" value={num(s.total)} color="var(--text)" />

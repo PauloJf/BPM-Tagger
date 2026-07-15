@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import type { ReviewPage, Track } from "../lib/types";
 import { DetectorBar } from "../components/DetectorBar";
 import { useTitle } from "../hooks/useTitle";
+import PageHeader from "../components/PageHeader";
+import EmptyState from "../components/EmptyState";
 
 const SEP = /[/\\]/;
 function pathParts(p: string) {
@@ -153,19 +155,14 @@ export default function Review() {
 
   return (
     <>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 4 }}>Needs review</h1>
-        <p style={{ fontSize: 13, color: "var(--muted)" }}>
-          <span style={{ fontFamily: "var(--mono)", color: "var(--warn-fg)" }}>{total}</span> tracks flagged · review them one by one or open directly
-        </p>
-      </div>
+      <PageHeader
+        title="Needs review"
+        subtitle={<><span style={{ fontFamily: "var(--mono)", color: "var(--warn-fg)" }}>{total}</span> tracks flagged · review them one by one or open directly</>}
+      />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {tracks.length === 0 ? (
-          <div style={{ padding: "60px 20px", textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14 }}>
-            <div style={{ fontSize: 32, marginBottom: 12, color: "var(--ok-fg)" }}>✓</div>
-            <div style={{ fontSize: 14, color: "var(--muted)" }}>{reviewQ.isLoading ? "Loading…" : "No tracks need review."}</div>
-          </div>
+          <EmptyState message={reviewQ.isLoading ? "Loading…" : "No tracks need review."} />
         ) : (
           tracks.map((t, i) => (
             <ReviewCard
