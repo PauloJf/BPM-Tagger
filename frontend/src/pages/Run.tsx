@@ -281,6 +281,13 @@ export default function Run() {
     localStorage.setItem(MODE_KEY, m);
   }
 
+  // If the tempo lock switches on while the mobile Tap tab is selected, fall
+  // back to Presets — Tap is disabled under the lock, so leaving it selected
+  // would strand the view on a card that only tells you to release the lock.
+  useEffect(() => {
+    if (running && mode === "tap") setMode("presets");
+  }, [running, mode]);
+
   /** Change the target; a live tempo lock follows immediately (playbackRate is
    *  cheap to move), the queue itself only changes on the next Start. */
   function setTarget(v: number) {
@@ -773,17 +780,24 @@ export default function Run() {
     m === "presets" ? "Presets" : m === "steps" ? "Steps" : m === "tap" ? "Tap" : "Queue";
   const modeToggle = (opts: readonly ("presets" | "steps" | "queue" | "tap")[], active: string) => (
     <div className="segmented" style={{ display: "flex", margin: "0 auto 12px", width: "fit-content", flexWrap: "wrap" }}>
-      {opts.map((m) => (
-        <button
-          key={m}
-          className={"segmented-btn " + (active === m ? "active" : "")}
-          style={{ minWidth: 62 }}
-          onClick={() => setMode(m)}
-          aria-pressed={active === m}
-        >
-          {modeLabel(m)}
-        </button>
-      ))}
+      {opts.map((m) => {
+        // Tap needs the track at its true speed, so it's useless (and its warning
+        // card just adds scroll) while the tempo lock is stretching playback.
+        const disabled = m === "tap" && running;
+        return (
+          <button
+            key={m}
+            className={"segmented-btn " + (active === m ? "active" : "")}
+            style={{ minWidth: 62, ...(disabled ? { opacity: 0.4, cursor: "not-allowed" } : null) }}
+            onClick={() => setMode(m)}
+            disabled={disabled}
+            aria-pressed={active === m}
+            title={disabled ? "Release the tempo lock to tap a track's real BPM" : undefined}
+          >
+            {modeLabel(m)}
+          </button>
+        );
+      })}
     </div>
   );
 
