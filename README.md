@@ -292,10 +292,12 @@ Disabled by default. Set `GRABBER_ENABLED=true` (requires `ENABLE_UI=true`) to t
 | `UI_PORT` | `5000` | Port the web UI listens on inside the container |
 | `UI_PASSWORD` | _(empty)_ | **Required** — password for the web UI login page. The UI will not start if this is blank. |
 | `UI_SECRET_KEY` | _(empty)_ | Flask session secret key. Auto-generates a random key if empty — sessions are invalidated on each container restart. Set explicitly to persist sessions across restarts. Generate one with: `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `UI_SESSION_HOURS` | `24` | How long a browser session stays valid after login |
+| `UI_SESSION_HOURS` | `24` | Admin session length — you're signed out after this many hours of inactivity (sliding: each request refreshes it). Raise it (e.g. `168` for a week) if the default logs you out too often. |
 | `UI_MAX_LOGIN_ATTEMPTS` | `5` | Number of failed login attempts allowed per IP within a 60-second window before that IP is locked out |
 | `UI_LOCKOUT_SECONDS` | `300` | How long (in seconds) a locked-out IP must wait before login is re-enabled |
 | `UI_TRUSTED_PROXIES` | `0` | Number of reverse proxies in front of the UI. Leave `0` when port 5000 is reached directly; set `1` behind nginx/Caddy/Traefik so the login lockout keys on the real client IP (from `X-Forwarded-For`) instead of the proxy's — otherwise one user's failed logins lock out everyone. |
+| `RUN_PASSWORD` | _(empty)_ | Optional **second password** that logs into a locked-down **player mode** showing only the Run page — the tempo player, nothing else. Hand a phone or tablet to someone for a run without exposing your library, settings, or downloads. Leave empty to keep the single admin login. Also settable at runtime in **Settings → Player Access**. |
+| `RUN_SESSION_DAYS` | `30` | How long a **player** login stays signed in, in days (sliding). A running kiosk is low-privilege and opened repeatedly, so it defaults far longer than the admin session. Also settable in **Settings → Player Access**. |
 | `FETCH_ARTIST_IMAGES` | `false` | Fetch artist images for artists without a local `artist.jpg` from Deezer's public API (no account needed) and cache them on disk. Off by default because it sends artist names to Deezer. Also toggleable at runtime in **Settings → Artwork**. All Deezer API calls (this, the image-picker search) share an app-wide rate limiter (25 requests / 5 s — half of Deezer's public quota), so bulk page loads queue briefly instead of tripping quota errors. |
 | `ARTIST_IMAGES_TO_LIBRARY` | `false` | Save fetched or hand-picked artist images as `artist.jpg` in the artist's own folder, so Navidrome and other players see them too. Only writes to a folder that **exclusively** contains that artist's tracks — flat or shared (compilation) layouts keep using the app cache. Also toggleable in **Settings → Artwork**. |
 
@@ -320,6 +322,15 @@ All of these are editable at runtime in **Settings → Run Mode**; the env vars 
 | `RUN_TOLERANCE_PCT` | `4` | How far (%) a track's octave-folded BPM may sit from the target and still be queued |
 | `RUN_STRETCH_LIMIT_PCT` | `15` | Cap (%) on how far the tempo lock may speed up / slow down a track |
 
+### Anonymous install count
+
+On first run the web UI asks — once — whether you'll allow a single anonymous "courtesy ping" so I can gauge roughly how many installs exist. It contains **only the app version** — no identifier, no library data, no usage data, no cookies — and the receiver ([GoatCounter](https://www.goatcounter.com)) does not log IP addresses. Declining sends nothing and changes nothing; every feature works either way. You can change your mind anytime under **About**, and the whole mechanism is one small [auditable file](bpm_tagger/install_ping.py).
+
+| Variable | Default | Description |
+|---|---|---|
+| `INSTALL_PING` | _(unset)_ | Preset the choice for headless installs (no UI to ask in): `true` opts in, `false` opts out. Left unset, the UI asks on first run. |
+| `INSTALL_PING_URL` | _(the author's GoatCounter endpoint)_ | Where the ping goes. Set to your own endpoint to point it elsewhere, or `""` to disable the feature entirely (no prompt, nothing sent). |
+
 ---
 
 ## Web UI
@@ -327,6 +338,8 @@ All of these are editable at runtime in **Settings → Run Mode**; the env vars 
 Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `docker-compose.yml`, then open `http://your-host:5000`.
 
 > **Security note:** The web UI runs over plain HTTP. It is designed for access on a trusted local network. If you need to reach it remotely, place a reverse proxy (nginx, Caddy, Traefik) with TLS in front of it. See the [Security](#security) section for the full recommendations.
+
+**Player mode (optional):** set a second password under **Settings → Player Access** (or `RUN_PASSWORD`) and logging in with it opens a locked-down view showing **only the Run page** — ideal for handing a phone or tablet to someone for a run, or a dedicated running device. It can play, star/dislike, and scrobble, but can't reach your library, settings, or downloads (enforced server-side). Player logins stay signed in far longer than admin ones (`RUN_SESSION_DAYS`, default 30) so the running kiosk rarely re-asks.
 
 ### Install as an app (PWA)
 
@@ -648,6 +661,7 @@ The web UI implements multiple layers of protection:
 - **Hashed password storage** — once you change the UI password from **Settings**, only a salted [Werkzeug](https://werkzeug.palletsprojects.com/) hash is stored (in `settings.json`), never the plaintext. A legacy plaintext password from an older version is migrated to a hash automatically on first start. New passwords must be at least 8 characters. `settings.json` is written with `0600` permissions since it holds secrets (Navidrome password, Deezer ARL, session key).
 - **Password change revokes other sessions** — changing the password immediately invalidates every session except the one that made the change, so a stolen cookie or a forgotten logged-in device is cut off.
 - **Login brute-force protection** — failed login attempts are tracked per source IP. After `UI_MAX_LOGIN_ATTEMPTS` failures within 60 seconds, that IP is locked out for `UI_LOCKOUT_SECONDS`. Counts reset only after the full lockout period expires. Behind a reverse proxy, set `UI_TRUSTED_PROXIES` so this keys on the real client IP.
+- **Player role is default-deny** — the optional `RUN_PASSWORD` (Settings → Player Access) grants a restricted *player* session that the server confines to the Run page's endpoints via an explicit allowlist. A player may play, star/dislike, and scrobble; everything else — the library, settings, downloads, tag/BPM edits — is refused with HTTP 403 server-side, not merely hidden in the UI. Any endpoint added later is off-limits to players until deliberately allowlisted. Changing or disabling the run password immediately invalidates existing player sessions.
 - **SSRF protection** — when the image picker fetches a cover/artist image from a URL, the target host must resolve to a publicly routable address, so the fetch can't be pointed at LAN services or cloud metadata endpoints.
 - **Open redirect prevention** — the `?next=` parameter accepted after login is validated to ensure it points to this host only; external URLs are silently ignored.
 - **Path traversal prevention** — the Save BPM and Unlock API endpoints validate that the supplied file path resolves within `MUSIC_DIR` before touching any file or database record.

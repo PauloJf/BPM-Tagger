@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./lib/auth";
 import Nav from "./components/Nav";
 import PlayerBar from "./components/PlayerBar";
+import InstallPingCard from "./components/InstallPingCard";
 import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
@@ -34,7 +35,22 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className={"container page-enter" + (runPage ? " container--run" : "")}>{children}</div>
       </div>
       {!runPage && <PlayerBar />}
+      <InstallPingCard />
     </>
+  );
+}
+
+// Locked-down shell for the run-only ("player") role: just the Run page. The
+// sidebar, player bar, and every other route are gone — and the backend
+// independently refuses any endpoint the Run page doesn't need. Run itself
+// renders the Sign-out control (in its header on desktop, floating on mobile).
+function PlayerLayout() {
+  return (
+    <div className="app-main">
+      <div className="container container--run page-enter">
+        <Run />
+      </div>
+    </div>
   );
 }
 
@@ -49,7 +65,7 @@ function FullScreenLoader() {
 }
 
 export default function App() {
-  const { ready, authenticated } = useAuth();
+  const { ready, authenticated, role } = useAuth();
   const location = useLocation();
 
   if (!ready) return <FullScreenLoader />;
@@ -59,6 +75,10 @@ export default function App() {
     if (location.pathname === "/login") return <Login />;
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+
+  // Run-only role: every route collapses to the player shell. The client router
+  // never mounts the other pages, and the backend blocks their APIs regardless.
+  if (role === "player") return <PlayerLayout />;
 
   // Authenticated: /login redirects into the app.
   if (location.pathname === "/login") return <Navigate to="/tracks" replace />;

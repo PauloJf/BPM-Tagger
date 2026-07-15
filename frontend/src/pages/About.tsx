@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import { Toggle } from "../components/Toggle";
+import type { SettingsMap } from "../lib/types";
 
 const STACK: [string, string][] = [
   ["Flask + Waitress", "web server"],
@@ -24,6 +26,21 @@ export default function About() {
     queryFn: () => api.get<{ latest?: string }>("/api/version/check"),
     retry: false,
   });
+
+  const qc = useQueryClient();
+  const settingsQ = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.get<{ settings: SettingsMap }>("/api/settings"),
+    retry: false,
+  });
+  const pingMut = useMutation({
+    mutationFn: (consent: boolean) => api.post("/api/settings/install-ping", { consent }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+  const s = settingsQ.data?.settings;
+  const pingConfigured = !!String(s?.install_ping_url || "").trim();
+  const pingOn = s?.install_ping_consent === true;
+  const pingSent = s?.install_ping_sent === true;
 
   const latest = versionQ.data?.latest?.replace(/^v/, "");
   let badge: { text: string; color: string; bold?: boolean } | null = null;
@@ -106,6 +123,35 @@ export default function About() {
           )}
         </div>
       </div>
+
+      {pingConfigured && (
+        <div className="card" style={{ marginTop: 18 }}>
+          <div className="about-section-title">Privacy · anonymous install count</div>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <p style={{ flex: "1 1 320px", minWidth: 0, fontSize: 14, lineHeight: 1.7, color: "var(--text)", margin: 0 }}>
+              A single, optional ping lets me gauge roughly how many installs exist.
+              It carries only the app version — <strong>no</strong> identifier, no
+              library or usage data, no cookies — and IP addresses aren&rsquo;t
+              logged. It fires once; turning it off (or leaving it off) sends nothing
+              and changes nothing about how the app works.
+              {pingOn && pingSent && (
+                <span style={{ color: "var(--muted)" }}> The ping for this install has been sent.</span>
+              )}
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Toggle
+                on={pingOn}
+                onChange={(v) => pingMut.mutate(v)}
+                disabled={pingMut.isPending || settingsQ.isLoading}
+                label="Anonymous install count"
+              />
+              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: pingOn ? "var(--ok-fg)" : "var(--muted)" }}>
+                {pingOn ? "on" : "off"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 18, padding: "14px 0", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
         <span>BPM Tagger · v{version}</span>

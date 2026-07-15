@@ -1,12 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "./api";
-import type { Me } from "./types";
+import type { Me, Role } from "./types";
 
 interface AuthState {
   ready: boolean; // initial /api/me resolved
   authenticated: boolean;
+  role: Role | null;
   version: string;
   reviewCount: number;
+  installPingAsk: boolean;
+  dismissInstallPingAsk: () => void;
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -17,15 +20,21 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [role, setRole] = useState<Role | null>(null);
   const [version, setVersion] = useState("");
   const [reviewCount, setReviewCount] = useState(0);
+  const [installPingAsk, setInstallPingAsk] = useState(false);
 
   const applyMe = useCallback((me: Me) => {
     setCsrfToken(me.csrf_token);
     setAuthenticated(me.authenticated);
+    setRole(me.role ?? null);
     setVersion(me.version);
     setReviewCount(me.review_count || 0);
+    setInstallPingAsk(Boolean(me.install_ping_ask));
   }, []);
+
+  const dismissInstallPingAsk = useCallback(() => setInstallPingAsk(false), []);
 
   const refresh = useCallback(async () => {
     const me = await api.get<Me>("/api/me");
@@ -67,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, version, reviewCount, login, logout, refresh }}
+      value={{ ready, authenticated, role, version, reviewCount, installPingAsk, dismissInstallPingAsk, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

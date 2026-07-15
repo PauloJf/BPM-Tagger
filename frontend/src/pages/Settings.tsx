@@ -14,6 +14,7 @@ type Saved = "" | "saving" | "ok" | "err";
 const SIDEBAR = [
   ["sec-grabber", "Grabber"],
   ["sec-password", "Password"],
+  ["sec-run-access", "Player Access"],
   ["sec-ntfy", "Notifications"],
   ["sec-scan", "Scan Behavior"],
   ["sec-mode", "Operating Mode"],
@@ -152,6 +153,8 @@ export default function Settings() {
   const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
   const [lyricsRetryNotFound, setLyricsRetryNotFound] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [runPw, setRunPw] = useState({ next: "", confirm: "" });
+  const [runSessionDays, setRunSessionDays] = useState(30);
   const [grabber, setGrabber] = useState({
     enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
     outputFormat: "mp3-128", pathTemplate: "", providerOrder: "deezer,ytdlp",
@@ -238,6 +241,9 @@ export default function Settings() {
   const [lyricsSaved, setLyricsSaved] = useState<Saved>("");
   const [pwSaved, setPwSaved] = useState<Saved>("");
   const [pwErr, setPwErr] = useState("");
+  const [runPwSaved, setRunPwSaved] = useState<Saved>("");
+  const [runPwErr, setRunPwErr] = useState("");
+  const [runSessSaved, setRunSessSaved] = useState<Saved>("");
   const [hashMsg, setHashMsg] = useState("");
   const [reindexMsg, setReindexMsg] = useState("");
   const [versionMsg, setVersionMsg] = useState<{ text: string; color: string } | null>(null);
@@ -253,6 +259,7 @@ export default function Settings() {
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
     setPlayback(n("playback_buffer", 3));
+    setRunSessionDays(n("run_session_days", 30));
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
                             { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
     setRun({
@@ -332,6 +339,46 @@ export default function Settings() {
     } catch (err) {
       setPwSaved("err");
       setPwErr(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function setRunPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setRunPwErr("");
+    setRunPwSaved("saving");
+    try {
+      await api.post("/api/settings/run-password", { new_password: runPw.next, confirm_password: runPw.confirm });
+      setRunPwSaved("ok");
+      setRunPw({ next: "", confirm: "" });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setTimeout(() => setRunPwSaved(""), 1800);
+    } catch (err) {
+      setRunPwSaved("err");
+      setRunPwErr(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function disableRunPassword() {
+    setRunPwErr("");
+    try {
+      await api.post("/api/settings/run-password", { disable: true });
+      setRunPw({ next: "", confirm: "" });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    } catch (err) {
+      setRunPwErr(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function saveRunSession(e: React.FormEvent) {
+    e.preventDefault();
+    setRunSessSaved("saving");
+    try {
+      await api.post("/api/settings/run-session", { run_session_days: runSessionDays });
+      setRunSessSaved("ok");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setTimeout(() => setRunSessSaved(""), 1800);
+    } catch {
+      setRunSessSaved("err");
     }
   }
 
@@ -598,6 +645,66 @@ export default function Settings() {
               </div>
             </form>
           </div>
+
+          {/* Player Access — the run-only password */}
+          {(() => {
+            const runEnabled = cfg?.run_password_hash === "********" || cfg?.run_password === "********";
+            return (
+              <div id="sec-run-access" className="settings-card card">
+                <div className="settings-card-header">
+                  <h2>Player Access</h2>
+                  <p>
+                    Set a second password that logs into a locked-down mode showing <strong>only the Run page</strong> —
+                    the tempo player, nothing else. Hand a phone or tablet to someone for a run without exposing your
+                    library, settings, or downloads. Leave it unset to keep the single admin login.
+                  </p>
+                </div>
+                <div className="settings-fields">
+                  <div style={{ fontSize: 12, color: runEnabled ? "var(--ok-fg)" : "var(--muted)", fontFamily: "var(--mono)" }}>
+                    {runEnabled ? "● Player access is enabled" : "○ Player access is off"}
+                  </div>
+                </div>
+                <form onSubmit={setRunPassword} style={{ marginTop: 12 }}>
+                  <div className="settings-fields">
+                    <div className="field-row">
+                      {fieldLabel(runEnabled ? "New run password" : "Run password")}
+                      <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                    </div>
+                    <div className="field-row">
+                      {fieldLabel("Confirm password")}
+                      <input type="password" required autoComplete="new-password" value={runPw.confirm} onChange={(e) => setRunPw({ ...runPw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                    </div>
+                    {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <SaveButton state={runPwSaved} label={runEnabled ? "Change run password" : "Enable player access"} />
+                      {runEnabled && (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
+                          Disable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </form>
+                {runEnabled && (
+                  <form onSubmit={saveRunSession} style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                    <div className="settings-fields">
+                      <div className="field-row">
+                        {fieldLabel("Stay signed in for", "days — the run kiosk rarely re-asks (sliding; each use extends it)")}
+                        <input
+                          type="number" min={1} max={365} value={runSessionDays}
+                          onChange={(e) => setRunSessionDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                          style={{ maxWidth: 120, width: "100%" }}
+                        />
+                      </div>
+                      <div>
+                        <SaveButton state={runSessSaved} label="Save session length" ghost />
+                      </div>
+                    </div>
+                  </form>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Notifications */}
           <div id="sec-ntfy" className="settings-card card">

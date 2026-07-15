@@ -8,7 +8,8 @@ import time
 
 from .bpm.pipeline import ScanProgress
 from .bpm.tags import write_bpm_tag
-from .config import build_config, load_settings_override
+from .config import build_config, load_settings_override, settings_file_path
+from .install_ping import maybe_send_install_ping
 from .scan.scanner import BPMTagger
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ def main():
 
     config = build_config()
     config = load_settings_override(config)
+
+    # One-time anonymous install ping (opt-in; no-op unless the user consented,
+    # e.g. via INSTALL_PING=true for headless installs). See install_ping.py.
+    maybe_send_install_ping(config, settings_file_path(config["db_path"]))
 
     if (os.environ.get("USE_DEEPRHYTHM", "false").lower() == "true"
             and os.environ.get("WITH_DEEPRHYTHM", "false").lower() != "true"):

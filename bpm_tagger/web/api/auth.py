@@ -12,7 +12,7 @@ import time
 from flask import Blueprint, current_app, jsonify, request, session
 
 from ...config import __version__
-from ..auth import _check_csrf, _csrf_token, verify_ui_password
+from ..auth import _check_csrf, _csrf_token, verify_run_password, verify_ui_password
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -37,12 +37,28 @@ def api_login():
             st.login_lockout_until[ip] = now + st.lockout_seconds
             st.login_attempts[ip] = []
             return jsonify(ok=False, error="locked_out"), 429
-        if isinstance(password, str) and password and verify_ui_password(password):
+        # Admin password wins if both happen to match; the run-only password
+        # grants the restricted "player" role (Run page only).
+        role = None
+        if isinstance(password, str) and password:
+            if verify_ui_password(password):
+                role = "admin"
+                stamp = current_app.config.get("PW_STAMP")
+            elif verify_run_password(password):
+                role = "player"
+                stamp = current_app.config.get("RUN_PW_STAMP")
+        if role:
             st.login_attempts.pop(ip, None)
             st.login_lockout_until.pop(ip, None)
             session["ok"] = True
-            session["pw"] = current_app.config.get("PW_STAMP")
-            return jsonify(ok=True, csrf_token=_csrf_token())
+            session["role"] = role
+            session["pw"] = stamp
+            # Persistent (sliding) session for both roles so the configured
+            # lifetime is actually honored: admins get UI_SESSION_HOURS (via
+            # PERMANENT_SESSION_LIFETIME), players get the longer RUN_SESSION
+            # window (see _RoleSessionInterface).
+            session.permanent = True
+            return jsonify(ok=True, role=role, csrf_token=_csrf_token())
         st.login_attempts[ip].append(now)
     return jsonify(ok=False, error="invalid_password"), 401
 
@@ -64,16 +80,28 @@ def api_me():
     """
     st = state()
     authenticated = bool(session.get("ok"))
+    role = session.get("role") if authenticated else None
+    is_admin = role == "admin"
     resp = {
         "authenticated": authenticated,
+        "role": role,
         "version": __version__,
         "csrf_token": _csrf_token(),
     }
-    if authenticated and st.db is not None:
+    # Library stats and the install-ping prompt are admin-only — a player session
+    # is a locked-down kiosk and never sees them.
+    if is_admin and st.db is not None:
         try:
             resp["review_count"] = st.db.get_stats().get("needs_review", 0)
         except Exception:
             resp["review_count"] = 0
     else:
         resp["review_count"] = 0
+    # Prompt for the one-time install ping only for an admin, when a ping URL is
+    # configured and the user hasn't answered yet. See install_ping.py.
+    resp["install_ping_ask"] = bool(
+        is_admin
+        and st.config.get("install_ping_consent") is None
+        and str(st.config.get("install_ping_url") or "").strip()
+    )
     return jsonify(resp)

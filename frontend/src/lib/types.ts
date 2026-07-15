@@ -126,11 +126,15 @@ export interface ReviewPage {
   per_page: number;
 }
 
+export type Role = "admin" | "player";
+
 export interface Me {
   authenticated: boolean;
+  role: Role | null;
   version: string;
   csrf_token: string;
   review_count: number;
+  install_ping_ask?: boolean;
 }
 
 export interface Waveform {

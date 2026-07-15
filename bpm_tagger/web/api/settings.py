@@ -20,8 +20,15 @@ settings_bp = Blueprint("settings", __name__)
 
 # Values that must never be returned to the client in the clear.
 _SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
+                "run_password", "run_password_hash",
                 "navidrome_pass", "spotify_client_secret",
                 "monochrome_api_key", "deezer_arl"}
+
+# Keys a player-role session is allowed to read from /api/settings — just what
+# the Run page needs to render (presets, tolerances, playback buffer).
+def _player_settings_keys(cfg: dict) -> list:
+    return [k for k in cfg if k.startswith("run_") and k != "run_password"
+            and k != "run_password_hash"] + ["playback_buffer"]
 
 
 def _json_body() -> dict:
@@ -33,6 +40,13 @@ def _json_body() -> dict:
 def api_settings_get():
     st = state()
     cfg = dict(st.config)
+    # Players get only the run-relevant keys — never the full config (which
+    # carries Navidrome/Spotify hosts, paths, and masked secrets).
+    if session.get("role") == "player":
+        keys = _player_settings_keys(cfg)
+        out = {k: (sorted(cfg[k]) if isinstance(cfg[k], (set, frozenset)) else cfg[k])
+               for k in keys if k in cfg}
+        return jsonify(settings=out, version=__version__, env_locked=[])
     out = {}
     for key, val in cfg.items():
         if key in _SECRET_KEYS:
@@ -387,6 +401,88 @@ def api_test_deezer():
     ok = DeezerProvider({"deezer_arl": arl.strip()}).healthcheck()
     return jsonify(ok=ok, message="ARL accepted" if ok else None,
                    error=None if ok else "Login failed (ARL invalid or expired)")
+
+
+@settings_bp.route("/api/settings/install-ping", methods=["POST"])
+@login_required
+def api_settings_install_ping():
+    """Record the user's choice for the one-time anonymous install ping.
+
+    Opting in fires the ping immediately (in the background); it only ever sends
+    once. Opting out persists ``False`` so the prompt never returns. See
+    install_ping.py for exactly what a ping contains."""
+    _check_csrf()
+    st = state()
+    consent = bool(_json_body().get("consent"))
+    st.config["install_ping_consent"] = consent
+    save_settings(st.settings_path, {"install_ping_consent": consent})
+    if consent:
+        from ...install_ping import maybe_send_install_ping
+        maybe_send_install_ping(st.config, st.settings_path)
+    return jsonify(ok=True)
+
+
+@settings_bp.route("/api/settings/run-password", methods=["POST"])
+@login_required
+def api_settings_run_password():
+    """Admin-only: set, change, or disable the player-only ("Run-only") password.
+
+    Send ``{new_password, confirm_password}`` to set/change it (min 8 chars), or
+    ``{disable: true}`` to turn player access off. Changing it invalidates any
+    existing player sessions; admin sessions are untouched."""
+    _check_csrf()
+    if session.get("role") == "player":  # players can't reach settings anyway
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    data = _json_body()
+
+    if data.get("disable"):
+        # Persist an empty string (not a removal) so it overrides any RUN_PASSWORD
+        # env fallback on the next start; drop the hash entirely.
+        current_app.config["RUN_PASSWORD"] = ""
+        current_app.config["RUN_PASSWORD_HASH"] = ""
+        current_app.config["RUN_PW_STAMP"] = None
+        st.config["run_password"] = ""
+        st.config["run_password_hash"] = ""
+        save_settings(st.settings_path, {"run_password": "", "run_password_hash": None})
+        return jsonify(ok=True, enabled=False)
+
+    new_pw = str(data.get("new_password", ""))
+    confirm = str(data.get("confirm_password", ""))
+    if len(new_pw) < 8:
+        return jsonify(ok=False, error="Run password must be at least 8 characters."), 400
+    if new_pw != confirm:
+        return jsonify(ok=False, error="Passwords do not match."), 400
+    if verify_ui_password(new_pw):
+        return jsonify(ok=False,
+                       error="Run password must differ from the admin password."), 400
+    from werkzeug.security import generate_password_hash
+    hashed = generate_password_hash(new_pw)
+    current_app.config["RUN_PASSWORD"] = ""
+    current_app.config["RUN_PASSWORD_HASH"] = hashed
+    current_app.config["RUN_PW_STAMP"] = password_stamp(hashed, "")
+    st.config["run_password"] = ""
+    st.config["run_password_hash"] = hashed
+    save_settings(st.settings_path, {"run_password_hash": hashed, "run_password": ""})
+    return jsonify(ok=True, enabled=True)
+
+
+@settings_bp.route("/api/settings/run-session", methods=["POST"])
+@login_required
+def api_settings_run_session():
+    """Admin-only: how many days a player login stays signed in (1–365)."""
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    try:
+        days = max(1, min(365, int(_json_body().get("run_session_days", 30))))
+    except (ValueError, TypeError):
+        return jsonify(ok=False, error="Enter a number of days (1–365)."), 400
+    st.config["run_session_days"] = days
+    current_app.config["RUN_SESSION_SECONDS"] = days * 86400
+    save_settings(st.settings_path, {"run_session_days": days})
+    return jsonify(ok=True, run_session_days=days)
 
 
 @settings_bp.route("/api/settings/password", methods=["POST"])

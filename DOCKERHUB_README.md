@@ -85,6 +85,10 @@ docker compose up -d && docker compose logs -f
 | `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM gap that flags a track for review |
 | `ENABLE_UI` | `false` | Start the web UI |
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
+| `UI_SESSION_HOURS` | `24` | Admin session length — signed out after this many idle hours (sliding) |
+| `RUN_PASSWORD` | _(empty)_ | Optional second password for a locked-down **player mode** (Run page only). Also settable in Settings → Player Access |
+| `RUN_SESSION_DAYS` | `30` | How long a player login stays signed in (days) |
+| `INSTALL_PING` / `INSTALL_PING_URL` | _(ask on first run)_ | Opt-in anonymous install ping (version only; no identifier/data/cookies). Set `INSTALL_PING=false` or `INSTALL_PING_URL=""` to disable |
 | `NTFY_TOPIC` | _(empty)_ | ntfy topic (leave empty to disable) |
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
 | `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
@@ -128,6 +132,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 - Save & Lock corrected BPM; Unlock for re-analysis
 - Stats — BPM histogram with peak highlight and median marker, detector breakdown, Reviewed card, Retry Errors; with the grabber on, a **Library sources** card (grabbed vs pre-existing, downloads per provider, duplicates / ISRC / playlist-coverage rollups)
 - Settings — live config changes without restart; `/healthz` JSON endpoint
+- **Player mode** _(optional)_ — a second password (`RUN_PASSWORD` / Settings → Player Access) logs into a locked-down view showing **only the Run page**: play, star/dislike, and scrobble, but no access to the library, settings, or downloads (enforced server-side, default-deny). Ideal for a shared phone/tablet or a dedicated running device; its login stays signed in far longer (`RUN_SESSION_DAYS`, default 30)
 - **Installable as an app (PWA)** — add it to your phone's home screen (requires HTTPS in front of the UI); lock-screen/headset media controls via the Media Session API; no offline caching, everything streams live from your server
 
 ---
@@ -141,6 +146,8 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.6.2** — **Player mode + session lengths + opt-in install count.** A second password (`RUN_PASSWORD` / Settings → Player Access) opens a locked-down **player** view showing only the Run page — play, star/dislike, scrobble, nothing else (server-side default-deny). Player logins stay signed in far longer than admin ones (`RUN_SESSION_DAYS`, default 30); the admin session length (`UI_SESSION_HOURS`, default 24) is now actually enforced as a sliding idle timeout. On first run the UI asks once whether to send a single **anonymous install ping** (app version only — no identifier, data, or cookies; IPs not logged); decline and nothing is sent, change your mind under About.
 
 **v2.6.1** — **UI consistency pass**: every top-level page now shares one header layout (title · subtitle · right-aligned primary action, with search/filters on their own toolbar row) built from common components. The sidebar's active item is clearer and its scan status is promoted to a block with a live `completed / total` count and a progress bar while analysing. On desktop the Run page aligns to the same width and position as every other page (it was narrower/inset before), fills the width in the single-column layout, and its tap-tempo card holds a constant height across states.
 

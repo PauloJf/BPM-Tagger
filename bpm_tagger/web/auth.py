@@ -40,6 +40,24 @@ def verify_ui_password(candidate: str) -> bool:
     return bool(expected) and hmac.compare_digest(candidate, expected)
 
 
+def verify_run_password(candidate: str) -> bool:
+    """Check a login attempt against the player-only ("Run-only") password.
+
+    Mirrors ``verify_ui_password``: a stored hash (set once changed from the UI)
+    is authoritative, else the plaintext ``RUN_PASSWORD`` env fallback. Returns
+    False when no run password is configured, so the player role is simply
+    unreachable until an admin sets one."""
+    hashed = current_app.config.get("RUN_PASSWORD_HASH", "")
+    if hashed:
+        from werkzeug.security import check_password_hash
+        try:
+            return check_password_hash(hashed, candidate)
+        except Exception:
+            return False
+    expected = current_app.config.get("RUN_PASSWORD", "")
+    return bool(expected) and hmac.compare_digest(candidate, expected)
+
+
 def password_stamp(hashed: str, plain: str) -> str:
     """A short opaque value tied to the current password. Stored in every
     session at login and checked by login_required, so changing the password
@@ -61,8 +79,18 @@ def login_required(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("ok") or \
-                session.get("pw") != current_app.config.get("PW_STAMP"):
+        # A session is valid if its stamp matches either the admin password or
+        # the (optional) run-only password. The player-scope gate in the app
+        # factory further restricts which endpoints a "player" session reaches.
+        valid = {current_app.config.get("PW_STAMP"),
+                 current_app.config.get("RUN_PW_STAMP")}
+        valid.discard(None)
+        if not session.get("ok") or session.get("pw") not in valid:
             return jsonify(error="unauthorized"), 401
         return f(*args, **kwargs)
     return wrapper
+
+
+def is_player() -> bool:
+    """True when the current session authenticated with the run-only password."""
+    return session.get("role") == "player"

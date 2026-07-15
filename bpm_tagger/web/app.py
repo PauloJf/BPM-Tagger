@@ -12,10 +12,11 @@ are unchanged.
 import logging
 import os
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, abort, request, send_file, send_from_directory
+from flask import Flask, abort, jsonify, request, send_file, send_from_directory, session
+from flask.sessions import SecureCookieSessionInterface
 
 from ..db import BPMDatabase
 from .api.auth import api_auth_bp
@@ -52,9 +53,47 @@ _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
 # Path prefixes owned by the backend — never served the SPA shell.
 _API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/")
 
+# Player-only ("Run-only") role scope. A session that logged in with the run
+# password may reach ONLY these endpoints; every other API endpoint is 403'd by
+# _enforce_player_scope. This is a DEFAULT-DENY allowlist: any endpoint added in
+# future is automatically off-limits to players until deliberately listed here.
+# The SPA shell / static assets (None, "static", "spa", "spa_assets") always
+# load so the client router can bounce the player to /run.
+_PLAYER_ALWAYS = {None, "static", "spa", "spa_assets"}
+_PLAYER_ALLOWED = {
+    # Auth / bootstrap
+    "api_auth.api_me", "api_auth.api_login", "api_auth.api_logout",
+    # Building and playing the run queue
+    "api_run.api_run_queue",
+    "media.audio", "media.healthz", "media.api_scrobble",
+    # Now-playing display + the two allowed track flags (star / dislike)
+    "api_tracks.api_track", "api_tracks.api_track_cover_get",
+    "api_tracks.api_waveform", "api_tracks.api_track_star",
+    "api_tracks.api_track_dislike",
+    # Run presets/tolerances (returned filtered to run_* keys for players)
+    "settings.api_settings_get",
+}
+
+
+class _RoleSessionInterface(SecureCookieSessionInterface):
+    """Give the player ("Run-only") role a longer cookie lifetime than the admin.
+
+    Flask's ``PERMANENT_SESSION_LIFETIME`` is app-wide, so per-role expiry is set
+    here: a permanent player session expires ``RUN_SESSION_SECONDS`` from now
+    (sliding, since the cookie is re-sent each request); every other session
+    keeps Flask's default behaviour."""
+
+    def get_expiration_time(self, app, session):
+        if session.permanent and session.get("role") == "player":
+            secs = int(app.config.get("RUN_SESSION_SECONDS") or 0)
+            if secs > 0:
+                return datetime.now(timezone.utc) + timedelta(seconds=secs)
+        return super().get_expiration_time(app, session)
+
 
 def create_app(config: dict) -> Flask:
     app = Flask(__name__, static_folder=_STATIC_DIR)
+    app.session_interface = _RoleSessionInterface()
 
     st = AppState()
     st.db = BPMDatabase(config["db_path"])
@@ -98,6 +137,19 @@ def create_app(config: dict) -> Flask:
     # previous password, so a password change logs out every other device.
     app.config["PW_STAMP"] = password_stamp(
         app.config["UI_PASSWORD_HASH"], app.config["UI_PASSWORD"])
+    # Player-only ("Run-only") password — a second credential whose sessions are
+    # confined to the Run page by the player-scope gate below. Its stamp is None
+    # when unset, so login_required never accepts a stale player session once the
+    # password is cleared (mirrors PW_STAMP for the admin password).
+    app.config["RUN_PASSWORD"] = config.get("run_password", "")
+    app.config["RUN_PASSWORD_HASH"] = config.get("run_password_hash", "")
+    _run_stamp_src = app.config["RUN_PASSWORD_HASH"] or app.config["RUN_PASSWORD"]
+    app.config["RUN_PW_STAMP"] = (
+        password_stamp(app.config["RUN_PASSWORD_HASH"], app.config["RUN_PASSWORD"])
+        if _run_stamp_src else None)
+    # Player session length (see _RoleSessionInterface). Clamped to a sane range.
+    _run_days = max(1, min(365, int(config.get("run_session_days", 30) or 30)))
+    app.config["RUN_SESSION_SECONDS"] = _run_days * 86400
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
         hours=int(config.get("ui_session_hours", 24))
     )
@@ -173,6 +225,18 @@ def create_app(config: dict) -> Flask:
     def _ensure_csrf():
         if request.endpoint not in _CSRF_EXEMPT_ENDPOINTS:
             _csrf_token()
+
+    @app.before_request
+    def _enforce_player_scope():
+        # Confine run-only sessions to the Run page's endpoints. SPA/static
+        # routes still load (so the client router can redirect to /run); any
+        # other API endpoint is refused. Admin sessions are unaffected.
+        if session.get("role") != "player":
+            return
+        ep = request.endpoint
+        if ep in _PLAYER_ALWAYS or ep in _PLAYER_ALLOWED:
+            return
+        return jsonify(error="forbidden"), 403
 
     return app
 

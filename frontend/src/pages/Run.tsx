@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate } from "../lib/player";
 import type { RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
@@ -181,6 +182,11 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
 
 export default function Run() {
   useTitle("Run");
+  // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
+  // grab), no links out to pages the player can't open. The backend enforces
+  // the same limits; this just keeps the UI honest.
+  const { role, logout } = useAuth();
+  const playerMode = role === "player";
   const player = usePlayer();
   const { current, playing, audioRef } = player;
   const { time, dur } = useAudioTime(audioRef);
@@ -285,8 +291,8 @@ export default function Run() {
   // back to Presets — Tap is disabled under the lock, so leaving it selected
   // would strand the view on a card that only tells you to release the lock.
   useEffect(() => {
-    if (running && mode === "tap") setMode("presets");
-  }, [running, mode]);
+    if ((running || playerMode) && mode === "tap") setMode("presets");
+  }, [running, playerMode, mode]);
 
   /** Change the target; a live tempo lock follows immediately (playbackRate is
    *  cheap to move), the queue itself only changes on the next Start. */
@@ -414,6 +420,13 @@ export default function Run() {
     </button>
   );
 
+  // Sign-out for the run-only role (no sidebar to hold the usual logout).
+  const signOutButton = playerMode ? (
+    <button className="btn btn-ghost" style={{ minHeight: 40, whiteSpace: "nowrap" }} onClick={() => logout()} title="Sign out">
+      Sign out
+    </button>
+  ) : null;
+
   // Desktop shows the full uniform header (title + subtitle + right-aligned
   // action). Mobile has no header at all — the nav already says you're on Run,
   // and the screen is tight — so the cover gets that space and the Start/Rebuild
@@ -422,7 +435,7 @@ export default function Run() {
     <PageHeader
       title="Run"
       subtitle="Tempo-matched player — lock every track onto your cadence."
-      actions={startRebuildButton}
+      actions={<>{signOutButton}{startRebuildButton}</>}
     />
   );
 
@@ -432,17 +445,28 @@ export default function Run() {
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
         <Cover path={current.path} size={240} style={{ width: coverSize, height: coverSize, objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
       </div>
-      <Link
-        to={`/track?path=${encodeURIComponent(current.path)}`}
-        title="Open the track page — review or fix its BPM"
-        style={{
-          display: "block", fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 2,
-          color: "inherit", textDecoration: "none",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}
-      >
-        {current.title}
-      </Link>
+      {playerMode ? (
+        <div
+          style={{
+            fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 2,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}
+        >
+          {current.title}
+        </div>
+      ) : (
+        <Link
+          to={`/track?path=${encodeURIComponent(current.path)}`}
+          title="Open the track page — review or fix its BPM"
+          style={{
+            display: "block", fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 2,
+            color: "inherit", textDecoration: "none",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}
+        >
+          {current.title}
+        </Link>
+      )}
       {current.artist && <div style={{ fontSize: 13, color: "var(--muted)" }}>{current.artist}</div>}
     </div>
   );
@@ -655,22 +679,24 @@ export default function Run() {
         <button style={ctlBtn} onClick={player.next} aria-label="Next" title="Next">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5v14h2V5h-2zM4 19l11-7L4 5v14z" /></svg>
         </button>
-        <button
-          style={{
-            ...ctlBtn, width: 40, height: 40, position: "absolute", right: 0,
-            color: lyricsOpen ? "var(--accent-2)" : "var(--muted)",
-            borderColor: lyricsOpen ? "var(--accent-border)" : "var(--border)",
-          }}
-          onClick={() => setLyricsOpen((o) => !o)}
-          aria-label="Show lyrics"
-          aria-expanded={lyricsOpen}
-          title="Lyrics"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
-          </svg>
-        </button>
+        {!playerMode && (
+          <button
+            style={{
+              ...ctlBtn, width: 40, height: 40, position: "absolute", right: 0,
+              color: lyricsOpen ? "var(--accent-2)" : "var(--muted)",
+              borderColor: lyricsOpen ? "var(--accent-border)" : "var(--border)",
+            }}
+            onClick={() => setLyricsOpen((o) => !o)}
+            aria-label="Show lyrics"
+            aria-expanded={lyricsOpen}
+            title="Lyrics"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -710,7 +736,7 @@ export default function Run() {
             </span>
           )}
           <span style={{ marginLeft: "auto", display: "flex", alignItems: "baseline", gap: 10 }}>
-            {queueTrack?.artist && (
+            {!playerMode && queueTrack?.artist && (
               <button
                 className="btn btn-bare btn-sm"
                 style={{ padding: 0, fontSize: 11, color: similarOpen ? "var(--accent-2)" : "var(--muted)" }}
@@ -719,7 +745,9 @@ export default function Run() {
                 title={`Tracks similar to ${queueTrack.artist} — in-library matches queue onto this run's cadence`}
               >≈ Similar</button>
             )}
-            <Link to="/settings#sec-run" style={{ fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>
+            {!playerMode && (
+              <Link to="/settings#sec-run" style={{ fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>
+            )}
           </span>
         </div>
         {similarOpen && queueTrack?.artist && (
@@ -825,7 +853,7 @@ export default function Run() {
               <div className="run-cockpit-info">
                 {nowPlaying}
                 {trackDetails}
-                <div style={{ marginTop: 14 }}>{tapControl}</div>
+                {!playerMode && <div style={{ marginTop: 14 }}>{tapControl}</div>}
               </div>
               <div className="run-cockpit-controls">
                 {targetBlock}
@@ -846,13 +874,23 @@ export default function Run() {
   return (
     <div>
       {glowLayer}
+      {playerMode && (
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => logout()}
+          title="Sign out"
+          style={{ position: "fixed", top: 10, right: 10, zIndex: 120 }}
+        >
+          Sign out
+        </button>
+      )}
       {mode !== "queue" && nowPlaying}
       {/* Tap needs the whole tap pad on screen at once; the target readout (its
           big number + native pill + the build/lock buttons) is dead weight while
           tapping — the lock is off in this mode anyway — so drop it here to keep
           the pad within one screen without scrolling. */}
       {mode !== "tap" && targetBlock}
-      {modeToggle(["presets", "steps", "tap", "queue"], mode)}
+      {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
       {mode === "queue" ? renderQueuePanel(false)
         : mode === "tap" ? tapControl
         : mode === "steps" ? stepsRow

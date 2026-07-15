@@ -10,6 +10,31 @@ log = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wav", ".opus", ".wv"}
 
+# ── Anonymous install ping ────────────────────────────────────────────────────
+# A one-time, opt-in "courtesy ping" so the author can gauge roughly how many
+# installs exist. It carries ONLY the app version — no identifier, no library
+# data, no usage data, no cookies. See bpm_tagger/install_ping.py.
+#
+# Points at the author's GoatCounter "count" endpoint. GoatCounter is
+# privacy-first and does not store IP addresses. Set this empty to make the whole
+# feature dormant (no first-run prompt, nothing ever sent). End users can override
+# it with the INSTALL_PING_URL env var (point it elsewhere, or "" to disable).
+INSTALL_PING_URL_DEFAULT = "https://bpmtagger.goatcounter.com/count"
+
+
+def _parse_install_consent() -> "bool | None":
+    """Tri-state install-ping consent from the INSTALL_PING env var.
+
+    ``true`` / ``false`` preset the choice for headless installs (no UI to ask
+    in); anything else leaves it unset so the UI asks on first run. settings.json
+    overrides this once the user has answered."""
+    raw = os.environ.get("INSTALL_PING", "").strip().lower()
+    if raw in ("true", "1", "yes", "on"):
+        return True
+    if raw in ("false", "0", "no", "off"):
+        return False
+    return None
+
 # Settings whose UI control is locked when the matching env var is explicitly
 # set (e.g. in docker-compose). Maps env var name → config key. A locked key is
 # authoritative from the environment: settings.json cannot override it and the
@@ -173,6 +198,12 @@ def build_config() -> dict:
         "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
+        # ── Anonymous install ping (opt-in, one-time; see install_ping.py) ────
+        "install_ping_url":           os.environ.get("INSTALL_PING_URL", INSTALL_PING_URL_DEFAULT),
+        # None = not yet asked (UI prompts on first run); True/False = user's answer.
+        "install_ping_consent":       _parse_install_consent(),
+        # Set True in settings.json once the ping has been delivered — fired once.
+        "install_ping_sent":          False,
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
         # ── Run mode (tempo-locked playback) — normally edited from the UI ────
         "run_presets":                _parse_run_presets(os.environ.get(
@@ -200,6 +231,17 @@ def build_config() -> dict:
         # UI; once present it is authoritative and ui_password is ignored.
         "ui_password_hash":           "",
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),
+        # ── Player-only ("Run-only") access ──────────────────────────────────
+        # A second password that logs into a restricted role able to reach ONLY
+        # the Run page (tempo player). Empty = feature off, no second login.
+        # Env sets the initial value; once changed from the UI the hash below is
+        # authoritative (mirrors ui_password / ui_password_hash).
+        "run_password":               os.environ.get("RUN_PASSWORD", ""),
+        "run_password_hash":          "",
+        # How long a player ("Run-only") login stays signed in, in days (sliding
+        # — each use extends it). It's a low-privilege kiosk opened repeatedly
+        # for runs, so it defaults far longer than the admin session.
+        "run_session_days":           int(os.environ.get("RUN_SESSION_DAYS", "30")),
         # Number of reverse proxies in front of the UI (X-Forwarded-For depth).
         # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
         # so the login brute-force lockout keys on the real client IP.
