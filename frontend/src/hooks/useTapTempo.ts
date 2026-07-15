@@ -3,7 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Tap tempo: BPM = 60000 / mean of the last ≤8 inter-tap intervals.
 // A gap ≥3000ms resets the sample set; 3s of silence auto-resets everything.
 // Ported verbatim from the track.html tap-tempo logic.
-export function useTapTempo() {
+//
+// `enabled` (default true) gates the global Space-to-tap listener. The Run page
+// passes false while the tempo lock is on — tapping there only makes sense at
+// the track's true speed, so it's disabled until the lock is released.
+export function useTapTempo(enabled = true) {
   const [display, setDisplay] = useState<string>("—"); // "—" or a fixed(1) BPM string
   const [taps, setTaps] = useState(0);
   const intervals = useRef<number[]>([]);
@@ -45,6 +49,7 @@ export function useTapTempo() {
 
   // Space anywhere (except when focused in an input/button/textarea) triggers a tap.
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as Element | null;
       if (e.code === "Space" && target && !target.matches("input, button, textarea")) {
@@ -54,7 +59,7 @@ export function useTapTempo() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onTap]);
+  }, [onTap, enabled]);
 
   // Clear any pending auto-reset timer on unmount.
   useEffect(() => () => {
