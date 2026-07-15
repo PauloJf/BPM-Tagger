@@ -888,21 +888,26 @@ export default function Run() {
   }
 
   return (
-    <div>
+    // Player mode fills the viewport (run-mobile-fill) so the transport pins to
+    // the bottom and the cockpit above distributes the leftover space; admin
+    // mobile keeps its normal top-down flow (the wrapper class is inert there).
+    <div className={playerMode ? "run-mobile-fill" : undefined}>
       {glowLayer}
       {playerBanner}
-      {mode !== "queue" && nowPlaying}
-      {/* Tap needs the whole tap pad on screen at once; the target readout (its
-          big number + native pill + the build/lock buttons) is dead weight while
-          tapping — the lock is off in this mode anyway — so drop it here to keep
-          the pad within one screen without scrolling. */}
-      {mode !== "tap" && targetBlock}
-      {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
-      {mode === "queue" ? renderQueuePanel(false)
-        : mode === "tap" ? tapControl
-        : mode === "steps" ? stepsRow
-        : presetsGrid}
-      {buildMessages}
+      <div className="run-mobile-body">
+        {mode !== "queue" && nowPlaying}
+        {/* Tap needs the whole tap pad on screen at once; the target readout (its
+            big number + native pill + the build/lock buttons) is dead weight while
+            tapping — the lock is off in this mode anyway — so drop it here to keep
+            the pad within one screen without scrolling. */}
+        {mode !== "tap" && targetBlock}
+        {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
+        {mode === "queue" ? renderQueuePanel(false)
+          : mode === "tap" ? tapControl
+          : mode === "steps" ? stepsRow
+          : presetsGrid}
+        {buildMessages}
+      </div>
       {transport}
       {lyricsDrawer}
     </div>

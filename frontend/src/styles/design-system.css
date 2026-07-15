@@ -935,6 +935,14 @@ body.has-player .container { padding-bottom: 88px; }
 @media (max-width: 900px) {
   .container.container--run,
   body.has-player .container.container--run { padding-top: 14px; padding-bottom: 24px; }
+  /* Player kiosk: fill the viewport so the transport (waveform + controls) pins
+     to the bottom and the cockpit above distributes the leftover space. Player
+     mode has no nav, so 38px = the run container's top+bottom padding. */
+  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px); }
+  .run-mobile-fill .run-mobile-body {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; justify-content: center;
+  }
 }
 .player-bar {
   position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
