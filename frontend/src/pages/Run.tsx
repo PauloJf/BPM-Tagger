@@ -794,7 +794,7 @@ export default function Run() {
   }
 
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto" }}>
+    <div>
       {glowLayer}
       {pageHeader}
       {mode !== "queue" && nowPlaying}
