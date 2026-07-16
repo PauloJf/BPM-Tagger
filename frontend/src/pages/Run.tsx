@@ -16,7 +16,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
-import BpmMark from "../components/BpmMark";
+import { PlayerMobileBar } from "../components/Nav";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -186,7 +186,7 @@ export default function Run() {
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
   // the same limits; this just keeps the UI honest.
-  const { role, logout } = useAuth();
+  const { role } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
   const { current, playing, audioRef } = player;
@@ -424,23 +424,11 @@ export default function Run() {
     </button>
   );
 
-  // Player mode has no sidebar, so a compact top banner carries the brand + a
-  // "Run mode" note (and the sign-out, since there's no nav to hold it). Kept
-  // short so the run player still fits one screen — see bannerReserve.
-  const playerBanner = playerMode ? (
-    <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
-      <div className="nav-logo-tile" style={{ width: 30, height: 30 }}>
-        <BpmMark size={18} />
-      </div>
-      <div className="nav-logo-text">
-        <span className="nav-logo-title">BPM Tagger</span>
-        <span className="nav-logo-sub">Run mode</span>
-      </div>
-      <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => logout()} title="Sign out">
-        Sign out
-      </button>
-    </div>
-  ) : null;
+  // Player mode below 1100px has no sidebar, so a compact top bar carries the
+  // brand + Run/About tabs + sign-out. Above 1100px the PlayerNav sidebar takes
+  // over and CSS hides this bar. Kept to one row so the run player still fits
+  // one screen on phones — see bannerReserve.
+  const playerBanner = playerMode ? <PlayerMobileBar /> : null;
 
   // Desktop shows the full uniform header (title + subtitle + right-aligned
   // action). Mobile has no header at all — the nav already says you're on Run,

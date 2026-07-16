@@ -239,17 +239,99 @@ function SidebarScan({ state, act, progress }: { state: ScanState; act: (a: "sta
   );
 }
 
-function Logo() {
+function Logo({ to = "/tracks", sub = "for navidrome" }: { to?: string; sub?: string }) {
   return (
-    <NavLink to="/tracks" className="nav-logo">
+    <NavLink to={to} className="nav-logo">
       <div className="nav-logo-tile">
         <BpmMark size={17} />
       </div>
       <div className="nav-logo-text">
         <span className="nav-logo-title">BPM Tagger</span>
-        <span className="nav-logo-sub">for navidrome</span>
+        <span className="nav-logo-sub">{sub}</span>
       </div>
     </NavLink>
+  );
+}
+
+/* Player ("Run-only") chrome. The kiosk role reaches just two pages — Run and a
+ * player-specific About — so it gets a stripped-down nav: no scan controls, no
+ * grabber/tagging sections, no data-fetching hooks (the backend 403s those
+ * endpoints for players anyway). Desktop shows a slim sidebar; below 1100px the
+ * PlayerMobileBar takes over (mirroring the admin sidebar/top-bar split). */
+const PLAYER_ITEMS: { to: string; label: string; icon: () => JSX.Element }[] = [
+  { to: "/run", label: "Run", icon: IconRun },
+  { to: "/about", label: "About", icon: IconAbout },
+];
+
+export function PlayerNav() {
+  const { logout } = useAuth();
+  const location = useLocation();
+  return (
+    <aside className="app-sidebar">
+      <Logo to="/run" sub="run mode" />
+      <div className="sidebar-section">
+        <div className="sidebar-section-label">Player</div>
+        {PLAYER_ITEMS.map((l) => (
+          <NavLink
+            key={l.to}
+            to={l.to}
+            title={l.label}
+            className={"sidebar-link" + (location.pathname === l.to ? " active" : "")}
+          >
+            <l.icon />
+            <span className="sidebar-link-label">{l.label}</span>
+          </NavLink>
+        ))}
+      </div>
+      <div className="sidebar-footer">
+        <div className="sidebar-footer-row">
+          <ThemeToggle />
+          <button
+            className="btn btn-bare btn-sm"
+            style={{ color: "var(--err-fg)" }}
+            onClick={() => logout()}
+            title="Sign out"
+          >
+            <IconLogout />
+            <span className="btn-label"> Sign out</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/** Compact top bar for the player kiosk below 1100px, where the sidebar hides.
+ *  Brand on the left, Run/About tabs + sign-out on the right; a CSS rule keeps
+ *  it out of the way on desktop, so both layouts stay in sync. */
+export function PlayerMobileBar() {
+  const { logout } = useAuth();
+  const location = useLocation();
+  return (
+    <div className="player-mobile-bar">
+      <div className="nav-logo-tile" style={{ width: 30, height: 30 }}>
+        <BpmMark size={18} />
+      </div>
+      <div className="nav-logo-text">
+        <span className="nav-logo-title">BPM Tagger</span>
+        <span className="nav-logo-sub">Run mode</span>
+      </div>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
+        {PLAYER_ITEMS.map((l) => (
+          <NavLink
+            key={l.to}
+            to={l.to}
+            className="btn btn-bare btn-sm"
+            style={{ padding: "5px 9px", fontWeight: 600, color: location.pathname === l.to ? "var(--accent-2)" : "var(--muted)" }}
+          >
+            {l.label}
+          </NavLink>
+        ))}
+        <button className="btn btn-ghost btn-sm" style={{ marginLeft: 4 }} onClick={() => logout()} title="Sign out">
+          Sign out
+        </button>
+      </div>
+    </div>
   );
 }
 

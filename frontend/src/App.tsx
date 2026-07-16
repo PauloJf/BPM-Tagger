@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./lib/auth";
-import Nav from "./components/Nav";
+import Nav, { PlayerNav } from "./components/Nav";
 import PlayerBar from "./components/PlayerBar";
 import InstallPingCard from "./components/InstallPingCard";
 import Login from "./pages/Login";
@@ -23,6 +23,7 @@ import Run from "./pages/Run";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
+import PlayerAbout from "./pages/PlayerAbout";
 
 function Layout({ children }: { children: React.ReactNode }) {
   // Run mode has its own full-screen transport — the global bar would duplicate
@@ -40,17 +41,26 @@ function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Locked-down shell for the run-only ("player") role: just the Run page. The
-// sidebar, player bar, and every other route are gone — and the backend
-// independently refuses any endpoint the Run page doesn't need. Run itself
-// renders the Sign-out control (in its header on desktop, floating on mobile).
+// Locked-down shell for the run-only ("player") role: only the Run page and a
+// player-specific About are routable — the backend independently refuses any
+// endpoint those two pages don't need. A slim PlayerNav (Run + About) fills the
+// sidebar slot on desktop; below 1100px each page renders its own compact top
+// bar. The global player bar stays off (Run has its own transport).
 function PlayerLayout() {
+  const runPage = useLocation().pathname === "/run";
   return (
-    <div className="app-main">
-      <div className="container container--run page-enter">
-        <Run />
+    <>
+      <PlayerNav />
+      <div className="app-main">
+        <div className={"container page-enter" + (runPage ? " container--run" : "")}>
+          <Routes>
+            <Route path="/run" element={<Run />} />
+            <Route path="/about" element={<PlayerAbout />} />
+            <Route path="*" element={<Navigate to="/run" replace />} />
+          </Routes>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

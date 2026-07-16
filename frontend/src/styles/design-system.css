@@ -370,6 +370,16 @@ nav.app-nav {
   /* Also outrank body.sidebar-collapsed — no sidebar means no offset. */
   body, body.sidebar-collapsed { --sidebar-w: 0px; }
 }
+
+/* Player kiosk top bar. Hidden on desktop (the PlayerNav sidebar carries the
+   brand + nav there); shown below 1100px, where the sidebar collapses away.
+   One row: brand left, Run/About tabs + sign-out right. */
+.player-mobile-bar { display: none; }
+@media (max-width: 1100px) {
+  .player-mobile-bar {
+    display: flex; align-items: center; gap: 11px; margin-bottom: 12px;
+  }
+}
 @media (max-width: 700px) {
   nav.app-nav { padding: 0 14px; }
   .container  { padding: 16px 14px 60px; }
