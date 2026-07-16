@@ -339,7 +339,7 @@ Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `
 
 > **Security note:** The web UI runs over plain HTTP. It is designed for access on a trusted local network. If you need to reach it remotely, place a reverse proxy (nginx, Caddy, Traefik) with TLS in front of it. See the [Security](#security) section for the full recommendations.
 
-**Player mode (optional):** set a second password under **Settings → Player Access** (or `RUN_PASSWORD`) and logging in with it opens a locked-down view showing **only the Run page** — ideal for handing a phone or tablet to someone for a run, or a dedicated running device. It can play, star/dislike, and scrobble, but can't reach your library, settings, or downloads (enforced server-side). Player logins stay signed in far longer than admin ones (`RUN_SESSION_DAYS`, default 30) so the running kiosk rarely re-asks.
+**Player mode (optional):** set a second password under **Settings → Player Access** (or `RUN_PASSWORD`) and logging in with it opens a locked-down view showing **only the Run page** — ideal for handing a phone or tablet to someone for a run, or a dedicated running device. It can play, star/dislike, and scrobble, but can't reach your library, settings, or downloads (enforced server-side). Player logins stay signed in far longer than admin ones (`RUN_SESSION_DAYS`, default 30) so the running kiosk rarely re-asks. The kiosk carries its own brand banner in place of the sidebar and, on phones, a one-screen layout with the waveform and transport pinned to the bottom.
 
 ### Install as an app (PWA)
 
