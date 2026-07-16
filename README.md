@@ -17,8 +17,6 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 
 **Now with an optional Spotify grabber:** watch your own Spotify playlists, compare them against what's already on disk, and automatically download the tracks you're missing — via **Deezer** (your own ARL) with a **yt-dlp** fallback — transcoding to one configured format, writing full tags + cover art, running the same three-detector BPM analysis, and filing them into your library by a customizable path template. Ambiguous matches wait in an inbox and ping you over [ntfy](https://ntfy.sh/).
 
-> The web UI is now a **React single-page app** (migrated from the original server-rendered pages); Docker serves the pre-built bundle automatically. Screenshots below show the earlier UI and will be refreshed.
-
 ## Screenshots
 
 | Login | Library |
@@ -33,9 +31,15 @@ Automatically detects the BPM of every song in your [Navidrome](https://www.navi
 |---|---|
 | ![Stats](docs/screenshots/06-stats.png) | ![Settings](docs/screenshots/07-settings.png) |
 
-| About | |
+| About | Library (mobile) |
 |---|---|
-| ![About](docs/screenshots/08-about.png) | |
+| ![About](docs/screenshots/08-about.png) | ![Library on mobile](docs/screenshots/09-mobile-library.png) |
+
+Same sign-in screen gates both the full admin UI and the locked-down **player mode** (`RUN_PASSWORD` / Settings → Player Access) — the difference shows up after login, in what the session can reach:
+
+| Player mode | Player mode (mobile) |
+|---|---|
+| ![Player mode Run page](docs/screenshots/11-player-desktop.png) | ![Player mode on mobile, one-screen layout](docs/screenshots/12-player-mobile.png) |
 
 ## Features
 
