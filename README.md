@@ -732,6 +732,17 @@ volumes:
 
 ---
 
+## Support this project
+
+If BPM Tagger has been useful to you, consider supporting its development:
+
+- ☕ [Ko-fi](https://ko-fi.com/paulojf)
+- 💜 [GitHub Sponsors](https://github.com/sponsors/PauloJf)
+
+Every bit helps keep this project maintained and open source.
+
+---
+
 ## License
 
 BPM Tagger is licensed under the **GNU Affero General Public License v3.0 or later** (AGPL-3.0-or-later). See [LICENSE](LICENSE) for the summary and a link to the full text at [gnu.org](https://www.gnu.org/licenses/agpl-3.0.html).

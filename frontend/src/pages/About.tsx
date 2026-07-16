@@ -124,6 +124,37 @@ export default function About() {
         </div>
       </div>
 
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="about-section-title">Support this project</div>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <p style={{ flex: "1 1 320px", minWidth: 0, fontSize: 14, lineHeight: 1.7, color: "var(--text)", margin: 0 }}>
+            BPM Tagger is free and open source. If it&rsquo;s been useful to you,
+            consider supporting its development — every bit helps keep it
+            maintained and open source.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a
+              href="https://ko-fi.com/paulojf"
+              target="_blank"
+              rel="noopener"
+              className="btn"
+              style={{ textDecoration: "none" }}
+            >
+              ☕ Ko-fi
+            </a>
+            <a
+              href="https://github.com/sponsors/PauloJf"
+              target="_blank"
+              rel="noopener"
+              className="btn"
+              style={{ textDecoration: "none" }}
+            >
+              💜 GitHub Sponsors
+            </a>
+          </div>
+        </div>
+      </div>
+
       {pingConfigured && (
         <div className="card" style={{ marginTop: 18 }}>
           <div className="about-section-title">Privacy · anonymous install count</div>

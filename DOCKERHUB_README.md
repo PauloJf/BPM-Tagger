@@ -143,6 +143,17 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 ---
 
+## Support this project
+
+If BPM Tagger has been useful to you, consider supporting its development:
+
+- ☕ [Ko-fi](https://ko-fi.com/paulojf)
+- 💜 [GitHub Sponsors](https://github.com/sponsors/PauloJf)
+
+Every bit helps keep this project maintained and open source.
+
+---
+
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
