@@ -48,6 +48,9 @@ const IconAbout = () => (
 const IconLogout = () => (
   <svg {...ic}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg>
 );
+const IconHeart = () => (
+  <svg {...ic}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" /></svg>
+);
 
 function ThemeToggle({ mobile }: { mobile?: boolean }) {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || "dark");
@@ -411,6 +414,17 @@ export default function Nav() {
         </button>
         <div className="sidebar-footer">
           <SidebarScan state={state} act={act} progress={progress} />
+          <a
+            href="https://ko-fi.com/paulojf"
+            target="_blank"
+            rel="noopener"
+            className="btn btn-bare btn-sm"
+            style={{ color: "var(--accent-2)", justifyContent: "flex-start", textDecoration: "none" }}
+            title="Support BPM Tagger"
+          >
+            <IconHeart />
+            <span className="btn-label"> Support</span>
+          </a>
           <div className="sidebar-footer-row">
             <ThemeToggle />
             <button
@@ -482,6 +496,16 @@ export default function Nav() {
           </div>
           <div className="nav-mobile-sep" />
           <ThemeToggle mobile />
+          <a
+            href="https://ko-fi.com/paulojf"
+            target="_blank"
+            rel="noopener"
+            className="nav-mobile-link"
+            style={{ width: "100%", color: "var(--accent-2)", textDecoration: "none" }}
+          >
+            <IconHeart />
+            Support
+          </a>
           <button
             className="nav-mobile-link"
             style={{ width: "100%", color: "var(--err-fg)", border: "none", background: "none", cursor: "pointer", textAlign: "left" }}
