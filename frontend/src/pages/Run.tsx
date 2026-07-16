@@ -391,7 +391,12 @@ export default function Run() {
   // sidebar); reserve its height so the mobile layout still fits one screen.
   const bannerReserve = playerMode ? 44 : 0;
   const coverSize = desktop
-    ? "clamp(220px, 40vh, 360px)"
+    // Height-aware: derive the cover from the viewport height minus the fixed
+    // cockpit chrome (page header + title/details/toggle + transport) so it
+    // shrinks on short screens instead of overflowing, and grows on tall ones.
+    // Width is separately capped to the column (see coverImg) so it never
+    // exceeds its half of the cockpit.
+    ? "clamp(170px, calc(100dvh - 540px), 300px)"
     // Reserve = everything below the cover on mobile (title, target with the
     // flanking Rebuild, mode tabs, controls, transport + tight padding). With
     // the header gone and Rebuild flanking the number (no extra row), 605 is the
@@ -867,12 +872,13 @@ export default function Run() {
   const desktopTapActive = desktopTapOpen && !playerMode;
   const nowPlayingDesktop = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
-      {/* Non-player: fix the slot height to the taller of the cover and the tap
-          card's 226px minHeight (see TapTempoControl) so swapping cover ⇄ tap
-          never resizes the column and nothing below shifts; cover is centered,
-          the tap card keeps its full column width. Player mode has no tap card,
-          so the slot is just the cover's natural height (no reserved gap). */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: playerMode ? "auto" : `max(${coverSize}, 226px)` }}>
+      {/* The slot hugs the cover (auto) by default, so short screens don't waste
+          height on an oversized box. Only when Tap is active do we reserve the
+          tap card's 226px minHeight (see TapTempoControl). On normal/tall screens
+          coverSize ≥ 226, so cover ⇄ tap swaps without a shift; on short screens
+          (coverSize < 226) toggling to Tap grows the slot — an acceptable trade
+          for keeping the default cover view compact. */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: desktopTapActive ? `max(${coverSize}, 226px)` : "auto" }}>
         {desktopTapActive ? <div style={{ width: "100%" }}>{tapControl}</div> : coverImg}
       </div>
       {titleArtist}
