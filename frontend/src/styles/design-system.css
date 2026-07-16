@@ -1074,12 +1074,18 @@ a.player-bar-title:hover { color: var(--accent-2); }
 }
 .run-player-col { display: flex; flex-direction: column; min-width: 0; }
 
-/* Track info (cover, details, tap-tempo) | target + presets + steps. */
+/* Track info (cover, details, tap-tempo) | target + presets + steps.
+   The cockpit grows to fill the player column (both columns stretch to the
+   queue's height via the body's align-items:stretch), so the transport below it
+   drops to the bottom, level with the queue. Its content is centered both ways,
+   vertically centering the cover and the target/presets. */
 .run-cockpit {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 28px;
-  align-items: start;
+  align-items: center;
+  align-content: center;
 }
 .run-cockpit-info { text-align: center; min-width: 0; }
 .run-cockpit-controls { align-self: center; min-width: 0; }

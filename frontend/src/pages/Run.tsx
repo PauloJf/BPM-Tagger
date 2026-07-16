@@ -391,7 +391,7 @@ export default function Run() {
   // sidebar); reserve its height so the mobile layout still fits one screen.
   const bannerReserve = playerMode ? 44 : 0;
   const coverSize = desktop
-    ? "clamp(180px, 22vh, 300px)"
+    ? "clamp(220px, 40vh, 360px)"
     // Reserve = everything below the cover on mobile (title, target with the
     // flanking Rebuild, mode tabs, controls, transport + tight padding). With
     // the header gone and Rebuild flanking the number (no extra row), 605 is the
@@ -452,7 +452,9 @@ export default function Run() {
   // can swap the cover slot for the tap card (nowPlayingDesktop) without touching
   // the title/artist markup; mobile keeps the composed `nowPlaying`.
   const coverImg = current && (
-    <Cover path={current.path} size={240} style={{ width: coverSize, height: coverSize, objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
+    // Width caps at the column so a large clamp never overflows the cockpit
+    // cell; aspect-ratio keeps it square instead of a fixed height.
+    <Cover path={current.path} size={240} style={{ width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1", height: "auto", objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
   );
   const titleArtist = current && (
     <>
@@ -659,7 +661,7 @@ export default function Run() {
 
   // Waveform + transport controls (dislike / prev / play / next / lyrics).
   const transport = current && (
-    <div className="run-transport" style={{ marginTop: desktop ? 20 : 10, marginBottom: 16 }}>
+    <div className="run-transport" style={{ marginTop: desktop ? 20 : 10, marginBottom: desktop ? 0 : 16 }}>
       <canvas ref={canvasRef} style={{ width: "100%", height: 44, display: "block", cursor: "pointer" }} />
       <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
         <span>{fmtTime(time)}</span>
@@ -870,7 +872,7 @@ export default function Run() {
           never resizes the column and nothing below shifts; cover is centered,
           the tap card keeps its full column width. Player mode has no tap card,
           so the slot is just the cover's natural height (no reserved gap). */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: playerMode ? coverSize : `max(${coverSize}, 226px)` }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: playerMode ? "auto" : `max(${coverSize}, 226px)` }}>
         {desktopTapActive ? <div style={{ width: "100%" }}>{tapControl}</div> : coverImg}
       </div>
       {titleArtist}
