@@ -227,6 +227,10 @@ export default function Run() {
     return m === "steps" || m === "queue" || m === "tap" ? m : "presets";
   });
   const [lockOn, setLockOn] = useState(true);
+  // Desktop only: the tap card is hidden behind a Cover/Tap toggle and, when
+  // shown, swaps into the cover's slot (see nowPlayingDesktop). Mobile keeps its
+  // own segmented Tap tab.
+  const [desktopTapOpen, setDesktopTapOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
@@ -293,7 +297,9 @@ export default function Run() {
   // would strand the view on a card that only tells you to release the lock.
   useEffect(() => {
     if ((running || playerMode) && mode === "tap") setMode("presets");
-  }, [running, playerMode, mode]);
+    // Same reasoning for the desktop Cover/Tap toggle: drop back to the cover.
+    if ((running || playerMode) && desktopTapOpen) setDesktopTapOpen(false);
+  }, [running, playerMode, mode, desktopTapOpen]);
 
   /** Change the target; a live tempo lock follows immediately (playbackRate is
    *  cheap to move), the queue itself only changes on the next Start. */
@@ -442,12 +448,14 @@ export default function Run() {
     />
   );
 
-  // Now playing: cover + track details.
-  const nowPlaying = current && (
-    <div style={{ textAlign: "center", marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-        <Cover path={current.path} size={240} style={{ width: coverSize, height: coverSize, objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
-      </div>
+  // Now playing: cover + title/artist. Split into pieces so the desktop cockpit
+  // can swap the cover slot for the tap card (nowPlayingDesktop) without touching
+  // the title/artist markup; mobile keeps the composed `nowPlaying`.
+  const coverImg = current && (
+    <Cover path={current.path} size={240} style={{ width: coverSize, height: coverSize, objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
+  );
+  const titleArtist = current && (
+    <>
       {playerMode ? (
         <div
           style={{
@@ -471,6 +479,14 @@ export default function Run() {
         </Link>
       )}
       {current.artist && <div style={{ fontSize: 13, color: "var(--muted)" }}>{current.artist}</div>}
+    </>
+  );
+  const nowPlaying = current && (
+    <div style={{ textAlign: "center", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+        {coverImg}
+      </div>
+      {titleArtist}
     </div>
   );
 
@@ -840,6 +856,47 @@ export default function Run() {
     </div>
   );
 
+  // Desktop info column: the cover slot swaps to the tap card when Tap is toggled
+  // on, and both states reserve the same slot height so the cockpit row never
+  // resizes. The Cover/Tap segmented toggle sits below the details (rendered in
+  // both states → constant height). Tap is disabled while a run's tempo lock is
+  // stretching playback (you'd tap the shifted tempo, not the real BPM), same as
+  // the mobile Tap tab.
+  const desktopTapActive = desktopTapOpen && !playerMode;
+  const nowPlayingDesktop = current && (
+    <div style={{ textAlign: "center", marginBottom: 12 }}>
+      {/* Non-player: fix the slot height to the taller of the cover and the tap
+          card's 226px minHeight (see TapTempoControl) so swapping cover ⇄ tap
+          never resizes the column and nothing below shifts; cover is centered,
+          the tap card keeps its full column width. Player mode has no tap card,
+          so the slot is just the cover's natural height (no reserved gap). */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: playerMode ? coverSize : `max(${coverSize}, 226px)` }}>
+        {desktopTapActive ? <div style={{ width: "100%" }}>{tapControl}</div> : coverImg}
+      </div>
+      {titleArtist}
+    </div>
+  );
+  const coverTapToggle = !playerMode && (
+    <div className="segmented" style={{ display: "flex", margin: "14px auto 0", width: "fit-content" }}>
+      {([false, true] as const).map((tapView) => {
+        const disabled = tapView && running;
+        return (
+          <button
+            key={tapView ? "tap" : "cover"}
+            className={"segmented-btn " + (desktopTapOpen === tapView ? "active" : "")}
+            style={{ minWidth: 62, ...(disabled ? { opacity: 0.4, cursor: "not-allowed" } : null) }}
+            onClick={() => setDesktopTapOpen(tapView)}
+            disabled={disabled}
+            aria-pressed={desktopTapOpen === tapView}
+            title={disabled ? "Release the tempo lock to tap a track's real BPM" : undefined}
+          >
+            {tapView ? "Tap" : "Cover"}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   if (desktop) {
     // Desktop cockpit: the shared page header spans the top; below it, the
     // player column (a two-column cockpit — track info left, target controls
@@ -855,9 +912,9 @@ export default function Run() {
           <div className="run-player-col">
             <div className="run-cockpit">
               <div className="run-cockpit-info">
-                {nowPlaying}
+                {nowPlayingDesktop}
                 {trackDetails}
-                {!playerMode && <div style={{ marginTop: 14 }}>{tapControl}</div>}
+                {coverTapToggle}
               </div>
               <div className="run-cockpit-controls">
                 {targetBlock}
