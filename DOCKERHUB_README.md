@@ -120,6 +120,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 - BPM Review queue — Prev/Next navigation, Approve without re-analysing; approved/locked tracks marked `reviewed` and removed from queue
 - Audio player with real waveform scrubbing and tap-tempo (Space bar)
 - Persistent player bar with **Play all / Shuffle** queueing, prev/next, repeat, volume, a **queue viewer** (jump/remove/reorder), a reload-persistent queue that resumes at the saved position, keyboard shortcuts, and a ducking **preview** from detail/compare views
+- **Floating mini player** — pop the now-playing card out into an always-on-top window (Document Picture-in-Picture, Chromium desktop) that survives tab/route changes: cover, title/artist, seekable progress, prev/play/next, volume, and the Run-mode tempo-lock pill; playback stays in the main tab and the window follows the app theme
 - **Artist & album pages** and a cadence ½×/2× BPM filter for running
 - **Related & artist explorer** — a collapsible **Related · powered by Deezer** panel on every artist/album/track page (similar artists + tracks, fetched on expand); click any artist for a popup with a short bio, top tracks and full discography (albums + singles/EPs), adding single tracks or a whole album to the download queue. **30-second previews** (▶) on suggested/related rows play through the ducking player. Read-only with the grabber off
 - **Queue similar from the player** — a similar-tracks button on the player bar (and **≈ Similar** on the Run page's queue view): in-library matches queue straight onto the **play queue** (cadence-checked during a tempo-locked run — unstretchable tracks show **off cadence**), missing ones get a grabber-gated **Grab**, plus a **Queue all** shortcut
@@ -157,6 +158,8 @@ Every bit helps keep this project maintained and open source.
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.6.5** — **Floating mini player (Picture-in-Picture).** Pop the now-playing card out into an always-on-top window that survives tab switches — cover, title/artist, a **seekable progress bar**, prev/play/next, **volume**, and (in Run mode) the tempo-lock pill with the pulsing beat dot. Built on the Document Picture-in-Picture API (Chromium desktop); the pop-out button is in the player bar and on the Run page's cover, hidden where unsupported. Playback stays in the main tab; the window mirrors the app theme.
 
 **v2.6.4** — **Playlists from Spotify _and_ Navidrome, as Run sources.** The Playlists page now watches **Navidrome** playlists too (pick from your own over Subsonic) alongside Spotify — reconciled against your library by metadata, with have/missing coverage; Navidrome playlists need only your Navidrome credentials, no grabber. Sync is now a **diff**, so each playlist flags **new** tracks and keeps **removed** ones as tombstones (added/removed counts on the card). **Run mode** gains a **source picker**: build the queue from your whole library or a specific playlist — scoped to its matched, BPM-tagged tracks with an "N of M available" count — shared to the player role too.
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { usePlayer } from "../lib/player";
+import { useMiniPlayer } from "../lib/miniPlayer";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 import { BpmDisplay } from "./BpmDisplay";
@@ -13,6 +14,7 @@ export default function PlayerBar() {
   const { current, playing, error, audioRef, toggle, stop,
           orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing, volume, setVolume,
           next, prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat, tempoLock } = usePlayer();
+  const mini = useMiniPlayer();
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -226,6 +228,20 @@ export default function PlayerBar() {
         </svg>
         {repeat === "one" && <span className="player-bar-ctl-badge">1</span>}
       </button>
+      {mini.supported && (
+        <button
+          className={"player-bar-ctl player-bar-ctl--optional" + (mini.isOpen ? " active" : "")}
+          onClick={mini.toggle}
+          title={mini.isOpen ? "Close the floating player" : "Pop out a floating mini player"}
+          aria-label="Floating mini player"
+          aria-pressed={mini.isOpen}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="14" rx="2" />
+            <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+      )}
       <span className="player-bar-volume player-bar-ctl--optional" title={`Volume ${Math.round(volume * 100)}%`}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--muted)", flexShrink: 0 }}>
           <path d="M3 9v6h4l5 5V4L7 9H3z" />{volume > 0.05 && <path d="M16 8a5 5 0 0 1 0 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}

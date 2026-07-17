@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate } from "../lib/player";
+import { useMiniPlayer } from "../lib/miniPlayer";
 import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
 import { Cover } from "../components/Artwork";
@@ -206,6 +207,7 @@ export default function Run() {
   const { role } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
+  const mini = useMiniPlayer();
   const { current, playing, audioRef } = player;
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -940,6 +942,30 @@ export default function Run() {
   // stretching playback (you'd tap the shifted tempo, not the real BPM), same as
   // the mobile Tap tab.
   const desktopTapActive = desktopTapOpen && !playerMode;
+  // Pop-out control overlaid on the cover's top-right corner. Desktop only (it
+  // only ever renders inside nowPlayingDesktop) and Chromium-only (mini.supported
+  // — Document PiP is unavailable elsewhere), so it never shows where it can't work.
+  const coverPopout = mini.supported && (
+    <button
+      onClick={mini.toggle}
+      aria-pressed={mini.isOpen}
+      aria-label="Floating mini player"
+      title={mini.isOpen ? "Close the floating player" : "Pop out a floating mini player — cadence + transport, always on top"}
+      style={{
+        position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: 999,
+        display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+        background: mini.isOpen ? "var(--accent-soft)" : "rgba(0,0,0,0.45)",
+        border: `1px solid ${mini.isOpen ? "var(--accent-border)" : "rgba(255,255,255,0.18)"}`,
+        color: mini.isOpen ? "var(--accent-2)" : "white",
+      }}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="14" rx="2" />
+        <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
+      </svg>
+    </button>
+  );
   const nowPlayingDesktop = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
       {/* The slot hugs the cover (auto) by default, so short screens don't waste
@@ -949,7 +975,9 @@ export default function Run() {
           (coverSize < 226) toggling to Tap grows the slot — an acceptable trade
           for keeping the default cover view compact. */}
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: desktopTapActive ? `max(${coverSize}, 226px)` : "auto" }}>
-        {desktopTapActive ? <div style={{ width: "100%" }}>{tapControl}</div> : coverImg}
+        {desktopTapActive
+          ? <div style={{ width: "100%" }}>{tapControl}</div>
+          : <div style={{ position: "relative", display: "inline-flex" }}>{coverImg}{coverPopout}</div>}
       </div>
       {titleArtist}
     </div>

@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.5 — 2026-07-17
+
+- **Floating mini player (Picture-in-Picture):** pop the now-playing card out into an always-on-top floating window that survives tab switches and route changes — cover, title/artist, a **seekable progress bar** with elapsed/remaining time, prev/play/next transport, a **volume** slider, and (in Run mode) the **tempo-lock pill** with the pulsing beat dot that toggles the cadence lock. Built on the Document Picture-in-Picture API (Chromium desktop); a pop-out button appears in the player bar and on the Run page's cover, and is hidden where the API isn't available. Playback stays in the main tab — the floating window only reads and drives it — and it mirrors the app's light/dark theme.
+
 ## v2.6.4 — 2026-07-17
 
 - **Playlists from Spotify _and_ Navidrome:** the Playlists section is no longer Spotify-only. Add a **Navidrome** playlist by picking from your own Navidrome playlists (over the Subsonic API) and it's reconciled against your library just like a Spotify one — matched by metadata, with have/missing coverage and m3u export. Navidrome (and future local) playlists need only your Navidrome credentials; the grabber and a Spotify connection are required only for Spotify playlists and for downloading missing tracks. Each playlist now carries a **source** badge in the UI.
