@@ -240,12 +240,12 @@ def _make_playlist(db_path, music_dir, name, entries):
     return pid
 
 
-def test_run_queue_scoped_to_playlist(client, base_config):
+def test_run_queue_playlist_scope_and_topup(client, base_config):
     _login(client)
     _seed(base_config["db_path"], base_config["music_dir"], [
         ("a", 150.0, 0), ("b", 150.0, 0), ("c", 150.0, 0),
-        ("outside", 150.0, 0),           # analyzed but not in the playlist
-        ("hated", 150.0, 0),             # in the playlist but disliked
+        ("outside", 150.0, 0),           # analyzed, in the library, not in the playlist
+        ("hated", 150.0, 0),             # disliked → never eligible anywhere
     ])
     conn = sqlite3.connect(base_config["db_path"])
     conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'hated'")
@@ -254,19 +254,33 @@ def test_run_queue_scoped_to_playlist(client, base_config):
     pid = _make_playlist(base_config["db_path"], base_config["music_dir"], "Run", [
         ("s_a", "have", "a", False),
         ("s_b", "have", "b", False),
-        ("s_miss", "missing", None, False),      # not in the library → excluded
-        ("s_c", "have", "c", True),              # tombstoned → excluded
-        ("s_hate", "have", "hated", False),      # disliked → excluded
+        ("s_miss", "missing", None, False),      # not in the library → not runnable
+        ("s_c", "have", "c", True),              # tombstoned → not a playlist match
+        ("s_hate", "have", "hated", False),      # disliked → not runnable
     ])
 
+    # When the playlist alone can fill the requested count, the run stays scoped
+    # to it (no top-up): only its two runnable tracks, a + b.
+    scoped = client.get(f"/api/run/queue?bpm=150&playlist={pid}&count=2").get_json()
+    assert {t["title"] for t in scoped["tracks"]} == {"a", "b"}
+    assert scoped["topped_up"] is False
+    assert scoped["playlist"] == pid
+
+    # With too few playlist matches for the (default) queue size, the run tops
+    # up from the whole library at the same cadence — the playlist's tracks are
+    # kept, library tracks fill the rest, and disliked stays excluded.
     data = client.get(f"/api/run/queue?bpm=150&playlist={pid}").get_json()
-    assert {t["title"] for t in data["tracks"]} == {"a", "b"}
-    assert data["playlist"] == pid
+    titles = {t["title"] for t in data["tracks"]}
+    assert {"a", "b"} <= titles          # playlist matches kept
+    assert "outside" in titles           # topped up from the library
+    assert "hated" not in titles         # disliked never eligible
+    assert data["topped_up"] is True
 
     # Whole-library (no scope) still sees everything eligible.
     full = client.get("/api/run/queue?bpm=150").get_json()
     assert {"a", "b", "c", "outside"} <= {t["title"] for t in full["tracks"]}
     assert full["playlist"] is None
+    assert full["topped_up"] is False
 
 
 def test_run_queue_playlist_not_found_and_bad_id(client, base_config):
