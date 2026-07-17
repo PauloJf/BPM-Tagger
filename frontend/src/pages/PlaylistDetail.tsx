@@ -13,6 +13,13 @@ function StatusChip({ s }: { s: string }) {
   return <span className="chip chip--missing">✗ missing</span>;
 }
 
+/** Milliseconds → "m:ss" (blank when unknown). */
+function fmtDur(ms: number | null | undefined): string {
+  if (!ms || ms <= 0) return "";
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function syncedLabel(iso: string | null): string {
   if (!iso) return "never synced";
   const d = new Date(iso);
@@ -116,25 +123,54 @@ export default function PlaylistDetail() {
         {tracks.length === 0 ? (
           <div className="tracks-row-empty">{tracksQ.isLoading ? "Loading…" : "No tracks."}</div>
         ) : (
-          tracks.map((t) => (
-            <div key={t.id} className={"pl-track-row" + (t.removed_at ? " pl-track-row--removed" : "")}>
-              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
-                {String(t.position + 1).padStart(2, "0")}
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
-                  {!!t.is_new && !t.removed_at && <span className="chip chip--new" title="Added since you last viewed">✦ new</span>}
+          tracks.map((t) => {
+            // 'have' rows are matched to a local file → link into the library and
+            // show its real BPM. Missing/queued/removed rows stay plain text.
+            const inLib = t.derived_status === "have" && !!t.matched_file_path;
+            const artist = t.local_artist || t.artist;
+            const album = t.local_album || t.album;
+            const albumArtist = t.local_album_artist || album || artist;
+            const dur = fmtDur(t.local_duration_ms ?? t.duration_ms);
+            return (
+              <div key={t.id} className={"pl-track-row" + (t.removed_at ? " pl-track-row--removed" : "")}>
+                <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
+                  {String(t.position + 1).padStart(2, "0")}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                    {inLib ? (
+                      <Link to={`/track?path=${encodeURIComponent(t.matched_file_path!)}`} style={{ color: "inherit", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis" }} title="Open the track page">
+                        {t.title}
+                      </Link>
+                    ) : (
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
+                    )}
+                    {!!t.is_new && !t.removed_at && <span className="chip chip--new" title="Added since you last viewed">✦ new</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {inLib ? (
+                      <>
+                        <Link to={`/artist?name=${encodeURIComponent(artist)}`} style={{ color: "inherit", textDecoration: "none" }}>{artist}</Link>
+                        {album && <> · <Link to={`/album?album=${encodeURIComponent(album)}&album_artist=${encodeURIComponent(albumArtist)}`} style={{ color: "inherit", textDecoration: "none" }}>{album}</Link></>}
+                      </>
+                    ) : (
+                      <>{t.artist}{t.album ? ` · ${t.album}` : ""}</>
+                    )}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {t.artist}{t.album ? ` · ${t.album}` : ""}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+                  <StatusChip s={t.derived_status} />
+                  {(inLib && t.local_bpm != null) || dur ? (
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                      {inLib && t.local_bpm != null ? `${Math.round(t.local_bpm)} BPM` : ""}
+                      {inLib && t.local_bpm != null && dur ? " · " : ""}
+                      {dur}
+                    </span>
+                  ) : null}
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <StatusChip s={t.derived_status} />
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </>

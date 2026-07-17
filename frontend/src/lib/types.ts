@@ -59,6 +59,7 @@ export interface RunQueueResponse {
   prefer_starred: boolean;
   prefer_familiar?: boolean;
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
+  topped_up?: boolean;  // true when a playlist run was filled out with library tracks (too few matched)
   playlist?: number | null;   // playlist id the pool was scoped to, or null for the whole library
 }
 
@@ -397,4 +398,11 @@ export interface PlaylistTrack {
   is_new: number;
   first_seen_at: string | null;
   removed_at: string | null;
+  // Enriched from the matched local library track ('have' rows only; null otherwise).
+  local_bpm?: number | null;
+  local_duration_ms?: number | null;
+  local_detector?: string | null;
+  local_artist?: string | null;
+  local_album?: string | null;
+  local_album_artist?: string | null;
 }

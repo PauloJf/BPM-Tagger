@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.6.8 — 2026-07-17
+
+- **Playlist runs top up from the library.** A run built from a playlist now prefers that playlist's matching tracks and **fills the rest from your whole library at the same cadence** when the playlist has too few tracks matching your target BPM. This fixes a small playlist degenerating into **one song looping** — which also looked like the **"next" button being stuck / only one song playing**, especially in player mode on a phone. A note on the Run page flags when a run was topped up. (Replaces the strict playlist-only refill introduced in 2.6.6.)
+- **Playlist detail shows run-readiness.** On a playlist's page, each track matched to a local file now shows its **real BPM and length** and links straight to the **track, artist, and album** pages — so you can see at a glance which tracks are runnable, and at what cadence. Unmatched tracks stay as plain source metadata.
+
 ## v2.6.7 — 2026-07-17
 
 - **Fix: Run page cover art went missing (regression in 2.6.6).** The new load-then-swap cover wrapped the image in a `<div>` whose `width: min(size, 100%)` collapsed to zero inside the cockpit's shrink-to-fit cover slot (a non-replaced box can't resolve the `100%` there), so only the mini-player pop-out overlay was left showing. Restored the original replaced-`<img>` sizing while keeping the deferred-swap behaviour, so the cover renders again and still doesn't blank/jump on track change.

@@ -80,14 +80,12 @@ def api_run_queue():
     prefer_familiar = bool(cfg.get("run_prefer_familiar", False))
     tol = max(0.005, float(cfg.get("run_tolerance_pct", 4.0)) / 100.0)
 
-    # Score every candidate: eligibility by post-fold deviation from target
-    # (minus whatever's excluded), selection by (starred first, then most-played
-    # first when familiarity is preferred, closest first).
-    candidates = st.db.get_run_candidates(playlist_id)
-
-    def _matches(exclude_paths):
+    # Score candidates: eligibility by post-fold deviation from target (minus
+    # whatever's excluded), selection by (starred first, then most-played first
+    # when familiarity is preferred, closest first).
+    def _matches(cands, exclude_paths):
         found = []
-        for t in candidates:
+        for t in cands:
             if t["file_path"] in exclude_paths:
                 continue
             folded = _fold(t["bpm"], target, octave)
@@ -99,10 +97,29 @@ def api_run_queue():
                                   x[2]))
         return found
 
-    picked = _matches(exclude_set)
+    def _build(exclude_paths):
+        """Playlist matches first, then topped up from the whole library at the
+        same cadence when the playlist can't fill the queue — so a small
+        playlist (few tracks matching this target) never degenerates into one
+        song looping. A library-source run (no playlist) just matches the
+        whole library. Returns (matches, topped_up)."""
+        if playlist_id is None:
+            return _matches(st.db.get_run_candidates(None), exclude_paths), False
+        pl = _matches(st.db.get_run_candidates(playlist_id), exclude_paths)
+        if len(pl) >= count:
+            return pl, False
+        # Not enough playlist tracks match here — fill the rest from the library,
+        # excluding what's already picked so nothing repeats.
+        seen = set(exclude_paths) | {m[0]["file_path"] for m in pl}
+        lib = _matches(st.db.get_run_candidates(None), seen)
+        return pl + lib, bool(lib)
+
+    picked, topped_up = _build(exclude_set)
     recycled = False
     if not picked and exclude_set:
-        picked = _matches(set())
+        # Everything eligible was excluded (small pool, long run) — drop the
+        # exclusion and reshuffle rather than starve the refill.
+        picked, topped_up = _build(set())
         recycled = True
 
     # Playback order shuffled (within the scored/truncated slice) so two runs
@@ -123,7 +140,7 @@ def api_run_queue():
     return jsonify(tracks=tracks, target=target, count=len(tracks),
                    octave_fold=octave, tolerance_pct=tol * 100,
                    prefer_starred=prefer_starred, prefer_familiar=prefer_familiar,
-                   recycled=recycled, playlist=playlist_id)
+                   recycled=recycled, topped_up=topped_up, playlist=playlist_id)
 
 
 @run_bp.route("/api/run/stat", methods=["POST"])

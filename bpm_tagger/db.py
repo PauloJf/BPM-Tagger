@@ -1438,8 +1438,17 @@ class BPMDatabase:
         Tombstones (removed_at set) get derived_status 'removed' so they never match
         the coverage filters and only appear in the unfiltered detail view."""
         with self._connect() as conn:
+            # LEFT JOIN the matched local file so 'have' rows carry the library
+            # track's real BPM / duration / (library) artist+album — used by the
+            # detail page to show run-readiness and link into the track/artist/
+            # album pages. NULL on unmatched rows.
             rows = [dict(r) for r in conn.execute(
-                "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
+                "SELECT pt.*, t.bpm AS local_bpm, t.duration_ms AS local_duration_ms, "
+                "t.detector AS local_detector, t.artist AS local_artist, "
+                "t.album AS local_album, t.album_artist AS local_album_artist "
+                "FROM playlist_tracks pt "
+                "LEFT JOIN tracks t ON t.file_path = pt.matched_file_path AND t.status != 'deleted' "
+                "WHERE pt.playlist_id = ? ORDER BY pt.position",
                 (playlist_id,),
             ).fetchall()]
             queued = self._queued_sids(conn)

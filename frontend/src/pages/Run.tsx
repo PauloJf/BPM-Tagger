@@ -781,6 +781,11 @@ export default function Run() {
           Queue was built for {queueInfo!.target} BPM — tracks stretch to follow {target}, hit Rebuild for a fresh match.
         </div>
       )}
+      {queueInfo?.topped_up && selectedPlaylist && (
+        <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+          “{selectedPlaylist.name}” had too few tracks at this cadence — topped up from your library so the run keeps varied.
+        </div>
+      )}
       {buildErr && <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{buildErr}</div>}
       {/* With the global player bar hidden on this page, stream errors would
           otherwise be invisible here. */}
