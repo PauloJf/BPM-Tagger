@@ -61,7 +61,13 @@ def _fetch_image(url: str) -> bytes | None:
         log.warning("Image fetch refused (non-public host): %s", url)
         return None
     try:
-        resp = requests.get(url, timeout=15, stream=True)
+        # Do NOT follow redirects: the public-host check above only validated the
+        # original URL, so a 3xx to a private/LAN/metadata address (169.254.169.254,
+        # 192.168.x.x, …) would otherwise bypass it (SSRF).
+        resp = requests.get(url, timeout=15, stream=True, allow_redirects=False)
+        if resp.is_redirect or resp.is_permanent_redirect:
+            log.warning("Image fetch refused (redirect off a public host): %s", url)
+            return None
         resp.raise_for_status()
         data = resp.raw.read(_MAX_IMAGE_BYTES + 1, decode_content=True)
         if not data or len(data) > _MAX_IMAGE_BYTES:

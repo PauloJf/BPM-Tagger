@@ -59,10 +59,19 @@ class BPMDatabase:
     def _connect(self):
         conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
+        # Enforce foreign keys — off by default in SQLite and scoped per
+        # connection, so it must be set on every connect. Schema setup/migration
+        # deliberately turns it OFF (see _init_db).
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
     def _init_db(self):
         with self._connect() as conn:
+            # Schema creation + migration run with FK enforcement OFF: the
+            # playlists rebuild (_migrate_playlists_schema) renames tables, and
+            # with FKs on that would rewrite/refire relationships mid-migration.
+            # Runtime connections keep FKs ON (see _connect).
+            conn.execute("PRAGMA foreign_keys=OFF")
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tracks (
@@ -149,6 +158,17 @@ class BPMDatabase:
         self._migrate_playlists_schema(conn)
         self._create_grabber_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)
+
+        # Orphan sweep: DBs created before FK enforcement have no ON DELETE
+        # CASCADE (added to the CREATE statements above, so only fresh DBs get
+        # it). Clean up any child rows an older DB left behind when a parent was
+        # removed. Cheap and idempotent — safe to run on every start.
+        conn.execute("DELETE FROM grab_candidates "
+                     "WHERE queue_item_id NOT IN (SELECT id FROM grab_queue)")
+        conn.execute("DELETE FROM grab_events "
+                     "WHERE queue_item_id NOT IN (SELECT id FROM grab_queue)")
+        conn.execute("DELETE FROM playlist_tracks "
+                     "WHERE playlist_id NOT IN (SELECT id FROM playlists)")
 
     def _migrate_playlists_schema(self, conn, finish: bool = False):
         """Generalize the Spotify-only playlists / playlist_tracks tables to the
@@ -243,7 +263,8 @@ class BPMDatabase:
                 matched_file_path TEXT,
                 first_seen_at    TEXT,                     -- when this row first appeared in the source
                 is_new           INTEGER DEFAULT 0,        -- added since last viewed (cleared on view)
-                removed_at       TEXT                      -- tombstone: gone from source (NULL = present)
+                removed_at       TEXT,                     -- tombstone: gone from source (NULL = present)
+                FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_playlist ON playlist_tracks(playlist_id)")
@@ -296,7 +317,8 @@ class BPMDatabase:
                 score_breakdown  TEXT,
                 url              TEXT,
                 cover_url        TEXT,
-                rank             INTEGER
+                rank             INTEGER,
+                FOREIGN KEY (queue_item_id) REFERENCES grab_queue(id) ON DELETE CASCADE
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_item ON grab_candidates(queue_item_id)")
@@ -306,7 +328,8 @@ class BPMDatabase:
                 queue_item_id INTEGER NOT NULL,
                 event         TEXT,
                 detail        TEXT,
-                created_at    TEXT
+                created_at    TEXT,
+                FOREIGN KEY (queue_item_id) REFERENCES grab_queue(id) ON DELETE CASCADE
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_item ON grab_events(queue_item_id)")

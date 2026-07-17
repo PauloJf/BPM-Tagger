@@ -169,8 +169,9 @@ def api_waveform():
     _assert_in_music_dir(path)
 
     # 1. In-memory cache (fastest)
-    if path in st.waveform_cache:
-        return jsonify(st.waveform_cache[path])
+    cached = st.get_waveform(path)
+    if cached is not None:
+        return jsonify(cached)
 
     # 2. DB — populated during BPM analysis so no extra librosa call needed
     if st.db:
@@ -196,7 +197,7 @@ def api_waveform():
 
     if not leader:
         ev.wait(timeout=30)
-        result = st.waveform_cache.get(path)
+        result = st.get_waveform(path)
         if result:
             return jsonify(result)
         return jsonify(error="waveform not available"), 503
@@ -785,7 +786,9 @@ def api_artist_image():
         # is worse than the album-art fallback. Deezer's placeholder images
         # live under /artist//, which also signals "no real picture".
         if url and "/artist//" not in url and hit.get("name", "").strip().lower() == name.lower():
-            img = requests.get(url, timeout=10)
+            # Deezer CDN art is a direct static asset — never follow a redirect,
+            # which could point off-CDN to a private/LAN address (SSRF hardening).
+            img = requests.get(url, timeout=10, allow_redirects=False)
             img.raise_for_status()
             # Optionally file it as artist.jpg beside the artist's music
             # (Navidrome sees it too, and step 1 finds it on every next load).

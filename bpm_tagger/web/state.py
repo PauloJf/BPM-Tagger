@@ -32,6 +32,7 @@ class AppState:
     # Waveform peak cache: path -> {peaks, duration}; insertion-ordered for eviction.
     waveform_cache: dict = field(default_factory=dict)
     waveform_cache_max: int = 500            # evict oldest 10% when exceeded
+    waveform_cache_lock: Lock = field(default_factory=Lock)  # guards cache reads/eviction
     waveform_inflight: dict = field(default_factory=dict)  # path -> Event; dedupe compute
     waveform_inflight_lock: Lock = field(default_factory=Lock)
 
@@ -44,11 +45,20 @@ class AppState:
     attempt_window: int = 60
 
     def cache_waveform(self, path: str, result: dict) -> None:
-        self.waveform_cache[path] = result
-        if len(self.waveform_cache) > self.waveform_cache_max:
-            evict = list(self.waveform_cache.keys())[:self.waveform_cache_max // 10]
-            for k in evict:
-                self.waveform_cache.pop(k, None)
+        # Served by up to 12 Waitress threads: the insert + eviction-scan must be
+        # atomic, or a concurrent write raises "dictionary changed size during
+        # iteration" (and readers can observe torn state).
+        with self.waveform_cache_lock:
+            self.waveform_cache[path] = result
+            if len(self.waveform_cache) > self.waveform_cache_max:
+                evict = list(self.waveform_cache.keys())[:self.waveform_cache_max // 10]
+                for k in evict:
+                    self.waveform_cache.pop(k, None)
+
+    def get_waveform(self, path: str):
+        """Thread-safe cache read (avoids a check-then-get race with eviction)."""
+        with self.waveform_cache_lock:
+            return self.waveform_cache.get(path)
 
 
 def state() -> AppState:

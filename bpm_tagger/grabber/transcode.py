@@ -22,6 +22,10 @@ PROFILES = {
 
 _LOSSY = {"mp3", "opus", "aac", "ogg", "m4a", "wma"}
 
+# Hard ceiling for a single transcode. Generous for a full track on slow
+# hardware, but bounded so a hung/hostile input can't block a worker forever.
+FFMPEG_TIMEOUT = 300
+
 
 def profile_ext(profile: str) -> str:
     return PROFILES.get(profile, PROFILES["mp3-320"])[0]
@@ -56,9 +60,13 @@ def transcode(src: str, dest_dir: str, profile: str, base_name: str) -> tuple[st
 
     args = build_ffmpeg_args(src, dest, profile)
     try:
-        subprocess.run(args, check=True, capture_output=True)
+        # Timeout so a malformed/hostile input or a hung ffmpeg can't pin a grab
+        # worker forever (the pool is tiny — one stuck transcode starves it).
+        subprocess.run(args, check=True, capture_output=True, timeout=FFMPEG_TIMEOUT)
     except FileNotFoundError as exc:
         raise RuntimeError("ffmpeg not found on PATH") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"ffmpeg timed out after {FFMPEG_TIMEOUT}s") from exc
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", "ignore")[:400] if exc.stderr else ""
         raise RuntimeError(f"ffmpeg failed: {stderr}") from exc

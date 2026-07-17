@@ -51,10 +51,13 @@ class _Raw:
 
 
 class _FakeResp:
-    def __init__(self, json_data=None, content=b""):
+    def __init__(self, json_data=None, content=b"", is_redirect=False):
         self._json = json_data
         self.content = content
         self.raw = _Raw(content)
+        # Mirror requests.Response so the SSRF redirect guard can inspect them.
+        self.is_redirect = is_redirect
+        self.is_permanent_redirect = is_redirect
 
     def raise_for_status(self):
         pass
@@ -109,6 +112,22 @@ def test_images_search_builds_query_from_fields(imgs, monkeypatch):
 def test_images_search_invalid_kind(imgs):
     client, _st, _music = imgs
     assert client.get("/api/images/search?kind=nope&q=x").status_code == 400
+
+
+def test_fetch_image_refuses_redirect(imgs, monkeypatch):
+    """SSRF hardening: a public host that 3xx-redirects (potentially to a
+    private/LAN/metadata address) must not be followed."""
+    client, _st, _music = imgs
+    monkeypatch.setattr(images_mod, "_is_public_host", lambda url: True)
+    monkeypatch.setattr(images_mod.requests, "get",
+                        lambda url, **kw: _FakeResp(content=JPEG, is_redirect=True))
+    # allow_redirects must be disabled so the redirect surfaces to our guard.
+    monkeypatch.setattr(images_mod.requests, "get",
+                        lambda url, **kw: (
+                            _FakeResp(content=JPEG, is_redirect=True)
+                            if kw.get("allow_redirects") is False
+                            else _FakeResp(content=JPEG)))
+    assert images_mod._fetch_image("https://cdn.example/redir.jpg") is None
 
 
 # ── artist image ──────────────────────────────────────────────────────────────
