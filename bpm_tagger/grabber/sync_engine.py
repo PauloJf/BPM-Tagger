@@ -84,10 +84,11 @@ class SpotifySync(threading.Thread):
             meta = self.client.get_playlist_meta(pl["spotify_id"])
             if meta["snapshot_id"] != (pl.get("snapshot_id") or ""):
                 tracks = self.client.get_playlist_tracks(pl["spotify_id"])
-                self.db.replace_playlist_tracks(pl["id"], tracks)
+                added, removed = self.db.sync_playlist_tracks(pl["id"], tracks)
                 self.db.update_playlist_sync(pl["id"], meta["snapshot_id"], meta["name"],
                                              meta["image_url"], meta["track_count"])
-                log.info("Playlist '%s': %d tracks (snapshot changed)", meta["name"], len(tracks))
+                log.info("Playlist '%s': %d tracks (snapshot changed; +%d new, -%d removed)",
+                         meta["name"], len(tracks), added, removed)
             # Always re-match: the library changes even when the playlist doesn't.
             self._match_playlist(pl["id"])
         except SpotifyAuthError as exc:

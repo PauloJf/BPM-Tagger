@@ -108,9 +108,13 @@ def playlist_tracks(pid):
     if not pl:
         return jsonify(error="not_found"), 404
     status = request.args.get("status", "")
-    if status not in ("", "have", "missing", "queued"):
+    if status not in ("", "have", "missing", "queued", "removed"):
         status = ""
-    return jsonify(playlist=pl, tracks=db.get_playlist_tracks(pid, status))
+    tracks = db.get_playlist_tracks(pid, status)
+    if not status:
+        # Full detail view acknowledges the "new" badges.
+        db.mark_playlist_seen(pid)
+    return jsonify(playlist=pl, tracks=tracks)
 
 
 @playlists_bp.route("/api/playlists/<int:pid>/export.m3u")

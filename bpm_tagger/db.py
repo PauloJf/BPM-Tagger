@@ -138,14 +138,67 @@ class BPMDatabase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_norm ON tracks(norm_artist, norm_title)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON tracks(isrc)")
 
+        self._migrate_playlists_schema(conn)
         self._create_grabber_tables(conn)
+        self._migrate_playlists_schema(conn, finish=True)
+
+    def _migrate_playlists_schema(self, conn, finish: bool = False):
+        """Generalize the Spotify-only playlists / playlist_tracks tables to the
+        multi-source shape (adds `source`, relaxes `spotify_id NOT NULL/UNIQUE`,
+        adds membership columns). SQLite can't drop a NOT NULL/UNIQUE in place, so
+        this rebuilds via rename → recreate → copy → drop, preserving row ids (and
+        thus grab_queue.playlist_track_id references).
+
+        Called twice around _create_grabber_tables: the first pass renames legacy
+        tables out of the way so the recreate makes the new schema; the ``finish``
+        pass copies the old rows in and drops the temporaries."""
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if not finish:
+            if "playlists" in tables and "source" not in {
+                    row[1] for row in conn.execute("PRAGMA table_info(playlists)")}:
+                conn.execute("ALTER TABLE playlists RENAME TO _playlists_old")
+            if "playlist_tracks" in tables and "source_track_id" not in {
+                    row[1] for row in conn.execute("PRAGMA table_info(playlist_tracks)")}:
+                conn.execute("ALTER TABLE playlist_tracks RENAME TO _playlist_tracks_old")
+            return
+        if "_playlists_old" in tables:
+            conn.execute("""
+                INSERT INTO playlists
+                    (id, source, spotify_id, navidrome_id, name, snapshot_id, enabled,
+                     image_url, track_count, last_synced_at, created_at)
+                SELECT id, 'spotify', spotify_id, NULL, name, snapshot_id, enabled,
+                       image_url, track_count, last_synced_at, created_at
+                FROM _playlists_old
+            """)
+            conn.execute("DROP TABLE _playlists_old")
+        if "_playlist_tracks_old" in tables:
+            conn.execute("""
+                INSERT INTO playlist_tracks
+                    (id, playlist_id, source_track_id, spotify_track_id, position, title,
+                     artist, album, album_artist, duration_ms, isrc, track_no, disc_no,
+                     year, cover_url, added_at, norm_title, norm_artist, match_status,
+                     matched_file_path, first_seen_at, is_new, removed_at)
+                SELECT id, playlist_id, spotify_track_id, spotify_track_id, position, title,
+                       artist, album, album_artist, duration_ms, isrc, track_no, disc_no,
+                       year, cover_url, added_at, norm_title, norm_artist, match_status,
+                       matched_file_path, added_at, 0, NULL
+                FROM _playlist_tracks_old
+            """)
+            conn.execute("DROP TABLE _playlist_tracks_old")
 
     def _create_grabber_tables(self, conn):
         """New grabber tables (§2). All CREATE ... IF NOT EXISTS — safe to re-run."""
+        # `source` generalizes playlists beyond Spotify (navidrome | local). spotify_id
+        # is nullable now (only Spotify rows carry one); NULLs are distinct under the
+        # UNIQUE index, so many non-Spotify rows coexist. Older DBs are rebuilt into
+        # this shape by _migrate_playlists_schema().
         conn.execute("""
             CREATE TABLE IF NOT EXISTS playlists (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                spotify_id     TEXT UNIQUE NOT NULL,
+                source         TEXT NOT NULL DEFAULT 'spotify',   -- spotify | navidrome | local
+                spotify_id     TEXT UNIQUE,
+                navidrome_id   TEXT UNIQUE,
                 name           TEXT,
                 snapshot_id    TEXT,
                 enabled        INTEGER DEFAULT 1,
@@ -155,11 +208,15 @@ class BPMDatabase:
                 created_at     TEXT
             )
         """)
+        # Membership state (is_new / removed_at) is independent of local availability
+        # (match_status). No UNIQUE(playlist_id, position) — positions are rewritten on
+        # every sync; the diff keys on source_track_id in Python instead.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS playlist_tracks (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 playlist_id      INTEGER NOT NULL,
-                spotify_track_id TEXT,
+                source_track_id  TEXT,                     -- spotify track id / navidrome song id (diff key)
+                spotify_track_id TEXT,                     -- kept for grabber back-compat
                 position         INTEGER,
                 title            TEXT,
                 artist           TEXT,
@@ -176,11 +233,14 @@ class BPMDatabase:
                 norm_artist      TEXT,
                 match_status     TEXT DEFAULT 'unknown',   -- have | missing | unknown
                 matched_file_path TEXT,
-                UNIQUE(playlist_id, position)
+                first_seen_at    TEXT,                     -- when this row first appeared in the source
+                is_new           INTEGER DEFAULT 0,        -- added since last viewed (cleared on view)
+                removed_at       TEXT                      -- tombstone: gone from source (NULL = present)
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_playlist ON playlist_tracks(playlist_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_sid ON playlist_tracks(spotify_track_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_src ON playlist_tracks(playlist_id, source_track_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS grab_queue (
                 id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1082,11 +1142,17 @@ class BPMDatabase:
             ).fetchall()}
             for p in playlists:
                 rows = conn.execute(
-                    "SELECT spotify_track_id, match_status FROM playlist_tracks WHERE playlist_id = ?",
+                    "SELECT spotify_track_id, match_status, is_new, removed_at "
+                    "FROM playlist_tracks WHERE playlist_id = ?",
                     (p["id"],),
                 ).fetchall()
-                have = miss = q = 0
+                have = miss = q = new = removed = 0
                 for r in rows:
+                    if r["removed_at"]:            # tombstone: out of coverage totals
+                        removed += 1
+                        continue
+                    if r["is_new"]:
+                        new += 1
                     if r["spotify_track_id"] in queued:
                         q += 1
                     elif r["match_status"] == "have":
@@ -1096,7 +1162,9 @@ class BPMDatabase:
                 p["have_count"] = have
                 p["missing_count"] = miss
                 p["queued_count"] = q
-                p["indexed_count"] = len(rows)
+                p["new_count"] = new
+                p["removed_count"] = removed
+                p["indexed_count"] = have + miss + q   # live tracks only
         return playlists
 
     def get_playlist(self, playlist_id: int) -> Optional[dict]:
@@ -1137,28 +1205,96 @@ class BPMDatabase:
             conn.commit()
 
     # ── Playlist tracks ───────────────────────────────────────────────────────
-    def replace_playlist_tracks(self, playlist_id: int, tracks: list[dict]) -> None:
-        """Rebuild a playlist's track rows in one transaction (per snapshot change)."""
+    _PT_META_COLS = ("position", "title", "artist", "album", "album_artist",
+                     "duration_ms", "isrc", "track_no", "disc_no", "year", "cover_url",
+                     "added_at", "norm_title", "norm_artist", "spotify_track_id")
+
+    def sync_playlist_tracks(self, playlist_id: int, tracks: list[dict]) -> tuple[int, int]:
+        """Diff incoming source tracks against stored rows, keyed by source_track_id.
+
+        Unlike a wipe-and-reinsert, this preserves rows (and their ids, match state,
+        and dates) across syncs so membership changes are observable:
+
+        * present in source, not stored          → insert, is_new=1, first_seen_at=now
+        * present in both                         → update metadata/position; revive a
+                                                     tombstone (removed_at→NULL, is_new=1)
+        * stored, absent from source, live        → tombstone (removed_at=now)
+        * stored, absent from source, already a
+          tombstone from a prior sync             → delete (the tombstone has been shown)
+
+        So a detail view always reflects "changes since the last sync". is_new is left
+        for mark_playlist_seen() to clear on view. Returns (added, removed) counts.
+        Duplicate source ids within one playlist collapse to a single row.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+
+        def _sid(t: dict):
+            return t.get("source_track_id") or t.get("spotify_track_id")
+
         with self._connect() as conn:
-            conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
-            conn.executemany("""
-                INSERT INTO playlist_tracks
-                    (playlist_id, spotify_track_id, position, title, artist, album,
-                     album_artist, duration_ms, isrc, track_no, disc_no, year, cover_url,
-                     added_at, norm_title, norm_artist, match_status, matched_file_path)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, [(playlist_id, t.get("spotify_track_id"), t.get("position"), t.get("title"),
-                   t.get("artist"), t.get("album"), t.get("album_artist"), t.get("duration_ms"),
-                   t.get("isrc"), t.get("track_no"), t.get("disc_no"), t.get("year"),
-                   t.get("cover_url"), t.get("added_at"), t.get("norm_title"),
-                   t.get("norm_artist"), t.get("match_status", "unknown"),
-                   t.get("matched_file_path")) for t in tracks])
+            existing: dict = {}
+            for r in conn.execute(
+                    "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY id",
+                    (playlist_id,)):
+                sid = r["source_track_id"]
+                if sid in existing:
+                    conn.execute("DELETE FROM playlist_tracks WHERE id = ?", (r["id"],))
+                else:
+                    existing[sid] = r
+
+            incoming_ids, added = set(), 0
+            for t in tracks:
+                sid = _sid(t)
+                if sid in incoming_ids:
+                    continue                  # duplicate within this sync — first wins
+                incoming_ids.add(sid)
+                meta = [t.get(c) for c in self._PT_META_COLS]
+                prior = existing.get(sid)
+                if prior is not None:
+                    set_clause = ", ".join(f"{c}=?" for c in self._PT_META_COLS)
+                    revive = ", removed_at=NULL, is_new=1" if prior["removed_at"] else ""
+                    conn.execute(
+                        f"UPDATE playlist_tracks SET {set_clause}{revive} WHERE id=?",
+                        (*meta, prior["id"]),
+                    )
+                else:
+                    conn.execute(f"""
+                        INSERT INTO playlist_tracks
+                            (playlist_id, source_track_id, {", ".join(self._PT_META_COLS)},
+                             match_status, matched_file_path, first_seen_at, is_new)
+                        VALUES (?, ?, {", ".join("?" * len(self._PT_META_COLS))}, ?, ?, ?, 1)
+                    """, (playlist_id, sid, *meta,
+                          t.get("match_status", "unknown"), t.get("matched_file_path"), now))
+                    added += 1
+
+            removed = 0
+            for sid, r in existing.items():
+                if sid in incoming_ids:
+                    continue
+                if r["removed_at"]:               # tombstone survived a full sync → clear
+                    conn.execute("DELETE FROM playlist_tracks WHERE id = ?", (r["id"],))
+                else:
+                    conn.execute("UPDATE playlist_tracks SET removed_at=? WHERE id=?",
+                                 (now, r["id"]))
+                    removed += 1
+            conn.commit()
+        return added, removed
+
+    def mark_playlist_seen(self, playlist_id: int) -> None:
+        """Clear the is_new badges for a playlist — called when its detail is viewed."""
+        with self._connect() as conn:
+            conn.execute("UPDATE playlist_tracks SET is_new = 0 WHERE playlist_id = ?",
+                         (playlist_id,))
             conn.commit()
 
-    def get_playlist_track_rows(self, playlist_id: int) -> list[dict]:
+    def get_playlist_track_rows(self, playlist_id: int,
+                                include_removed: bool = False) -> list[dict]:
+        """Live playlist track rows (tombstones excluded unless include_removed).
+        Feeds matching and m3u export, which must ignore removed tracks."""
+        where = "" if include_removed else " AND removed_at IS NULL"
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
+                f"SELECT * FROM playlist_tracks WHERE playlist_id = ?{where} ORDER BY position",
                 (playlist_id,),
             ).fetchall()
         return [dict(r) for r in rows]
@@ -1180,7 +1316,10 @@ class BPMDatabase:
         ).fetchall()}
 
     def get_playlist_tracks(self, playlist_id: int, status: str = "") -> list[dict]:
-        """Playlist tracks with a derived per-row status (have|queued|missing)."""
+        """Playlist tracks with a derived per-row status (have|queued|missing|removed).
+
+        Tombstones (removed_at set) get derived_status 'removed' so they never match
+        the coverage filters and only appear in the unfiltered detail view."""
         with self._connect() as conn:
             rows = [dict(r) for r in conn.execute(
                 "SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
@@ -1188,7 +1327,9 @@ class BPMDatabase:
             ).fetchall()]
             queued = self._queued_sids(conn)
         for r in rows:
-            if r["spotify_track_id"] in queued:
+            if r["removed_at"]:
+                r["derived_status"] = "removed"
+            elif r["spotify_track_id"] in queued:
                 r["derived_status"] = "queued"
             elif r["match_status"] == "have":
                 r["derived_status"] = "have"
