@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate } from "../lib/player";
-import type { AudioQuality, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
+import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
 import { Cover } from "../components/Artwork";
 import { LyricsPanel } from "../components/LyricsPanel";
@@ -20,6 +20,7 @@ import { PlayerMobileBar } from "../components/Nav";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
+const SOURCE_KEY = "bpm.run.source";   // "library" | "pl:<id>"
 
 const PRESET_DEFAULTS = [
   { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -252,6 +253,22 @@ export default function Run() {
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState("");
+  // Run source: the whole library (default) or a specific playlist ("pl:<id>").
+  const [source, setSourceState] = useState<string>(() => localStorage.getItem(SOURCE_KEY) || "library");
+  const setSource = (s: string) => { setSourceState(s); localStorage.setItem(SOURCE_KEY, s); };
+
+  const runPlaylistsQ = useQuery({
+    queryKey: ["run-playlists"],
+    queryFn: () => api.get<{ playlists: RunPlaylistOption[] }>("/api/run/playlists"),
+    staleTime: 30_000,
+  });
+  const runPlaylists = runPlaylistsQ.data?.playlists ?? [];
+  const selectedPlaylistId = source.startsWith("pl:") ? Number(source.slice(3)) : null;
+  const selectedPlaylist = runPlaylists.find((p) => p.id === selectedPlaylistId) ?? null;
+  // A stored selection that no longer exists (deleted playlist) falls back to library.
+  useEffect(() => {
+    if (selectedPlaylistId != null && runPlaylistsQ.data && !selectedPlaylist) setSource("library");
+  }, [selectedPlaylistId, runPlaylistsQ.data, selectedPlaylist]);
   // Disliked tracks are excluded server-side from future queue builds, so they
   // never appear in a fresh queueInfo — this only tracks what got disliked
   // *this session* on a track that's already sitting in the current queue.
@@ -337,10 +354,13 @@ export default function Run() {
     setBuilding(true);
     setBuildErr("");
     try {
-      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}`);
+      const scope = selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
+      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}`);
       setQueueInfo(resp);
       if (!resp.tracks.length) {
-        setBuildErr("No tracks match this BPM — widen the tolerance in Settings or pick another target.");
+        setBuildErr(selectedPlaylist
+          ? `No tracks in "${selectedPlaylist.name}" match this BPM — widen the tolerance in Settings, pick another target, or choose a different source.`
+          : "No tracks match this BPM — widen the tolerance in Settings or pick another target.");
         return;
       }
       player.playQueue(
@@ -511,6 +531,34 @@ export default function Run() {
         {coverImg}
       </div>
       {titleArtist}
+    </div>
+  );
+
+  // Run source: whole library or a specific playlist. Only rendered when at least
+  // one playlist exists, so library-only users never see an empty dropdown.
+  const sourcePicker = runPlaylists.length > 0 && (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)" }}>Source</span>
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          aria-label="Run source"
+          style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 260 }}
+        >
+          <option value="library">Whole library</option>
+          {runPlaylists.map((p) => (
+            <option key={p.id} value={`pl:${p.id}`}>{p.name} ({p.available})</option>
+          ))}
+        </select>
+      </div>
+      {selectedPlaylist && (
+        <div style={{ textAlign: "center", fontSize: 11, color: selectedPlaylist.available === 0 ? "var(--warn-fg)" : "var(--muted)" }}>
+          {selectedPlaylist.available === 0
+            ? "No runnable tracks here — none matched a local file with a detected BPM."
+            : `${selectedPlaylist.available} of ${selectedPlaylist.total} tracks available for runs`}
+        </div>
+      )}
     </div>
   );
 
@@ -947,6 +995,7 @@ export default function Run() {
                 {coverTapToggle}
               </div>
               <div className="run-cockpit-controls">
+                {sourcePicker}
                 {targetBlock}
                 {presetsGrid}
                 {stepsRow}
@@ -975,6 +1024,7 @@ export default function Run() {
             big number + native pill + the build/lock buttons) is dead weight while
             tapping — the lock is off in this mode anyway — so drop it here to keep
             the pad within one screen without scrolling. */}
+        {mode !== "tap" && mode !== "queue" && sourcePicker}
         {mode !== "tap" && targetBlock}
         {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
         {mode === "queue" ? renderQueuePanel(false)
