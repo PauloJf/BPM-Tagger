@@ -48,6 +48,7 @@ export interface RunTrack {
   play_count?: number | null;
   run_bpm: number;   // BPM after octave fold (×½/×1/×2)
   rate: number;      // playbackRate that lands run_bpm on the target
+  from_playlist?: boolean;  // from the selected playlist itself, vs a library top-up
 }
 
 export interface RunQueueResponse {

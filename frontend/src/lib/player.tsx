@@ -8,6 +8,7 @@ export interface PlayerTrack {
   bpm?: number | null;
   src?: string;            // absolute stream URL; used instead of audioUrl(path) when set
   ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
+  fromPlaylist?: boolean;  // run mode: from the selected playlist vs a library top-up
 }
 
 /** Run-mode tempo lock: stretch every queued track onto one target BPM. */
@@ -363,13 +364,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // the unplayed matches run out, instead of pulling from the whole library.
     const body: { bpm: number; exclude: string[]; playlist?: number } = { bpm: tempoLock.target, exclude };
     if (runSourceRef.current != null) body.playlist = runSourceRef.current;
-    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number }[] }>(
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number; from_playlist?: boolean }[] }>(
       "/api/run/queue", body)
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
         let batch: PlayerTrack[] = resp.tracks.map((t) =>
-          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm }));
+          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, fromPlaylist: t.from_playlist }));
         // Defense in depth: the exclude window is bounded, so the currently
         // playing track could in principle fall outside it on a huge queue.
         const noRepeat = batch.filter((t) => t.path !== cur?.path);

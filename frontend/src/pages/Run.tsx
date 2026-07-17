@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate } from "../lib/player";
@@ -108,7 +108,17 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  *  next track's image has decoded — so a track change never blanks the cover,
  *  which previously collapsed the box and jumped the whole cockpit layout.
  *  Falls back to the ♪ placeholder when a cover 404s. */
-function RunCover({ path, coverSize }: { path: string; coverSize: string }) {
+function RunCover({ path, coverSize, onClick, onMouseEnter, onMouseLeave, ariaLabel, ariaPressed, title, children }: {
+  path: string;
+  coverSize: string;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  ariaLabel?: string;
+  ariaPressed?: boolean;
+  title?: string;
+  children?: React.ReactNode;   // absolute overlays (pop-out hint, source chip)
+}) {
   const src = (p: string) => `/api/track/cover?path=${encodeURIComponent(p)}`;
   // `shown` is the path whose art is currently painted; it only advances to the
   // new `path` after that image has finished loading (or errored).
@@ -125,24 +135,34 @@ function RunCover({ path, coverSize }: { path: string; coverSize: string }) {
     return () => { cancelled = true; };
   }, [path, shown]);
 
-  // Size the element itself, exactly like the original <Cover> — a replaced
-  // <img> with width:min(size,100%) + aspect-ratio. Do NOT wrap it in a sizing
-  // <div>: a non-replaced box can't resolve `100%` against the shrink-to-fit
-  // inline-flex cover slot and collapses to 0 (which hid the cover in 2.6.6).
+  // A fixed-aspect square box, centered in its (definite-width) parent via
+  // margin:auto, with the image absolutely filling it. width:min(size,100%)
+  // resolves fine here because the parent is a full-width flex/block, not a
+  // shrink-to-fit inline box — so it never collapses (the 2.6.6 bug) and the
+  // aspect-ratio always wins (no wide/off-square art), while the click target
+  // and any overlays share the exact cover footprint.
   const box: React.CSSProperties = {
-    width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1",
-    borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)",
+    position: "relative", display: "block", width: `min(${coverSize}, 100%)`,
+    aspectRatio: "1 / 1", margin: "0 auto", borderRadius: 20, overflow: "hidden",
+    boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
+    border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
   };
-  if (failed) {
-    return <div className="art-thumb" style={{ ...box, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</div>;
-  }
-  return (
-    <img
-      src={src(shown)}
-      alt=""
-      onError={() => setFailed(true)}
-      style={{ ...box, height: "auto", objectFit: "cover", display: "block" }}
-    />
+  const inner = (
+    <>
+      {failed ? (
+        <span className="art-thumb" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</span>
+      ) : (
+        <img src={src(shown)} alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      )}
+      {children}
+    </>
+  );
+  return onClick ? (
+    <button type="button" style={box} onClick={onClick} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} aria-label={ariaLabel} aria-pressed={ariaPressed} title={title}>
+      {inner}
+    </button>
+  ) : (
+    <div style={box} title={title}>{inner}</div>
   );
 }
 
@@ -331,6 +351,10 @@ export default function Run() {
       `/api/track?path=${encodeURIComponent(current!.path)}`),
     enabled: !!current,
     staleTime: 60_000,
+    // Keep the previous track's detail on screen while the next one loads, so
+    // the info column / play-count don't blank and jump on every track change
+    // (matches the cover's hold-then-swap).
+    placeholderData: keepPreviousData,
   });
   const detail = trackQ.data?.track;
   const quality = fmtQuality(trackQ.data?.quality);
@@ -409,7 +433,7 @@ export default function Run() {
         return;
       }
       player.playQueue(
-        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm })),
+        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, fromPlaylist: t.from_playlist })),
         0, { shuffle: false },
       );
       // Pin the run's source so the mid-run auto-refill stays scoped to it.
@@ -536,7 +560,6 @@ export default function Run() {
   // Now playing: cover + title/artist. Split into pieces so the desktop cockpit
   // can swap the cover slot for the tap card (nowPlayingDesktop) without touching
   // the title/artist markup; mobile keeps the composed `nowPlaying`.
-  const coverImg = current && <RunCover path={current.path} coverSize={coverSize} />;
   const titleArtist = current && (
     <>
       {playerMode ? (
@@ -608,11 +631,8 @@ export default function Run() {
   );
   const nowPlaying = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-        <div style={{ position: "relative", display: "inline-flex" }}>
-          {coverImg}
-          {sourceOverlay}
-        </div>
+      <div style={{ marginBottom: 10 }}>
+        <RunCover path={current.path} coverSize={coverSize}>{sourceOverlay}</RunCover>
       </div>
       {titleArtist}
     </div>
@@ -946,6 +966,9 @@ export default function Run() {
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
             const isCurrentRow = i === player.orderPos;
+            // In a playlist run, tracks added to fill the queue from the library
+            // (not in the playlist) show italic, so the two are distinguishable.
+            const fromLibrary = player.runSource != null && t.fromPlaylist === false;
             return (
               <div key={`${t.path}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent" }}>
                 {starred !== undefined && (
@@ -955,9 +978,9 @@ export default function Run() {
                 <button
                   style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }}
                   onClick={() => player.jumpTo(i)}
-                  title={`Play ${t.title}`}
+                  title={fromLibrary ? `Play ${t.title} — added from your library` : `Play ${t.title}`}
                 >
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 500, fontStyle: fromLibrary ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {isCurrentRow && <span style={{ color: "var(--accent-2)", marginRight: 6 }}>▶</span>}
                     {t.title}
                   </span>
@@ -1029,48 +1052,53 @@ export default function Run() {
   // inside nowPlayingDesktop) and Chromium-only (mini.supported — Document PiP
   // is unavailable elsewhere), so the affordance only shows where it can work.
   // Where PiP is unsupported the cover renders as a plain (non-clickable) image.
+  // Overlay hint shown over the cover (fades in on hover, stays lit while the
+  // floating window is open). pointer-events:none so clicks reach the cover
+  // button beneath it.
+  const popoutOverlay = (
+    <span
+      aria-hidden
+      style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
+        background: mini.isOpen ? "rgba(0,0,0,0.34)" : "rgba(0,0,0,0.46)",
+        opacity: mini.isOpen || coverHover ? 1 : 0,
+        transition: "opacity 0.18s ease",
+      }}
+    >
+      <span
+        style={{
+          width: 46, height: 46, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+          backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          background: mini.isOpen ? "var(--accent)" : "rgba(255,255,255,0.16)",
+          border: `1px solid ${mini.isOpen ? "var(--accent-border)" : "rgba(255,255,255,0.30)"}`,
+          color: "white",
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="14" rx="2" />
+          <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+      <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.01em", color: "white", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
+        {mini.isOpen ? "Floating player open" : "Pop out mini player"}
+      </span>
+    </span>
+  );
   const coverWithPopout = current && (mini.supported ? (
-    <button
+    <RunCover
+      path={current.path}
+      coverSize={coverSize}
       onClick={mini.toggle}
       onMouseEnter={() => setCoverHover(true)}
       onMouseLeave={() => setCoverHover(false)}
-      aria-pressed={mini.isOpen}
-      aria-label={mini.isOpen ? "Close the floating mini player" : "Open the floating mini player"}
+      ariaPressed={mini.isOpen}
+      ariaLabel={mini.isOpen ? "Close the floating mini player" : "Open the floating mini player"}
       title={mini.isOpen ? "Close the floating player" : "Pop out a floating mini player — cadence + transport, always on top"}
-      style={{ position: "relative", display: "inline-flex", padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: 20 }}
     >
-      {coverImg}
-      {/* Overlay fades in on hover, and stays lit while the window is open. */}
-      <span
-        aria-hidden
-        style={{
-          position: "absolute", inset: 0, borderRadius: 20,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
-          background: mini.isOpen ? "rgba(0,0,0,0.34)" : "rgba(0,0,0,0.46)",
-          opacity: mini.isOpen || coverHover ? 1 : 0,
-          transition: "opacity 0.18s ease",
-        }}
-      >
-        <span
-          style={{
-            width: 46, height: 46, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
-            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-            background: mini.isOpen ? "var(--accent)" : "rgba(255,255,255,0.16)",
-            border: `1px solid ${mini.isOpen ? "var(--accent-border)" : "rgba(255,255,255,0.30)"}`,
-            color: "white",
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="14" rx="2" />
-            <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
-          </svg>
-        </span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.01em", color: "white", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
-          {mini.isOpen ? "Floating player open" : "Pop out mini player"}
-        </span>
-      </span>
-    </button>
-  ) : coverImg);
+      {popoutOverlay}
+    </RunCover>
+  ) : <RunCover path={current.path} coverSize={coverSize} />);
   const nowPlayingDesktop = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
       {/* The slot hugs the cover (auto) by default, so short screens don't waste

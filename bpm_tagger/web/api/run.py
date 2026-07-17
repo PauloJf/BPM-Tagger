@@ -102,24 +102,25 @@ def api_run_queue():
         same cadence when the playlist can't fill the queue — so a small
         playlist (few tracks matching this target) never degenerates into one
         song looping. A library-source run (no playlist) just matches the
-        whole library. Returns (matches, topped_up)."""
+        whole library. Returns (matches, playlist_paths, topped_up) — the second
+        item is the set of file paths that came from the playlist itself."""
         if playlist_id is None:
-            return _matches(st.db.get_run_candidates(None), exclude_paths), False
+            return _matches(st.db.get_run_candidates(None), exclude_paths), set(), False
         pl = _matches(st.db.get_run_candidates(playlist_id), exclude_paths)
+        pl_paths = {m[0]["file_path"] for m in pl}
         if len(pl) >= count:
-            return pl, False
+            return pl, pl_paths, False
         # Not enough playlist tracks match here — fill the rest from the library,
         # excluding what's already picked so nothing repeats.
-        seen = set(exclude_paths) | {m[0]["file_path"] for m in pl}
-        lib = _matches(st.db.get_run_candidates(None), seen)
-        return pl + lib, bool(lib)
+        lib = _matches(st.db.get_run_candidates(None), set(exclude_paths) | pl_paths)
+        return pl + lib, pl_paths, bool(lib)
 
-    picked, topped_up = _build(exclude_set)
+    picked, pl_paths, topped_up = _build(exclude_set)
     recycled = False
     if not picked and exclude_set:
         # Everything eligible was excluded (small pool, long run) — drop the
         # exclusion and reshuffle rather than starve the refill.
-        picked, topped_up = _build(set())
+        picked, pl_paths, topped_up = _build(set())
         recycled = True
 
     # Playback order shuffled (within the scored/truncated slice) so two runs
@@ -136,6 +137,8 @@ def api_run_queue():
         "play_count": t["play_count"],
         "run_bpm": round(folded, 2),                  # BPM after octave fold
         "rate":    round(target / folded, 4),         # playbackRate to hit target
+        # From the selected playlist itself vs. a library top-up (marks the UI).
+        "from_playlist": t["file_path"] in pl_paths,
     } for (t, folded, _dev) in picked]
     return jsonify(tracks=tracks, target=target, count=len(tracks),
                    octave_fold=octave, tolerance_pct=tol * 100,

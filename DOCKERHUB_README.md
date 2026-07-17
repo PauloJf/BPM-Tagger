@@ -159,6 +159,8 @@ Every bit helps keep this project maintained and open source.
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.6.9** — Run polish: the cover art is reliably **square and centered** (fixed off-center / non-square rendering on desktop and mobile); track details **hold steady** instead of blanking/jumping on track change; and in a topped-up playlist run, **library-added tracks show italic** in the queue to set them apart from the playlist's own.
+
 **v2.6.8** — **Playlist runs top up from the library** — a run built from a playlist now prefers its matching tracks and fills the rest from your whole library at the same cadence when the playlist is too small, fixing a small playlist looping one song (which looked like "next" being stuck / one song playing, especially in player mode on a phone). Playlist detail pages now show each matched track's **BPM and length** and link to its track/artist/album pages.
 
 **v2.6.7** — Fix: the Run page **cover art went missing** in 2.6.6 — the cover box collapsed to zero width in the cockpit's cover slot, leaving only the mini-player overlay. Restored, keeping the no-blank-on-track-change behaviour.

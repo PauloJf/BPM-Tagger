@@ -265,6 +265,7 @@ def test_run_queue_playlist_scope_and_topup(client, base_config):
     assert {t["title"] for t in scoped["tracks"]} == {"a", "b"}
     assert scoped["topped_up"] is False
     assert scoped["playlist"] == pid
+    assert all(t["from_playlist"] for t in scoped["tracks"])
 
     # With too few playlist matches for the (default) queue size, the run tops
     # up from the whole library at the same cadence — the playlist's tracks are
@@ -275,6 +276,9 @@ def test_run_queue_playlist_scope_and_topup(client, base_config):
     assert "outside" in titles           # topped up from the library
     assert "hated" not in titles         # disliked never eligible
     assert data["topped_up"] is True
+    fp = {t["title"]: t["from_playlist"] for t in data["tracks"]}
+    assert fp["a"] is True and fp["b"] is True    # from the playlist
+    assert fp["outside"] is False                 # a library top-up
 
     # Whole-library (no scope) still sees everything eligible.
     full = client.get("/api/run/queue?bpm=150").get_json()

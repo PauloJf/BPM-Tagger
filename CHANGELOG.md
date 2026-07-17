@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.9 — 2026-07-17
+
+- **Run cover: reliably square and centered.** Rebuilt the cover as a fixed-aspect box with the artwork absolutely filling it, so it's always a centered square (a wide image is cropped, never letterboxed or left-aligned) regardless of screen size — fixing the off-center / non-square cover on the desktop cockpit and on mobile.
+- **Track details no longer jump on track change.** The desktop info column (album, native BPM, detector, length, quality) and the play-count line now hold the previous track's values until the next track's detail finishes loading — matching the cover's hold-then-swap — instead of blanking and shifting the layout on every change.
+- **Tell playlist tracks from library top-ups in the run queue.** When a playlist run is topped up from your library, the library-added tracks show their title in *italic* (the playlist's own tracks stay upright), so the two are distinguishable at a glance.
+
 ## v2.6.8 — 2026-07-17
 
 - **Playlist runs top up from the library.** A run built from a playlist now prefers that playlist's matching tracks and **fills the rest from your whole library at the same cadence** when the playlist has too few tracks matching your target BPM. This fixes a small playlist degenerating into **one song looping** — which also looked like the **"next" button being stuck / only one song playing**, especially in player mode on a phone. A note on the Run page flags when a run was topped up. (Replaces the strict playlist-only refill introduced in 2.6.6.)
