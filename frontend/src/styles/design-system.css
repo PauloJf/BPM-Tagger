@@ -171,11 +171,26 @@ body.sidebar-collapsed { --sidebar-w: 62px; }
   background: oklch(0.150 0.012 285 / 0.92);
   border-right: 1px solid var(--border);
   padding: 16px 12px 14px;
-  overflow-y: auto; overflow-x: hidden;
+  overflow: hidden;
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
   transition: width 0.18s ease;
 }
+/* On short viewports only the nav sections scroll — the logo, collapse button
+   and footer (scan status + support/theme/logout) stay pinned, so the bottom
+   controls never slide out of reach. Thin scrollbar so the rail doesn't jump
+   or squeeze the icons when it appears. */
+.sidebar-nav-scroll {
+  /* Shrink (and scroll) when the viewport is short, but never grow — on tall
+     screens the collapse button stays right under the last section and the
+     footer's margin-top:auto still pins itself to the bottom. */
+  flex: 0 1 auto; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.sidebar-nav-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-nav-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.sidebar-nav-scroll::-webkit-scrollbar-track { background: transparent; }
 :root[data-theme="light"] .app-sidebar { background: oklch(0.985 0.004 285 / 0.92); }
 .app-sidebar .nav-logo { padding: 2px 6px 10px; }
 .app-main { margin-left: var(--sidebar-w); transition: margin-left 0.18s ease; }
@@ -938,6 +953,17 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
    mobile, where the sidebar is hidden) so it never covers the sidebar footer.
    This rule must stay AFTER any earlier .player-bar declarations. */
 body.has-player .container { padding-bottom: 88px; }
+/* Run page: the global player bar is never shown here (the run player IS the
+   transport), so drop both the has-player reserve and the container's default
+   80px bottom padding — on short desktop screens that dead space was the
+   difference between fitting and scrolling. */
+.container.container--run,
+body.has-player .container.container--run { padding-bottom: 24px; }
+/* Short desktop screens: also reclaim the header's top padding on the run
+   page so the cockpit + transport fit without scrolling a bit longer. */
+@media (max-height: 760px) {
+  .container.container--run { padding-top: 14px; }
+}
 /* Run mode has no fixed player bar and is phone-first: on mobile, tighten the
    container so the single-column layout fits one screen (the cover-art clamp
    reserve in pages/Run.tsx is tuned to this padding). Desktop keeps the
@@ -1072,7 +1098,12 @@ a.player-bar-title:hover { color: var(--accent-2); }
   gap: 20px;
   align-items: stretch;
 }
-.run-player-col { display: flex; flex-direction: column; min-width: 0; }
+/* A size container so the cockpit inside can collapse to one column based on
+   its OWN width, not the viewport. The viewport can't see the sidebar: at the
+   same window width the player column is ~220px narrower with the sidebar
+   expanded than collapsed, so a viewport media query mis-fires either way. The
+   container query below reacts to the real available width regardless. */
+.run-player-col { display: flex; flex-direction: column; min-width: 0; container-type: inline-size; container-name: playercol; }
 
 /* Track info (cover, details, tap-tempo) | target + presets + steps.
    The cockpit grows to fill the player column (both columns stretch to the
@@ -1090,11 +1121,20 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .run-cockpit-info { text-align: center; min-width: 0; }
 .run-cockpit-controls { align-self: center; min-width: 0; }
 
-/* The run queue owns a full-height column beside the player. */
-.run-queue-col { min-height: 0; display: flex; }
+/* The run queue owns a full-height column beside the player. The card inside
+   is absolutely positioned (see renderQueuePanel in pages/Run.tsx) so the
+   queue never drives the row height and always ends level with the transport —
+   the player column alone sets the cockpit height, and a long queue scrolls
+   internally instead of stretching or detaching from the layout. */
+.run-queue-col { min-height: 0; position: relative; }
 
-/* Between 900px and ~1040px the 360px queue column crowds the cockpit — drop
-   the cockpit to a single column so the cover/target don't get squeezed. */
-@media (max-width: 1040px) {
+/* When the player column itself gets too narrow for two side-by-side cells
+   (the target's NATIVE→cadence pill needs ~232px, plus the cover), drop the
+   cockpit to a single column so nothing gets squeezed or clips. Container
+   query on .run-player-col, so this fires on the real column width — it stays
+   two-column when there's room and collapses when there isn't, whether the
+   sidebar is expanded, collapsed, or absent. 520px keeps each two-col cell
+   ≥ ~246px — comfortably clear of the ~232px pill so it never kisses the edge. */
+@container playercol (max-width: 520px) {
   .run-cockpit { grid-template-columns: 1fr; gap: 18px; }
 }

@@ -383,23 +383,27 @@ export default function Nav() {
       {/* Desktop sidebar */}
       <aside className="app-sidebar">
         <Logo />
-        {sections.map((s) => (
-          <div key={s.label} className="sidebar-section">
-            <div className="sidebar-section-label">{s.label}</div>
-            {s.items.map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                title={l.label}
-                className={"sidebar-link" + (isActivePath(location.pathname, l.match) ? " active" : "")}
-              >
-                <l.icon />
-                <span className="sidebar-link-label">{l.label}</span>
-                {badgeCount(l) > 0 && <span className="nav-badge">{badgeCount(l)}</span>}
-              </NavLink>
-            ))}
-          </div>
-        ))}
+        {/* Only this region scrolls on short viewports — the logo above and the
+            collapse button + footer below stay pinned and always reachable. */}
+        <div className="sidebar-nav-scroll">
+          {sections.map((s) => (
+            <div key={s.label} className="sidebar-section">
+              <div className="sidebar-section-label">{s.label}</div>
+              {s.items.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  title={l.label}
+                  className={"sidebar-link" + (isActivePath(location.pathname, l.match) ? " active" : "")}
+                >
+                  <l.icon />
+                  <span className="sidebar-link-label">{l.label}</span>
+                  {badgeCount(l) > 0 && <span className="nav-badge">{badgeCount(l)}</span>}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </div>
         <button
           className="sidebar-collapse-btn"
           onClick={() => setCollapsed((c) => !c)}

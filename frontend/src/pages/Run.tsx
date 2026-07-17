@@ -413,7 +413,7 @@ export default function Run() {
     // shrinks on short screens instead of overflowing, and grows on tall ones.
     // Width is separately capped to the column (see coverImg) so it never
     // exceeds its half of the cockpit.
-    ? "clamp(170px, calc(100dvh - 540px), 300px)"
+    ? "clamp(140px, calc(100dvh - 540px), 300px)"
     // Reserve = everything below the cover on mobile (title, target with the
     // flanking Rebuild, mode tabs, controls, transport + tight padding). With
     // the header gone and Rebuild flanking the number (no extra row), 605 is the
@@ -762,10 +762,11 @@ export default function Run() {
   const renderQueuePanel = (fill: boolean) => {
     const cardStyle: React.CSSProperties = fill
       ? {
-          // Cap to the viewport (minus the header/top + container bottom padding)
-          // so a long queue scrolls inside the panel instead of scrolling the
-          // whole page. Still fills the column height when the queue is short.
-          padding: 0, margin: 0, height: "100%", maxHeight: "calc(100dvh - 210px)",
+          // Absolutely fill the side column (position:relative on .run-queue-col)
+          // so the queue never contributes to the row height: the player column
+          // alone sets it, the queue's bottom always lines up with the transport,
+          // and a long queue scrolls inside the panel instead of the page.
+          padding: 0, margin: 0, position: "absolute", inset: 0,
           display: "flex", flexDirection: "column",
         }
       : { padding: 0, marginBottom: 12 };
