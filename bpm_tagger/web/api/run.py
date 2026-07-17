@@ -42,6 +42,7 @@ def api_run_queue():
         body = request.get_json(silent=True) or {}
         bpm_raw = body.get("bpm")
         count_raw = body.get("count")
+        playlist_raw = body.get("playlist")
         exclude = body.get("exclude") or []
         if not isinstance(exclude, list):
             return jsonify(error="exclude must be a list of paths"), 400
@@ -49,7 +50,19 @@ def api_run_queue():
     else:
         bpm_raw = request.args.get("bpm")
         count_raw = request.args.get("count")
+        playlist_raw = request.args.get("playlist")
         exclude_set = set()
+
+    # Optional playlist scope: restrict the candidate pool to that playlist's
+    # matched local tracks instead of the whole library.
+    playlist_id = None
+    if playlist_raw not in (None, "", "library"):
+        try:
+            playlist_id = int(playlist_raw)
+        except (ValueError, TypeError):
+            return jsonify(error="playlist must be a playlist id"), 400
+        if not st.db.get_playlist(playlist_id):
+            return jsonify(error="playlist not found"), 404
 
     try:
         target = float(bpm_raw)
@@ -70,9 +83,11 @@ def api_run_queue():
     # Score every candidate: eligibility by post-fold deviation from target
     # (minus whatever's excluded), selection by (starred first, then most-played
     # first when familiarity is preferred, closest first).
+    candidates = st.db.get_run_candidates(playlist_id)
+
     def _matches(exclude_paths):
         found = []
-        for t in st.db.get_run_candidates():
+        for t in candidates:
             if t["file_path"] in exclude_paths:
                 continue
             folded = _fold(t["bpm"], target, octave)
@@ -108,4 +123,22 @@ def api_run_queue():
     return jsonify(tracks=tracks, target=target, count=len(tracks),
                    octave_fold=octave, tolerance_pct=tol * 100,
                    prefer_starred=prefer_starred, prefer_familiar=prefer_familiar,
-                   recycled=recycled)
+                   recycled=recycled, playlist=playlist_id)
+
+
+@run_bp.route("/api/run/playlists")
+@login_required
+def api_run_playlists():
+    """Playlists usable as a run source, with how many of each are actually
+    runnable (matched local file + detected BPM). Shared to every role — the
+    player picks a source here. Management stays on the admin Playlists page."""
+    db = state().db
+    out = [{
+        "id": p["id"],
+        "name": p["name"],
+        "source": p["source"],
+        "image_url": p.get("image_url"),
+        "available": db.count_run_candidates(p["id"]),
+        "total": p.get("track_count") or p.get("indexed_count") or 0,
+    } for p in db.list_playlists()]
+    return jsonify(playlists=out)

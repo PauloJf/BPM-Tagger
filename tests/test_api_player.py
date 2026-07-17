@@ -135,6 +135,16 @@ def test_player_may_play_star_dislike_scrobble(base_config):
                        headers=csrf).status_code != 403
 
 
+def test_player_may_list_run_playlists_but_not_manage(base_config):
+    client = _client(_app(base_config, run_password="runner99"))
+    _login(client, "runner99")
+    # Run source list is allowed…
+    assert client.get("/api/run/playlists").status_code == 200
+    # …but the admin Playlists management API is not.
+    assert client.get("/api/playlists").status_code == 403
+    assert client.get("/api/navidrome/playlists").status_code == 403
+
+
 def test_player_settings_is_filtered_to_run_keys(base_config):
     client = _client(_app(base_config, run_password="runner99"))
     _login(client, "runner99")

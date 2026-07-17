@@ -59,6 +59,17 @@ export interface RunQueueResponse {
   prefer_starred: boolean;
   prefer_familiar?: boolean;
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
+  playlist?: number | null;   // playlist id the pool was scoped to, or null for the whole library
+}
+
+// A playlist offered as a run source, with how many tracks are actually runnable.
+export interface RunPlaylistOption {
+  id: number;
+  name: string;
+  source: PlaylistSource;
+  image_url: string | null;
+  available: number;
+  total: number;
 }
 
 export interface LyricsResponse {

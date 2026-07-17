@@ -220,6 +220,81 @@ def test_run_queue_post_requires_target(client):
     assert r.status_code == 400
 
 
+# ── run queue: playlist source (Phase 3) ───────────────────────────────────────
+
+def _make_playlist(db_path, music_dir, name, entries):
+    """entries: (source_track_id, match_status, matched_track_or_None, removed)."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO playlists (source, spotify_id, name, track_count) "
+                 "VALUES ('spotify', ?, ?, ?)", (name, name, len(entries)))
+    pid = conn.execute("SELECT id FROM playlists WHERE name = ?", (name,)).fetchone()[0]
+    for i, (sid, st, track, removed) in enumerate(entries):
+        mp = f"{music_dir}/{track}.mp3" if track else None
+        conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, source_track_id, spotify_track_id, "
+            "position, title, match_status, matched_file_path, removed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (pid, sid, sid, i, sid, st, mp, "2020-01-01T00:00:00Z" if removed else None))
+    conn.commit()
+    conn.close()
+    return pid
+
+
+def test_run_queue_scoped_to_playlist(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("a", 150.0, 0), ("b", 150.0, 0), ("c", 150.0, 0),
+        ("outside", 150.0, 0),           # analyzed but not in the playlist
+        ("hated", 150.0, 0),             # in the playlist but disliked
+    ])
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'hated'")
+    conn.commit()
+    conn.close()
+    pid = _make_playlist(base_config["db_path"], base_config["music_dir"], "Run", [
+        ("s_a", "have", "a", False),
+        ("s_b", "have", "b", False),
+        ("s_miss", "missing", None, False),      # not in the library → excluded
+        ("s_c", "have", "c", True),              # tombstoned → excluded
+        ("s_hate", "have", "hated", False),      # disliked → excluded
+    ])
+
+    data = client.get(f"/api/run/queue?bpm=150&playlist={pid}").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"a", "b"}
+    assert data["playlist"] == pid
+
+    # Whole-library (no scope) still sees everything eligible.
+    full = client.get("/api/run/queue?bpm=150").get_json()
+    assert {"a", "b", "c", "outside"} <= {t["title"] for t in full["tracks"]}
+    assert full["playlist"] is None
+
+
+def test_run_queue_playlist_not_found_and_bad_id(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"], [("a", 150.0, 0)])
+    assert client.get("/api/run/queue?bpm=150&playlist=9999").status_code == 404
+    assert client.get("/api/run/queue?bpm=150&playlist=abc").status_code == 400
+    # "library" is the explicit whole-library sentinel, not an error.
+    assert client.get("/api/run/queue?bpm=150&playlist=library").status_code == 200
+
+
+def test_run_playlists_endpoint_reports_available(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"],
+          [("a", 150.0, 0), ("b", 150.0, 0)])
+    pid = _make_playlist(base_config["db_path"], base_config["music_dir"], "Run", [
+        ("s_a", "have", "a", False),
+        ("s_b", "have", "b", False),
+        ("s_miss", "missing", None, False),
+        ("s_c", "have", "c", True),        # tombstone
+    ])
+    data = client.get("/api/run/playlists").get_json()
+    row = next(p for p in data["playlists"] if p["id"] == pid)
+    assert row["available"] == 2          # a + b (miss/tombstone excluded)
+    assert row["total"] == 4
+    assert row["source"] == "spotify"
+
+
 # ── run settings ──────────────────────────────────────────────────────────────
 
 def test_settings_run_sanitizes_and_persists(client, base_config, app):

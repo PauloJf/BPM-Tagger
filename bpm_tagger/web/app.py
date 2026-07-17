@@ -63,8 +63,8 @@ _PLAYER_ALWAYS = {None, "static", "spa", "spa_assets"}
 _PLAYER_ALLOWED = {
     # Auth / bootstrap
     "api_auth.api_me", "api_auth.api_login", "api_auth.api_logout",
-    # Building and playing the run queue
-    "api_run.api_run_queue",
+    # Building and playing the run queue (+ the playlist sources it can draw from)
+    "api_run.api_run_queue", "api_run.api_run_playlists",
     "media.audio", "media.healthz", "media.api_scrobble",
     # Now-playing display + the two allowed track flags (star / dislike)
     "api_tracks.api_track", "api_tracks.api_track_cover_get",

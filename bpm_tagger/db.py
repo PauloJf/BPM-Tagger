@@ -612,18 +612,46 @@ class BPMDatabase:
                 "nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
                 (nd_song_id, file_path))
 
-    def get_run_candidates(self) -> list[dict]:
-        """Every analyzed, non-deleted, non-disliked track — feeds the run-queue
-        builder, which octave-folds and scores in Python (cheap even at library
-        scale). Disliked tracks are dropped here so they never surface in a run,
-        rather than being scored and filtered per-request."""
+    # Runnable rows of a playlist: matched local files (non-tombstone, 'have')
+    # joined to analyzed, non-deleted, non-disliked tracks. Deduped by file_path
+    # (two source tracks can resolve to one local file). Shared by the run-queue
+    # builder and its per-playlist availability count.
+    _PLAYLIST_RUN_JOIN = (
+        "FROM playlist_tracks pt JOIN tracks t ON t.file_path = pt.matched_file_path "
+        "WHERE pt.playlist_id = ? AND pt.removed_at IS NULL AND pt.match_status = 'have' "
+        "AND t.status != 'deleted' AND t.bpm IS NOT NULL "
+        "AND (t.disliked IS NULL OR t.disliked = 0)"
+    )
+
+    def get_run_candidates(self, playlist_id: Optional[int] = None) -> list[dict]:
+        """Analyzed, non-deleted, non-disliked tracks feeding the run-queue builder
+        (which octave-folds and scores in Python, cheap even at library scale).
+        Disliked tracks are dropped here so they never surface in a run.
+
+        With ``playlist_id`` the pool is restricted to that playlist's matched local
+        tracks (Phase 3) instead of the whole library."""
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT file_path, title, artist, bpm, starred, play_count FROM tracks "
-                "WHERE status != 'deleted' AND bpm IS NOT NULL "
-                "AND (disliked IS NULL OR disliked = 0)"
-            ).fetchall()
+            if playlist_id is None:
+                rows = conn.execute(
+                    "SELECT file_path, title, artist, bpm, starred, play_count FROM tracks "
+                    "WHERE status != 'deleted' AND bpm IS NOT NULL "
+                    "AND (disliked IS NULL OR disliked = 0)"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count "
+                    + self._PLAYLIST_RUN_JOIN + " GROUP BY t.file_path", (playlist_id,)
+                ).fetchall()
         return [dict(r) for r in rows]
+
+    def count_run_candidates(self, playlist_id: int) -> int:
+        """How many of a playlist's tracks are actually runnable (matched + BPM)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT t.file_path) AS n " + self._PLAYLIST_RUN_JOIN,
+                (playlist_id,),
+            ).fetchone()
+        return int(row["n"] or 0)
 
     def get_artist_tracks(self, name: str) -> list[dict]:
         """Every non-deleted track by an artist (matched on artist or album

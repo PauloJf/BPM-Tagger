@@ -1,9 +1,11 @@
 # Plan: Multi-source Playlists (Spotify + Navidrome + Local) & Run-mode integration
 
-Status: **Phases 1–2 implemented** (2026-07-17). Phase 1: schema generalization,
+Status: **Phases 1–3 implemented** (2026-07-17). Phase 1: schema generalization,
 diff/upsert sync, legacy migration. Phase 2: Navidrome source (Subsonic
 `getPlaylists`/`getPlaylist`, metadata-matched coverage, source-aware add/sync API,
-front-end source picker + new/removed badges). Phases 3–5 proposed.
+front-end source picker + new/removed badges). Phase 3: run-queue playlist scope
+(`playlist=` param), player-readable `/api/run/playlists` + allowlist, Run-page
+source picker. Phases 4–5 proposed.
 Supersedes the earlier "native playlist object" draft: we **reuse and generalize the
 existing Playlists section** instead of building a parallel system.
 
@@ -176,7 +178,7 @@ stays admin-only.
 |---|---|
 | **1** ✅ | Schema generalization (rebuild + `source`), diff/upsert sync, membership tracking (new/removed tombstones). Spotify behavior preserved; 352 tests + ruff green. |
 | **2** ✅ | **Navidrome source**: Subsonic `getPlaylists`/`getPlaylist`, add-by-pick, sync+resolve+coverage, new/removed tracking UI. Metadata matching (not path) to sidestep multi-root fragility. Missing-track grabber-queue stays Spotify-only (grab_queue is keyed on spotify_track_id). |
-| **3** | **Run-mode integration**: `playlist=` on the queue, player-readable playlist list + picker, all playlists shared to the player. |
+| **3** ✅ | **Run-mode integration**: `playlist=<id>` on `/api/run/queue` (pool = matched, BPM-tagged, non-disliked, non-tombstone tracks); `GET /api/run/playlists` (in `_PLAYER_ALLOWED`) with per-playlist available counts; Run-page source picker. All playlists shared to the player. |
 | **4** *(deferred)* | **Local source + "Add to playlist"** (from track pages and the Run player) — shipped together, since Local is inert without authoring. |
 | **5** *(deferred)* | **Per-user association**: admin users panel mapping Navidrome users → playlists; Navidrome player login (`nd_username` session); retire-or-keep `RUN_PASSWORD`; periodic sync; "play everything, force tempo" toggle. |
 
