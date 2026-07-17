@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.4 — 2026-07-17
+
+- **Playlists from Spotify _and_ Navidrome:** the Playlists section is no longer Spotify-only. Add a **Navidrome** playlist by picking from your own Navidrome playlists (over the Subsonic API) and it's reconciled against your library just like a Spotify one — matched by metadata, with have/missing coverage and m3u export. Navidrome (and future local) playlists need only your Navidrome credentials; the grabber and a Spotify connection are required only for Spotify playlists and for downloading missing tracks. Each playlist now carries a **source** badge in the UI.
+- **New / removed change tracking:** playlist sync is now a **diff** instead of a wipe-and-reload, so it can show what changed. Freshly-added tracks get a **new** badge (cleared once you open the playlist), and tracks removed from the source are kept as struck-through **tombstones** in a "Removed" group until the next sync — added and removed counts show on the playlist card. Under the hood the playlists tables were generalized to carry a source and per-track membership state; existing playlists migrate in place.
+- **Run from a playlist:** Run mode gains a **source picker** — build the queue from your whole library or a specific playlist. The pool is scoped to that playlist's matched, BPM-tagged, non-disliked tracks (removed tracks never resurface), and a per-playlist **"N of M available"** count shows how much of it is actually runnable at your cadence. Playlists are shared to the **player** role too, so a run-only kiosk can pick one.
+
 ## v2.6.3 — 2026-07-17
 
 - **Run page (desktop cockpit):** the track-info column now shows two more facts about the playing track — its **play count** (when Navidrome play data has been pulled; hidden otherwise) as its own line, and its **file audio quality**: format with bit depth / sample rate for lossless copies (e.g. `FLAC · 16-bit/44.1 kHz`) or the bitrate for lossy ones (e.g. `MP3 · 320 kbps · 44.1 kHz`). Properties are read from the file's stream header on demand (mutagen, header-only — no full decode) and fail silently, so an unreadable file just falls back to the format label and never breaks the detail view.

@@ -11,7 +11,7 @@
            automatic bpm detection & tagging for navidrome
 ```
 
-**v2.6.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.6.4** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 Automatically detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes the result back to the file's metadata tag, tracking everything in a SQLite database and exposing a password-protected web UI for reviewing and correcting results.
 
@@ -56,6 +56,7 @@ Same sign-in screen gates both the full admin UI and the locked-down **player mo
 - **30-second previews** — suggested and related tracks show a ▶ **preview** button that streams Deezer's 30 s clip through the normal player: starting one while music is playing ducks the queue and auto-resumes when the clip ends, so you can audition before grabbing
 - **Lyrics** — fetch plain or synced (LRC) lyrics from [LRCLIB](https://lrclib.net) (free, community-run, no account) per track or in bulk, view/edit them on the track page, and store them embedded in the tag or as a `.lrc` sidecar; Navidrome and most players pick them up
 - **Run mode** — a full-screen tempo-run player that fits one phone screen: viewport-scaled cover art, a big target-BPM readout with the tempo-lock toggle and a `native · stretch × octave → result` breakdown, ±1/±5 steps, four **named presets** or an in-place **queue view**, a lyrics drawer, waveform scrubbing and large transport buttons; auto-queues the tracks whose octave-folded BPM matches the target — starred tracks first — **refills the queue automatically when the last track starts**, and **locks the tempo** so every song stretches onto your step, pitch preserved
+- **Run from a playlist** — build the run queue from your **whole library** or a specific **playlist** via a source picker; the pool is scoped to that playlist's matched, BPM-tagged tracks, and a per-playlist "N of M available" count shows how much of it is actually runnable
 - **Starred & disliked tracks** — star favourites or dislike tracks you never want in a run, from the library, track page, or mid-run; **Starred**/**Disliked** filter pills in the library, and run queues prefer starred tracks while permanently skipping disliked ones
 - **Image editing** — change any track's cover, set an album cover across **all** of its tracks at once, or pick a custom artist image — searching Spotify (when connected) and Deezer for candidates, pasting a URL, or uploading a file
 - **Re-analyze on demand** — re-run BPM detection for a single track from its detail page without starting a full library scan
@@ -71,8 +72,8 @@ Same sign-in screen gates both the full admin UI and the locked-down **player mo
 
 ### Music grabber (optional, `GRABBER_ENABLED=true`)
 
-- **Spotify playlist sync** — connect your own Spotify account (one-time OAuth), add playlists by URL or pick them from a built-in browser of your account's playlists, and BPM Tagger reconciles each against your library on a schedule (watch mode) or on demand
-- **Have / missing / queued** — every playlist track is matched to your library by ISRC or a fuzzy title+artist+duration score; the ones you're missing are enqueued automatically
+- **Multi-source playlists** — the Playlists page watches playlists from **Spotify** (connect your account by one-time OAuth, add by URL or pick from a browser of your own playlists) **and Navidrome** (pick from your own Navidrome playlists over Subsonic). Navidrome playlists need only your Navidrome credentials — no grabber, no Spotify. Each is reconciled against your library on a schedule (watch mode) or on demand, and any playlist can be used as a **Run-mode source**
+- **Have / missing / queued + change tracking** — every playlist track is matched to your library by ISRC or a fuzzy title+artist+duration score (Navidrome by metadata); the ones you're missing are enqueued automatically (Spotify), and each sync flags **new** tracks and tombstones **removed** ones so the detail view shows what changed since you last looked
 - **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first, then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
 - **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-128`, `mp3-320`, `flac`, or `opus-192`)
 - **Full tagging + BPM** — writes title/artist/album/track/year/ISRC + embedded cover art, then runs the same 3-detector BPM analysis and tags the result; files land under a customizable **path template** (default `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}`)
