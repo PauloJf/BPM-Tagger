@@ -2,23 +2,37 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import type { Playlist, SpotifyPlaylist } from "../lib/types";
+import type { NavidromePlaylist, Playlist, PlaylistSource, SpotifyPlaylist } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { Toggle } from "../components/Toggle";
 import PageHeader from "../components/PageHeader";
-import GrabberGate from "../components/GrabberGate";
+
+const SOURCE_META: Record<PlaylistSource, { label: string; glyph: string; cls: string }> = {
+  spotify: { label: "Spotify", glyph: "●", cls: "pl-src--spotify" },
+  navidrome: { label: "Navidrome", glyph: "☁", cls: "pl-src--navidrome" },
+  local: { label: "Local", glyph: "♪", cls: "pl-src--local" },
+};
+
+function SourceBadge({ source }: { source: PlaylistSource }) {
+  const m = SOURCE_META[source] ?? SOURCE_META.local;
+  return <span className={`pl-src ${m.cls}`} title={`${m.label} playlist`}>{m.glyph} {m.label}</span>;
+}
 
 function Chips({ p }: { p: Playlist }) {
   return (
     <div className="pl-chips">
       <span className="chip chip--have">✓ {p.have_count}</span>
-      <span className="chip chip--queued">↓ {p.queued_count}</span>
+      {p.queued_count > 0 && <span className="chip chip--queued">↓ {p.queued_count}</span>}
       <span className="chip chip--missing">✗ {p.missing_count}</span>
+      {p.new_count > 0 && <span className="chip chip--new">✦ {p.new_count} new</span>}
+      {p.removed_count > 0 && <span className="chip chip--removed">− {p.removed_count} removed</span>}
       <span className="chip chip--neutral">{p.track_count} total</span>
     </div>
   );
 }
+
+type AddBody = { url: string } | { id: string } | { source: "navidrome"; navidrome_id: string; name: string };
 
 export default function Playlists() {
   useTitle("Playlists");
@@ -26,19 +40,28 @@ export default function Playlists() {
   const status = useGrabberStatus();
   const [url, setUrl] = useState("");
   const [addErr, setAddErr] = useState("");
-  const [browsing, setBrowsing] = useState(false);
+  const [browsing, setBrowsing] = useState<null | "spotify" | "navidrome">(null);
 
   const playlistsQ = useQuery({
     queryKey: ["playlists"],
     queryFn: () => api.get<{ playlists: Playlist[] }>("/api/playlists"),
-    enabled: status.data?.enabled === true,
     refetchInterval: 10_000,
   });
+
+  const spotifyConnected = status.data?.spotify?.connected === true;
 
   const spotifyQ = useQuery({
     queryKey: ["spotify-playlists"],
     queryFn: () => api.get<{ playlists: SpotifyPlaylist[] }>("/api/spotify/playlists"),
-    enabled: browsing && status.data?.spotify?.connected === true,
+    enabled: browsing === "spotify" && spotifyConnected,
+    staleTime: 60_000,
+  });
+
+  const navidromeQ = useQuery({
+    queryKey: ["navidrome-playlists"],
+    queryFn: () => api.get<{ playlists: NavidromePlaylist[] }>("/api/navidrome/playlists"),
+    enabled: browsing === "navidrome",
+    retry: false,
     staleTime: 60_000,
   });
 
@@ -46,10 +69,11 @@ export default function Playlists() {
     qc.invalidateQueries({ queryKey: ["playlists"] });
     qc.invalidateQueries({ queryKey: ["grabber-status"] });
     qc.invalidateQueries({ queryKey: ["spotify-playlists"] });
+    qc.invalidateQueries({ queryKey: ["navidrome-playlists"] });
   };
 
   const add = useMutation({
-    mutationFn: (body: { url: string } | { id: string }) => api.post("/api/playlists", body),
+    mutationFn: (body: AddBody) => api.post("/api/playlists", body),
     onSuccess: () => { setUrl(""); setAddErr(""); invalidate(); },
     onError: (e) => setAddErr(e instanceof ApiError ? e.message : "Failed to add playlist"),
   });
@@ -66,103 +90,106 @@ export default function Playlists() {
     onSuccess: invalidate,
   });
 
-  const connected = status.data?.spotify?.connected;
   const playlists = playlistsQ.data?.playlists ?? [];
-  const enabledCount = playlists.filter((p) => p.enabled).length;
+  const navidromeUnconfigured =
+    navidromeQ.isError && navidromeQ.error instanceof ApiError &&
+    navidromeQ.error.message === "navidrome_not_configured";
+
+  const canSync = (p: Playlist) => p.source === "navidrome" || (p.source === "spotify" && spotifyConnected);
 
   return (
-    <GrabberGate
-      title="Playlists"
-      subtitle="Watched Spotify playlists compared against your library."
-      disabledMessage={<>
-        The grabber is disabled. Enable it (and set Spotify credentials) in{" "}
-        <Link to="/settings" style={{ color: "var(--accent-2)" }}>Settings → Grabber</Link>, then restart.
-      </>}
-    >
+    <>
       <PageHeader
         title="Playlists"
         subtitle={
           playlists.length > 0
-            ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{enabledCount}</span> auto-syncing · {playlists.length} watched</>
-            : "Watched Spotify playlists compared against your library."
+            ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{playlists.length}</span> playlist{playlists.length === 1 ? "" : "s"} compared against your library</>
+            : "Spotify and Navidrome playlists compared against your library."
         }
       />
 
-      {!connected && (
-        <div className="flash" style={{ background: "var(--warn-bg)", borderColor: "var(--warn-bd)", color: "var(--warn-fg)" }}>
-          Spotify isn't connected.{" "}
-          <Link to="/settings" style={{ color: "inherit", textDecoration: "underline" }}>Connect it in Settings</Link>{" "}
-          to add and sync playlists.
-        </div>
-      )}
-
-      {connected && (
-        <div className="card" style={{ marginBottom: 18 }}>
-          <div className="section-label"><span>Add a playlist</span></div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Spotify playlist URL or ID"
-              style={{ flex: 1, minWidth: 220, fontFamily: "var(--mono)", fontSize: 12 }}
-              onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) add.mutate({ url: url.trim() }); }}
-            />
-            <button className="btn btn-primary btn-md" disabled={!url.trim() || add.isPending} onClick={() => add.mutate({ url: url.trim() })}>
-              {add.isPending ? "Adding…" : "Add"}
-            </button>
-            <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => !b)}>
-              {browsing ? "Hide my playlists" : "Browse my playlists"}
-            </button>
-          </div>
-          {addErr && <div style={{ color: "var(--err-fg)", fontSize: 12, marginTop: 8 }}>{addErr}</div>}
-
-          {browsing && (
-            <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-              {spotifyQ.isLoading ? (
-                <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading your Spotify playlists…</div>
-              ) : spotifyQ.isError ? (
-                <div style={{ color: "var(--err-fg)", fontSize: 12 }}>
-                  {spotifyQ.error instanceof ApiError ? spotifyQ.error.message : "Failed to load playlists"}
-                </div>
-              ) : (spotifyQ.data?.playlists ?? []).length === 0 ? (
-                <div style={{ fontSize: 13, color: "var(--muted)" }}>No playlists on this Spotify account.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
-                  {(spotifyQ.data?.playlists ?? []).map((sp) => (
-                    <div key={sp.spotify_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
-                      {sp.image_url ? (
-                        <img src={sp.image_url} alt="" className="pl-cover" style={{ width: 36, height: 36 }} referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="pl-cover" style={{ width: 36, height: 36 }}>♪</div>
-                      )}
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {sp.name}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                          {sp.owner ? `${sp.owner} · ` : ""}{sp.track_count} tracks
-                        </div>
-                      </div>
-                      {sp.watched ? (
-                        <span className="chip chip--have">✓ Watching</span>
-                      ) : (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          disabled={add.isPending}
-                          onClick={() => add.mutate({ id: sp.spotify_id })}
-                        >
-                          {add.isPending && add.variables && "id" in add.variables && add.variables.id === sp.spotify_id ? "Adding…" : "Add"}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div className="section-label"><span>Add a playlist</span></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {spotifyConnected && (
+            <>
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Spotify playlist URL or ID"
+                style={{ flex: 1, minWidth: 220, fontFamily: "var(--mono)", fontSize: 12 }}
+                onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) add.mutate({ url: url.trim() }); }}
+              />
+              <button className="btn btn-primary btn-md" disabled={!url.trim() || add.isPending} onClick={() => add.mutate({ url: url.trim() })}>
+                {add.isPending ? "Adding…" : "Add"}
+              </button>
+              <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => b === "spotify" ? null : "spotify")}>
+                {browsing === "spotify" ? "Hide Spotify" : "Browse Spotify"}
+              </button>
+            </>
           )}
+          <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => b === "navidrome" ? null : "navidrome")}>
+            {browsing === "navidrome" ? "Hide Navidrome" : "Browse Navidrome"}
+          </button>
         </div>
-      )}
+        {!spotifyConnected && (
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+            Spotify isn't connected — <Link to="/settings" style={{ color: "var(--accent-2)" }}>connect it in Settings</Link> to add Spotify playlists.
+          </div>
+        )}
+        {addErr && <div style={{ color: "var(--err-fg)", fontSize: 12, marginTop: 8 }}>{addErr}</div>}
+
+        {browsing === "spotify" && (
+          <BrowseList
+            loading={spotifyQ.isLoading}
+            error={spotifyQ.isError ? (spotifyQ.error instanceof ApiError ? spotifyQ.error.message : "Failed to load playlists") : null}
+            empty={(spotifyQ.data?.playlists ?? []).length === 0 ? "No playlists on this Spotify account." : null}
+          >
+            {(spotifyQ.data?.playlists ?? []).map((sp) => (
+              <BrowseRow
+                key={sp.spotify_id}
+                image={sp.image_url}
+                name={sp.name}
+                sub={`${sp.owner ? `${sp.owner} · ` : ""}${sp.track_count} tracks`}
+                watched={sp.watched}
+                adding={add.isPending && !!add.variables && "id" in add.variables && add.variables.id === sp.spotify_id}
+                onAdd={() => add.mutate({ id: sp.spotify_id })}
+              />
+            ))}
+          </BrowseList>
+        )}
+
+        {browsing === "navidrome" && (
+          <BrowseList
+            loading={navidromeQ.isLoading}
+            error={navidromeUnconfigured ? null : navidromeQ.isError ? "Failed to load Navidrome playlists" : null}
+            empty={
+              navidromeUnconfigured ? null :
+              (navidromeQ.data?.playlists ?? []).length === 0 ? "No Navidrome playlists found." : null
+            }
+          >
+            {navidromeUnconfigured ? (
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                Navidrome isn't configured — set its URL and credentials in{" "}
+                <Link to="/settings" style={{ color: "var(--accent-2)" }}>Settings</Link>.
+              </div>
+            ) : (
+              (navidromeQ.data?.playlists ?? []).map((n) => (
+                <BrowseRow
+                  key={n.navidrome_id}
+                  image={n.image_url}
+                  name={n.name}
+                  sub={`${n.track_count} tracks`}
+                  watched={n.watched}
+                  adding={add.isPending && !!add.variables && "navidrome_id" in add.variables && add.variables.navidrome_id === n.navidrome_id}
+                  onAdd={() => add.mutate({ source: "navidrome", navidrome_id: n.navidrome_id, name: n.name })}
+                />
+              ))
+            )}
+          </BrowseList>
+        )}
+      </div>
 
       <div className="pl-list">
         {playlists.length === 0 ? (
@@ -179,15 +206,20 @@ export default function Playlists() {
                   <div className="pl-cover">♪</div>
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.name}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.name}
+                    </span>
+                    <SourceBadge source={p.source} />
                   </div>
                   <Chips p={p} />
                 </div>
               </Link>
               <div className="pl-card-actions">
-                <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
-                <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate(p.id)}>
+                {p.source === "spotify" && (
+                  <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
+                )}
+                <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync(p)} onClick={() => sync.mutate(p.id)}>
                   {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}
                 </button>
                 <button className="btn btn-danger btn-sm" onClick={() => { if (confirm(`Remove "${p.name}"?`)) remove.mutate(p.id); }}>
@@ -198,6 +230,51 @@ export default function Playlists() {
           ))
         )}
       </div>
-    </GrabberGate>
+    </>
+  );
+}
+
+function BrowseList({ loading, error, empty, children }: {
+  loading: boolean; error: string | null; empty: string | null; children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+      {loading ? (
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading…</div>
+      ) : error ? (
+        <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{error}</div>
+      ) : empty ? (
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>{empty}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BrowseRow({ image, name, sub, watched, adding, onAdd }: {
+  image: string | null; name: string; sub: string; watched: boolean; adding: boolean; onAdd: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
+      {image ? (
+        <img src={image} alt="" className="pl-cover" style={{ width: 36, height: 36 }} referrerPolicy="no-referrer" />
+      ) : (
+        <div className="pl-cover" style={{ width: 36, height: 36 }}>♪</div>
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+        <div style={{ fontSize: 11, color: "var(--muted)" }}>{sub}</div>
+      </div>
+      {watched ? (
+        <span className="chip chip--have">✓ Watching</span>
+      ) : (
+        <button className="btn btn-ghost btn-sm" disabled={adding} onClick={onAdd}>
+          {adding ? "Adding…" : "Add"}
+        </button>
+      )}
+    </div>
   );
 }

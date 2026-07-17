@@ -60,12 +60,19 @@ def list_playlists():
 @login_required
 def add_playlist():
     _check_csrf()
+    data = request.get_json(force=True, silent=True) or {}
+    source = str(data.get("source") or "spotify").lower()
+    if source == "navidrome":
+        return _add_navidrome_playlist(data)
+    return _add_spotify_playlist(data)
+
+
+def _add_spotify_playlist(data):
     g = _grabber()
     if not g:
         return jsonify(error="grabber_disabled"), 409
     if not g.client.is_connected():
         return jsonify(error="not_connected"), 400
-    data = request.get_json(force=True, silent=True) or {}
     pid = parse_playlist_id(str(data.get("url") or data.get("id") or ""))
     if not pid:
         return jsonify(error="A Spotify playlist URL or ID is required."), 400
@@ -77,6 +84,45 @@ def add_playlist():
                                      meta["image_url"], meta["track_count"])
     g.request_sync()
     return jsonify(ok=True, playlist=state().db.get_playlist(row_id))
+
+
+def _add_navidrome_playlist(data):
+    from ...integrations.navidrome_playlists import navidrome_configured, sync_navidrome_playlist
+    cfg = state().config
+    if not navidrome_configured(cfg):
+        return jsonify(error="navidrome_not_configured"), 400
+    nid = str(data.get("navidrome_id") or data.get("id") or "").strip()
+    if not nid:
+        return jsonify(error="A Navidrome playlist id is required."), 400
+    db = state().db
+    row_id = db.add_navidrome_playlist(nid, str(data.get("name") or ""))
+    try:
+        sync_navidrome_playlist(db, cfg, row_id)
+    except Exception as exc:
+        log.warning("Navidrome playlist add/sync failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    return jsonify(ok=True, playlist=db.get_playlist(row_id))
+
+
+@playlists_bp.route("/api/navidrome/playlists")
+@login_required
+def navidrome_my_playlists():
+    """Importable Navidrome playlists (the configured user's own + public),
+    flagged with watched state. Independent of the grabber."""
+    from ...integrations.navidrome_playlists import list_navidrome_playlists, navidrome_configured
+    cfg = state().config
+    if not navidrome_configured(cfg):
+        return jsonify(error="navidrome_not_configured"), 400
+    try:
+        playlists = list_navidrome_playlists(cfg)
+    except Exception as exc:
+        log.warning("Navidrome playlist listing failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    watched = {p.get("navidrome_id") for p in state().db.list_playlists()
+               if p.get("source") == "navidrome"}
+    for p in playlists:
+        p["watched"] = p["navidrome_id"] in watched
+    return jsonify(playlists=playlists)
 
 
 @playlists_bp.route("/api/playlists/<int:pid>", methods=["PATCH"])
@@ -140,13 +186,27 @@ def export_m3u(pid):
 @login_required
 def sync_playlist(pid):
     _check_csrf()
+    db = state().db
+    pl = db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    if pl.get("source") == "navidrome":
+        from ...integrations.navidrome_playlists import navidrome_configured, sync_navidrome_playlist
+        cfg = state().config
+        if not navidrome_configured(cfg):
+            return jsonify(error="navidrome_not_configured"), 400
+        try:
+            pl = sync_navidrome_playlist(db, cfg, pid)
+        except Exception as exc:
+            log.warning("Navidrome playlist sync failed: %s", exc)
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, playlist=pl)
+    # Spotify (default): needs the grabber + a live connection.
     g = _grabber()
     if not g:
         return jsonify(error="grabber_disabled"), 409
     if not g.client.is_connected():
         return jsonify(error="not_connected"), 400
-    if not state().db.get_playlist(pid):
-        return jsonify(error="not_found"), 404
     try:
         pl = g.sync.sync_playlist(pid)
     except SpotifyError as exc:

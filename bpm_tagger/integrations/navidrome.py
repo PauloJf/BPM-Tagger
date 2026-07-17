@@ -205,6 +205,31 @@ def iter_all_songs(url: str, user: str, pwd: str, page_size: int = 500):
         offset += page_size
 
 
+def get_playlists(url: str, user: str, pwd: str) -> list[dict]:
+    """Every playlist visible to `user` (their own + public ones). Raw Subsonic
+    playlist objects: id, name, songCount, coverArt, owner, public, ..."""
+    resp = requests.get(
+        f"{url.rstrip('/')}/rest/getPlaylists",
+        params=_sub_params(user, pwd),
+        timeout=20,
+    )
+    sub = _sub_response(resp)
+    return (sub.get("playlists", {}) or {}).get("playlist", []) or []
+
+
+def get_playlist(url: str, user: str, pwd: str, playlist_id: str) -> dict:
+    """A single playlist with its entries. Returns the raw Subsonic playlist object;
+    ``entry`` is the ordered song list, each carrying ``path``, ``duration`` (s),
+    title/artist/album, etc."""
+    resp = requests.get(
+        f"{url.rstrip('/')}/rest/getPlaylist",
+        params={**_sub_params(user, pwd), "id": playlist_id},
+        timeout=30,
+    )
+    sub = _sub_response(resp)
+    return sub.get("playlist", {}) or {}
+
+
 def set_star(url: str, user: str, pwd: str, song_id: str, starred: bool) -> bool:
     """Star or unstar a song by id. Returns True only on a Subsonic 'ok' status;
     the caller advances the sync baseline only when this returns True."""

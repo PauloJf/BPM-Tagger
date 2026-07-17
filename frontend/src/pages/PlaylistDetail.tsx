@@ -6,17 +6,18 @@ import type { Playlist, PlaylistTrack } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 
-const TABS: { key: string; label: string }[] = [
-  { key: "", label: "All" },
-  { key: "have", label: "Have" },
-  { key: "missing", label: "Missing" },
-  { key: "queued", label: "Queued" },
-];
-
 function StatusChip({ s }: { s: string }) {
   if (s === "have") return <span className="chip chip--have">✓ have</span>;
   if (s === "queued") return <span className="chip chip--queued">↓ queued</span>;
+  if (s === "removed") return <span className="chip chip--removed">− removed</span>;
   return <span className="chip chip--missing">✗ missing</span>;
+}
+
+function syncedLabel(iso: string | null): string {
+  if (!iso) return "never synced";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "never synced";
+  return `synced ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export default function PlaylistDetail() {
@@ -47,7 +48,17 @@ export default function PlaylistDetail() {
   const pl = tracksQ.data?.playlist;
   useTitle(pl?.name || "Playlist");
   const tracks = tracksQ.data?.tracks ?? [];
-  const connected = status.data?.spotify?.connected;
+  const spotifyConnected = status.data?.spotify?.connected === true;
+  const isSpotify = pl?.source === "spotify";
+  const canSync = pl?.source === "navidrome" || (isSpotify && spotifyConnected);
+
+  const tabs = [
+    { key: "", label: "All" },
+    { key: "have", label: "Have" },
+    { key: "missing", label: "Missing" },
+    ...(isSpotify ? [{ key: "queued", label: "Queued" }] : []),
+    ...((pl?.removed_count ?? 0) > 0 ? [{ key: "removed", label: "Removed" }] : []),
+  ];
 
   if (!id) return <p style={{ color: "var(--muted)" }}>No playlist selected.</p>;
 
@@ -61,15 +72,15 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
-        {(pl?.missing_count ?? 0) > 0 && (
-          <button className="btn btn-soft btn-sm" disabled={enqueue.isPending || !connected} onClick={() => enqueue.mutate()}>
+        {isSpotify && (pl?.missing_count ?? 0) > 0 && (
+          <button className="btn btn-soft btn-sm" disabled={enqueue.isPending || !spotifyConnected} onClick={() => enqueue.mutate()}>
             {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
           </button>
         )}
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
         )}
-        <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !connected} onClick={() => sync.mutate()}>
+        <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync} onClick={() => sync.mutate()}>
           {sync.isPending ? "Syncing…" : "Sync now"}
         </button>
       </div>
@@ -83,16 +94,18 @@ export default function PlaylistDetail() {
           {pl && (
             <div className="pl-chips">
               <span className="chip chip--have">✓ {pl.have_count} have</span>
-              <span className="chip chip--queued">↓ {pl.queued_count} queued</span>
+              {pl.queued_count > 0 && <span className="chip chip--queued">↓ {pl.queued_count} queued</span>}
               <span className="chip chip--missing">✗ {pl.missing_count} missing</span>
+              {pl.removed_count > 0 && <span className="chip chip--removed">− {pl.removed_count} removed</span>}
               <span className="chip chip--neutral">{pl.track_count} total</span>
+              <span className="chip chip--neutral" style={{ textTransform: "none" }}>{syncedLabel(pl.last_synced_at)}</span>
             </div>
           )}
         </div>
       </div>
 
       <div className="filter-pills" style={{ marginBottom: 16, width: "fit-content" }}>
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.key} className={"filter-pill" + (tab === t.key ? " active" : "")} onClick={() => setTab(t.key)}>
             {t.label}
           </button>
@@ -104,12 +117,15 @@ export default function PlaylistDetail() {
           <div className="tracks-row-empty">{tracksQ.isLoading ? "Loading…" : "No tracks."}</div>
         ) : (
           tracks.map((t) => (
-            <div key={t.id} className="pl-track-row">
+            <div key={t.id} className={"pl-track-row" + (t.removed_at ? " pl-track-row--removed" : "")}>
               <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
                 {String(t.position + 1).padStart(2, "0")}
               </span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</span>
+                  {!!t.is_new && !t.removed_at && <span className="chip chip--new" title="Added since you last viewed">✦ new</span>}
+                </div>
                 <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {t.artist}{t.album ? ` · ${t.album}` : ""}
                 </div>

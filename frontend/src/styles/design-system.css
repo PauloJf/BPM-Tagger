@@ -927,11 +927,25 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
 .chip--missing { background: var(--err-bg);      color: var(--err-fg);   border-color: var(--err-bd); }
 .chip--queued  { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
 .chip--neutral { background: var(--chip-bg);     color: var(--muted);    border-color: var(--border); }
+.chip--new     { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }
+.chip--removed { background: var(--chip-bg);     color: var(--muted);    border-color: var(--border); }
+
+/* Playlist source badge (spotify | navidrome | local) */
+.pl-src {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px;
+  border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid var(--border); background: var(--chip-bg); color: var(--muted);
+  white-space: nowrap; flex-shrink: 0;
+}
+.pl-src--spotify   { color: #1db954; border-color: rgba(29, 185, 84, 0.35); }
+.pl-src--navidrome { color: var(--accent-2); border-color: var(--accent-border); }
+
 .pl-track-row {
   display: grid; grid-template-columns: 32px 1fr 90px; gap: 12px; align-items: center;
   padding: 10px 14px; border-bottom: 1px solid var(--border);
 }
 .pl-track-row:last-child { border-bottom: none; }
+.pl-track-row--removed { opacity: 0.55; }
 
 /* Queue */
 .chip--active { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-border); }

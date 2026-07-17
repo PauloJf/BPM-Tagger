@@ -1130,6 +1130,41 @@ class BPMDatabase:
             row = conn.execute("SELECT id FROM playlists WHERE spotify_id = ?", (spotify_id,)).fetchone()
             return row["id"] if row else cur.lastrowid
 
+    def add_navidrome_playlist(self, navidrome_id: str, name: str, image_url: str = "",
+                               track_count: int = 0) -> int:
+        """Register (or refresh) a Navidrome-sourced playlist. Keyed on navidrome_id."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("""
+                INSERT INTO playlists (source, navidrome_id, name, image_url, track_count, enabled, created_at)
+                VALUES ('navidrome', ?, ?, ?, ?, 1, ?)
+                ON CONFLICT(navidrome_id) DO UPDATE SET
+                    name=excluded.name, image_url=excluded.image_url,
+                    track_count=excluded.track_count, enabled=1
+            """, (navidrome_id, name, image_url, track_count, now))
+            conn.commit()
+            row = conn.execute("SELECT id FROM playlists WHERE navidrome_id = ?",
+                               (navidrome_id,)).fetchone()
+            return row["id"] if row else None
+
+    def mark_playlist_synced(self, playlist_id: int, name: Optional[str] = None,
+                             image_url: Optional[str] = None,
+                             track_count: Optional[int] = None) -> None:
+        """Stamp last_synced_at (and optionally refresh meta) — the source-agnostic
+        counterpart to update_playlist_sync (which also carries a Spotify snapshot)."""
+        now = datetime.now(timezone.utc).isoformat()
+        sets, vals = ["last_synced_at = ?"], [now]
+        if name is not None:
+            sets.append("name = ?"); vals.append(name)
+        if image_url is not None:
+            sets.append("image_url = ?"); vals.append(image_url)
+        if track_count is not None:
+            sets.append("track_count = ?"); vals.append(track_count)
+        vals.append(playlist_id)
+        with self._connect() as conn:
+            conn.execute(f"UPDATE playlists SET {', '.join(sets)} WHERE id = ?", vals)
+            conn.commit()
+
     def list_playlists(self) -> list[dict]:
         with self._connect() as conn:
             playlists = [dict(r) for r in conn.execute(

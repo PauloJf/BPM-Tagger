@@ -240,9 +240,13 @@ export interface InboxItem extends QueueItem {
   candidates: GrabCandidate[];
 }
 
+export type PlaylistSource = "spotify" | "navidrome" | "local";
+
 export interface Playlist {
   id: number;
-  spotify_id: string;
+  source: PlaylistSource;
+  spotify_id: string | null;
+  navidrome_id: string | null;
   name: string;
   snapshot_id: string | null;
   enabled: number;
@@ -252,7 +256,17 @@ export interface Playlist {
   have_count: number;
   missing_count: number;
   queued_count: number;
+  new_count: number;
+  removed_count: number;
   indexed_count: number;
+}
+
+export interface NavidromePlaylist {
+  navidrome_id: string;
+  name: string;
+  track_count: number;
+  image_url: string;
+  watched: boolean;
 }
 
 // ── Suggestions & Related (Deezer-derived) ─────────────────────────────────
@@ -355,7 +369,8 @@ export interface SpotifyPlaylist {
 
 export interface PlaylistTrack {
   id: number;
-  spotify_track_id: string;
+  source_track_id: string | null;
+  spotify_track_id: string | null;
   position: number;
   title: string;
   artist: string;
@@ -367,5 +382,8 @@ export interface PlaylistTrack {
   cover_url: string | null;
   match_status: string;
   matched_file_path: string | null;
-  derived_status: "have" | "missing" | "queued";
+  derived_status: "have" | "missing" | "queued" | "removed";
+  is_new: number;
+  first_seen_at: string | null;
+  removed_at: string | null;
 }
