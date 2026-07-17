@@ -51,6 +51,21 @@ export default function MiniPlayer() {
   // native BPM. Null when unknown (e.g. a preview clip) → the pill is hidden.
   const cadence = locked ? tempoLock!.target : current.bpm ?? null;
   const pct = dur > 0 ? (time / dur) * 100 : 0;
+  // The playing track's cover, matching <Cover>'s endpoint — painted blurred
+  // behind everything (null for ephemeral preview clips, which have no file).
+  const coverUrl = current.ephemeral ? null : `/api/track/cover?path=${encodeURIComponent(current.path)}`;
+  // Over the dark cover scrim the design system's neutral tokens (which flip
+  // dark in light theme) would be unreadable, so when a cover backs the player
+  // we override just the neutrals to a translucent-white glass palette; the
+  // accent tokens (play button, progress fill, lock pill) stay the theme's.
+  const glass = coverUrl
+    ? ({
+        "--text": "rgba(255,255,255,0.97)",
+        "--muted": "rgba(255,255,255,0.66)",
+        "--surface": "rgba(255,255,255,0.14)",
+        "--border": "rgba(255,255,255,0.24)",
+      } as React.CSSProperties)
+    : undefined;
 
   function toggleLock() {
     if (tempoLock) setTempoLock(null);
@@ -66,7 +81,27 @@ export default function MiniPlayer() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", padding: 12, gap: 9, boxSizing: "border-box" }}>
+    <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
+      {coverUrl && (
+        <>
+          {/* Blurred cover filling the whole window; inset + scale hide the
+              blur's feathered edges so it bleeds cleanly to the frame. */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute", inset: 0, zIndex: 0,
+              backgroundImage: `url("${coverUrl}")`, backgroundSize: "cover", backgroundPosition: "center",
+              filter: "blur(30px) saturate(1.25)", transform: "scale(1.2)",
+            }}
+          />
+          {/* Scrim: darkens the art enough that the glass controls read. */}
+          <div
+            aria-hidden
+            style={{ position: "absolute", inset: 0, zIndex: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.42), rgba(0,0,0,0.66))" }}
+          />
+        </>
+      )}
+      <div style={{ ...glass, position: "relative", zIndex: 1, display: "flex", flexDirection: "column", height: "100%", padding: 12, gap: 9, boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minHeight: 0 }}>
         {!current.ephemeral && (
           <Cover
@@ -166,6 +201,7 @@ export default function MiniPlayer() {
             style={{ width: 62 }}
           />
         </span>
+      </div>
       </div>
     </div>
   );

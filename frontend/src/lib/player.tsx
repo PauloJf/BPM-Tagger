@@ -55,6 +55,11 @@ interface PlayerState {
   setVolume(v: number): void;
   tempoLock: TempoLock | null;
   setTempoLock(lock: TempoLock | null): void;
+  // The run's source scope: a playlist id, or null for the whole library. Set
+  // by the Run page on Start so the mid-run auto-refill stays inside the chosen
+  // source instead of drifting back to the whole library.
+  runSource: number | null;
+  setRunSource(id: number | null): void;
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
@@ -84,6 +89,7 @@ interface SavedPlayer {
   shuffle: boolean; repeat: RepeatMode; volume: number;
   time?: number; playing?: boolean;
   tempoLock?: TempoLock | null;
+  runSource?: number | null;
 }
 
 function loadSaved(): SavedPlayer | null {
@@ -149,6 +155,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState(() => saved?.shuffle ?? false);
   const [repeat, setRepeat] = useState<RepeatMode>(() => saved?.repeat ?? "off");
   const [tempoLock, setTempoLock] = useState<TempoLock | null>(() => saved?.tempoLock ?? null);
+  // Run source scope (playlist id | null). Mirrored to a ref so the auto-refill
+  // effect can read it without adding a dependency that would re-fire it.
+  const [runSource, setRunSourceState] = useState<number | null>(() => saved?.runSource ?? null);
+  const runSourceRef = useRef(runSource);
+  const setRunSource = useCallback((id: number | null) => {
+    runSourceRef.current = id;
+    setRunSourceState(id);
+  }, []);
   const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
   const volumeRef = useRef(volume);
   const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
@@ -179,7 +193,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(SAVE_KEY, JSON.stringify({
           queue: survivors, order: survivors.map((_, i) => i), pos: 0,
           shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
-          tempoLock: nav.current.tempoLock,
+          tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
         }));
         return;
       }
@@ -192,11 +206,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         queue, order, pos, shuffle, repeat,
         volume: volumeRef.current, time, playing: isPlaying,
-        tempoLock: nav.current.tempoLock,
+        tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
       }));
     } catch { /* ignore */ }
   }, []);
-  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, persist]);
+  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, persist]);
 
   // The state effect above can't see time ticking, so capture the exact
   // position when the page is hidden or unloaded (refresh, tab close, mobile
@@ -344,8 +358,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (extending.current) return;
     extending.current = true;
     const exclude = nav.current.queue.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path);
+    // Keep the refill inside the run's source: pass the playlist scope so a
+    // playlist run reshuffles its own tracks (server's `recycled` fallback) once
+    // the unplayed matches run out, instead of pulling from the whole library.
+    const body: { bpm: number; exclude: string[]; playlist?: number } = { bpm: tempoLock.target, exclude };
+    if (runSourceRef.current != null) body.playlist = runSourceRef.current;
     api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number }[] }>(
-      "/api/run/queue", { bpm: tempoLock.target, exclude })
+      "/api/run/queue", body)
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
@@ -482,6 +501,92 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener("timeupdate", onTime);
     return () => a.removeEventListener("timeupdate", onTime);
   }, []);
+
+  // ── Run-mode usage stats ────────────────────────────────────────────────
+  // While a tempo-locked run plays a library track, accumulate listening time
+  // (split into tempo-shifted vs native), native audio duration covered, a
+  // time-weighted cadence sum, per-cadence-bin buckets, and a track count.
+  // Deltas are batched and POSTed to /api/run/stat (every 20s + on pause /
+  // track change / page hide); the server keeps cumulative totals for Stats.
+  //
+  // Timing is derived from the <audio> element's currentTime, not a wall clock:
+  // currentTime reflects audio that actually played even when JS was throttled
+  // (locked phone, backgrounded PWA — the primary run case), so a big gap
+  // between samples is still counted. Samples with a negative delta (seek back)
+  // or an implausibly large one (seek forward / re-baseline) are skipped.
+  const RUN_COUNT_MS = 30_000;      // a track counts once it holds ~30s of run play
+  const RUN_FLUSH_MS = 20_000;
+  const runAcc = useRef({ wall: 0, shifted: 0, native: 0, cadence: 0, tracks: 0, bands: {} as Record<string, number> });
+  const runPrevTime = useRef<number | null>(null);   // last sampled currentTime (s)
+  const runTrackWall = useRef(0);                     // wall ms held by the current track
+  const runCountedPath = useRef<string | null>(null); // path already counted in `tracks`
+
+  const sampleRun = useCallback(() => {
+    const a = audioRef.current;
+    const c = currentRef.current;
+    const lock = nav.current.tempoLock;
+    // Only real library tracks under an active tempo lock, while actually playing.
+    if (!a || !c || !lock || c.ephemeral || c.src || a.paused) { runPrevTime.current = null; return; }
+    const t = a.currentTime;
+    const prev = runPrevTime.current;
+    runPrevTime.current = t;
+    if (prev == null) return;                          // first sample → baseline only
+    const dNative = t - prev;                          // source seconds advanced
+    if (!(dNative > 0) || dNative > 90) return;         // seek / big gap → re-baseline
+    const rate = a.playbackRate || 1;
+    const wall = (dNative / rate) * 1000;              // real ms on feet
+    const acc = runAcc.current;
+    acc.wall += wall;
+    acc.native += dNative * 1000;                      // native audio ms consumed
+    if (Math.abs(rate - 1) > 0.01) acc.shifted += wall;
+    acc.cadence += lock.target * wall;                 // time-weighted cadence
+    const bin = Math.floor(lock.target / 10) * 10;      // 10-BPM cadence bucket
+    const key = `cad_${bin}`;
+    acc.bands[key] = (acc.bands[key] || 0) + wall;
+    runTrackWall.current += wall;
+    if (runCountedPath.current !== c.path && runTrackWall.current >= RUN_COUNT_MS) {
+      runCountedPath.current = c.path;
+      acc.tracks += 1;
+    }
+  }, []);
+
+  const flushRun = useCallback(() => {
+    const acc = runAcc.current;
+    const deltas: Record<string, number> = {};
+    if (acc.wall) deltas.wall_ms = Math.round(acc.wall);
+    if (acc.shifted) deltas.shifted_ms = Math.round(acc.shifted);
+    if (acc.native) deltas.native_ms = Math.round(acc.native);
+    if (acc.cadence) deltas.cadence_weighted = Math.round(acc.cadence);
+    if (acc.tracks) deltas.tracks_played = acc.tracks;
+    for (const k in acc.bands) { const v = Math.round(acc.bands[k]); if (v) deltas[k] = v; }
+    if (Object.keys(deltas).length === 0) return;
+    runAcc.current = { wall: 0, shifted: 0, native: 0, cadence: 0, tracks: 0, bands: {} };
+    api.post("/api/run/stat", { deltas }).catch(() => {});
+  }, []);
+
+  // Re-baseline per track so a track boundary never counts as one big delta.
+  useEffect(() => { runPrevTime.current = null; runTrackWall.current = 0; }, [current?.path]);
+
+  // Sample on timeupdate; flush on a timer and when the page is hidden.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => sampleRun();
+    const onHide = () => { if (document.visibilityState === "hidden") { sampleRun(); flushRun(); } };
+    a.addEventListener("timeupdate", onTime);
+    const flushId = window.setInterval(flushRun, RUN_FLUSH_MS);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushRun);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      clearInterval(flushId);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushRun);
+    };
+  }, [sampleRun, flushRun]);
+
+  // On pause / stop / queue end, capture the last delta and flush.
+  useEffect(() => { if (!playing) { sampleRun(); flushRun(); } }, [playing, sampleRun, flushRun]);
 
   // Audio element event wiring (attached once).
   useEffect(() => {
@@ -760,7 +865,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current, playing, error, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
-      tempoLock, setTempoLock, updateTrackBpm,
+      tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm,
       play, playQueue, enqueue, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,

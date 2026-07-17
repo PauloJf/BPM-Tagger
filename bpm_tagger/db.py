@@ -138,6 +138,14 @@ class BPMDatabase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_norm ON tracks(norm_artist, norm_title)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON tracks(isrc)")
 
+        # Run-mode usage counters (cumulative key/value totals; see add_run_stats).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS run_stats (
+                key   TEXT PRIMARY KEY,
+                value REAL NOT NULL DEFAULT 0
+            )
+        """)
+
         self._migrate_playlists_schema(conn)
         self._create_grabber_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)
@@ -611,6 +619,52 @@ class BPMDatabase:
                 "UPDATE tracks SET play_count = COALESCE(play_count, 0) + 1, "
                 "nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
                 (nd_song_id, file_path))
+
+    @staticmethod
+    def _valid_run_stat_key(key: str) -> bool:
+        """Guard the open-ended key/value store: lowercase/digits/underscore only,
+        bounded length. Keeps a broken or hostile client from writing arbitrary
+        keys (e.g. cadence bins are dynamic — cad_120, cad_150 — so we can't use a
+        fixed allowlist)."""
+        return (
+            isinstance(key, str) and 1 <= len(key) <= 32
+            and all(c.islower() or c.isdigit() or c == "_" for c in key)
+        )
+
+    def add_run_stats(self, deltas: dict) -> None:
+        """Increment cumulative run-mode counters by the client-reported deltas
+        (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played, and
+        per-cadence-bin cad_<bpm> buckets). Invalid keys and non-finite / negative
+        values are dropped rather than rejecting the whole batch."""
+        import math
+        clean: list[tuple[str, float]] = []
+        for key, raw in (deltas or {}).items():
+            if not self._valid_run_stat_key(key):
+                continue
+            try:
+                val = float(raw)
+            except (TypeError, ValueError):
+                continue
+            # Non-negative + finite; cap a single batch's delta so one bad report
+            # can't balloon a total (24h of ms is a generous per-flush ceiling).
+            if not math.isfinite(val) or val < 0:
+                continue
+            clean.append((key, min(val, 86_400_000.0)))
+        if not clean:
+            return
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT INTO run_stats (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = value + excluded.value",
+                clean,
+            )
+
+    def get_run_stats(self) -> dict:
+        """All cumulative run-mode counters as a {key: value} dict (empty before
+        the first run)."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT key, value FROM run_stats").fetchall()
+        return {r["key"]: r["value"] for r in rows}
 
     # Runnable rows of a playlist: matched local files (non-tombstone, 'have')
     # joined to analyzed, non-deleted, non-disliked tracks. Deduped by file_path

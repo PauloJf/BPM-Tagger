@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./lib/auth";
-import Nav, { PlayerNav } from "./components/Nav";
+import Nav, { PlayerNav, PlayerMobileBar } from "./components/Nav";
 import PlayerBar from "./components/PlayerBar";
 import InstallPingCard from "./components/InstallPingCard";
 import Login from "./pages/Login";
@@ -51,6 +51,11 @@ function PlayerLayout() {
   return (
     <>
       <PlayerNav />
+      {/* Player kiosk top bar, lifted out of the pages so it's a single sticky
+          bar shared by Run + About — consistent offset (no shift when switching
+          pages) and it stays pinned while the page scrolls. Hidden ≥1101px,
+          where the PlayerNav sidebar takes over. */}
+      <PlayerMobileBar />
       <div className="app-main">
         <div className={"container page-enter" + (runPage ? " container--run" : "")}>
           <Routes>

@@ -19,6 +19,7 @@ def api_stats():
             "bpm_distribution": st.db.get_bpm_distribution(),
             "detector_distribution": st.db.get_detector_distribution(),
             "bpm_descriptive": st.db.get_bpm_descriptive(),
+            "run": st.db.get_run_stats(),
         }
         if st.config.get("grabber_enabled"):
             payload["grabber"] = _grabber_stats(st)

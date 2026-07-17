@@ -71,6 +71,13 @@ export function MiniPlayerProvider({ children }: { children: ReactNode }) {
       // Reset state when the user closes the PiP window from its own chrome.
       w.addEventListener("pagehide", () => setPipWindow(null), { once: true });
       setPipWindow(w);
+      // Installed as a PWA, the floating player should stand alone — tuck the
+      // main app window away. The web platform has no standard window.minimize(),
+      // so this only fires where the runtime exposes one (some PWA/desktop
+      // shells do) and is a harmless no-op in a plain browser tab.
+      const standalone = window.matchMedia?.("(display-mode: standalone)").matches
+        || (navigator as unknown as { standalone?: boolean }).standalone === true;
+      if (standalone) (window as unknown as { minimize?: () => void }).minimize?.();
     } catch {
       // User dismissed the prompt, or another PiP request is in flight — no-op.
     }

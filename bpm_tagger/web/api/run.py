@@ -126,6 +126,24 @@ def api_run_queue():
                    recycled=recycled, playlist=playlist_id)
 
 
+@run_bp.route("/api/run/stat", methods=["POST"])
+@login_required
+def api_run_stat():
+    """Accumulate run-mode usage counters reported by the player.
+
+    The client batches deltas since its last flush (roughly every 20s while a
+    tempo-locked run plays, and on pause / track change / page hide) and posts
+    them here; the server just adds them to the cumulative totals shown on the
+    Stats page. Fire-and-forget from the client's view — always returns ok."""
+    _check_csrf()
+    body = request.get_json(silent=True) or {}
+    deltas = body.get("deltas")
+    if not isinstance(deltas, dict):
+        return jsonify(error="deltas must be an object"), 400
+    state().db.add_run_stats(deltas)
+    return jsonify(ok=True)
+
+
 @run_bp.route("/api/run/playlists")
 @login_required
 def api_run_playlists():

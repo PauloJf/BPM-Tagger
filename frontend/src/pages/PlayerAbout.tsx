@@ -1,6 +1,5 @@
 import { useAuth } from "../lib/auth";
 import { useTitle } from "../hooks/useTitle";
-import { PlayerMobileBar } from "../components/Nav";
 
 /** About page for the locked-down player ("Run mode") role. Written for the
  *  person on a run — not the admin — so it explains what Run mode does and how
@@ -31,8 +30,6 @@ export default function PlayerAbout() {
 
   return (
     <>
-      <PlayerMobileBar />
-
       <div style={{ marginBottom: 18 }}>
         <div className="section-label" style={{ marginBottom: 10 }}>
           <span>About</span>

@@ -163,7 +163,7 @@ a { color: inherit; }
 @keyframes wf-shimmer { 0%,100%{opacity:0.5} 50%{opacity:0.25} }
 
 /* ── Sidebar (desktop) ────────────────────────────────────────────────────── */
-body { --sidebar-w: 220px; }
+body { --sidebar-w: 220px; --player-bar-h: 52px; }
 body.sidebar-collapsed { --sidebar-w: 62px; }
 .app-sidebar {
   position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w); z-index: 55;
@@ -388,13 +388,24 @@ nav.app-nav {
 
 /* Player kiosk top bar. Hidden on desktop (the PlayerNav sidebar carries the
    brand + nav there); shown below 1100px, where the sidebar collapses away.
-   One row: brand left, Run/About tabs + sign-out right. */
+   One row: brand left, Run/About tabs + sign-out right. Lifted out of the pages
+   into PlayerLayout so it's a single sticky bar shared by Run + About — pinned
+   to the top on scroll, and the same offset on every page (no shift when
+   switching). Mirrors nav.app-nav's chrome. */
 .player-mobile-bar { display: none; }
 @media (max-width: 1100px) {
   .player-mobile-bar {
-    display: flex; align-items: center; gap: 11px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 11px;
+    position: sticky; top: 0; z-index: 50;
+    min-height: var(--player-bar-h); box-sizing: border-box;
+    padding: 8px 14px;
+    background: oklch(0.165 0.012 285 / 0.85);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: saturate(180%) blur(8px);
+    -webkit-backdrop-filter: saturate(180%) blur(8px);
   }
 }
+:root[data-theme="light"] .player-mobile-bar { background: oklch(0.985 0.004 285 / 0.85); }
 @media (max-width: 700px) {
   nav.app-nav { padding: 0 14px; }
   .container  { padding: 16px 14px 60px; }
@@ -986,9 +997,10 @@ body.has-player .container.container--run { padding-bottom: 24px; }
   .container.container--run,
   body.has-player .container.container--run { padding-top: 14px; padding-bottom: 24px; }
   /* Player kiosk: fill the viewport so the transport (waveform + controls) pins
-     to the bottom and the cockpit above distributes the leftover space. Player
-     mode has no nav, so 38px = the run container's top+bottom padding. */
-  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px); }
+     to the bottom and the cockpit above distributes the leftover space. 38px =
+     the run container's top+bottom padding; the sticky player bar above the
+     page eats --player-bar-h more, so subtract both to avoid a scroll. */
+  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px - var(--player-bar-h)); }
   .run-mobile-fill .run-mobile-body {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; justify-content: center;

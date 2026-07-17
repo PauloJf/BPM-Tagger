@@ -8,7 +8,6 @@ import { usePlayer, lockRate } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
 import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
-import { Cover } from "../components/Artwork";
 import { LyricsPanel } from "../components/LyricsPanel";
 import QueueSimilar from "../components/QueueSimilar";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
@@ -17,7 +16,6 @@ import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
-import { PlayerMobileBar } from "../components/Nav";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -101,6 +99,49 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
       <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", flexShrink: 0 }}>{label}</span>
       <span style={{ color: "var(--text)", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{value}</span>
+    </div>
+  );
+}
+
+/** The run cockpit's big cover. Holds a fixed square box (width capped to the
+ *  column, aspect-ratio keeps it square) and swaps the artwork only once the
+ *  next track's image has decoded — so a track change never blanks the cover,
+ *  which previously collapsed the box and jumped the whole cockpit layout.
+ *  Falls back to the ♪ placeholder when a cover 404s. */
+function RunCover({ path, coverSize }: { path: string; coverSize: string }) {
+  const src = (p: string) => `/api/track/cover?path=${encodeURIComponent(p)}`;
+  // `shown` is the path whose art is currently painted; it only advances to the
+  // new `path` after that image has finished loading (or errored).
+  const [shown, setShown] = useState(path);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (path === shown) return;
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) { setShown(path); setFailed(false); } };
+    img.onerror = () => { if (!cancelled) { setShown(path); setFailed(true); } };
+    img.src = src(path);
+    return () => { cancelled = true; };
+  }, [path, shown]);
+
+  return (
+    <div
+      style={{
+        position: "relative", width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1",
+        borderRadius: 20, overflow: "hidden", boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)",
+      }}
+    >
+      {failed ? (
+        <div className="art-thumb" style={{ position: "absolute", inset: 0, borderRadius: 20, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</div>
+      ) : (
+        <img
+          src={src(shown)}
+          alt=""
+          onError={() => setFailed(true)}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      )}
     </div>
   );
 }
@@ -250,6 +291,8 @@ export default function Run() {
   // shown, swaps into the cover's slot (see nowPlayingDesktop). Mobile keeps its
   // own segmented Tap tab.
   const [desktopTapOpen, setDesktopTapOpen] = useState(false);
+  // Hover state for the cover→mini-player affordance (desktop cover overlay).
+  const [coverHover, setCoverHover] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
@@ -369,6 +412,8 @@ export default function Run() {
         resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm })),
         0, { shuffle: false },
       );
+      // Pin the run's source so the mid-run auto-refill stays scoped to it.
+      player.setRunSource(selectedPlaylistId);
       player.setTempoLock(lockOn ? liveLock : null);
     } catch (e) {
       setBuildErr(e instanceof Error ? e.message : "Failed to build the queue");
@@ -426,9 +471,10 @@ export default function Run() {
   // phone screen (whatever height is left after the fixed-size sections). On
   // desktop the player column is vertically centered with room to spare, so
   // the cover can breathe. Both bump the mobile reserve for the shared header.
-  // Player mode adds a compact brand banner above the cover (the kiosk has no
-  // sidebar); reserve its height so the mobile layout still fits one screen.
-  const bannerReserve = playerMode ? 44 : 0;
+  // Player mode has a sticky brand bar above the page (the kiosk has no
+  // sidebar); reserve its height (matches --player-bar-h) so the mobile layout
+  // still fits one screen.
+  const bannerReserve = playerMode ? 52 : 0;
   const coverSize = desktop
     // Height-aware: derive the cover from the viewport height minus the fixed
     // cockpit chrome (page header + title/details/toggle + transport) so it
@@ -474,11 +520,6 @@ export default function Run() {
     </button>
   );
 
-  // Player mode below 1100px has no sidebar, so a compact top bar carries the
-  // brand + Run/About tabs + sign-out. Above 1100px the PlayerNav sidebar takes
-  // over and CSS hides this bar. Kept to one row so the run player still fits
-  // one screen on phones — see bannerReserve.
-  const playerBanner = playerMode ? <PlayerMobileBar /> : null;
 
   // Desktop shows the full uniform header (title + subtitle + right-aligned
   // action). Mobile has no header at all — the nav already says you're on Run,
@@ -495,11 +536,7 @@ export default function Run() {
   // Now playing: cover + title/artist. Split into pieces so the desktop cockpit
   // can swap the cover slot for the tap card (nowPlayingDesktop) without touching
   // the title/artist markup; mobile keeps the composed `nowPlaying`.
-  const coverImg = current && (
-    // Width caps at the column so a large clamp never overflows the cockpit
-    // cell; aspect-ratio keeps it square instead of a fixed height.
-    <Cover path={current.path} size={240} style={{ width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1", height: "auto", objectFit: "cover", borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)" }} />
-  );
+  const coverImg = current && <RunCover path={current.path} coverSize={coverSize} />;
   const titleArtist = current && (
     <>
       {playerMode ? (
@@ -525,12 +562,57 @@ export default function Run() {
         </Link>
       )}
       {current.artist && <div style={{ fontSize: 13, color: "var(--muted)" }}>{current.artist}</div>}
+      {detail?.play_count != null && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><polygon points="6,4 20,12 6,20" /></svg>
+          {detail.play_count} play{detail.play_count === 1 ? "" : "s"}
+        </div>
+      )}
     </>
+  );
+  // Compact source picker overlaid on the mobile cover's top-left, so switching
+  // the run source while a track is playing costs no vertical height (the full
+  // labelled `sourcePicker` block is only used pre-run / on desktop). Native
+  // select styled as a dark-glass chip; the ▾ chevron is a non-interactive
+  // decoration since select's own arrow is hidden via appearance:none.
+  const sourceOverlay = runPlaylists.length > 0 && (
+    <div style={{ position: "absolute", top: 8, left: 8, zIndex: 2, maxWidth: "calc(100% - 16px)" }}>
+      <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 9, pointerEvents: "none" }}>
+          <path d="M3 6h11M3 11h11M3 16h6" /><path d="M18 8v8" /><circle cx="15.5" cy="16" r="2.5" />
+        </svg>
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          aria-label="Run source"
+          title="Run source"
+          style={{
+            appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+            fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600,
+            padding: "5px 24px 5px 27px", borderRadius: 999, maxWidth: 200,
+            color: "white", cursor: "pointer",
+            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.24)",
+            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <option value="library">Whole library</option>
+          {runPlaylists.map((p) => (
+            <option key={p.id} value={`pl:${p.id}`}>{p.name} ({p.available})</option>
+          ))}
+        </select>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 8, pointerEvents: "none" }}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+    </div>
   );
   const nowPlaying = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-        {coverImg}
+        <div style={{ position: "relative", display: "inline-flex" }}>
+          {coverImg}
+          {sourceOverlay}
+        </div>
       </div>
       {titleArtist}
     </div>
@@ -725,12 +807,6 @@ export default function Run() {
         label="Length"
         value={detail.duration_ms ? fmtTime(detail.duration_ms / 1000) : "—"}
       />
-      {detail.play_count != null && (
-        <DetailRow
-          label="Plays"
-          value={`${detail.play_count} play${detail.play_count === 1 ? "" : "s"}`}
-        />
-      )}
       {quality && <DetailRow label="Quality" value={quality} />}
     </div>
   );
@@ -942,30 +1018,54 @@ export default function Run() {
   // stretching playback (you'd tap the shifted tempo, not the real BPM), same as
   // the mobile Tap tab.
   const desktopTapActive = desktopTapOpen && !playerMode;
-  // Pop-out control overlaid on the cover's top-right corner. Desktop only (it
-  // only ever renders inside nowPlayingDesktop) and Chromium-only (mini.supported
-  // — Document PiP is unavailable elsewhere), so it never shows where it can't work.
-  const coverPopout = mini.supported && (
+  // The cover doubles as the mini-player toggle: clicking it pops out (or
+  // closes) the floating Document PiP window, with a full-cover overlay hint
+  // instead of a separate corner button. Desktop only (it only ever renders
+  // inside nowPlayingDesktop) and Chromium-only (mini.supported — Document PiP
+  // is unavailable elsewhere), so the affordance only shows where it can work.
+  // Where PiP is unsupported the cover renders as a plain (non-clickable) image.
+  const coverWithPopout = current && (mini.supported ? (
     <button
       onClick={mini.toggle}
+      onMouseEnter={() => setCoverHover(true)}
+      onMouseLeave={() => setCoverHover(false)}
       aria-pressed={mini.isOpen}
-      aria-label="Floating mini player"
+      aria-label={mini.isOpen ? "Close the floating mini player" : "Open the floating mini player"}
       title={mini.isOpen ? "Close the floating player" : "Pop out a floating mini player — cadence + transport, always on top"}
-      style={{
-        position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: 999,
-        display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-        backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-        background: mini.isOpen ? "var(--accent-soft)" : "rgba(0,0,0,0.45)",
-        border: `1px solid ${mini.isOpen ? "var(--accent-border)" : "rgba(255,255,255,0.18)"}`,
-        color: mini.isOpen ? "var(--accent-2)" : "white",
-      }}
+      style={{ position: "relative", display: "inline-flex", padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: 20 }}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="14" rx="2" />
-        <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
-      </svg>
+      {coverImg}
+      {/* Overlay fades in on hover, and stays lit while the window is open. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute", inset: 0, borderRadius: 20,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
+          background: mini.isOpen ? "rgba(0,0,0,0.34)" : "rgba(0,0,0,0.46)",
+          opacity: mini.isOpen || coverHover ? 1 : 0,
+          transition: "opacity 0.18s ease",
+        }}
+      >
+        <span
+          style={{
+            width: 46, height: 46, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+            background: mini.isOpen ? "var(--accent)" : "rgba(255,255,255,0.16)",
+            border: `1px solid ${mini.isOpen ? "var(--accent-border)" : "rgba(255,255,255,0.30)"}`,
+            color: "white",
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="14" rx="2" />
+            <rect x="11" y="9" width="8" height="6" rx="1" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.01em", color: "white", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
+          {mini.isOpen ? "Floating player open" : "Pop out mini player"}
+        </span>
+      </span>
     </button>
-  );
+  ) : coverImg);
   const nowPlayingDesktop = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
       {/* The slot hugs the cover (auto) by default, so short screens don't waste
@@ -977,7 +1077,7 @@ export default function Run() {
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 10, height: desktopTapActive ? `max(${coverSize}, 226px)` : "auto" }}>
         {desktopTapActive
           ? <div style={{ width: "100%" }}>{tapControl}</div>
-          : <div style={{ position: "relative", display: "inline-flex" }}>{coverImg}{coverPopout}</div>}
+          : coverWithPopout}
       </div>
       {titleArtist}
     </div>
@@ -1012,7 +1112,6 @@ export default function Run() {
     return (
       <div className="run-desktop">
         {glowLayer}
-        {playerBanner}
         {pageHeader}
         <div className="run-desktop-body">
           <div className="run-player-col">
@@ -1045,14 +1144,16 @@ export default function Run() {
     // mobile keeps its normal top-down flow (the wrapper class is inert there).
     <div className={playerMode ? "run-mobile-fill" : undefined}>
       {glowLayer}
-      {playerBanner}
       <div className="run-mobile-body">
         {mode !== "queue" && nowPlaying}
         {/* Tap needs the whole tap pad on screen at once; the target readout (its
             big number + native pill + the build/lock buttons) is dead weight while
             tapping — the lock is off in this mode anyway — so drop it here to keep
             the pad within one screen without scrolling. */}
-        {mode !== "tap" && mode !== "queue" && sourcePicker}
+        {/* Source picker as a full row only before a run starts (no cover yet,
+            so there's room). Once a track is playing it moves to a compact chip
+            overlaid on the cover — see sourceOverlay — so it adds no height. */}
+        {!current && mode !== "tap" && mode !== "queue" && sourcePicker}
         {mode !== "tap" && targetBlock}
         {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
         {mode === "queue" ? renderQueuePanel(false)

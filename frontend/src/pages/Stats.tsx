@@ -19,6 +19,10 @@ interface StatsResponse {
   bpm_descriptive: { avg: number | null; median: number | null; min: number | null; max: number | null };
   bpm_distribution: { bpm: number; count: number }[];
   detector_distribution: { detector: string; count: number }[];
+  // Cumulative run-mode usage counters (empty before the first run). Fixed keys
+  // (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played) plus
+  // dynamic per-cadence-bin buckets keyed cad_<bpm> (10-BPM wide).
+  run?: Record<string, number>;
   // Present only when the grabber is enabled.
   grabber?: {
     managed: number;
@@ -33,6 +37,20 @@ interface StatsResponse {
 
 const fmt = (v: number | null, dec = 0) => (v == null ? "—" : Number(v).toFixed(dec));
 const num = (v: number | undefined) => (v || 0).toLocaleString();
+
+/** Milliseconds → a compact "1h 23m" / "12m 30s" / "45s" duration. */
+function fmtDur(ms: number): string {
+  const s = Math.round((ms || 0) / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+const bigNum: React.CSSProperties = {
+  fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--text)",
+  letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums",
+};
 
 function StatCard({ label, value, color, children }: { label: string; value: string; color: string; children?: React.ReactNode }) {
   return (
@@ -180,6 +198,78 @@ export default function Stats() {
           )}
         </div>
       </div>
+
+      {(() => {
+        const run = statsQ.data.run || {};
+        const wall = run.wall_ms || 0;
+        const tracks = run.tracks_played || 0;
+        if (!wall && !tracks) return null;   // nothing recorded yet → hide the card
+        const shifted = run.shifted_ms || 0;
+        const unshifted = Math.max(0, wall - shifted);
+        const nativeMs = run.native_ms || 0;
+        const avgCad = wall > 0 ? (run.cadence_weighted || 0) / wall : null;
+        const shiftedPct = wall > 0 ? Math.round((shifted / wall) * 100) : 0;
+        const bins = Object.entries(run)
+          .filter(([k]) => k.startsWith("cad_"))
+          .map(([k, v]) => ({ bpm: Number(k.slice(4)), ms: v }))
+          .filter((b) => Number.isFinite(b.bpm) && b.ms > 0)
+          .sort((a, b) => a.bpm - b.bpm);
+        const maxBin = bins.length ? Math.max(...bins.map((b) => b.ms)) : 1;
+        return (
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="section-label">
+              <span>Run mode</span>
+              <span className="section-hint">tempo-locked listening, all-time</span>
+            </div>
+            <div className="desc-grid">
+              <div>
+                <div className="stat-label">Tracks played</div>
+                <div style={{ ...bigNum, color: "var(--accent-2)" }}>{num(tracks)}</div>
+              </div>
+              <div>
+                <div className="stat-label">Time on feet</div>
+                <div style={bigNum}>{fmtDur(wall)}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(nativeMs)} of music covered</div>
+              </div>
+              <div>
+                <div className="stat-label">Tempo-shifted</div>
+                <div style={bigNum}>{shiftedPct}%</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(unshifted)} at native speed</div>
+              </div>
+              <div>
+                <div className="stat-label">Avg cadence</div>
+                <div style={bigNum}>
+                  {avgCad != null ? Math.round(avgCad) : "—"}
+                  <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 4 }}>BPM</span>
+                </div>
+              </div>
+            </div>
+            {bins.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                  Time per cadence
+                </div>
+                {bins.map((b) => {
+                  const pct = (b.ms / maxBin) * 100;
+                  return (
+                    <div className="det-row" key={b.bpm}>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", whiteSpace: "nowrap" }}>
+                        {b.bpm}–{b.bpm + 9}
+                      </span>
+                      <div className="det-bar-track">
+                        <div className="det-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: "linear-gradient(90deg,var(--accent),var(--accent-2))" }} />
+                      </div>
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {fmtDur(b.ms)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {statsQ.data.grabber && (() => {
         const g = statsQ.data.grabber;
