@@ -593,46 +593,15 @@ export default function Run() {
       )}
     </>
   );
-  // Compact source picker overlaid on the mobile cover's top-left, so switching
-  // the run source while a track is playing costs no vertical height (the full
-  // labelled `sourcePicker` block is only used pre-run / on desktop). Native
-  // select styled as a dark-glass chip; the ▾ chevron is a non-interactive
-  // decoration since select's own arrow is hidden via appearance:none.
-  const sourceOverlay = runPlaylists.length > 0 && (
-    <div style={{ position: "absolute", top: 8, left: 8, zIndex: 2, maxWidth: "calc(100% - 16px)" }}>
-      <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 9, pointerEvents: "none" }}>
-          <path d="M3 6h11M3 11h11M3 16h6" /><path d="M18 8v8" /><circle cx="15.5" cy="16" r="2.5" />
-        </svg>
-        <select
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          aria-label="Run source"
-          title="Run source"
-          style={{
-            appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
-            fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600,
-            padding: "5px 24px 5px 27px", borderRadius: 999, maxWidth: 200,
-            color: "white", cursor: "pointer",
-            background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.24)",
-            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-          }}
-        >
-          <option value="library">Whole library</option>
-          {runPlaylists.map((p) => (
-            <option key={p.id} value={`pl:${p.id}`}>{p.name} ({p.available})</option>
-          ))}
-        </select>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 8, pointerEvents: "none" }}>
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </div>
-    </div>
-  );
+  // The run-source picker is not overlaid on the cover any more (it blocked the
+  // artwork and, with a long playlist name, spilled across it). On mobile it now
+  // lives in the Queue view — see renderQueuePanel — reachable mid-run without
+  // covering anything; pre-run it still shows as the labelled `sourcePicker`
+  // block below (no cover is on screen yet then).
   const nowPlaying = current && (
     <div style={{ textAlign: "center", marginBottom: 12 }}>
       <div style={{ marginBottom: 10 }}>
-        <RunCover path={current.path} coverSize={coverSize}>{sourceOverlay}</RunCover>
+        <RunCover path={current.path} coverSize={coverSize} />
       </div>
       {titleArtist}
     </div>
@@ -923,7 +892,12 @@ export default function Run() {
       : { padding: 0, marginBottom: 12 };
     const listStyle: React.CSSProperties = fill
       ? { flex: 1, minHeight: 0, overflowY: "auto" }
-      : { maxHeight: "clamp(140px, calc(100dvh - 500px), 420px)", overflowY: "auto" };
+      // Mobile Queue tab: cap the scroll area so the whole panel (header + the
+      // in-panel source picker + list) is no taller than the cover+controls it
+      // replaces — otherwise switching to Queue grew the page and forced a
+      // scroll. Reserve = target readout + mode toggle + panel header + source
+      // row + transport + padding (+ the kiosk brand bar via bannerReserve).
+      : { maxHeight: `clamp(120px, calc(100dvh - ${560 + bannerReserve}px), 340px)`, overflowY: "auto" };
     return (
       <div className="card" style={cardStyle}>
         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
@@ -949,12 +923,20 @@ export default function Run() {
             )}
           </span>
         </div>
+        {/* Run-source picker — mobile only (desktop keeps it in the controls
+            column). Lives here so it's reachable mid-run without covering the
+            artwork. Falsy (renders nothing) when the library has no playlists. */}
+        {!fill && sourcePicker && (
+          <div data-testid="queue-source" style={{ padding: "10px 14px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+            {sourcePicker}
+          </div>
+        )}
         {similarOpen && queueTrack?.artist && (
           <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
             <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
           </div>
         )}
-        <div style={listStyle}>
+        <div data-testid="queue-list" style={listStyle}>
           {player.orderedQueue.length === 0 && (
             <div style={{ padding: 16, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
               No queue yet — set a target and hit Start run.
@@ -1184,8 +1166,9 @@ export default function Run() {
             tapping — the lock is off in this mode anyway — so drop it here to keep
             the pad within one screen without scrolling. */}
         {/* Source picker as a full row only before a run starts (no cover yet,
-            so there's room). Once a track is playing it moves to a compact chip
-            overlaid on the cover — see sourceOverlay — so it adds no height. */}
+            so there's room). Once a track is playing, switching the source lives
+            in the Queue view instead (see renderQueuePanel) so it never covers
+            the artwork. */}
         {!current && mode !== "tap" && mode !== "queue" && sourcePicker}
         {mode !== "tap" && targetBlock}
         {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
