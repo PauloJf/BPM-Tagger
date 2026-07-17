@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.7 — 2026-07-17
+
+- **Fix: Run page cover art went missing (regression in 2.6.6).** The new load-then-swap cover wrapped the image in a `<div>` whose `width: min(size, 100%)` collapsed to zero inside the cockpit's shrink-to-fit cover slot (a non-replaced box can't resolve the `100%` there), so only the mini-player pop-out overlay was left showing. Restored the original replaced-`<img>` sizing while keeping the deferred-swap behaviour, so the cover renders again and still doesn't blank/jump on track change.
+
 ## v2.6.6 — 2026-07-17
 
 - **Mini player polish:** the floating window now fills its background with the **blurred cover art** behind a glass now-playing card (dark scrim keeps the controls legible in either theme). On the Run page the **cover itself is the pop-out button** — click the artwork to open or close the floating window (an overlay hint fades in on hover), replacing the separate corner button. And when the app is running as an installed **PWA**, opening the mini player tucks the main window away where the runtime supports it (the web platform has no standard `window.minimize()`, so it's a no-op in a plain browser tab).

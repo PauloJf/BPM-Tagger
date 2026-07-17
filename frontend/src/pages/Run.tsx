@@ -125,24 +125,24 @@ function RunCover({ path, coverSize }: { path: string; coverSize: string }) {
     return () => { cancelled = true; };
   }, [path, shown]);
 
+  // Size the element itself, exactly like the original <Cover> — a replaced
+  // <img> with width:min(size,100%) + aspect-ratio. Do NOT wrap it in a sizing
+  // <div>: a non-replaced box can't resolve `100%` against the shrink-to-fit
+  // inline-flex cover slot and collapses to 0 (which hid the cover in 2.6.6).
+  const box: React.CSSProperties = {
+    width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1",
+    borderRadius: 20, boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)",
+  };
+  if (failed) {
+    return <div className="art-thumb" style={{ ...box, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</div>;
+  }
   return (
-    <div
-      style={{
-        position: "relative", width: `min(${coverSize}, 100%)`, aspectRatio: "1 / 1",
-        borderRadius: 20, overflow: "hidden", boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)",
-      }}
-    >
-      {failed ? (
-        <div className="art-thumb" style={{ position: "absolute", inset: 0, borderRadius: 20, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</div>
-      ) : (
-        <img
-          src={src(shown)}
-          alt=""
-          onError={() => setFailed(true)}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
-      )}
-    </div>
+    <img
+      src={src(shown)}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{ ...box, height: "auto", objectFit: "cover", display: "block" }}
+    />
   );
 }
 

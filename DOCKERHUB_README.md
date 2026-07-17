@@ -159,6 +159,8 @@ Every bit helps keep this project maintained and open source.
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.6.7** — Fix: the Run page **cover art went missing** in 2.6.6 — the cover box collapsed to zero width in the cockpit's cover slot, leaving only the mini-player overlay. Restored, keeping the no-blank-on-track-change behaviour.
+
 **v2.6.6** — **Mini player, Run page polish & run stats.** The floating mini player now fills its background with the **blurred cover** behind a glass card, and on the Run page the **cover itself is the pop-out button**; opening it as an installed PWA tucks the main window away where supported. The playing track's **play count** shows under the title/artist (mobile + desktop), the **cover no longer blanks/jumps** on track change, and mobile **player mode** gets a **sticky** top bar shared across Run + About. A playlist run now **stays scoped to that playlist** as it auto-refills. New **Run mode** Stats card: tracks played, time on feet, tempo-shifted vs native, average cadence, and time per cadence.
 
 **v2.6.5** — **Floating mini player (Picture-in-Picture).** Pop the now-playing card out into an always-on-top window that survives tab switches — cover, title/artist, a **seekable progress bar**, prev/play/next, **volume**, and (in Run mode) the tempo-lock pill with the pulsing beat dot. Built on the Document Picture-in-Picture API (Chromium desktop); the pop-out button is in the player bar and on the Run page's cover, hidden where unsupported. Playback stays in the main tab; the window mirrors the app theme.
