@@ -107,6 +107,15 @@ export interface TracksPage {
   disliked_count: number;
 }
 
+export interface AudioQuality {
+  format: string | null;        // container/codec label from the file extension
+  bitrate: number | null;       // bits per second
+  sample_rate: number | null;   // Hz
+  bits_per_sample: number | null;
+  channels: number | null;
+  lossless: boolean | null;
+}
+
 export interface TrackDetailResponse {
   track: Track;
   back: string;
@@ -114,6 +123,7 @@ export interface TrackDetailResponse {
   next_path: string | null;
   queue_pos: number | null;
   queue_total: number | null;
+  quality?: AudioQuality | null;
   playback_buffer: number;
 }
 

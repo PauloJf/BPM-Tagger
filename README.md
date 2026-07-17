@@ -364,7 +364,7 @@ A full-screen tempo-run player, like the cadence apps — but drawing on your ow
 
 Unlock to keep the BPM-matched queue but hear every track at native speed.
 
-On the desktop admin view, the track-info column carries a **Cover / Tap** toggle: choose **Tap** and a **tap-tempo pad** swaps into the cover art's place — tap along (or press **Space**) at a track's true speed to set and lock its real BPM without leaving the run, then choose **Cover** for the artwork again. The pad takes the cover's slot (rather than stacking below) so the cockpit never shifts, and it's disabled while the tempo lock is stretching playback — release the lock to tap a track's real BPM. (Player mode has no tap-tempo; mobile keeps its own **Tap** tab.)
+On the desktop admin view, the track-info column lists the playing track's facts — album, native BPM, detector + confidence, length, **play count** (when Navidrome play data has been pulled), and **file audio quality** (format with bit depth / sample rate for lossless files, or bitrate for lossy ones). It also carries a **Cover / Tap** toggle: choose **Tap** and a **tap-tempo pad** swaps into the cover art's place — tap along (or press **Space**) at a track's true speed to set and lock its real BPM without leaving the run, then choose **Cover** for the artwork again. The pad takes the cover's slot (rather than stacking below) so the cockpit never shifts, and it's disabled while the tempo lock is stretching playback — release the lock to tap a track's real BPM. (Player mode has no tap-tempo; mobile keeps its own **Tap** tab.)
 
 ### Navigation & scan controls
 

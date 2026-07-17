@@ -109,6 +109,40 @@ def _read_isrc(file_path: str, easy) -> str | None:
     return None
 
 
+def read_audio_quality(file_path: str) -> dict:
+    """Best-effort audio-property read (format, bitrate, sample rate, depth).
+
+    Reads only the stream header via mutagen — cheap, no full decode. Every
+    field is optional; missing ones stay ``None``. ``lossless`` is inferred
+    from the container so the UI can label FLAC/WAV/ALAC copies.
+    """
+    out = {"format": None, "bitrate": None, "sample_rate": None,
+           "bits_per_sample": None, "channels": None, "lossless": None}
+    ext = Path(file_path).suffix.lower().lstrip(".")
+    if ext:
+        out["format"] = ext.upper()
+    out["lossless"] = ext in ("flac", "wav", "aiff", "aif", "alac", "ape", "wv")
+    try:
+        audio = mutagen.File(file_path)
+        info = getattr(audio, "info", None)
+        if info is not None:
+            br = getattr(info, "bitrate", None)
+            if br:
+                out["bitrate"] = int(br)
+            sr = getattr(info, "sample_rate", None)
+            if sr:
+                out["sample_rate"] = int(sr)
+            bps = getattr(info, "bits_per_sample", None)
+            if bps:
+                out["bits_per_sample"] = int(bps)
+            ch = getattr(info, "channels", None)
+            if ch:
+                out["channels"] = int(ch)
+    except Exception as exc:
+        log.debug("read_audio_quality failed for %s: %s", file_path, exc)
+    return out
+
+
 def read_tags(file_path: str) -> dict:
     """Best-effort metadata read for the grabber tag index. Missing fields → None."""
     out = {"title": None, "artist": None, "album": None, "album_artist": None,

@@ -13,7 +13,7 @@ from urllib.parse import quote
 import requests
 from flask import Blueprint, Response, abort, jsonify, request, send_file
 
-from ...bpm.tags import get_file_hash, write_bpm_tag
+from ...bpm.tags import get_file_hash, read_audio_quality, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
@@ -256,9 +256,16 @@ def api_track():
         except ValueError:
             pass
 
+    quality = None
+    try:
+        quality = read_audio_quality(path)
+    except Exception:  # never let a header read break the detail response
+        pass
+
     return jsonify(track=track, back=back,
                    prev_path=prev_path, next_path=next_path,
                    queue_pos=queue_pos, queue_total=queue_total,
+                   quality=quality,
                    playback_buffer=st.config.get("playback_buffer", 3))
 
 

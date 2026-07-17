@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate } from "../lib/player";
-import type { RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
+import type { AudioQuality, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
 import { Cover } from "../components/Artwork";
 import { LyricsPanel } from "../components/LyricsPanel";
@@ -75,6 +75,22 @@ function Dislike({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       </svg>
     </button>
   );
+}
+
+/** Compact one-line audio-quality summary, e.g. "FLAC · 16-bit/44.1 kHz" or
+ *  "MP3 · 320 kbps · 44.1 kHz". Returns null when nothing useful is known. */
+function fmtQuality(q: AudioQuality | null | undefined): string | null {
+  if (!q) return null;
+  const parts: string[] = [];
+  if (q.format) parts.push(q.format);
+  const depthRate: string[] = [];
+  if (q.bits_per_sample) depthRate.push(`${q.bits_per_sample}-bit`);
+  if (q.sample_rate) depthRate.push(`${(q.sample_rate / 1000).toFixed(1)} kHz`);
+  // Lossless copies are best described by depth/sample-rate; bitrate is huge
+  // and uninformative. Lossy copies lead with the bitrate instead.
+  if (!q.lossless && q.bitrate) parts.push(`${Math.round(q.bitrate / 1000)} kbps`);
+  if (depthRate.length) parts.push(depthRate.join("/"));
+  return parts.length ? parts.join(" · ") : null;
 }
 
 /** One label/value line in the desktop track-info column. */
@@ -255,6 +271,7 @@ export default function Run() {
     staleTime: 60_000,
   });
   const detail = trackQ.data?.track;
+  const quality = fmtQuality(trackQ.data?.quality);
   const freshBpm = detail?.bpm;
   useEffect(() => {
     if (current && freshBpm != null && freshBpm !== current.bpm) {
@@ -656,11 +673,15 @@ export default function Run() {
       />
       <DetailRow
         label="Length"
-        value={
-          (detail.duration_ms ? fmtTime(detail.duration_ms / 1000) : "—") +
-          (detail.play_count != null ? ` · ${detail.play_count} play${detail.play_count === 1 ? "" : "s"}` : "")
-        }
+        value={detail.duration_ms ? fmtTime(detail.duration_ms / 1000) : "—"}
       />
+      {detail.play_count != null && (
+        <DetailRow
+          label="Plays"
+          value={`${detail.play_count} play${detail.play_count === 1 ? "" : "s"}`}
+        />
+      )}
+      {quality && <DetailRow label="Quality" value={quality} />}
     </div>
   );
 

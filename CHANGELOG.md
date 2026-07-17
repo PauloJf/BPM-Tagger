@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.3 — 2026-07-17
+
+- **Run page (desktop cockpit):** the track-info column now shows two more facts about the playing track — its **play count** (when Navidrome play data has been pulled; hidden otherwise) as its own line, and its **file audio quality**: format with bit depth / sample rate for lossless copies (e.g. `FLAC · 16-bit/44.1 kHz`) or the bitrate for lossy ones (e.g. `MP3 · 320 kbps · 44.1 kHz`). Properties are read from the file's stream header on demand (mutagen, header-only — no full decode) and fail silently, so an unreadable file just falls back to the format label and never breaks the detail view.
+
 ## v2.6.2 — 2026-07-16
 
 - **Player-only login (Run mode kiosk):** an optional second password (`RUN_PASSWORD`, or set at runtime in **Settings → Player Access**) logs into a locked-down **player** role that shows **only the Run page** — the tempo player, nothing else. Hand a phone or tablet to someone for a run, or dedicate a device to it, without exposing your library, settings, or downloads. A player may play, star/dislike, and scrobble; every other endpoint is refused **server-side** with HTTP 403 via a **default-deny allowlist** (any endpoint added later is off-limits to players until deliberately allowlisted), and `/api/settings` is filtered to just the run-related keys so nothing else leaks. Login auto-detects the role from whichever password matches (single field, unchanged UX). Feature is dormant until a run password is set; changing or disabling it immediately invalidates existing player sessions.
