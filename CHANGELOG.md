@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.13 — 2026-07-18
+
+- **Run mobile: true one-screen layout.** The phone Run page (admin and player mode alike) is now a fixed-height flex column: the transport pins to the bottom, the **cover art flexes to exactly the leftover height**, and the page never scrolls — like a native player. This replaces the hand-tuned viewport math that drifted every time a line was added or removed; safe areas (notch / home indicator), browser vs installed PWA, and iOS vs Android are all accounted for by construction. On very short screens (~2016-era phones) the artwork is dropped instead of pushing the controls off-screen, and the Queue view's list now shrinks to the available space the same way. The **play count** line is desktop-only now (on phones it was spending vertical budget mid-run), and a long artist list ellipsizes on one line instead of wrapping.
+- **Stats: Most played pages through everything.** Top artists and top tracks now show **15 rows** with a **Show more** button that loads the next 15 (ranks continue across pages) until the leaderboard is exhausted, backed by a new `/api/stats/most_played` endpoint.
+- **Stats: mobile width overflow fixed.** A long track title or artist name in the Most-played card forced the whole page wider than the phone screen (sideways scrolling); leaderboard columns now clamp to the screen and long names ellipsize.
+
 ## v2.6.12 — 2026-07-18
 
 - **Signing out stops playback.** Sign out (admin or player kiosk, including the installed PWA) now immediately stops the player and clears the queue — audio no longer keeps playing behind the login screen, and a shared device no longer inherits the previous user's run. A session *expiry* is unchanged: the saved queue still restores after signing back in.
