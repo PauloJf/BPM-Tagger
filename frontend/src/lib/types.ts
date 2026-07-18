@@ -236,6 +236,7 @@ export interface QueueItem {
   title: string | null;
   artist: string | null;
   album: string | null;
+  album_artist?: string | null;
   duration_ms: number | null;
   isrc?: string | null;
   status: string;

@@ -531,7 +531,9 @@ input[type=number]:focus, input[type=email]:focus,
 select:focus, textarea:focus { border-color: var(--accent-border); }
 
 /* ── Pagination ───────────────────────────────────────────────────────────── */
-.pagination { display: flex; gap: 4px; align-items: center; margin-top: 14px; }
+/* flex-wrap: a long page list (Prev 1 … 28 29 Next) must fold onto a second
+   line on phones instead of widening the page. */
+.pagination { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 14px; }
 .pagination a, .pagination button, .pagination span {
   padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border);
   background: transparent; color: var(--muted); text-decoration: none;

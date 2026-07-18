@@ -529,7 +529,10 @@ export default function Tracks() {
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
+      {/* flexWrap: on phones the count + a many-page pagination can't share one
+          line — without wrapping this row forced the whole page to scroll
+          sideways (the only page-wide H-overflow in the mobile sweep). */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
         <span>
           Showing <span style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>{tracks.length}</span> of{" "}
           <span style={{ fontFamily: "var(--mono)" }}>{data?.total ?? 0}</span> total

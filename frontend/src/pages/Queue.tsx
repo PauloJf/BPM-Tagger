@@ -17,17 +17,37 @@ function statusChip(s: string) {
   return "chip chip--active";
 }
 
+const inheritLink: React.CSSProperties = { color: "inherit", textDecoration: "none" };
+
 function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: (id: number) => void; onCancel: (id: number) => void; onDelete: (id: number) => void }) {
   const active = ACTIVE.has(item.status);
   const removable = item.status === "failed" || item.status === "skipped";
+  // A completed grab has been filed into the library — link its title/artist/
+  // album straight to the track/artist/album pages (same inherit-color link
+  // style as the playlist rows). Anything not filed yet stays plain text.
+  const inLibrary = item.status === "done" && !!item.final_path;
   return (
     <div className="q-row">
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {item.title || "—"}
+          {inLibrary ? (
+            <Link to={`/track?path=${encodeURIComponent(item.final_path!)}`} style={inheritLink} title="Open the track page">
+              {item.title || "—"}
+            </Link>
+          ) : (
+            item.title || "—"
+          )}
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {item.artist}{item.provider ? ` · ${item.provider}` : ""}{item.error ? ` · ${item.error}` : ""}
+          {inLibrary && item.artist ? (
+            <Link to={`/artist?name=${encodeURIComponent(item.artist)}`} style={inheritLink} title={`View ${item.artist}`}>{item.artist}</Link>
+          ) : (
+            item.artist
+          )}
+          {inLibrary && item.album && (
+            <> · <Link to={`/album?album=${encodeURIComponent(item.album)}&album_artist=${encodeURIComponent(item.album_artist || item.artist || "")}`} style={inheritLink} title={`View ${item.album}`}>{item.album}</Link></>
+          )}
+          {item.provider ? ` · ${item.provider}` : ""}{item.error ? ` · ${item.error}` : ""}
         </div>
         {item.status === "downloading" && (
           <div className="q-prog-track"><div className="q-prog-fill" style={{ width: `${Math.round((item.progress || 0) * 100)}%` }} /></div>

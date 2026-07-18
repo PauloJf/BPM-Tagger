@@ -468,9 +468,16 @@ export default function TrackDetail() {
           </span>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 4, wordBreak: "break-word" }}>{fname}</h1>
-        {track.artist && (
+        {(track.artist || track.album) && (
           <div style={{ fontSize: 13, marginBottom: 4 }}>
-            by <Link to={`/artist?name=${encodeURIComponent(track.artist)}`} style={{ color: "var(--accent-2)" }}>{track.artist}</Link>
+            {track.artist && (
+              <>by <Link to={`/artist?name=${encodeURIComponent(track.artist)}`} style={{ color: "var(--accent-2)" }}>{track.artist}</Link></>
+            )}
+            {/* The album tag was shown nowhere on this page — link it like the
+                artist so every track page reaches its album page too. */}
+            {track.album && (
+              <>{track.artist ? " · " : "on "}<Link to={`/album?album=${encodeURIComponent(track.album)}&album_artist=${encodeURIComponent(track.album_artist || track.artist || "")}`} style={{ color: "var(--accent-2)" }}>{track.album}</Link></>
+            )}
           </div>
         )}
         <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)", display: "flex", alignItems: "center", gap: 6 }}>

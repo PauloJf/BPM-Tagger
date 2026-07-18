@@ -20,6 +20,7 @@ interface SearchResult {
   year: number | null;
   cover_url: string;
   in_library?: boolean;
+  library_path?: string;   // matched library file — the "in library" chip links to it
   queued?: boolean;
 }
 
@@ -92,7 +93,13 @@ export default function Search() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {r.in_library ? (
-                  <span className="chip chip--have">✓ in library</span>
+                  // Link to the matched library track (same pattern as the
+                  // Suggestions page's chip); plain chip if the path is absent.
+                  r.library_path ? (
+                    <Link className="chip chip--have" to={`/track?path=${encodeURIComponent(r.library_path)}`} title="Open the matching library track">✓ in library</Link>
+                  ) : (
+                    <span className="chip chip--have">✓ in library</span>
+                  )
                 ) : r.queued ? (
                   <span className="chip chip--queued">↓ queued</span>
                 ) : (

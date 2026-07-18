@@ -116,11 +116,14 @@ def spotify_search():
     except Exception as exc:
         log.warning("Spotify search failed: %s", exc)
         return jsonify(error=str(exc)), 400
-    # Flag which results are already in the library / queued.
+    # Flag which results are already in the library / queued. The matched file
+    # path rides along so the UI's "in library" chip can link to the track page.
     db = state().db
     for r in results:
-        if library_match(r, db):
+        match_path = library_match(r, db)
+        if match_path:
             r["in_library"] = True
+            r["library_path"] = match_path
         elif r.get("spotify_track_id") and db.has_nonterminal_grab(r["spotify_track_id"]):
             r["queued"] = True
     return jsonify(results=results)

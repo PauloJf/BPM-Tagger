@@ -375,7 +375,10 @@ def test_spotify_search_flags_in_library(grab):
     bl = next(r for r in res if r["title"] == "Blinding Lights")
     other = next(r for r in res if r["title"] == "Brand New Track")
     assert bl.get("in_library") is True       # matches the seeded library file
+    # The matched path rides along so the UI chip can link to the track page.
+    assert bl.get("library_path")
     assert not other.get("in_library")
+    assert "library_path" not in other
 
 
 def test_manual_enqueue_and_dedup(grab):
