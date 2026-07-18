@@ -85,6 +85,15 @@ def api_version_check():
         return jsonify(error=str(exc))
 
 
+@media_bp.route("/api/changelog")
+@login_required
+def api_changelog():
+    """Release notes for the admin 'What's new' popup + changelog view. Not in
+    the player allowlist, so a kiosk session is refused by the scope gate."""
+    from ...config import read_changelog
+    return jsonify(changelog=read_changelog())
+
+
 @media_bp.route("/healthz")
 def healthz():
     """Liveness probe. Library stats ride along only for an authenticated admin —

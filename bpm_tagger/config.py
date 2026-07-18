@@ -78,6 +78,18 @@ def _read_version() -> str:
 __version__ = _read_version()
 
 
+def read_changelog() -> str:
+    """Return the bundled CHANGELOG.md text (empty string if not present). Lives
+    at the repository / image root alongside VERSION; served to the admin UI for
+    the 'What's new' popup and the changelog view."""
+    root = Path(__file__).resolve().parent.parent
+    cf = root / "CHANGELOG.md"
+    try:
+        return cf.read_text(encoding="utf-8") if cf.is_file() else ""
+    except Exception:
+        return ""
+
+
 RUN_PRESET_DEFAULTS = [("Warmup", 120), ("Easy", 155), ("Steady", 165), ("Tempo", 175)]
 
 

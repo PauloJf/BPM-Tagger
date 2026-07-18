@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { Toggle } from "../components/Toggle";
+import { ChangelogModal } from "../components/Changelog";
 import type { SettingsMap } from "../lib/types";
 
 const STACK: [string, string][] = [
@@ -19,6 +21,7 @@ const STACK: [string, string][] = [
 export default function About() {
   useTitle("About");
   const { version } = useAuth();
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const grabber = useGrabberStatus();
   const ytdlp = grabber.data?.versions?.yt_dlp;
   const versionQ = useQuery({
@@ -50,11 +53,19 @@ export default function About() {
 
   return (
     <>
+      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "stretch", marginBottom: 18 }}>
         <div style={{ flex: "1 1 320px", minWidth: 0 }}>
           <div className="section-label" style={{ marginBottom: 10 }}>
             <span>About</span>
             <span className="section-hint">v{version}</span>
+            <button
+              className="btn btn-bare btn-sm"
+              style={{ padding: 0, marginLeft: 8, fontSize: 11, color: "var(--accent-2)" }}
+              onClick={() => setChangelogOpen(true)}
+            >
+              What's new
+            </button>
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6 }}>
             BPM Tagger

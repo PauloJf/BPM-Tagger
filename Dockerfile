@@ -42,7 +42,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
 RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
 
-COPY VERSION web_ui.py ./
+COPY VERSION CHANGELOG.md web_ui.py ./
 COPY bpm_tagger/ bpm_tagger/
 COPY static/ static/
 # React SPA bundle from the frontend build stage (served by Flask)

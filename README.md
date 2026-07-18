@@ -375,6 +375,8 @@ On the desktop admin view, the track-info column lists the playing track's facts
 
 On desktop the UI uses a **sidebar** grouped into sections — **Library** (Library, Playlists), **Tagging** (BPM Review, Duplicates), **Grabber** (Add Music, Queue, Inbox — shown when the grabber is enabled), and **System** (Stats, Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
 
+The first time the admin UI opens on a **new version** it shows a one-time **What's new** popup with that release's notes; the **About** page shows the running version with a **What's new** link that opens the full in-app changelog anytime. It's per-device, never shown to the player kiosk, and never pops over an actively-playing run.
+
 The sidebar footer shows the current scan state at all times and lets you control the scanner without touching the container:
 
 - **Stopped** (red dot) — no scan running; **▶ Start Scan** button triggers a pass using the configured mode

@@ -3,6 +3,7 @@ import { useAuth } from "./lib/auth";
 import Nav, { PlayerNav, PlayerMobileBar } from "./components/Nav";
 import PlayerBar from "./components/PlayerBar";
 import InstallPingCard from "./components/InstallPingCard";
+import WhatsNew from "./components/WhatsNew";
 import Login from "./pages/Login";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
@@ -37,6 +38,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {!runPage && <PlayerBar />}
       <InstallPingCard />
+      <WhatsNew />
     </>
   );
 }

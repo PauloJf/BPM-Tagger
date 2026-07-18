@@ -89,3 +89,20 @@ def test_healthz_stats_admin_only(base_config):
     _login(player, "runner99")
     body = player.get("/healthz").get_json()
     assert body["status"] == "ok" and "total" not in body   # player does not
+
+
+# ── /api/changelog: admin-only (What's new popup) ────────────────────────────
+
+def test_changelog_admin_only(base_config):
+    app = _app(base_config, run_password="runner99")
+
+    assert app.test_client().get("/api/changelog").status_code == 401   # unauthenticated
+
+    admin = app.test_client()
+    _login(admin, "s3cret")
+    r = admin.get("/api/changelog")
+    assert r.status_code == 200 and "## v" in r.get_json()["changelog"]  # real CHANGELOG.md
+
+    player = app.test_client()
+    _login(player, "runner99")
+    assert player.get("/api/changelog").status_code == 403   # player scope-gated
