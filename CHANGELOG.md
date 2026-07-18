@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.14 — 2026-07-18
+
+- **Completed downloads link into the library.** In the grabber **Queue**, a completed item's **title, artist and album** now link straight to its library **track / artist / album** pages (in-flight and failed items stay plain — they aren't filed yet).
+- **More library links.** The **track page** now links its **album** (next to the artist link, which already existed), and **Add Music**'s **✓ in library** chip links to the matching library track (as the Suggestions page already did).
+- **Mobile consistency sweep.** Audited every page at phone width with long titles/artists: the only page-wide sideways scroll left was the **Library pagination** row (Prev 1 … 28 29 Next couldn't fit beside the "Showing X of Y" count) — both now wrap onto extra lines instead of widening the page. Everything else — queue rows, inbox cards, playlists, review cards, duplicates, search results — stays within the screen and ellipsizes.
+
 ## v2.6.13 — 2026-07-18
 
 - **Run mobile: true one-screen layout.** The phone Run page (admin and player mode alike) is now a fixed-height flex column: the transport pins to the bottom, the **cover art flexes to exactly the leftover height**, and the page never scrolls — like a native player. This replaces the hand-tuned viewport math that drifted every time a line was added or removed; safe areas (notch / home indicator), browser vs installed PWA, and iOS vs Android are all accounted for by construction. On very short screens (~2016-era phones) the artwork is dropped instead of pushing the controls off-screen, and the Queue view's list now shrinks to the available space the same way. The **play count** line is desktop-only now (on phones it was spending vertical budget mid-run), and a long artist list ellipsizes on one line instead of wrapping.

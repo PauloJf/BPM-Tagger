@@ -425,9 +425,9 @@ Summary statistics and charts for your library:
 When the grabber is enabled, the nav also shows **Playlists**, **Add Music**, **Suggestions**, **Queue**, and **Inbox** (with a badge for items awaiting review):
 
 - **Playlists** (`/playlists`) — add Spotify playlists by URL or via **Browse my playlists** (lists your account's playlists with already-watched ones flagged), toggle which are watched, sync on demand, and see per-playlist ✓ have / ↓ queued / ✗ missing counts. Each playlist detail lists tracks by status, exports an `.m3u`, and can enqueue all missing.
-- **Add Music** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library or queued).
+- **Add Music** (`/search`) — search Spotify's catalog and queue any track for download (flags results already in your library — the **✓ in library** chip links to the matching track — or queued).
 - **Suggestions** (`/suggestions`) — suggested artists and tracks derived from your library's top/starred artists (via the keyless Deezer catalog); each artist expands to its top tracks, and any track can be added to the download queue. Refresh on demand (auto-refreshes weekly); dismissals persist. Works even without Spotify connected.
-- **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, per-row **Delete** on failed/skipped items, **Clear completed**, and completed history.
+- **Queue** (`/queue`) — active downloads with live progress bars, retry/cancel, **Retry all failed**, per-row **Delete** on failed/skipped items, **Clear completed**, and completed history — a completed item's **title, artist and album link straight to its library track / artist / album pages**.
 - **Inbox** (`/inbox`) — ambiguous matches with candidate cards (provider, quality, duration Δ, score + breakdown); Choose, Search again, Edit search, or Skip — plus **Search all again** to re-search every waiting item at once.
 
 The player bar shows the current track's **BPM with a beat-pulsing dot** — the dot flashes once per beat while playing (and sits still when paused), so you can eyeball whether the detected tempo actually matches the music without leaving whatever page you're on. When a run's **tempo lock** is active, the readout switches to the locked target cadence with a lock icon, and tapping it opens the Run page.
