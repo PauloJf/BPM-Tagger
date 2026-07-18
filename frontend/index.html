@@ -2,7 +2,11 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover lets content reach the screen edges on notched /
+         home-indicator devices AND makes env(safe-area-inset-*) report real
+         values, which the sticky top bars and the fixed player bar pad against
+         so nothing sits under the status bar or the home indicator. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#131318" />

@@ -182,7 +182,7 @@ body.sidebar-collapsed { --sidebar-w: 62px; }
   display: flex; flex-direction: column;
   background: oklch(0.150 0.012 285 / 0.92);
   border-right: 1px solid var(--border);
-  padding: 16px 12px 14px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 12px calc(14px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
   overflow: hidden;
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
@@ -285,7 +285,8 @@ nav.app-nav {
   background: oklch(0.165 0.012 285 / 0.85);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 0;
-  padding: 0 24px;
+  /* Pad past the status bar / side notches (viewport-fit=cover). 0 on desktop. */
+  padding: env(safe-area-inset-top, 0px) calc(24px + env(safe-area-inset-right, 0px)) 0 calc(24px + env(safe-area-inset-left, 0px));
   position: sticky; top: 0; z-index: 50;
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
@@ -370,14 +371,15 @@ nav.app-nav {
   /* Cap to the space between the top bar (~52px) and the bottom of the screen
      and scroll internally, so a long menu never runs off-screen with its last
      items (Logout, Support) unreachable. */
-  max-height: calc(100dvh - 52px);
+  max-height: calc(100dvh - 52px - env(safe-area-inset-top, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 /* When a track is loaded the fixed player bar covers the bottom of the screen
-   (and sits above this panel), so shorten the menu to end above it. */
-body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--player-bar-h)); }
+   (and sits above this panel), so shorten the menu to end above it — plus the
+   bottom safe area the bar now pads itself by. */
+body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--player-bar-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
 .nav-mobile-panel.open { display: block; }
 .nav-mobile-link {
   display: flex; align-items: center; gap: 10px;
@@ -420,7 +422,7 @@ body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--playe
     display: flex; align-items: center; gap: 11px;
     position: sticky; top: 0; z-index: 50;
     min-height: var(--player-bar-h); box-sizing: border-box;
-    padding: 8px 14px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 8px calc(14px + env(safe-area-inset-left, 0px));
     background: oklch(0.165 0.012 285 / 0.85);
     border-bottom: 1px solid var(--border);
     backdrop-filter: saturate(180%) blur(8px);
@@ -429,7 +431,7 @@ body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--playe
 }
 :root[data-theme="light"] .player-mobile-bar { background: oklch(0.985 0.004 285 / 0.85); }
 @media (max-width: 700px) {
-  nav.app-nav { padding: 0 14px; }
+  nav.app-nav { padding: env(safe-area-inset-top, 0px) calc(14px + env(safe-area-inset-right, 0px)) 0 calc(14px + env(safe-area-inset-left, 0px)); }
   .container  { padding: 16px 14px 60px; }
 }
 
@@ -999,7 +1001,7 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
 /* Persistent player footer bar. Starts past the sidebar (--sidebar-w is 0 on
    mobile, where the sidebar is hidden) so it never covers the sidebar footer.
    This rule must stay AFTER any earlier .player-bar declarations. */
-body.has-player .container { padding-bottom: 88px; }
+body.has-player .container { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
 /* Run page: the global player bar is never shown here (the run player IS the
    transport), so drop both the has-player reserve and the container's default
    80px bottom padding — on short desktop screens that dead space was the
@@ -1017,12 +1019,12 @@ body.has-player .container.container--run { padding-bottom: 24px; }
    standard container so the cockpit stays aligned with every other page. */
 @media (max-width: 900px) {
   .container.container--run,
-  body.has-player .container.container--run { padding-top: 14px; padding-bottom: 24px; }
+  body.has-player .container.container--run { padding-top: 14px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
   /* Player kiosk: fill the viewport so the transport (waveform + controls) pins
      to the bottom and the cockpit above distributes the leftover space. 38px =
      the run container's top+bottom padding; the sticky player bar above the
      page eats --player-bar-h more, so subtract both to avoid a scroll. */
-  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px - var(--player-bar-h)); }
+  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px - var(--player-bar-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .run-mobile-fill .run-mobile-body {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; justify-content: center;
@@ -1031,7 +1033,11 @@ body.has-player .container.container--run { padding-bottom: 24px; }
 .player-bar {
   position: fixed; left: var(--sidebar-w); right: 0; bottom: 0; z-index: 60;
   transition: left 0.18s ease;
-  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  display: flex; align-items: center; gap: 12px;
+  /* Pad the bottom (and, in landscape, the sides) by the device safe area so the
+     controls clear the home indicator / notch on phones and installed PWAs. On
+     desktop and non-notched devices env() resolves to 0 — no visible change. */
+  padding: 10px calc(18px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(18px + env(safe-area-inset-left, 0px));
   background: oklch(0.185 0.012 285 / 0.96); border-top: 1px solid var(--border);
   backdrop-filter: saturate(180%) blur(10px); -webkit-backdrop-filter: saturate(180%) blur(10px);
 }
@@ -1106,7 +1112,7 @@ a.player-bar-title:hover { color: var(--accent-2); }
 }
 @media (max-width: 700px) {
   .player-bar-meta { width: 120px; }
-  .player-bar { gap: 8px; padding: 8px 12px; }
+  .player-bar { gap: 8px; padding: 8px calc(12px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); }
   /* Keep the bar uncluttered on phones: hide shuffle/repeat, keep prev/next. */
   .player-bar-ctl.player-bar-ctl--optional { display: none; }
 }
