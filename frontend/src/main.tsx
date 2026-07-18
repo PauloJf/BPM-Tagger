@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./lib/auth";
 import { PlayerProvider } from "./lib/player";
 import { MiniPlayerProvider } from "./lib/miniPlayer";
+import ErrorBoundary from "./components/ErrorBoundary";
 import App from "./App";
 import { applyTheme, initialTheme } from "./lib/theme";
 import "./index.css";
@@ -32,7 +33,9 @@ createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <PlayerProvider>
             <MiniPlayerProvider>
-              <App />
+              <ErrorBoundary>
+                <App />
+              </ErrorBoundary>
             </MiniPlayerProvider>
           </PlayerProvider>
         </AuthProvider>

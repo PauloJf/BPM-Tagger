@@ -251,6 +251,10 @@ def build_config() -> dict:
         # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
         # so the login brute-force lockout keys on the real client IP.
         "ui_trusted_proxies":         int(os.environ.get("UI_TRUSTED_PROXIES", "0")),
+        # Force the session cookie's Secure flag on even when UI_PUBLIC_URL isn't
+        # an https origin — for a TLS-terminating reverse proxy that forwards
+        # plain http. Leave off for direct http/local use, or login breaks there.
+        "ui_force_secure_cookie":     os.environ.get("UI_FORCE_SECURE_COOKIE", "false").lower() == "true",
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
         "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
         "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),

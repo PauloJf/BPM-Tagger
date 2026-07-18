@@ -24,6 +24,14 @@ jobs:
         run: ruff check bpm_tagger/ tests/
       - name: Pytest
         run: pytest -q
+      # Advisory: heavy ML deps often carry transitive advisories that aren't
+      # quickly fixable, so this surfaces them without blocking. Tighten to a
+      # hard gate (drop continue-on-error) once the known set is triaged.
+      - name: Dependency audit (advisory)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit
 
   frontend:
     name: Frontend (tsc + build)
@@ -39,6 +47,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # Gate on production-dependency vulnerabilities (high+). Dev-only tooling
+      # advisories (the vite/esbuild dev server) don't ship, so they're excluded.
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=high
       - name: Typecheck
         run: npm run typecheck
       - name: Test

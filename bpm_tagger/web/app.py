@@ -156,11 +156,13 @@ def create_app(config: dict) -> Flask:
     app.config["SESSION_PERMANENT"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
-    # Mark the cookie Secure when the UI is served over HTTPS (public URL set to
-    # an https origin behind a reverse proxy). Left off for plain-http/local use
-    # so login still works there.
-    app.config["SESSION_COOKIE_SECURE"] = str(
-        config.get("ui_public_url") or "").lower().startswith("https://")
+    # Mark the cookie Secure when the UI is served over HTTPS — detected from an
+    # https UI_PUBLIC_URL, or forced via UI_FORCE_SECURE_COOKIE for a
+    # TLS-terminating proxy that forwards plain http (and where the public URL
+    # isn't set). Left off for plain-http/local use so login still works there.
+    app.config["SESSION_COOKIE_SECURE"] = (
+        str(config.get("ui_public_url") or "").lower().startswith("https://")
+        or bool(config.get("ui_force_secure_cookie")))
 
     # Behind a reverse proxy the login lockout must key on the real client IP,
     # not the proxy's. Opt-in via UI_TRUSTED_PROXIES (= number of proxies) so a
@@ -170,6 +172,12 @@ def create_app(config: dict) -> Flask:
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted, x_proto=trusted,
                                 x_host=trusted)
+        if not app.config["SESSION_COOKIE_SECURE"]:
+            log.warning(
+                "UI: running behind a proxy but the session cookie is not marked "
+                "Secure — if TLS terminates at the proxy, set UI_PUBLIC_URL to your "
+                "https origin (or UI_FORCE_SECURE_COOKIE=true) so the cookie is "
+                "never sent over plain http")
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
@@ -241,10 +249,25 @@ def create_app(config: dict) -> Flask:
     return app
 
 
+def _weak_env_password(config: dict) -> bool:
+    """True when the admin password is a plaintext env value (no stored hash)
+    shorter than 8 chars. The UI change-password flow already enforces the
+    minimum; this only catches the env fallback."""
+    pw = config.get("ui_password") or ""
+    return bool(pw and not config.get("ui_password_hash") and len(pw) < 8)
+
+
 def start(config: dict, progress=None, tagger=None):
     if not (config.get("ui_password") or config.get("ui_password_hash")):
         log.error("UI: UI_PASSWORD is not set — web UI will not start")
         return
+
+    # Warn (don't refuse — refusing would lock out an existing install on
+    # upgrade) on a weak env password.
+    if _weak_env_password(config):
+        log.warning("UI: UI_PASSWORD is shorter than 8 characters — set a longer "
+                    "one, or change it in Settings (which stores a hash and drops "
+                    "the plaintext value)")
 
     app = create_app(config)
     st = app.extensions["state"]

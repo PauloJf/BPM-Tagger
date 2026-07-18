@@ -87,11 +87,12 @@ def api_version_check():
 
 @media_bp.route("/healthz")
 def healthz():
-    """Liveness probe. Library stats ride along only for authenticated callers —
-    the bare endpoint stays public for Docker healthchecks."""
+    """Liveness probe. Library stats ride along only for an authenticated admin —
+    the bare endpoint stays public for Docker healthchecks, and a player (kiosk)
+    session is deliberately not shown library stats (matches /api/me)."""
     st = state()
     try:
-        stats = (st.db.get_stats() if st.db and session.get("ok") else {})
+        stats = (st.db.get_stats() if st.db and session.get("role") == "admin" else {})
         return jsonify(status="ok", **stats)
     except Exception as exc:
         return jsonify(status="error", error=str(exc)), 500
