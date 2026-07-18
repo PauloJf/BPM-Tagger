@@ -306,7 +306,12 @@ export default function Run() {
     const m = localStorage.getItem(MODE_KEY);
     return m === "steps" || m === "queue" || m === "tap" ? m : "presets";
   });
-  const [lockOn, setLockOn] = useState(true);
+  // Initialize from the restored tempo lock, not a blind `true`: a run restored
+  // from a previous session (queue persisted in the player) keeps whether its
+  // lock was on, so the lock button + native→BPM readout match what's actually
+  // playing. A fresh session (no restored queue) keeps the default-on intent.
+  const [lockOn, setLockOn] = useState(
+    () => player.orderedQueue.length === 0 || player.tempoLock != null);
   // Desktop only: the tap card is hidden behind a Cover/Tap toggle and, when
   // shown, swaps into the cover's slot (see nowPlayingDesktop). Mobile keeps its
   // own segmented Tap tab.
@@ -433,7 +438,7 @@ export default function Run() {
         return;
       }
       player.playQueue(
-        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, fromPlaylist: t.from_playlist })),
+        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred, fromPlaylist: t.from_playlist })),
         0, { shuffle: false },
       );
       // Pin the run's source so the mid-run auto-refill stays scoped to it.
@@ -446,13 +451,12 @@ export default function Run() {
     }
   }
 
-  async function toggleStar(path: string, starred: boolean) {
+  function toggleStar(path: string, starred: boolean) {
     const next = !starred;
-    // Optimistic: the run has begun, a failed star is not worth interrupting it.
-    setQueueInfo((qi) => qi && {
-      ...qi,
-      tracks: qi.tracks.map((x) => (x.path === path ? { ...x, starred: next } : x)),
-    });
+    // Optimistic, on the queued track itself so it works for auto-refilled
+    // tracks too (they never lived in queueInfo). A failed star isn't worth
+    // interrupting a run.
+    player.setTrackStarred(path, next);
     api.post("/api/track/star", { path, starred: next }).catch(() => {});
   }
 
@@ -470,10 +474,11 @@ export default function Run() {
   }
 
   const staleQueue = queueInfo && Math.abs(queueInfo.target - target) > 0.5;
+  // Source changed since the queue was built (queueInfo.playlist is the source
+  // the current queue + its auto-refill are scoped to; null = whole library).
+  // The change only takes effect on the next Rebuild, so prompt for it.
+  const staleSource = !!queueInfo && (selectedPlaylistId ?? null) !== (queueInfo.playlist ?? null);
 
-  // Star state is only known for queues built this session; a queue restored
-  // after a reload renders without the star column.
-  const starredByPath = new Map((queueInfo?.tracks ?? []).map((t) => [t.path, t.starred]));
   const currentDisliked = !!current && dislikedPaths.has(current.path);
 
   // The "NATIVE 78 · 0.99× ×2 → 155 BPM" line for the playing track.
@@ -770,6 +775,11 @@ export default function Run() {
           Queue was built for {queueInfo!.target} BPM — tracks stretch to follow {target}, hit Rebuild for a fresh match.
         </div>
       )}
+      {staleSource && !staleQueue && (
+        <div style={{ textAlign: "center", fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
+          Source changed to {selectedPlaylist ? `“${selectedPlaylist.name}”` : "your whole library"} — hit Rebuild to use it.
+        </div>
+      )}
       {queueInfo?.topped_up && selectedPlaylist && (
         <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
           “{selectedPlaylist.name}” had too few tracks at this cadence — topped up from your library so the run keeps varied.
@@ -905,7 +915,7 @@ export default function Run() {
           {queueInfo && (
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
               built for {queueInfo.target} BPM · ±{queueInfo.tolerance_pct.toFixed(1)}%
-              {queueInfo.tracks.length < queueSize ? ` · ${queueInfo.tracks.length}/${queueSize}` : ""}
+              {player.orderedQueue.length < queueSize ? ` · ${player.orderedQueue.length}/${queueSize}` : ""}
             </span>
           )}
           <span style={{ marginLeft: "auto", display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -943,7 +953,7 @@ export default function Run() {
             </div>
           )}
           {player.orderedQueue.map((t, i) => {
-            const starred = starredByPath.get(t.path);
+            const starred = t.starred;
             const disliked = dislikedPaths.has(t.path);
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;

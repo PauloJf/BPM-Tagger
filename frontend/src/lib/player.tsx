@@ -9,6 +9,7 @@ export interface PlayerTrack {
   src?: string;            // absolute stream URL; used instead of audioUrl(path) when set
   ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
   fromPlaylist?: boolean;  // run mode: from the selected playlist vs a library top-up
+  starred?: boolean;       // run mode: last-known star state (for the queue's star toggle)
 }
 
 /** Run-mode tempo lock: stretch every queued track onto one target BPM. */
@@ -64,6 +65,10 @@ interface PlayerState {
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
+  /** Optimistically reflect a star toggle on the matching queued track — used by
+   *  the Run queue so refilled tracks (never in the page's build response) update
+   *  too. */
+  setTrackStarred(path: string, starred: boolean): void;
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
   enqueue(track: PlayerTrack): void;   // append to the queue
@@ -364,13 +369,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // the unplayed matches run out, instead of pulling from the whole library.
     const body: { bpm: number; exclude: string[]; playlist?: number } = { bpm: tempoLock.target, exclude };
     if (runSourceRef.current != null) body.playlist = runSourceRef.current;
-    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number; from_playlist?: boolean }[] }>(
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number; starred?: boolean; from_playlist?: boolean }[] }>(
       "/api/run/queue", body)
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
         let batch: PlayerTrack[] = resp.tracks.map((t) =>
-          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, fromPlaylist: t.from_playlist }));
+          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred, fromPlaylist: t.from_playlist }));
         // Defense in depth: the exclude window is bounded, so the currently
         // playing track could in principle fall outside it on a huge queue.
         const noRepeat = batch.filter((t) => t.path !== cur?.path);
@@ -834,6 +839,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent((c) => (c && c.path === path && c.bpm !== bpm ? { ...c, bpm } : c));
   }, []);
 
+  // Reflect a star toggle onto the queued track (queue rows read t.starred).
+  const setTrackStarred = useCallback((path: string, starred: boolean) => {
+    setQueue((q) => q.map((t) => (t.path === path && t.starred !== starred ? { ...t, starred } : t)));
+  }, []);
+
   // Global keyboard shortcuts (ignored while typing; Space is left for tap-tempo).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -866,7 +876,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current, playing, error, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
-      tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm,
+      tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,
       play, playQueue, enqueue, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,

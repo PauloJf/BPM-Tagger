@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 // Run pulls in a lot of context/hooks; mock them so the page renders in
 // isolation and we can drive `role`, `current`, the queue, and the playlist
@@ -7,8 +7,11 @@ import { render, screen, cleanup } from "@testing-library/react";
 const h = vi.hoisted(() => ({
   role: "admin" as string | null,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
-  orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; fromPlaylist?: boolean }>,
+  orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; fromPlaylist?: boolean }>,
+  tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
+  runSource: null as number | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
+  starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -33,14 +36,18 @@ vi.mock("@tanstack/react-query", () => ({
   },
 }));
 
-vi.mock("../lib/api", () => ({ api: { get: vi.fn(), post: vi.fn() }, audioUrl: (p: string) => `/audio?path=${p}` }));
+vi.mock("../lib/api", () => ({
+  api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn(() => Promise.resolve({})) },
+  audioUrl: (p: string) => `/audio?path=${p}`,
+}));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
     current: h.current, playing: false, audioRef: { current: null },
-    orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: null, runSource: null,
-    updateTrackBpm() {}, setTempoLock() {}, playQueue() {}, setRunSource() {},
+    orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
+    updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
+    setTempoLock() {}, playQueue() {}, setRunSource() {},
     next() {}, prev() {}, toggle() {}, jumpTo() {},
   }),
 }));
@@ -57,8 +64,11 @@ vi.mock("../components/QueueSimilar", () => ({ default: () => null }));
 
 // Import after the mocks are registered.
 import Run from "./Run";
+import { api } from "../lib/api";
 
 const MODE_KEY = "bpm.run.mode";
+const TARGET_KEY = "bpm.run.target";
+const SOURCE_KEY = "bpm.run.source";
 
 beforeEach(() => {
   cleanup();
@@ -66,6 +76,9 @@ beforeEach(() => {
   h.role = "admin";
   h.current = null;
   h.orderedQueue = [];
+  h.tempoLock = null;
+  h.runSource = null;
+  h.starred = [];
   // A deliberately long name — the sort that used to spill across the cover art.
   h.playlists = [{ id: 1, name: "Long Playlist Name That Covered The Art", source: "spotify", available: 5, total: 10, image_url: null }];
 });
@@ -121,5 +134,86 @@ describe("Run — mobile queue height is bounded", () => {
     // Regression guard against the previous too-tall values.
     expect(style).not.toContain("420px");
     expect(style).not.toContain("500px");
+  });
+});
+
+describe("Run — lock toggle mirrors the restored tempo lock (no reload desync)", () => {
+  it("defaults ON for a fresh session (no restored queue)", () => {
+    h.orderedQueue = [];
+    h.tempoLock = null;
+    render(<Run />);
+    expect(screen.getByLabelText("BPM locked")).toBeTruthy();
+    expect(screen.queryByLabelText("BPM unlocked")).toBeNull();
+  });
+
+  it("shows UNLOCKED when a restored run had its lock off", () => {
+    // The reload-desync bug: queue restored, tempoLock null → the button used to
+    // wrongly show locked while audio played native.
+    h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.tempoLock = null;
+    render(<Run />);
+    expect(screen.getByLabelText("BPM unlocked")).toBeTruthy();
+    expect(screen.queryByLabelText("BPM locked")).toBeNull();
+  });
+
+  it("shows LOCKED when a restored run had its lock on", () => {
+    h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.tempoLock = { target: 155, octave: true, stretchLimitPct: 15 };
+    render(<Run />);
+    expect(screen.getByLabelText("BPM locked")).toBeTruthy();
+    expect(screen.queryByLabelText("BPM unlocked")).toBeNull();
+  });
+});
+
+describe("Run — queue star toggles come from the track, not the build response", () => {
+  it("renders a star button per queued track with a known star state (incl. refilled)", () => {
+    // queueInfo is null here (no build this session) — the old code derived stars
+    // from queueInfo, so refilled/restored tracks showed no star button. Now the
+    // row reads t.starred, so any track carrying star state gets a toggle.
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [
+      { path: "/a.mp3", title: "A", bpm: 120, starred: true },
+      { path: "/b.mp3", title: "B", bpm: 120, starred: false },
+      { path: "/c.mp3", title: "C", bpm: 120 },   // unknown star state → no button
+    ];
+    render(<Run />);
+    expect(screen.getAllByLabelText("Unstar")).toHaveLength(1);   // the starred one
+    expect(screen.getAllByLabelText("Star")).toHaveLength(1);     // the unstarred one
+  });
+
+  it("toggling a queued track's star updates the player queue (works for any row)", () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/b.mp3", title: "B", bpm: 120 };
+    h.orderedQueue = [{ path: "/b.mp3", title: "B", bpm: 120, starred: false }];
+    render(<Run />);
+    fireEvent.click(screen.getByLabelText("Star"));
+    // Reflected through the player (not queueInfo), so refilled rows update too.
+    expect(h.starred).toContainEqual(["/b.mp3", true]);
+  });
+});
+
+describe("Run — changing the source mid-run prompts a Rebuild", () => {
+  it("warns that the source changed after a build, until Rebuild", async () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    localStorage.setItem(TARGET_KEY, "155");
+    localStorage.setItem(SOURCE_KEY, "pl:1");   // start scoped to the playlist
+    vi.mocked(api.get).mockResolvedValue({
+      tracks: [{ path: "/x.mp3", title: "X", artist: "Ar", bpm: 155, starred: false, run_bpm: 155, rate: 1, from_playlist: true }],
+      target: 155, count: 1, octave_fold: true, tolerance_pct: 4,
+      prefer_starred: true, playlist: 1,
+    });
+    render(<Run />);
+    // Build the queue for playlist 1; wait for the build to settle (the primary
+    // action flips Start run → Rebuild queue once queueInfo is set).
+    fireEvent.click(screen.getByLabelText("Start run"));
+    await screen.findByLabelText("Rebuild queue");
+    // No stale-source warning yet — source still matches the build.
+    expect(screen.queryByText(/Source changed/i)).toBeNull();
+    // Switch the source to the whole library → should prompt a Rebuild.
+    fireEvent.change(screen.getByLabelText("Run source"), { target: { value: "library" } });
+    expect(await screen.findByText(/Source changed to your whole library/i)).toBeTruthy();
   });
 });
