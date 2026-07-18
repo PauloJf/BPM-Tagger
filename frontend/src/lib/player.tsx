@@ -39,6 +39,31 @@ const FADE_MS = 250;
 // near-term repeats matter, and it keeps the request small on a long run.
 const REFILL_EXCLUDE_WINDOW = 60;
 
+// Adaptive rebuffer hold: seconds of buffered-ahead to require before resuming
+// after an underrun, growing with each successive stall on the same track.
+const HOLD_STEPS = [4, 12, 25, 45];
+export function rebufferHoldSeconds(stalls: number): number {
+  return HOLD_STEPS[Math.min(Math.max(0, stalls), HOLD_STEPS.length - 1)];
+}
+// How many upcoming tracks the run-mode look-ahead fully prefetches.
+const PRELOAD_AHEAD = 2;
+/** Paths of the next `ahead` queued tracks to prefetch (skips external/preview
+ *  clips, which have their own src and no library file). Pure — unit-tested. */
+export function upcomingPaths(
+  order: number[], pos: number,
+  queue: { path: string; ephemeral?: boolean; src?: string }[],
+  repeat: RepeatMode, ahead: number,
+): string[] {
+  const out: string[] = [];
+  for (let k = 1; k <= ahead; k++) {
+    let np = pos + k;
+    if (np >= order.length) { if (repeat === "all") np %= order.length; else break; }
+    const t = queue[order[np]];
+    if (t && !t.ephemeral && !t.src) out.push(t.path);
+  }
+  return out;
+}
+
 interface PlayerState {
   current: PlayerTrack | null;
   playing: boolean;
@@ -147,8 +172,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [buffering, setBuffering] = useState(false);
   const [bufferedPct, setBufferedPct] = useState(0);
   const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
-  // Run-mode look-ahead: silent <audio> elements that pre-buffer the next tracks.
-  const preRefs = useRef<(HTMLAudioElement | null)[]>([null, null]);
+  // Run-mode look-ahead: fully download the next tracks into blobs (path → object
+  // URL) so they play from local memory — no boundary stalls on a slow link.
+  const blobCache = useRef<Map<string, string>>(new Map());
+  const prefetching = useRef<Map<string, AbortController>>(new Map());
+  // Adaptive rebuffer hold: on an underrun, pause and wait for a growing amount
+  // of buffered-ahead before resuming (foreground only — see beginHold).
+  const rebufferHold = useRef(false);
+  const rebufferTimer = useRef<number | null>(null);
+  const stallCount = useRef(0);
+  const lastStallTime = useRef(0);
+  const intendedPlayingRef = useRef(false);
   const pendingPlay = useRef(!!(current && saved?.playing));
   // Path already loaded + started synchronously by goToPos, so the load effect
   // must not reload it (that would restart the fetch and kill iOS lock-screen
@@ -285,6 +319,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const resumePlay = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
+    // A user-initiated play overrides any managed rebuffer hold.
+    rebufferHold.current = false;
+    if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
     setIntendedPlaying(true);
     if (a.error) {
       setError(null);
@@ -320,7 +357,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     syncedPath.current = null;
     if (alreadyStarted) { pendingPlay.current = false; return; }
     setError(null);
-    a.src = current.src ?? audioUrl(current.path);
+    a.src = current.src ?? blobCache.current.get(current.path) ?? audioUrl(current.path);
     a.load();
     const seekTo = seekTarget.current; seekTarget.current = null;
     const shouldPlay = pendingPlay.current; pendingPlay.current = false;
@@ -425,7 +462,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
       a.defaultPlaybackRate = rate;   // the load triggered by src= resets playbackRate to this
-      a.src = track.src ?? audioUrl(track.path);
+      a.src = track.src ?? blobCache.current.get(track.path) ?? audioUrl(track.path);
       a.playbackRate = rate;
       a.volume = volumeRef.current;
       a.play().catch(() => {
@@ -650,12 +687,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [next, endPreview]);
 
-  // Buffering + buffered-ahead % (slow-connection visibility). Attached once;
-  // reads the element directly. `timeupdate` doubles as a "we're advancing"
-  // signal that clears a stale buffering flag (it can't fire while truly stalled).
+  // Keep intended-play state readable from the (once-attached) buffering effect.
+  useEffect(() => { intendedPlayingRef.current = intendedPlaying; }, [intendedPlaying]);
+
+  // Buffering + buffered-ahead %, plus the adaptive rebuffer hold. Attached once;
+  // reads the element directly. `timeupdate` doubles as a "we're advancing" signal
+  // that clears a stale buffering flag (it can't fire while truly stalled).
+  //
+  // Rebuffer hold: on a genuine underrun we pause and only resume once the
+  // element has buffered a growing amount ahead (HOLD_STEPS, seconds) — each
+  // successive stall waits for more — so a flaky link yields a few clean pauses
+  // instead of constant stutter. Foreground only: pausing + a setTimeout poll is
+  // unsafe on a locked/backgrounded phone (timers are throttled and audio could
+  // stay paused), so there we leave the browser's native recovery alone.
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
+    const headroom = () => {
+      try {
+        const b = a.buffered, t = a.currentTime;
+        for (let i = 0; i < b.length; i++) if (b.start(i) <= t + 0.25 && b.end(i) > t) return b.end(i) - t;
+      } catch { /* ignore */ }
+      return 0;
+    };
+    const bufferedToEnd = () => { const d = a.duration; return isFinite(d) && headroom() >= d - a.currentTime - 0.5; };
+    const endHold = () => {
+      rebufferHold.current = false;
+      if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
+    };
     const recalc = () => {
       const d = a.duration;
       if (!isFinite(d) || d <= 0) { setBufferedPct(0); return; }
@@ -669,9 +728,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       } catch { /* ignore */ }
       setBufferedPct(Math.max(0, Math.min(100, Math.round((end / d) * 100))));
     };
-    const onWaiting = () => setBuffering(true);
+    const beginHold = () => {
+      const c = currentRef.current;
+      if (rebufferHold.current || !intendedPlayingRef.current || !c || c.ephemeral) return;
+      if (document.visibilityState !== "visible") return;   // let the browser recover when backgrounded
+      if (bufferedToEnd()) return;                           // whole track is here — nothing to wait for
+      rebufferHold.current = true;
+      const need = rebufferHoldSeconds(stallCount.current);
+      stallCount.current += 1;
+      lastStallTime.current = a.currentTime;
+      a.pause();   // stop draining the last scraps; resume once `need` seconds are buffered ahead
+      const poll = () => {
+        if (!rebufferHold.current) return;
+        recalc();
+        if (headroom() >= need || bufferedToEnd() || !intendedPlayingRef.current) {
+          endHold();
+          setBuffering(false);
+          if (intendedPlayingRef.current) a.play().catch(() => {});
+        } else {
+          rebufferTimer.current = window.setTimeout(poll, 400);
+        }
+      };
+      poll();
+    };
+    const onWaiting = () => { setBuffering(true); beginHold(); };
     const onStalled = () => setBuffering(true);
-    const clear = () => { setBuffering(false); recalc(); };
+    const clear = () => {
+      if (rebufferHold.current) return;   // don't fight an active hold
+      setBuffering(false);
+      recalc();
+      // Decay the stall counter after a smooth stretch so one rough patch doesn't
+      // keep the hold threshold inflated for the rest of the track.
+      if (stallCount.current > 0 && a.currentTime - lastStallTime.current > 20) stallCount.current = 0;
+    };
+    const onHidden = () => {
+      // Backgrounded mid-hold: release it and hand playback back to the browser.
+      if (document.visibilityState !== "visible" && rebufferHold.current) {
+        endHold();
+        if (intendedPlayingRef.current) a.play().catch(() => {});
+      }
+    };
     a.addEventListener("waiting", onWaiting);
     a.addEventListener("stalled", onStalled);
     a.addEventListener("playing", clear);
@@ -679,6 +775,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener("canplaythrough", clear);
     a.addEventListener("progress", recalc);
     a.addEventListener("timeupdate", clear);
+    document.addEventListener("visibilitychange", onHidden);
     return () => {
       a.removeEventListener("waiting", onWaiting);
       a.removeEventListener("stalled", onStalled);
@@ -687,11 +784,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener("canplaythrough", clear);
       a.removeEventListener("progress", recalc);
       a.removeEventListener("timeupdate", clear);
+      document.removeEventListener("visibilitychange", onHidden);
+      endHold();
     };
   }, []);
 
-  // Reset the buffering readout when the track changes (new load starts fresh).
-  useEffect(() => { setBuffering(false); setBufferedPct(0); }, [current?.path]);
+  // Reset the buffering readout + any hold when the track changes.
+  useEffect(() => {
+    setBuffering(false); setBufferedPct(0);
+    rebufferHold.current = false;
+    if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
+    stallCount.current = 0;
+  }, [current?.path]);
+
+  // Cancel a managed hold as soon as intent flips to paused (so it never resumes).
+  useEffect(() => {
+    if (!intendedPlaying) {
+      rebufferHold.current = false;
+      if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
+    }
+  }, [intendedPlaying]);
 
   // Browser online/offline — a dropped connection is shown as such, not as an
   // app fault. (navigator.onLine is coarse but enough to distinguish the case.)
@@ -707,30 +819,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Run-mode look-ahead: while a tempo-locked run is playing (a predictable,
-  // long queue), pre-buffer the next couple of tracks in silent <audio>
-  // elements so a track boundary doesn't stall on a slow link. Gated to run
-  // mode so we never spend bandwidth prefetching outside it; never played.
-  const PRELOAD_AHEAD = 2;
+  // long queue), download the next tracks *entirely* into blobs so, when the
+  // queue reaches them, they play from local memory with no network — no
+  // boundary stalls on a slow link. Bounded to a small window (current + the
+  // next PRELOAD_AHEAD) and evicted as the run advances; fetched at low priority
+  // so it yields to the currently-playing stream. Gated to run mode so we never
+  // spend a tab's bandwidth prefetching outside it.
   useEffect(() => {
-    const slots = preRefs.current;
-    const clearSlot = (s: HTMLAudioElement | null) => {
-      if (s && s.getAttribute("src")) { s.removeAttribute("src"); try { s.load(); } catch { /* ignore */ } }
-    };
-    if (tempoLock == null || !playing || order.length <= 1) { slots.forEach(clearSlot); return; }
-    const wants: string[] = [];
-    for (let k = 1; k <= PRELOAD_AHEAD; k++) {
-      let np = pos + k;
-      if (np >= order.length) { if (repeat === "all") np %= order.length; else break; }
-      const t = queue[order[np]];
-      if (t && !t.ephemeral && !t.src) wants.push(audioUrl(t.path));
+    const active = tempoLock != null && playing && order.length > 1;
+    const wants = active ? upcomingPaths(order, pos, queue, repeat, PRELOAD_AHEAD) : [];
+    const keep = new Set<string>(wants);
+    if (current?.path) keep.add(current.path);   // keep the blob we may be playing from
+    // Evict anything outside the window (abort in-flight fetches, revoke blobs).
+    for (const [path, ctrl] of prefetching.current) {
+      if (!keep.has(path)) { ctrl.abort(); prefetching.current.delete(path); }
     }
-    slots.forEach((s, i) => {
-      if (!s) return;
-      const want = wants[i] || "";
-      if (want) { if (s.getAttribute("src") !== want) { s.src = want; try { s.load(); } catch { /* ignore */ } } }
-      else clearSlot(s);
-    });
+    for (const [path, url] of blobCache.current) {
+      if (!keep.has(path)) { URL.revokeObjectURL(url); blobCache.current.delete(path); }
+    }
+    // Start any missing look-ahead downloads.
+    for (const path of wants) {
+      if (blobCache.current.has(path) || prefetching.current.has(path)) continue;
+      const ctrl = new AbortController();
+      prefetching.current.set(path, ctrl);
+      const init = { credentials: "same-origin", signal: ctrl.signal } as RequestInit & { priority?: string };
+      init.priority = "low";   // yield bandwidth to the playing stream (ignored where unsupported)
+      fetch(audioUrl(path), init)
+        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+        .then((blob) => {
+          prefetching.current.delete(path);
+          if (ctrl.signal.aborted) return;
+          blobCache.current.set(path, URL.createObjectURL(blob));
+        })
+        .catch(() => { prefetching.current.delete(path); });
+    }
   }, [current?.path, playing, order, pos, repeat, tempoLock, queue]);
+
+  // Release every prefetched blob on unmount.
+  useEffect(() => () => {
+    for (const ctrl of prefetching.current.values()) ctrl.abort();
+    for (const url of blobCache.current.values()) URL.revokeObjectURL(url);
+    prefetching.current.clear();
+    blobCache.current.clear();
+  }, []);
 
   // Media Session: lock-screen / headset / notification controls (key for the
   // PWA running use case — the phone is locked mid-run). Metadata mirrors the
@@ -976,9 +1107,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }}>
       {children}
       <audio ref={audioRef} preload="auto" />
-      {/* Run-mode look-ahead buffers — silent, never played (see PRELOAD_AHEAD). */}
-      <audio ref={(el) => { preRefs.current[0] = el; }} preload="auto" muted aria-hidden="true" style={{ display: "none" }} />
-      <audio ref={(el) => { preRefs.current[1] = el; }} preload="auto" muted aria-hidden="true" style={{ display: "none" }} />
     </Ctx.Provider>
   );
 }
