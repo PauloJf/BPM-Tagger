@@ -267,22 +267,37 @@ class TracksMixin:
 
     def set_play_counts(self, updates: list[tuple]) -> int:
         """Bulk-write pulled play data: (file_path, play_count, last_played,
-        nd_song_id) tuples. Also warms the star sync's id cache — never clears a
-        cached id with None. Returns the number of rows written."""
+        nd_song_id) tuples. Merges rather than overwrites — play_count takes the
+        MAX of the local tally and the remote count, so a pull never discards
+        plays counted locally (e.g. while Navidrome was disconnected) yet still
+        picks up higher remote totals (other devices). A remote play we forwarded
+        is already in our local count, so MAX also avoids double-counting. Warms
+        the star sync's id cache — never clears a cached id with None. Returns the
+        number of rows written."""
         if not updates:
             return 0
         with self._connect() as conn:
             conn.executemany(
-                "UPDATE tracks SET play_count = ?, last_played = ?, "
-                "nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
+                "UPDATE tracks SET play_count = MAX(COALESCE(play_count, 0), ?), "
+                "last_played = ?, nd_song_id = COALESCE(?, nd_song_id) WHERE file_path = ?",
                 [(pc, lp, sid, path) for (path, pc, lp, sid) in updates])
             conn.commit()
         return len(updates)
 
+    def set_nd_song_id(self, file_path: str, nd_song_id: str | None) -> None:
+        """Cache the resolved Navidrome song id without touching the play count."""
+        if not nd_song_id:
+            return
+        with self._connect() as conn:
+            conn.execute("UPDATE tracks SET nd_song_id = ? WHERE file_path = ?",
+                         (nd_song_id, file_path))
+            conn.commit()
+
     def bump_play_count(self, file_path: str, nd_song_id: str | None = None):
-        """Optimistic +1 after a successful scrobble, so the local count tracks
-        Navidrome's between pulls (the next pull overwrites with the remote
-        truth, which includes this play). Caches the song id when given."""
+        """+1 the local play count for every play, independent of Navidrome, so
+        counts work offline and persist while it's disconnected. A later pull
+        merges in the remote total with MAX (see set_play_counts), so this is
+        never double-counted. Caches the song id when given."""
         with self._connect() as conn:
             conn.execute(
                 "UPDATE tracks SET play_count = COALESCE(play_count, 0) + 1, "

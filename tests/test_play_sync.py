@@ -68,7 +68,7 @@ def test_pull_updates_matched_rows(db, monkeypatch):
     assert _track(db, "/data/music/A/two.mp3")["play_count"] == 0
 
 
-def test_pull_overwrites_previous_counts(db, monkeypatch):
+def test_pull_raises_count_on_higher_remote(db, monkeypatch):
     _seed(db, "/data/music/A/one.mp3", "One", "Alpha")
     monkeypatch.setattr(ps, "iter_all_songs",
                         lambda url, user, pwd: iter([_song("nd1", "/music/A/one.mp3",
@@ -80,6 +80,19 @@ def test_pull_overwrites_previous_counts(db, monkeypatch):
                                                            "One", "Alpha", play_count=9)]))
     ps.pull_play_counts(db, CFG)
     assert _track(db, "/data/music/A/one.mp3")["play_count"] == 9
+
+
+def test_pull_keeps_local_count_when_remote_lower(db, monkeypatch):
+    """Plays counted locally (e.g. while Navidrome was disconnected) survive a
+    pull that returns a lower remote total — the merge takes the MAX."""
+    _seed(db, "/data/music/A/one.mp3", "One", "Alpha")
+    for _ in range(3):
+        db.bump_play_count("/data/music/A/one.mp3")   # local tally = 3
+    monkeypatch.setattr(ps, "iter_all_songs",
+                        lambda url, user, pwd: iter([_song("nd1", "/music/A/one.mp3",
+                                                           "One", "Alpha", play_count=1)]))
+    ps.pull_play_counts(db, CFG)
+    assert _track(db, "/data/music/A/one.mp3")["play_count"] == 3
 
 
 def test_unmatched_remote_song_is_counted_not_fatal(db, monkeypatch):
@@ -159,13 +172,19 @@ def test_scrobble_requires_csrf(client):
     assert client.post("/api/scrobble", json={"path": "/x.mp3"}).status_code == 403
 
 
-def test_scrobble_disabled_is_skipped_noop(client, base_config):
+def test_scrobble_disabled_still_counts_locally(client, base_config):
+    """With Navidrome scrobbling off, the play is still counted locally (+1) and
+    reported as ok=True / forwarded=False — play counts work without Navidrome."""
     csrf = _login(client)
-    path = _seed_row(base_config["db_path"], base_config["music_dir"])
+    path = _seed_row(base_config["db_path"], base_config["music_dir"], play_count=2)
     r = client.post("/api/scrobble", json={"path": path}, headers=csrf)
     assert r.status_code == 200
     body = r.get_json()
-    assert body["ok"] is False and body["skipped"] is True
+    assert body["ok"] is True and body["forwarded"] is False
+    conn = sqlite3.connect(base_config["db_path"])
+    (pc,) = conn.execute("SELECT play_count FROM tracks WHERE file_path = ?", (path,)).fetchone()
+    conn.close()
+    assert pc == 3
 
 
 def test_scrobble_with_cached_id_bumps_local_count(client, base_config, monkeypatch):
@@ -202,20 +221,26 @@ def test_scrobble_resolves_and_caches_missing_id(client, base_config, monkeypatc
     assert sid == "nd9" and pc == 1     # first play: NULL count starts at 0
 
 
-def test_scrobble_unresolvable_reports_not_matched(client, base_config, monkeypatch):
+def test_scrobble_unresolvable_still_counts_locally(client, base_config, monkeypatch):
+    """Unmatched in Navidrome ⇒ not forwarded, but still counted locally."""
     csrf = _login(client)
     _enable_scrobbling(client, csrf)
-    path = _seed_row(base_config["db_path"], base_config["music_dir"])
+    path = _seed_row(base_config["db_path"], base_config["music_dir"], play_count=1)
     monkeypatch.setattr(nd, "resolve_id", lambda url, user, pwd, track, threshold=0.80: None)
 
     r = client.post("/api/scrobble", json={"path": path}, headers=csrf)
 
     assert r.status_code == 200
     body = r.get_json()
-    assert body["ok"] is False and "not matched" in body["error"]
+    assert body["ok"] is True and body["forwarded"] is False and "not matched" in body["forward_error"]
+    conn = sqlite3.connect(base_config["db_path"])
+    (pc,) = conn.execute("SELECT play_count FROM tracks WHERE file_path = ?", (path,)).fetchone()
+    conn.close()
+    assert pc == 2
 
 
-def test_scrobble_remote_failure_is_502_and_no_bump(client, base_config, monkeypatch):
+def test_scrobble_remote_failure_still_counts_locally(client, base_config, monkeypatch):
+    """A rejected remote scrobble doesn't undo the local +1 (200, forwarded=False)."""
     csrf = _login(client)
     _enable_scrobbling(client, csrf)
     path = _seed_row(base_config["db_path"], base_config["music_dir"],
@@ -224,11 +249,13 @@ def test_scrobble_remote_failure_is_502_and_no_bump(client, base_config, monkeyp
 
     r = client.post("/api/scrobble", json={"path": path}, headers=csrf)
 
-    assert r.status_code == 502
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True and body["forwarded"] is False
     conn = sqlite3.connect(base_config["db_path"])
     (pc,) = conn.execute("SELECT play_count FROM tracks WHERE file_path = ?", (path,)).fetchone()
     conn.close()
-    assert pc == 4
+    assert pc == 5
 
 
 def test_scrobble_outside_music_dir_is_403(client, base_config, monkeypatch):

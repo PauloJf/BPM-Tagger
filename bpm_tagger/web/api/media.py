@@ -20,19 +20,20 @@ media_bp = Blueprint("media", __name__)
 @login_required
 def api_scrobble():
     """Report a play from the built-in player (the client posts once per track,
-    at the halfway mark). Forwarded to Navidrome when scrobbling is enabled —
-    which also feeds Last.fm/ListenBrainz if the user wired those up there —
-    and the local play count gets an optimistic +1 so run-queue familiarity
-    stays fresh between pulls. A no-op (ok=False, skipped) when disabled, so
-    the client can always fire and forget."""
+    at the halfway mark).
+
+    The play is ALWAYS counted locally (+1), so play counts work and persist even
+    with Navidrome disconnected or never configured. When Navidrome scrobbling is
+    enabled the play is additionally forwarded — which also feeds
+    Last.fm/ListenBrainz if wired up there — and the next play-count pull merges
+    the remote total back in with MAX(), so a forwarded play is never
+    double-counted and a local play is never lost. Forwarding is best-effort: an
+    unmatched track or a rejected scrobble does not undo the local count, so the
+    response is always ok=True (with `forwarded` telling whether it reached
+    Navidrome). The client can fire and forget."""
     _check_csrf()
     st = state()
     cfg = st.config
-    url = str(cfg.get("navidrome_url", "")).rstrip("/")
-    user = str(cfg.get("navidrome_user", ""))
-    pwd = str(cfg.get("navidrome_pass", ""))
-    if not (cfg.get("navidrome_scrobble") and url and user and pwd):
-        return jsonify(ok=False, skipped=True)
 
     path = str((request.get_json(silent=True) or {}).get("path", ""))
     _assert_in_music_dir(path)
@@ -40,17 +41,26 @@ def api_scrobble():
     if not track:
         abort(404)
 
+    # Local tally first — independent of Navidrome.
+    st.db.bump_play_count(path)
+
+    url = str(cfg.get("navidrome_url", "")).rstrip("/")
+    user = str(cfg.get("navidrome_user", ""))
+    pwd = str(cfg.get("navidrome_pass", ""))
+    if not (cfg.get("navidrome_scrobble") and url and user and pwd):
+        return jsonify(ok=True, forwarded=False)
+
     from ...integrations.navidrome import resolve_id, scrobble
     sid = track.get("nd_song_id")
-    resolved = None
     if not sid:
-        sid = resolved = resolve_id(url, user, pwd, track)
+        sid = resolve_id(url, user, pwd, track)
+        if sid:
+            st.db.set_nd_song_id(path, sid)
     if not sid:
-        return jsonify(ok=False, error="track not matched in Navidrome")
+        return jsonify(ok=True, forwarded=False, forward_error="track not matched in Navidrome")
     if not scrobble(url, user, pwd, sid):
-        return jsonify(ok=False, error="Navidrome rejected the scrobble"), 502
-    st.db.bump_play_count(path, nd_song_id=resolved)
-    return jsonify(ok=True)
+        return jsonify(ok=True, forwarded=False, forward_error="Navidrome rejected the scrobble")
+    return jsonify(ok=True, forwarded=True)
 
 
 @media_bp.route("/api/progress")
