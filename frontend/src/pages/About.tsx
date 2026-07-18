@@ -59,13 +59,6 @@ export default function About() {
           <div className="section-label" style={{ marginBottom: 10 }}>
             <span>About</span>
             <span className="section-hint">v{version}</span>
-            <button
-              className="btn btn-bare btn-sm"
-              style={{ padding: 0, marginLeft: 8, fontSize: 11, color: "var(--accent-2)" }}
-              onClick={() => setChangelogOpen(true)}
-            >
-              What's new
-            </button>
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6 }}>
             BPM Tagger
@@ -199,6 +192,14 @@ export default function About() {
       <div style={{ marginTop: 18, padding: "14px 0", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
         <span>BPM Tagger · v{version}</span>
         {badge && <span style={{ color: badge.color, fontWeight: badge.bold ? 600 : undefined }}>{badge.text}</span>}
+        <span style={{ color: "var(--border)" }}>·</span>
+        <button
+          className="btn btn-bare"
+          style={{ padding: 0, fontFamily: "var(--mono)", fontSize: 11, color: "var(--accent-2)" }}
+          onClick={() => setChangelogOpen(true)}
+        >
+          What's new
+        </button>
         <span style={{ color: "var(--border)" }}>·</span>
         <a href="https://github.com/paulojf/bpm-tagger" target="_blank" rel="noopener" style={{ color: "var(--accent-2)", textDecoration: "none" }}>
           github.com/paulojf/bpm-tagger
