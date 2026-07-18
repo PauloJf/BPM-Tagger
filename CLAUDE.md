@@ -35,7 +35,7 @@ Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify play
 | `bpm_tagger/` | Backend package — `python -m bpm_tagger` (see sub-modules below) |
 | `bpm_tagger/main.py` | Entry point: build config → dispatch on `MODE` |
 | `bpm_tagger/config.py` | env → config table, `settings.json` overrides, version discovery |
-| `bpm_tagger/db.py` | `BPMDatabase` — SQLite, WAL, additive migrations |
+| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py`, `playlists.py`, `suggestions.py`, composed in `database.py`; `constants.py` holds `GRAB_*`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
 | `bpm_tagger/bpm/` | Detection: `detectors.py`, `pipeline.py` (reconcile/normalize + `ScanProgress`), `tags.py`, `waveform.py` |
 | `bpm_tagger/scan/` | `scanner.py` (`BPMTagger`), `watcher.py` (filesystem watch mode) |
 | `bpm_tagger/grabber/` | Spotify sync + downloader: `sync_engine.py`, `worker.py`, `spotify.py`, `matching.py`, `path_template.py`, `transcode.py`, `tagging.py`, `providers/` |
@@ -99,7 +99,7 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 2. **Download** — `worker.py` (`GrabWorker`) pulls from `grab_queue`, tries providers in `PROVIDER_ORDER` (`providers/`: `deezer.py` via streamrip, `ytdlp.py`; `monochrome.py` is on hold), then `transcode.py` (ffmpeg → one `OUTPUT_FORMAT`) → `tagging.py` (tags + cover) → BPM analysis → filed via `path_template.py`. Grabbed files are marked `managed` and hash-stamped so the watcher leaves them alone.
 3. **Ambiguity** — low-confidence matches wait in the inbox (`grab_candidates`) for choose / re-search / skip, with an ntfy ping. ISRC lookups use `integrations/isrc.py` (+ `musicbrainz.py`). Duplicate resolution soft-deletes to `trash.py`.
 
-### Database (`bpm_tagger/db.py` → `BPMDatabase`)
+### Database (`bpm_tagger/db/` → `BPMDatabase`)
 
 SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_migrate()` — safe on existing DBs.
 
