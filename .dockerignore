@@ -1,6 +1,8 @@
 .git
 .github
 *.md
+# …but CHANGELOG.md is served at runtime (What's new / changelog view), so keep it.
+!CHANGELOG.md
 *.csv
 *.db
 __pycache__
