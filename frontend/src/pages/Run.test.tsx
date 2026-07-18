@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
   orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; fromPlaylist?: boolean }>,
   tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
+  playing: false,
   runSource: null as number | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
@@ -44,7 +45,7 @@ vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
-    current: h.current, playing: false, audioRef: { current: null },
+    current: h.current, playing: h.playing, audioRef: { current: null },
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
     updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
     setTempoLock() {}, playQueue() {}, setRunSource() {},
@@ -77,6 +78,7 @@ beforeEach(() => {
   h.current = null;
   h.orderedQueue = [];
   h.tempoLock = null;
+  h.playing = false;
   h.runSource = null;
   h.starred = [];
   // A deliberately long name — the sort that used to spill across the cover art.
@@ -224,6 +226,38 @@ describe("Run — library top-up tracks are visually dimmed in a playlist run", 
     ];
     render(<Run />);
     expect(rowOf("TrackB").style.opacity).toBe("1");
+  });
+});
+
+describe("Run — beat pulse shows the ×2 octave schematically", () => {
+  const pulseMode = () => screen.getByTestId("beat-pulse").getAttribute("data-pulse");
+
+  it("uses the two-step pulse when a locked track folds ×2 (beat at half cadence)", () => {
+    localStorage.setItem(TARGET_KEY, "150");
+    h.tempoLock = { target: 150, octave: true, stretchLimitPct: 15 };   // locked
+    h.playing = true;
+    h.current = { path: "/a.mp3", title: "A", bpm: 75 };                 // 75 → folds ×2 to 150
+    render(<Run />);
+    expect(pulseMode()).toBe("2x");
+  });
+
+  it("uses the single pulse when the track plays at native tempo (×1)", () => {
+    localStorage.setItem(TARGET_KEY, "150");
+    h.tempoLock = { target: 150, octave: true, stretchLimitPct: 15 };
+    h.playing = true;
+    h.current = { path: "/a.mp3", title: "A", bpm: 150 };                // ×1
+    render(<Run />);
+    expect(pulseMode()).toBe("1x");
+  });
+
+  it("does not double-time an unlocked run (plays native, no octave applied)", () => {
+    localStorage.setItem(TARGET_KEY, "150");
+    h.tempoLock = null;
+    h.playing = true;
+    h.current = { path: "/a.mp3", title: "A", bpm: 75 };
+    h.orderedQueue = [h.current];   // restored queue + no lock → lockOn starts off
+    render(<Run />);
+    expect(pulseMode()).toBe("1x");
   });
 });
 

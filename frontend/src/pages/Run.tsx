@@ -486,6 +486,12 @@ export default function Run() {
   const folded = nativeBpm ? fold(nativeBpm, target, octave) : null;
   const rate = lockOn ? lockRate(nativeBpm, liveLock) : 1;
   const shifted = folded ? Math.round(folded * rate) : null;
+  // Beat-pulse timing + the ×2 "double-time" treatment. When locked and the
+  // track folds ×2, its beat sits at half your cadence, so the pulse alternates
+  // a strong on-beat ping with a smaller muted in-between one (see pulse-beat-2x).
+  const beatMs = Math.round(60000 / (lockOn ? target : (nativeBpm || target)));
+  const pulseTwoStep = lockOn && folded != null && nativeBpm != null
+    && foldLabel(nativeBpm, folded) === "×2";
 
   const stepBtn: React.CSSProperties = {
     minWidth: 60, minHeight: 40, fontFamily: "var(--mono)", fontSize: 15, fontWeight: 600,
@@ -715,8 +721,15 @@ export default function Run() {
               {/* Locked: pulse to the target cadence (what your feet follow).
                   Unlocked: pulse to the track's true native BPM — it's playing
                   at native speed, so the octave-folded value would drift out
-                  of sync with what you actually hear. */}
-              <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", animation: playing ? `pulse-beat ${Math.round(60000 / (lockOn ? target : nativeBpm))}ms ease-out infinite` : "none" }} />
+                  of sync with what you actually hear.
+                  Locked + ×2 fold: the track's beat is at half the cadence, so
+                  alternate the strong on-beat ping with a smaller muted in-between
+                  one over a two-beat cycle to show the doubling (see pulse-beat-2x). */}
+              <span
+                data-testid="beat-pulse"
+                data-pulse={!playing ? "off" : pulseTwoStep ? "2x" : "1x"}
+                style={{ position: "absolute", inset: 0, borderRadius: 999, background: "var(--accent)", animation: !playing ? "none" : pulseTwoStep ? `pulse-beat-2x ${beatMs * 2}ms ease-out infinite` : `pulse-beat ${beatMs}ms ease-out infinite` }}
+              />
             </span>
             {lockOn && <span style={{ color: "var(--muted)" }}>{rate.toFixed(2)}×</span>}
             <span style={{ color: "var(--muted)" }}>{foldLabel(nativeBpm, folded)}</span>

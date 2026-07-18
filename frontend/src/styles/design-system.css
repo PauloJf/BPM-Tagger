@@ -141,6 +141,18 @@ a { color: inherit; }
   60%  { transform: scale(1.8); opacity: 0; }
   100% { transform: scale(1.8); opacity: 0; }
 }
+/* Octave ×2: the track's beat lands at half your cadence, so every second step
+   is an off-beat. Shown schematically over a two-beat cycle — a strong accent
+   ping on the beat, a smaller muted ping on the in-between step. Free-running
+   (conveys the 2:1 ratio; not phase-locked to the track's actual downbeats). */
+@keyframes pulse-beat-2x {
+  0%   { transform: scale(1);   opacity: 1;    background: var(--accent); }
+  30%  { transform: scale(1.8); opacity: 0;    background: var(--accent); }
+  49%  { transform: scale(1);   opacity: 0; }
+  50%  { transform: scale(1);   opacity: 0.85; background: var(--muted); }
+  80%  { transform: scale(1.4); opacity: 0;    background: var(--muted); }
+  100% { transform: scale(1.4); opacity: 0;    background: var(--muted); }
+}
 @keyframes ripple {
   0%   { transform: scale(0.85); opacity: 1; }
   100% { transform: scale(1.25); opacity: 0; }
