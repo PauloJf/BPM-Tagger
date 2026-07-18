@@ -146,9 +146,16 @@ def library_match(sp: dict, db, threshold: float = 0.80) -> Optional[str]:
     """Return the file_path of a library track matching this Spotify track, or None.
 
     `sp` needs title/artist/album/duration_ms/isrc (+ norm_title/norm_artist for the
-    SQL prefilter). ISRC-equal wins outright; otherwise the best fuzzy score must
-    reach `threshold`.
+    SQL prefilter). A stamped spotify_track_id wins outright (a grabbed file we
+    filed ourselves), then ISRC-equal, then the best fuzzy score must reach
+    `threshold`.
     """
+    sid = (sp.get("spotify_track_id") or "").strip()
+    if sid:
+        hits = db.find_by_spotify_id(sid)
+        if hits:
+            return hits[0]["file_path"]
+
     isrc = (sp.get("isrc") or "").strip()
     if isrc:
         hits = db.find_by_isrc(isrc)

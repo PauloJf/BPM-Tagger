@@ -6,6 +6,7 @@ databases that predate ON DELETE CASCADE.
 """
 
 from bpm_tagger.db import BPMDatabase
+from bpm_tagger.grabber import matching as m
 
 
 def _db(tmp_path):
@@ -57,6 +58,29 @@ def test_delete_completed_grabs_none_is_zero(tmp_path):
     db = _db(tmp_path)
     _enqueue(db, "still-pending")
     assert db.delete_completed_grabs() == 0
+
+
+def test_grabbed_track_still_matches_after_completed_cleared(tmp_path):
+    """A grabbed file is recognised as 'have' by its stamped spotify_track_id even
+    with no ISRC and a title/artist that would never fuzzy-match — so clearing the
+    completed queue row can never cause the sync to re-grab it."""
+    db = _db(tmp_path)
+    db.record_managed_track(
+        "/music/g.mp3", "h1",
+        {"title": "weird local filename", "artist": "x", "isrc": "", "duration_ms": 123000,
+         "norm_title": m.normalize_title("weird local filename"),
+         "norm_artist": m.normalize_artist("x")},
+        128.0, None, None, 128.0, 0.9, "librosa", "sp_keep")
+
+    assert db.find_by_spotify_id("sp_keep")[0]["file_path"] == "/music/g.mp3"
+
+    # The Spotify-side metadata (what a sync reconciles) differs entirely, yet the
+    # stamped id still resolves it to the grabbed file.
+    sp = {"title": "Proper Title", "artist": "Proper Artist", "album": None,
+          "duration_ms": 200000, "isrc": "", "spotify_track_id": "sp_keep",
+          "norm_title": m.normalize_title("Proper Title"),
+          "norm_artist": m.normalize_artist("Proper Artist")}
+    assert m.library_match(sp, db) == "/music/g.mp3"
 
 
 def test_delete_grab_leaves_siblings_intact(tmp_path):

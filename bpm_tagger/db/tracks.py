@@ -818,6 +818,19 @@ class TracksMixin:
             conn.commit()
 
     # ── Library matching support ──────────────────────────────────────────────
+    def find_by_spotify_id(self, spotify_track_id: str) -> list[dict]:
+        """Library tracks stamped with this Spotify track id (grabbed files carry
+        it). An exact identity match, so 'do we already have it?' never depends on
+        ISRC/fuzzy scoring or on the download-queue history surviving."""
+        if not spotify_track_id:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tracks WHERE spotify_track_id = ? AND status != 'deleted'",
+                (spotify_track_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def find_by_isrc(self, isrc: str) -> list[dict]:
         if not isrc:
             return []

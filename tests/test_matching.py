@@ -102,6 +102,9 @@ class _FakeDB:
     def __init__(self, rows):
         self.rows = rows
 
+    def find_by_spotify_id(self, sid):
+        return [r for r in self.rows if (r.get("spotify_track_id") or "") == sid]
+
     def find_by_isrc(self, isrc):
         return [r for r in self.rows if (r.get("isrc") or "").upper() == isrc.upper()]
 
@@ -112,8 +115,33 @@ class _FakeDB:
 def _lib_row(path, title, artist, **kw):
     return {"file_path": path, "title": title, "artist": artist,
             "album": kw.get("album"), "duration_ms": kw.get("duration_ms"),
-            "isrc": kw.get("isrc"),
+            "isrc": kw.get("isrc"), "spotify_track_id": kw.get("spotify_track_id"),
             "norm_artist": m.normalize_artist(artist), "norm_title": m.normalize_title(title)}
+
+
+def test_library_match_by_spotify_id_wins_without_isrc_or_fuzzy():
+    # A grabbed file stamped with the Spotify id, but with no ISRC and a title/
+    # artist that would never clear the fuzzy threshold, is still recognised as
+    # "have" — so clearing the completed queue can't cause a re-grab.
+    db = _FakeDB([_lib_row("/music/grabbed.mp3", "totally different title", "someone else",
+                           duration_ms=999000, spotify_track_id="sp_abc")])
+    sp = {"title": "Real Title", "artist": "Real Artist", "duration_ms": 200000,
+          "isrc": "", "spotify_track_id": "sp_abc",
+          "norm_artist": m.normalize_artist("Real Artist"),
+          "norm_title": m.normalize_title("Real Title")}
+    assert m.library_match(sp, db) == "/music/grabbed.mp3"
+
+
+def test_library_match_spotify_id_mismatch_falls_through():
+    # A different (or absent) stamped id must not short-circuit — fall through to
+    # ISRC/fuzzy, and return None when nothing genuinely matches.
+    db = _FakeDB([_lib_row("/music/x.mp3", "X", "Y", duration_ms=180000,
+                           spotify_track_id="sp_other")])
+    sp = {"title": "Blinding Lights", "artist": "The Weeknd", "duration_ms": 200000,
+          "isrc": "", "spotify_track_id": "sp_abc",
+          "norm_artist": m.normalize_artist("The Weeknd"),
+          "norm_title": m.normalize_title("Blinding Lights")}
+    assert m.library_match(sp, db) is None
 
 
 def test_library_match_by_isrc():

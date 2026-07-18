@@ -119,6 +119,9 @@ class _DBBase:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_norm ON tracks(norm_artist, norm_title)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON tracks(isrc)")
+        # Exact grabbed-track identity: library_match matches a grabbed file back
+        # to its Spotify track by this, independent of ISRC/fuzzy and of the queue.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_sid ON tracks(spotify_track_id)")
 
         # Run-mode usage counters (cumulative key/value totals; see add_run_stats).
         conn.execute("""
