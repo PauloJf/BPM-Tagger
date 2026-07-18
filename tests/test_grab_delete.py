@@ -60,6 +60,35 @@ def test_delete_completed_grabs_none_is_zero(tmp_path):
     assert db.delete_completed_grabs() == 0
 
 
+def test_grabbed_total_counter_survives_clear(tmp_path):
+    db = _db(tmp_path)
+    assert db.get_grabbed_total() == 0
+    db.bump_grabbed_total()
+    db.bump_grabbed_total()
+    assert db.get_grabbed_total() == 2
+    # A completed item then cleared — the lifetime tally must not drop.
+    d = _enqueue(db, "done1")
+    db.transition(d, "done", "filed")
+    db.delete_completed_grabs()
+    assert db.get_grabbed_total() == 2
+
+
+def test_grabbed_total_seeds_from_managed_on_migration(tmp_path):
+    path = str(tmp_path / "bpm.db")
+    db = BPMDatabase(path)
+    for i in range(3):
+        db.record_managed_track(
+            f"/music/g{i}.mp3", f"h{i}",
+            {"title": f"t{i}", "artist": "a", "norm_title": f"t{i}", "norm_artist": "a"},
+            120.0, None, None, 120.0, 0.9, "librosa", f"sp{i}")
+    # Simulate a database created before the counter existed, then reopen so the
+    # migration re-seeds grabbed_total from the current managed-track count.
+    with db._connect() as conn:
+        conn.execute("DELETE FROM app_counters")
+        conn.commit()
+    assert BPMDatabase(path).get_grabbed_total() == 3
+
+
 def test_grabbed_track_still_matches_after_completed_cleared(tmp_path):
     """A grabbed file is recognised as 'have' by its stamped spotify_track_id even
     with no ISRC and a title/artist that would never fuzzy-match — so clearing the

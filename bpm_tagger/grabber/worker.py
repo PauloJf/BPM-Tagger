@@ -241,6 +241,7 @@ class GrabPipeline:
         # 7 — done + notify + debounced Navidrome rescan
         self.db.update_grab(item_id, progress=1.0, final_path=final)
         self.db.transition(item_id, "done", os.path.basename(final))
+        self.db.bump_grabbed_total()   # all-time tally (survives queue cleanup)
         self._notify_done(item)
         try:
             _trigger_navidrome_rescan(self.config)

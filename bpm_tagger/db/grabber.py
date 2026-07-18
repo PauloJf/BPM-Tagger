@@ -143,6 +143,22 @@ class GrabberMixin:
             conn.commit()
             return cur.rowcount
 
+    def bump_grabbed_total(self, n: int = 1) -> None:
+        """Increment the all-time 'tracks grabbed' counter. Persistent and
+        independent of the queue rows, so it survives Clear completed / Delete."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO app_counters (key, value) VALUES ('grabbed_total', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = value + excluded.value",
+                (n,))
+            conn.commit()
+
+    def get_grabbed_total(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_counters WHERE key='grabbed_total'").fetchone()
+        return int(row["value"]) if row else 0
+
     def get_queue_counts(self) -> dict:
         with self._connect() as conn:
             rows = conn.execute(

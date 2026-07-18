@@ -414,8 +414,9 @@ Summary statistics and charts for your library:
 - Mean, median, min, and max BPM across analyzed tracks
 - **BPM histogram** — bar chart showing track distribution across 5-BPM buckets; the peak bucket is highlighted and a vertical median line is shown
 - **Detector breakdown** — share of tracks analyzed by each detector combination
+- **Most played** _(after a Navidrome play-count sync)_ — top artists and top tracks by play count, plus total plays and the library track total; every entry links to its **artist / album / track** page, where the *related suggestions* (similar artists and tracks) live
 - **Run mode** _(after your first run)_ — cumulative tempo-run totals: tracks played, total time on feet (with native audio duration covered), the share of time tempo-shifted vs at native speed, average cadence, and a time-per-cadence breakdown
-- **Library sources** _(grabber enabled)_ — how many tracks the grabber downloaded vs were already on disk, completed downloads per provider (Deezer / yt-dlp), duplicate and missing-ISRC rollups with quick links to resolve/fill, and watched-playlist coverage (✓ have / ↓ queued / ✗ missing) plus failed-grab and inbox shortcuts
+- **Library sources** _(grabber enabled)_ — how many tracks the grabber downloaded vs were already on disk (with an **all-time grabbed** tally that persists across queue cleanup), completed downloads per provider (Deezer / yt-dlp), duplicate and missing-ISRC rollups with quick links to resolve/fill, and watched-playlist coverage (✓ have / ↓ queued / ✗ missing) plus failed-grab and inbox shortcuts
 
 ### Pages
 

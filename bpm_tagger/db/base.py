@@ -131,6 +131,20 @@ class _DBBase:
             )
         """)
 
+        # Lifetime counters that must survive clearing queue history (e.g. the
+        # all-time "tracks grabbed" tally). Seed grabbed_total once from the
+        # current managed-track count so upgrades start with a meaningful number
+        # rather than zero; it only ever grows from there (per successful grab).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_counters (
+                key   TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        if conn.execute("SELECT 1 FROM app_counters WHERE key='grabbed_total'").fetchone() is None:
+            seed = conn.execute("SELECT COUNT(*) FROM tracks WHERE managed=1").fetchone()[0]
+            conn.execute("INSERT INTO app_counters (key, value) VALUES ('grabbed_total', ?)", (seed,))
+
         self._migrate_playlists_schema(conn)
         self._create_grabber_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)

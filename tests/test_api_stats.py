@@ -84,3 +84,39 @@ def test_stats_grabber_section(grabber_client):
     assert g["duplicate_groups"] == 1
     assert g["duplicate_tracks"] == 2
     assert g["playlists"] == {"total": 1, "watched": 1, "have": 1, "missing": 1, "queued": 0}
+
+
+def test_stats_top_plays(grabber_client):
+    """Most-played leaderboards: top tracks, top artists (summed), total plays."""
+    _login(grabber_client)
+    db = grabber_client.application.extensions["state"].db
+
+    def seed(fp, title, artist, plays):
+        db.upsert_track(fp, "h", 120.0, None, None, 120.0, 0.9, "librosa", "done")
+        db.update_track_tags(fp, {
+            "title": title, "artist": artist, "album": "Alb", "album_artist": artist,
+            "track_no": 1, "disc_no": 1, "year": 2020, "isrc": "", "duration_ms": 200000,
+            "norm_title": title.lower(), "norm_artist": artist.lower(),
+        }, "h")
+        db.set_play_counts([(fp, plays, None, None)])
+
+    seed("/m/x.mp3", "Song X", "Alpha", 50)
+    seed("/m/y.mp3", "Song Y", "Alpha", 30)
+    seed("/m/z.mp3", "Song Z", "Beta", 40)
+
+    data = grabber_client.get("/api/stats").get_json()
+    assert data["total_plays"] == 120
+    # Top track is the highest single play count.
+    assert data["top_tracks"][0]["title"] == "Song X"
+    assert data["top_tracks"][0]["play_count"] == 50
+    # Top artist is by summed plays: Alpha (50+30=80) ahead of Beta (40).
+    assert data["top_artists"][0] == {"name": "Alpha", "plays": 80, "tracks": 2}
+    assert data["top_artists"][1]["name"] == "Beta"
+
+
+def test_stats_top_plays_empty_without_play_data(client):
+    _login(client)
+    data = client.get("/api/stats").get_json()
+    assert data["top_tracks"] == []
+    assert data["top_artists"] == []
+    assert data["total_plays"] == 0

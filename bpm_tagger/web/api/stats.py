@@ -20,6 +20,9 @@ def api_stats():
             "detector_distribution": st.db.get_detector_distribution(),
             "bpm_descriptive": st.db.get_bpm_descriptive(),
             "run": st.db.get_run_stats(),
+            "top_tracks": st.db.get_top_tracks(10),
+            "top_artists": st.db.get_top_artists(10),
+            "total_plays": st.db.get_total_plays(),
         }
         if st.config.get("grabber_enabled"):
             payload["grabber"] = _grabber_stats(st)
@@ -36,6 +39,7 @@ def _grabber_stats(st) -> dict:
     return {
         "managed": sources["managed"],
         "unmanaged": sources["unmanaged"],
+        "grabbed_total": st.db.get_grabbed_total(),
         "providers": sources["providers"],
         "queue": st.db.get_queue_counts(),
         "duplicate_groups": len(dup_groups),

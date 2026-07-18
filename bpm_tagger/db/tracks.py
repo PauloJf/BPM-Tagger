@@ -335,6 +335,39 @@ class TracksMixin:
             rows = conn.execute("SELECT key, value FROM run_stats").fetchall()
         return {r["key"]: r["value"] for r in rows}
 
+    # ── Play-count leaderboards (Navidrome-pulled; empty until a play sync) ────
+    def get_top_tracks(self, limit: int = 10) -> list[dict]:
+        """Most-played library tracks, with album/artist so the Stats page can
+        link to the track, album and artist pages."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, title, artist, album, album_artist, bpm, play_count "
+                "FROM tracks WHERE status != 'deleted' AND COALESCE(play_count, 0) > 0 "
+                "ORDER BY play_count DESC, title COLLATE NOCASE LIMIT ?",
+                (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_top_artists(self, limit: int = 10) -> list[dict]:
+        """Most-played artists by summed play count. Groups on the album-artist
+        (falling back to the track artist), matching the artist index so the
+        `name` links straight to the artist page."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(NULLIF(album_artist, ''), artist) AS name, "
+                "SUM(COALESCE(play_count, 0)) AS plays, COUNT(*) AS tracks "
+                "FROM tracks WHERE status != 'deleted' AND COALESCE(play_count, 0) > 0 "
+                "AND COALESCE(NULLIF(album_artist, ''), artist, '') != '' "
+                "GROUP BY name ORDER BY plays DESC, name COLLATE NOCASE LIMIT ?",
+                (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_total_plays(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT SUM(COALESCE(play_count, 0)) FROM tracks WHERE status != 'deleted'"
+            ).fetchone()
+        return int(row[0]) if row and row[0] else 0
+
     # Runnable rows of a playlist: matched local files (non-tombstone, 'have')
     # joined to analyzed, non-deleted, non-disliked tracks. Deduped by file_path
     # (two source tracks can resolve to one local file). Shared by the run-queue

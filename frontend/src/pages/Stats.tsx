@@ -23,10 +23,15 @@ interface StatsResponse {
   // (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played) plus
   // dynamic per-cadence-bin buckets keyed cad_<bpm> (10-BPM wide).
   run?: Record<string, number>;
+  // Most-played leaderboards (Navidrome-pulled; empty until a play sync runs).
+  top_tracks: { file_path: string; title: string | null; artist: string | null; album: string | null; album_artist: string | null; bpm: number | null; play_count: number }[];
+  top_artists: { name: string; plays: number; tracks: number }[];
+  total_plays: number;
   // Present only when the grabber is enabled.
   grabber?: {
     managed: number;
     unmanaged: number;
+    grabbed_total: number;
     providers: { provider: string; count: number }[];
     queue: Record<string, number>;
     duplicate_groups: number;
@@ -199,6 +204,45 @@ export default function Stats() {
         </div>
       </div>
 
+      {(statsQ.data.top_artists.length > 0 || statsQ.data.top_tracks.length > 0) && (
+        <div className="card" style={{ marginTop: 18 }}>
+          <div className="section-label">
+            <span>Most played</span>
+            <span className="section-hint">{num(statsQ.data.total_plays)} plays · {num(s.total)} tracks in library</span>
+          </div>
+          <div className="about-grid" style={{ marginTop: 0 }}>
+            <div>
+              <div className="stat-label" style={{ marginBottom: 8 }}>Top artists</div>
+              {statsQ.data.top_artists.length ? statsQ.data.top_artists.map((a, i) => (
+                <div key={a.name} className="lead-row">
+                  <span className="lead-rank">{i + 1}</span>
+                  <Link to={`/artist?name=${encodeURIComponent(a.name)}`} className="lead-name" title={`${a.name} — open for similar artists`}>{a.name}</Link>
+                  <span className="lead-count">{num(a.plays)}</span>
+                </div>
+              )) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
+            </div>
+            <div>
+              <div className="stat-label" style={{ marginBottom: 8 }}>Top tracks</div>
+              {statsQ.data.top_tracks.length ? statsQ.data.top_tracks.map((t, i) => (
+                <div key={t.file_path} className="lead-row">
+                  <span className="lead-rank">{i + 1}</span>
+                  <span className="lead-name" style={{ display: "flex", gap: 5, minWidth: 0 }}>
+                    <Link to={`/track?path=${encodeURIComponent(t.file_path)}`} style={{ color: "var(--text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.title || "—"}>{t.title || "—"}</Link>
+                    {t.artist && (
+                      <Link to={`/artist?name=${encodeURIComponent(t.artist)}`} style={{ color: "var(--muted)", textDecoration: "none", flexShrink: 0 }} title={`View ${t.artist}`}>· {t.artist}</Link>
+                    )}
+                  </span>
+                  <span className="lead-count">{num(t.play_count)}</span>
+                </div>
+              )) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
+            </div>
+          </div>
+          <p style={{ marginTop: 12, marginBottom: 0, fontSize: 11, color: "var(--muted)" }}>
+            Open any artist or track to see similar suggestions.
+          </p>
+        </div>
+      )}
+
       {(() => {
         const run = statsQ.data.run || {};
         const wall = run.wall_ms || 0;
@@ -290,7 +334,9 @@ export default function Stats() {
                 <div style={{ fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--accent-2)", letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
                   {num(g.managed)}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{Math.round((g.managed / libTotal) * 100)}% of library</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {Math.round((g.managed / libTotal) * 100)}% of library · {num(g.grabbed_total)} all-time
+                </div>
               </div>
               <div>
                 <div className="stat-label">Pre-existing</div>
