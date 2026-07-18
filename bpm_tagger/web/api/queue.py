@@ -116,6 +116,23 @@ def cancel_item(item_id):
     return jsonify(ok=True)
 
 
+@queue_bp.route("/api/queue/<int:item_id>", methods=["DELETE"])
+@login_required
+def delete_queue_item(item_id):
+    """Remove a terminal queue item (failed/skipped/done) and its history. An
+    in-flight item must be cancelled first — deleting it out from under a worker
+    would race. This drops only the queue record, not any downloaded file."""
+    _check_csrf()
+    db = state().db
+    item = db.get_grab_item(item_id)
+    if not item:
+        return jsonify(error="not_found"), 404
+    if item["status"] not in GRAB_TERMINAL:
+        return jsonify(error="not_deletable", status=item["status"]), 400
+    db.delete_grab(item_id)
+    return jsonify(ok=True)
+
+
 @queue_bp.route("/api/queue/<int:item_id>/priority", methods=["POST"])
 @login_required
 def set_priority(item_id):

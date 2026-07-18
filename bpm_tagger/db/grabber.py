@@ -182,6 +182,19 @@ class GrabberMixin:
                          (*fields.values(), item_id))
             conn.commit()
 
+    def delete_grab(self, item_id: int) -> bool:
+        """Remove a queue item and its candidates/events. Deletes the children
+        explicitly (not just via ON DELETE CASCADE) so it's correct on older
+        databases created before FK enforcement. Returns True if a row was
+        removed. Note: this only drops the queue bookkeeping — a file already
+        downloaded and filed into the library is untouched."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM grab_candidates WHERE queue_item_id=?", (item_id,))
+            conn.execute("DELETE FROM grab_events WHERE queue_item_id=?", (item_id,))
+            cur = conn.execute("DELETE FROM grab_queue WHERE id=?", (item_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
     def get_grab_item(self, item_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM grab_queue WHERE id=?", (item_id,)).fetchone()

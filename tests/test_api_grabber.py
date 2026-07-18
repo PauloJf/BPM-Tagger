@@ -406,3 +406,35 @@ def test_grabber_status_exposes_versions(grab):
     client, _, _ = grab
     v = client.get("/api/grabber/status").get_json()["versions"]
     assert "app" in v and "yt_dlp" in v
+
+
+def test_delete_failed_queue_item(grab):
+    """A failed item can be removed from the queue; the row and its history go."""
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    item_id = st.db.enqueue_grab({"title": "Doomed", "artist": "Nobody", "spotify_track_id": "sp_doomed"})
+    st.db.transition(item_id, "failed", "no provider match")
+
+    r = client.delete(f"/api/queue/{item_id}", headers=csrf)
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert st.db.get_grab_item(item_id) is None
+    # Second delete now 404s (already gone).
+    assert client.delete(f"/api/queue/{item_id}", headers=csrf).status_code == 404
+
+
+def test_delete_queue_item_requires_csrf(grab):
+    client, st, _ = grab
+    item_id = st.db.enqueue_grab({"title": "X", "artist": "Y", "spotify_track_id": "sp_x"})
+    st.db.transition(item_id, "failed", "")
+    assert client.delete(f"/api/queue/{item_id}").status_code == 403
+
+
+def test_delete_inflight_queue_item_rejected(grab):
+    """An in-flight item must be cancelled, not deleted (would race a worker)."""
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    item_id = st.db.enqueue_grab({"title": "Busy", "artist": "Z", "spotify_track_id": "sp_busy"})
+    st.db.transition(item_id, "downloading", "")
+    r = client.delete(f"/api/queue/{item_id}", headers=csrf)
+    assert r.status_code == 400 and r.get_json()["error"] == "not_deletable"
+    assert st.db.get_grab_item(item_id) is not None

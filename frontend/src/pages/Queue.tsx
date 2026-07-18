@@ -17,8 +17,9 @@ function statusChip(s: string) {
   return "chip chip--active";
 }
 
-function Row({ item, onRetry, onCancel }: { item: QueueItem; onRetry: (id: number) => void; onCancel: (id: number) => void }) {
+function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: (id: number) => void; onCancel: (id: number) => void; onDelete: (id: number) => void }) {
   const active = ACTIVE.has(item.status);
+  const removable = item.status === "failed" || item.status === "skipped";
   return (
     <div className="q-row">
       <div style={{ minWidth: 0 }}>
@@ -37,8 +38,18 @@ function Row({ item, onRetry, onCancel }: { item: QueueItem; onRetry: (id: numbe
         {item.attempts ? `${item.attempts} attempt${item.attempts > 1 ? "s" : ""}` : ""}
       </div>
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-        {(item.status === "failed" || item.status === "skipped") && (
+        {removable && (
           <button className="btn btn-ghost btn-sm" onClick={() => onRetry(item.id)}>Retry</button>
+        )}
+        {removable && (
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: "var(--err-fg)" }}
+            title="Remove this item from the queue (does not delete any downloaded file)"
+            onClick={() => onDelete(item.id)}
+          >
+            Delete
+          </button>
         )}
         {active && (
           <button className="btn btn-danger btn-sm" onClick={() => onCancel(item.id)}>Cancel</button>
@@ -73,6 +84,7 @@ export default function Queue() {
   };
   const retry = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/retry`), onSuccess: invalidate });
   const cancel = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/cancel`), onSuccess: invalidate });
+  const del = useMutation({ mutationFn: (id: number) => api.del(`/api/queue/${id}`), onSuccess: invalidate });
   const retryAll = useMutation({ mutationFn: () => api.post("/api/queue/retry-failed"), onSuccess: invalidate });
 
   const items = queueQ.data?.items ?? [];
@@ -101,7 +113,7 @@ export default function Queue() {
         {active.length === 0 ? (
           <div className="tracks-row-empty">{queueQ.isLoading ? "Loading…" : "Nothing in progress."}</div>
         ) : (
-          active.map((i) => <Row key={i.id} item={i} onRetry={retry.mutate} onCancel={cancel.mutate} />)
+          active.map((i) => <Row key={i.id} item={i} onRetry={retry.mutate} onCancel={cancel.mutate} onDelete={del.mutate} />)
         )}
       </div>
 
@@ -110,7 +122,7 @@ export default function Queue() {
         {history.length === 0 ? (
           <div className="tracks-row-empty">No completed items yet.</div>
         ) : (
-          history.map((i) => <Row key={i.id} item={i} onRetry={retry.mutate} onCancel={cancel.mutate} />)
+          history.map((i) => <Row key={i.id} item={i} onRetry={retry.mutate} onCancel={cancel.mutate} onDelete={del.mutate} />)
         )}
       </div>
 
