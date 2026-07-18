@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.6.12 — 2026-07-18
+
+- **Signing out stops playback.** Sign out (admin or player kiosk, including the installed PWA) now immediately stops the player and clears the queue — audio no longer keeps playing behind the login screen, and a shared device no longer inherits the previous user's run. A session *expiry* is unchanged: the saved queue still restores after signing back in.
+- **Admin mobile Run layout fits one screen again.** The phone Run layout now reserves the admin top bar's height when sizing the cover (player mode already reserved its own brand bar), so the transport no longer spills off the bottom of the screen.
+- **Status notes float above the waveform.** Buffering / offline / stream-error notes and queue notices (stale target, source change, library top-up, build errors) now show **one at a time** as a pill pinned just above the waveform — always in the same spot, and out of the layout flow, so a note appearing can never push the transport off a phone screen (taps pass through it, so nothing underneath is blocked). Before a run starts they still show inline under the controls.
+- **iOS background auto-advance on slow links.** The Run-mode look-ahead was being thrown away at every buffering stall *and at every track boundary*: it keyed on the audio element's momentary "playing" state, which flips off exactly then, aborting in-flight downloads and discarding already-downloaded next tracks. The next track then had to stream from the network at the boundary — and a backgrounded iOS PWA (suspended the moment audio stops) never got the data, so the run went silent instead of advancing. The look-ahead now keys on *intended* playback: it holds through stalls and boundaries (prefetched tracks stay in memory and the queue keeps advancing) and still switches off on a real pause, stop, or queue end.
+
 ## v2.6.11 — 2026-07-18
 
 - **Play counts work without Navidrome.** Every play from the built-in player is now counted **locally** (once per track, at the halfway mark), independent of Navidrome — so play counts, the new Most-played card and Run-mode familiarity work before Navidrome is ever connected and keep accruing while it's disconnected. When Navidrome scrobbling is on, plays are still forwarded (feeding Last.fm/ListenBrainz too), and a play-count **pull now merges** with `MAX(local, remote)` instead of overwriting — it never discards locally-counted plays, still picks up higher counts from other devices, and never double-counts a play it already forwarded.
