@@ -195,6 +195,38 @@ describe("Run — queue star toggles come from the track, not the build response
   });
 });
 
+describe("Run — library top-up tracks are visually dimmed in a playlist run", () => {
+  // Rows are asserted by their (non-current) title span → up to the row div.
+  // The current row carries a ▶ marker, so we assert only non-current rows.
+  const rowOf = (title: string) => screen.getByText(title).closest("div") as HTMLElement;
+
+  it("dims library top-ups but not the playlist's own tracks", () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    h.runSource = 1;   // a playlist run is active
+    h.current = { path: "/cur.mp3", title: "CurrentTrack", bpm: 120 };
+    h.orderedQueue = [
+      { path: "/cur.mp3", title: "CurrentTrack", bpm: 120, fromPlaylist: true },   // current (not asserted)
+      { path: "/pl.mp3", title: "PlaylistTrack", bpm: 120, fromPlaylist: true },   // playlist's own → full
+      { path: "/lib.mp3", title: "LibraryTopUp", bpm: 120, fromPlaylist: false },  // top-up → dimmed
+    ];
+    render(<Run />);
+    expect(rowOf("LibraryTopUp").style.opacity).toBe("0.5");
+    expect(rowOf("PlaylistTrack").style.opacity).toBe("1");
+  });
+
+  it("does not dim anything in a whole-library run (no playlist source)", () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    h.runSource = null;   // library run — nothing is a "top-up"
+    h.current = { path: "/a.mp3", title: "TrackA", bpm: 120 };
+    h.orderedQueue = [
+      { path: "/a.mp3", title: "TrackA", bpm: 120, fromPlaylist: false },
+      { path: "/b.mp3", title: "TrackB", bpm: 120, fromPlaylist: false },
+    ];
+    render(<Run />);
+    expect(rowOf("TrackB").style.opacity).toBe("1");
+  });
+});
+
 describe("Run — changing the source mid-run prompts a Rebuild", () => {
   it("warns that the source changed after a build, until Rebuild", async () => {
     localStorage.setItem(MODE_KEY, "presets");

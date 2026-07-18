@@ -959,10 +959,12 @@ export default function Run() {
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
             const isCurrentRow = i === player.orderPos;
             // In a playlist run, tracks added to fill the queue from the library
-            // (not in the playlist) show italic, so the two are distinguishable.
+            // (not in the playlist itself) are dimmed + italic so they read as
+            // clearly secondary to the playlist's own tracks. The playing row is
+            // kept full-opacity so "now playing" is never the faded one.
             const fromLibrary = player.runSource != null && t.fromPlaylist === false;
             return (
-              <div key={`${t.path}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent" }}>
+              <div key={`${t.path}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
                 {starred !== undefined && (
                   <Star on={starred} onToggle={() => toggleStar(t.path, starred)} />
                 )}
