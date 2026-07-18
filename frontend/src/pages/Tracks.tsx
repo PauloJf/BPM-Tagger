@@ -79,6 +79,9 @@ export default function Tracks() {
   const [searchText, setSearchText] = useState(q);
   const [bpmText, setBpmText] = useState(bpm);
   const [tolText, setTolText] = useState(bpmTol);
+  // Mobile only: the advanced filters (BPM/cadence, per-page, artwork toggle)
+  // collapse behind a "Filters" button; on desktop they're always inline.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Keep local inputs in sync when the URL changes externally (e.g. Clear).
   useEffect(() => setSearchText(q), [q]);
@@ -286,7 +289,7 @@ export default function Tracks() {
         </>}
       />
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <div className="lib-toolbar">
         <div className="filter-pills">
           {pills.map((pl) => (
             <button
@@ -300,8 +303,7 @@ export default function Tracks() {
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <ArtToggle show={showArt} onToggle={toggleArt} />
+        <div className="lib-search-row">
           <div className="search-wrap">
             <span className="search-icon">
               <SearchIcon />
@@ -318,6 +320,19 @@ export default function Tracks() {
               }}
             />
           </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm lib-filters-toggle"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((o) => !o)}
+            title="Show BPM, cadence and display filters"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+            Filters{bpm && <span className="pill-count" style={{ marginLeft: 6 }}>1</span>}
+          </button>
+        </div>
+        <div className={"lib-adv-filters" + (filtersOpen ? " open" : "")}>
+          <ArtToggle show={showArt} onToggle={toggleArt} />
           {(q || bpm) && (
             <button
               className="btn btn-ghost btn-sm"

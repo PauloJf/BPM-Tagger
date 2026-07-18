@@ -60,9 +60,9 @@ export default function Artist() {
 
   return (
     <>
-      <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+      <div className="detail-header">
         {showArt && tracks.length > 0 && <ArtistImage name={name} fallbackPath={tracks[0].file_path} size={92} v={imgV} />}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="detail-header-text">
           <Link to="/artists" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Artists</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{name || "Artist"}</h1>
           {stats && (
@@ -73,7 +73,7 @@ export default function Artist() {
             </p>
           )}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="detail-header-actions">
           <ArtToggle show={showArt} onToggle={toggleArt} />
           <button className="btn btn-ghost btn-sm" disabled={!name} onClick={() => setPickerOpen(true)} title="Change artist image">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>

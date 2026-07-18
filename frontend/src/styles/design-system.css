@@ -762,6 +762,25 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
   .filter-pill { flex-shrink: 0; white-space: nowrap; }
 }
 
+/* Library toolbar: status pills on the left, search + advanced filters on the
+   right. On phones it stacks — search row first, the pill strip below it, and
+   the advanced filters (BPM/tolerance/cadence, per-page, artwork toggle) hidden
+   behind the "Filters" button so the default view stays uncluttered. */
+.lib-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.lib-search-row { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.lib-adv-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lib-filters-toggle { display: none; }
+@media (max-width: 700px) {
+  .lib-toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .lib-search-row { order: 1; margin-left: 0; }
+  .lib-search-row .search-wrap { flex: 1; min-width: 0; }
+  .lib-search-row .search-input { width: 100%; box-sizing: border-box; }
+  .filter-pills { order: 2; }
+  .lib-filters-toggle { display: inline-flex; flex-shrink: 0; }
+  .lib-adv-filters { order: 3; display: none; }
+  .lib-adv-filters.open { display: flex; }
+}
+
 /* ── Library browse (artists/albums index) ────────────────────────────────── */
 .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .browse-card {
@@ -842,6 +861,21 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
 }
 .det-bar-track { position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
 .det-bar-fill { height: 100%; border-radius: 5px; }
+
+/* ── Album / Artist detail header ─────────────────────────────────────────────
+   A wrapping row: optional cover, a title+meta column, and an action-button
+   group. The title column keeps a real flex-basis so it can't collapse to a
+   word-per-line sliver when there's no cover; on phones the action group drops
+   to its own full-width row (and the buttons stretch) instead of squeezing the
+   title on the first line. */
+.detail-header { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.detail-header-text { flex: 1 1 240px; min-width: 0; }
+.detail-header-actions { display: flex; gap: 8px; }
+@media (max-width: 700px) {
+  .detail-header { gap: 12px; }
+  .detail-header-actions { flex-basis: 100%; flex-wrap: wrap; }
+  .detail-header-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
 
 /* ── About page ───────────────────────────────────────────────────────────── */
 .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
