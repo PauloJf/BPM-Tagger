@@ -305,6 +305,13 @@ class GrabPool:
         reset = self.db.reset_inflight_grabs()
         if reset:
             log.info("Grab recovery: reset %d in-flight item(s) to pending", reset)
+        # One-time cleanup of any unbounded event history from before the per-item cap.
+        try:
+            pruned = self.db.prune_grab_events()
+            if pruned:
+                log.info("Grab recovery: pruned %d stale audit event(s)", pruned)
+        except Exception as exc:  # pragma: no cover - best effort
+            log.warning("Grab event prune failed (continuing): %s", exc)
         shutil.rmtree(self.pipeline.grab_tmp, ignore_errors=True)
         os.makedirs(self.pipeline.grab_tmp, exist_ok=True)
         for i in range(self.n):

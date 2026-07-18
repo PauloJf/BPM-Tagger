@@ -35,6 +35,9 @@ class BPMDatabase:
     _SUSPICIOUS_COLS = (
         "file_path, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence, detector, needs_review"
     )
+    # Audit events kept per queue item. grab_queue rows persist indefinitely, so
+    # the per-item log is capped to keep it from growing without bound.
+    _EVENTS_PER_ITEM_CAP = 100
 
     def __init__(self, db_path: str):
         self.db_path = db_path
@@ -1544,12 +1547,22 @@ class BPMDatabase:
                     f"INSERT INTO grab_queue ({self._GRAB_INSERT_COLS}) "
                     f"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             item_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
-                (item_id, "enqueued", meta.get("title", ""), now),
-            )
+            self._append_event(conn, item_id, "enqueued", meta.get("title", ""), now)
             conn.commit()
             return item_id
+
+    def _append_event(self, conn, item_id: int, event: str, detail: str, now: str) -> None:
+        """Insert one audit event and trim the item's history to the most recent
+        ``_EVENTS_PER_ITEM_CAP`` rows. The caller owns the transaction (commits)."""
+        conn.execute(
+            "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
+            (item_id, event, detail, now),
+        )
+        conn.execute(
+            "DELETE FROM grab_events WHERE queue_item_id=? AND id NOT IN "
+            "(SELECT id FROM grab_events WHERE queue_item_id=? ORDER BY id DESC LIMIT ?)",
+            (item_id, item_id, self._EVENTS_PER_ITEM_CAP),
+        )
 
     def transition(self, item_id: int, status: str, detail: str = "") -> None:
         """Move a queue item to a new status and append an audit event."""
@@ -1557,10 +1570,7 @@ class BPMDatabase:
         with self._connect() as conn:
             conn.execute("UPDATE grab_queue SET status=?, updated_at=? WHERE id=?",
                          (status, now, item_id))
-            conn.execute(
-                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
-                (item_id, status, detail, now),
-            )
+            self._append_event(conn, item_id, status, detail, now)
             conn.commit()
 
     def add_grab_event(self, item_id: int, event: str, detail: str = "") -> None:
@@ -1568,11 +1578,24 @@ class BPMDatabase:
         (e.g. a non-fatal tag/cover warning during an otherwise-successful grab)."""
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO grab_events (queue_item_id, event, detail, created_at) VALUES (?,?,?,?)",
-                (item_id, event, detail, now),
+            self._append_event(conn, item_id, event, detail, now)
+            conn.commit()
+
+    def prune_grab_events(self) -> int:
+        """Enforce the per-item event cap across every item — one-time cleanup for
+        databases that accumulated unbounded history before the cap existed.
+        Returns the number of rows removed."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM grab_events WHERE id NOT IN ("
+                "  SELECT id FROM ("
+                "    SELECT id, ROW_NUMBER() OVER "
+                "      (PARTITION BY queue_item_id ORDER BY id DESC) AS rn"
+                "    FROM grab_events) WHERE rn <= ?)",
+                (self._EVENTS_PER_ITEM_CAP,),
             )
             conn.commit()
+            return cur.rowcount
 
     def get_queue_counts(self) -> dict:
         with self._connect() as conn:
