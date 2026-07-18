@@ -159,6 +159,8 @@ Every bit helps keep this project maintained and open source.
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
+**v2.6.10** — **Run & mobile fixes + hardening.** The tempo-lock toggle now matches the **restored** lock after a reload; **star toggles work on auto-refilled** queue tracks; changing the **run source** prompts a Rebuild; and library top-ups in a playlist run are **dimmed** (not just italic). Mobile: the run-source picker moved **off the cover** into the Queue view, the Run queue no longer overflows the screen, and the **nav menu scrolls** so Logout/Support are reachable instead of hidden behind the player bar. Under the hood: server-side image fetches don't follow redirects (**SSRF** hardening), ffmpeg transcodes **time out**, the waveform cache is lock-guarded, and the database **enforces foreign keys** with orphan cleanup.
+
 **v2.6.9** — Run polish: the cover art is reliably **square and centered** (fixed off-center / non-square rendering on desktop and mobile); track details **hold steady** instead of blanking/jumping on track change; and in a topped-up playlist run, **library-added tracks show italic** in the queue to set them apart from the playlist's own.
 
 **v2.6.8** — **Playlist runs top up from the library** — a run built from a playlist now prefers its matching tracks and fills the rest from your whole library at the same cadence when the playlist is too small, fixing a small playlist looping one song (which looked like "next" being stuck / one song playing, especially in player mode on a phone). Playlist detail pages now show each matched track's **BPM and length** and link to its track/artist/album pages.

@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.6.10 — 2026-07-18
+
+- **Run mode consistency fixes.** The tempo-lock toggle now reflects the **restored** lock after a reload — it used to default to "on", so reopening a run whose lock was off showed a tempo stretch that wasn't actually happening. Star toggles now work on tracks the queue **auto-refilled** mid-run (those rows previously showed no star control), and the queue header's count follows the live queue instead of the initial build. Changing the **run source** after a queue is built now prompts a Rebuild rather than silently doing nothing until you rebuild.
+- **Library top-ups stand out in the run queue.** In a topped-up playlist run, tracks pulled from your library are now **dimmed** (as well as italic), so they read as clearly secondary to the playlist's own tracks; the currently playing row stays full-strength.
+- **Mobile fixes.** The run-source picker moved **off the cover art** into the Queue view (a long playlist name no longer spills across the artwork); the mobile Run **queue no longer overflows** the screen when you switch to it; and the mobile **nav menu now scrolls** instead of running under the player bar — so the last items (Logout, Support) are always reachable.
+- **Security & reliability hardening.** Server-side image fetches no longer **follow redirects**, closing an SSRF bypass where a public URL could redirect the fetch to a LAN/metadata address past the public-host check. The grabber's **ffmpeg** transcode now runs with a timeout so a malformed/hostile file can't hang a worker. The in-memory **waveform cache** is lock-guarded against a concurrent-eviction crash. The database now **enforces foreign keys** (with `ON DELETE CASCADE` on grabber/playlist child tables and a one-time sweep of orphaned rows in existing databases).
+
 ## v2.6.9 — 2026-07-17
 
 - **Run cover: reliably square and centered.** Rebuilt the cover as a fixed-aspect box with the artwork absolutely filling it, so it's always a centered square (a wide image is cropped, never letterboxed or left-aligned) regardless of screen size — fixing the off-center / non-square cover on the desktop cockpit and on mobile.
