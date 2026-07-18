@@ -64,7 +64,7 @@ vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/QueueSimilar", () => ({ default: () => null }));
 
 // Import after the mocks are registered.
-import Run from "./Run";
+import Run, { pulsePeriodMs } from "./Run";
 import { api } from "../lib/api";
 
 const MODE_KEY = "bpm.run.mode";
@@ -226,6 +226,23 @@ describe("Run — library top-up tracks are visually dimmed in a playlist run", 
     ];
     render(<Run />);
     expect(rowOf("TrackB").style.opacity).toBe("1");
+  });
+});
+
+describe("pulsePeriodMs — pulse tracks the cadence you hear", () => {
+  it("locked + unclamped pulses at the target (shifted === target)", () => {
+    expect(pulsePeriodMs(true, 150, 150, 150)).toBe(Math.round(60000 / 150)); // 400
+  });
+  it("locked + stretch-clamped pulses at the heard cadence, not the target", () => {
+    // e.g. 60 BPM folded ×2 → 120, clamped to +15% → 138 heard.
+    expect(pulsePeriodMs(true, 138, 60, 150)).toBe(Math.round(60000 / 138));  // 435
+    expect(pulsePeriodMs(true, 138, 60, 150)).not.toBe(Math.round(60000 / 150));
+  });
+  it("unlocked pulses at the track's native BPM", () => {
+    expect(pulsePeriodMs(false, 150, 75, 150)).toBe(Math.round(60000 / 75));  // 800
+  });
+  it("falls back to the target when values are missing", () => {
+    expect(pulsePeriodMs(true, null, null, 150)).toBe(400);
   });
 });
 

@@ -40,6 +40,14 @@ function foldLabel(bpm: number, folded: number): string {
   return folded > bpm * 1.5 ? "×2" : folded < bpm * 0.75 ? "×½" : "×1";
 }
 
+/** Beat-pulse period in ms. Locked → the cadence you actually hear (`shifted`,
+ *  which equals the target unless the stretch was clamped to the limit);
+ *  unlocked → the track's native BPM. Falls back to the target when unknown. */
+export function pulsePeriodMs(lockOn: boolean, shifted: number | null, nativeBpm: number | null, target: number): number {
+  const bpm = lockOn ? (shifted || target) : (nativeBpm || target);
+  return Math.round(60000 / bpm);
+}
+
 /** Star toggle used in the queue list. */
 function Star({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -486,10 +494,12 @@ export default function Run() {
   const folded = nativeBpm ? fold(nativeBpm, target, octave) : null;
   const rate = lockOn ? lockRate(nativeBpm, liveLock) : 1;
   const shifted = folded ? Math.round(folded * rate) : null;
-  // Beat-pulse timing + the ×2 "double-time" treatment. When locked and the
-  // track folds ×2, its beat sits at half your cadence, so the pulse alternates
+  // Beat-pulse timing + the ×2 "double-time" treatment. Period tracks the cadence
+  // you actually hear (`shifted`) — so a stretch-clamped track's pulse matches the
+  // pill's number instead of blinking at an unreachable target. When locked and
+  // the track folds ×2, its beat sits at half your cadence, so the pulse alternates
   // a strong on-beat ping with a smaller muted in-between one (see pulse-beat-2x).
-  const beatMs = Math.round(60000 / (lockOn ? target : (nativeBpm || target)));
+  const beatMs = pulsePeriodMs(lockOn, shifted, nativeBpm, target);
   const pulseTwoStep = lockOn && folded != null && nativeBpm != null
     && foldLabel(nativeBpm, folded) === "×2";
 
@@ -1122,7 +1132,9 @@ export default function Run() {
       {titleArtist}
     </div>
   );
-  const coverTapToggle = !playerMode && (
+  // Only alongside a playing track — otherwise (pre-run, empty info column) the
+  // toggle would sit orphaned with no cover/tap above it.
+  const coverTapToggle = current && !playerMode && (
     <div className="segmented" style={{ display: "flex", margin: "14px auto 0", width: "fit-content" }}>
       {([false, true] as const).map((tapView) => {
         const disabled = tapView && running;
