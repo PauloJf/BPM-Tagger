@@ -355,7 +355,17 @@ nav.app-nav {
   padding: 6px 10px 12px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.35);
   animation: fade-in 0.15s ease;
+  /* Cap to the space between the top bar (~52px) and the bottom of the screen
+     and scroll internally, so a long menu never runs off-screen with its last
+     items (Logout, Support) unreachable. */
+  max-height: calc(100dvh - 52px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
+/* When a track is loaded the fixed player bar covers the bottom of the screen
+   (and sits above this panel), so shorten the menu to end above it. */
+body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--player-bar-h)); }
 .nav-mobile-panel.open { display: block; }
 .nav-mobile-link {
   display: flex; align-items: center; gap: 10px;
