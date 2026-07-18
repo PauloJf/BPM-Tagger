@@ -65,6 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // Tell the player (nested inside this provider — it can't be reached from
+    // here directly) to stop before the session dies: signing out of the
+    // installed PWA otherwise left the audio playing behind the login screen.
+    // Fired only on explicit sign-out — a session *expiry* keeps the queue so
+    // it can resume after signing back in.
+    window.dispatchEvent(new Event("bpm:sign-out"));
     try {
       await api.post("/api/logout");
     } catch (e) {

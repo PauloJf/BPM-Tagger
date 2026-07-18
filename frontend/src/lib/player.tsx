@@ -825,8 +825,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // next PRELOAD_AHEAD) and evicted as the run advances; fetched at low priority
   // so it yields to the currently-playing stream. Gated to run mode so we never
   // spend a tab's bandwidth prefetching outside it.
+  //
+  // Gated on *intended* playback, not the element's literal `playing` state:
+  // `playing` flips false during every buffering stall (and the pause inside an
+  // adaptive rebuffer hold), and momentarily at every track boundary (`ended`
+  // fires before the next track's `play`). Keying the gate on it made this
+  // effect abort in-flight prefetches and revoke finished blobs exactly when
+  // the look-ahead mattered most — so the next track streamed from the network
+  // again at the boundary, and a backgrounded iOS WebView (suspended once audio
+  // stops) never got the data: the queue simply stopped advancing mid-run.
+  // `intendedPlaying` holds true through stalls and boundaries, and still turns
+  // the look-ahead off on a real pause / stop / queue end.
   useEffect(() => {
-    const active = tempoLock != null && playing && order.length > 1;
+    const active = tempoLock != null && intendedPlaying && order.length > 1;
     const wants = active ? upcomingPaths(order, pos, queue, repeat, PRELOAD_AHEAD) : [];
     const keep = new Set<string>(wants);
     if (current?.path) keep.add(current.path);   // keep the blob we may be playing from
@@ -853,7 +864,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => { prefetching.current.delete(path); });
     }
-  }, [current?.path, playing, order, pos, repeat, tempoLock, queue]);
+  }, [current?.path, intendedPlaying, order, pos, repeat, tempoLock, queue]);
 
   // Release every prefetched blob on unmount.
   useEffect(() => () => {
@@ -999,6 +1010,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setOrder([]);
     setPos(-1);
   }, []);
+
+  // Explicit sign-out (AuthProvider dispatches "bpm:sign-out") silences the app
+  // immediately and drops the queue + tempo lock — the login screen shouldn't
+  // have music playing behind it, and a shared device shouldn't inherit the
+  // previous user's run. (Emptying the queue also clears the persisted copy via
+  // the persist effect.) A mere session expiry deliberately does neither: the
+  // saved queue restores after signing back in.
+  useEffect(() => {
+    const onSignOut = () => {
+      stop();
+      setTempoLock(null);
+      setRunSource(null);
+    };
+    window.addEventListener("bpm:sign-out", onSignOut);
+    return () => window.removeEventListener("bpm:sign-out", onSignOut);
+  }, [stop, setRunSource]);
 
   const jumpTo = useCallback((orderPos: number) => {
     clearPreview();

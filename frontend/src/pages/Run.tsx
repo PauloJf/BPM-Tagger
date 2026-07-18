@@ -515,11 +515,11 @@ export default function Run() {
   // Mobile squeezes the cover so everything down to the transport fits one
   // phone screen (whatever height is left after the fixed-size sections). On
   // desktop the player column is vertically centered with room to spare, so
-  // the cover can breathe. Both bump the mobile reserve for the shared header.
-  // Player mode has a sticky brand bar above the page (the kiosk has no
-  // sidebar); reserve its height (matches --player-bar-h) so the mobile layout
-  // still fits one screen.
-  const bannerReserve = playerMode ? 52 : 0;
+  // the cover can breathe. Both mobile layouts sit under a ~52px sticky top
+  // bar — the kiosk brand bar in player mode (matches --player-bar-h), the
+  // app-nav hamburger bar in admin — so both reserve it; admin skipping it was
+  // exactly the height by which its transport spilled off the screen.
+  const bannerReserve = 52;
   const coverSize = desktop
     // Height-aware: derive the cover from the viewport height minus the fixed
     // cockpit chrome (page header + title/details/toggle + transport) so it
@@ -789,45 +789,59 @@ export default function Run() {
     </div>
   );
 
-  // Status messages beneath the controls (stale queue / build + stream errors).
-  // The build/end buttons themselves now live in the shared page header.
-  const buildMessages = (
-    <>
-      {staleQueue && (
-        <div style={{ textAlign: "center", fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
-          Queue was built for {queueInfo!.target} BPM — tracks stretch to follow {target}, hit Rebuild for a fresh match.
-        </div>
-      )}
-      {staleSource && !staleQueue && (
-        <div style={{ textAlign: "center", fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
-          Source changed to {selectedPlaylist ? `“${selectedPlaylist.name}”` : "your whole library"} — hit Rebuild to use it.
-        </div>
-      )}
-      {queueInfo?.topped_up && selectedPlaylist && (
-        <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
-          “{selectedPlaylist.name}” had too few tracks at this cadence — topped up from your library so the run keeps varied.
-        </div>
-      )}
-      {buildErr && <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{buildErr}</div>}
-      {/* With the global player bar hidden on this page, stream errors / slow-
-          link stalls would otherwise be invisible here — so a runner doesn't
-          blame the app for what is really the network. Priority: offline > hard
-          error > buffering. */}
-      {!player.online ? (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
-          <span className="conn-dot conn-dot--off" /> Offline — waiting for connection…
-        </div>
-      ) : player.error ? (
-        <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{player.error}</div>
-      ) : player.buffering ? (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
-          <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-            <path d="M12 3a9 9 0 1 0 9 9" />
-          </svg>
-          Buffering{player.bufferedPct > 0 ? ` · ${player.bufferedPct}%` : "…"} — slow connection
-        </div>
-      ) : null}
-    </>
+  // One status note at a time, highest priority first: the connection/stream
+  // state of the playing track (offline > hard error > buffering — with the
+  // global player bar hidden on this page they'd otherwise be invisible, and a
+  // runner would blame the app for what is really the network), then build /
+  // queue notices. Single-slot on purpose: stacked banners used to grow the
+  // tightly height-budgeted mobile column and shove the transport off-screen.
+  const statusNote: { tone: "warn" | "err" | "info"; body: React.ReactNode } | null =
+    !player.online
+      ? { tone: "warn", body: <><span className="conn-dot conn-dot--off" /> Offline — waiting for connection…</> }
+      : player.error
+      ? { tone: "err", body: player.error }
+      : player.buffering
+      ? {
+          tone: "warn",
+          body: (
+            <>
+              <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                <path d="M12 3a9 9 0 1 0 9 9" />
+              </svg>
+              Buffering{player.bufferedPct > 0 ? ` · ${player.bufferedPct}%` : "…"} — slow connection
+            </>
+          ),
+        }
+      : buildErr
+      ? { tone: "err", body: buildErr }
+      : staleQueue
+      ? { tone: "warn", body: `Queue was built for ${queueInfo!.target} BPM — tracks stretch to follow ${target}, hit Rebuild for a fresh match.` }
+      : staleSource
+      ? { tone: "warn", body: `Source changed to ${selectedPlaylist ? `“${selectedPlaylist.name}”` : "your whole library"} — hit Rebuild to use it.` }
+      : queueInfo?.topped_up && selectedPlaylist
+      ? { tone: "info", body: `“${selectedPlaylist.name}” had too few tracks at this cadence — topped up from your library so the run keeps varied.` }
+      : null;
+
+  const toneColor = { warn: "var(--warn-fg)", err: "var(--err-fg)", info: "var(--muted)" } as const;
+  const statusPill = statusNote && (
+    <div
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+        fontSize: 12, lineHeight: 1.4, color: toneColor[statusNote.tone], textAlign: "center",
+        padding: "5px 12px", borderRadius: 12, maxWidth: "min(92%, 560px)",
+        background: "var(--surface)", border: "1px solid var(--border)",
+        boxShadow: "0 8px 24px -8px rgba(0,0,0,0.45)",
+      }}
+    >
+      {statusNote.body}
+    </div>
+  );
+  // Pre-run (no transport on screen yet) the note flows inline where the old
+  // banners sat — build errors like "No tracks match this BPM" must still show.
+  // Once a track is playing, the pill floats above the waveform instead (see
+  // `transport`), so it never reflows the layout.
+  const statusInline = !current && statusPill && (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>{statusPill}</div>
   );
 
   // Desktop-only: extra track facts for the info column, drawn from the full
@@ -856,6 +870,17 @@ export default function Run() {
   // Waveform + transport controls (dislike / prev / play / next / lyrics).
   const transport = current && (
     <div className="run-transport" style={{ marginTop: desktop ? 20 : 10, marginBottom: desktop ? 0 : 16 }}>
+      {/* Connection / queue notices sit in a zero-height strip pinned just
+          above the waveform: always the same spot (right where a runner's eyes
+          are), and out of the layout flow — a banner that grew the column used
+          to push the transport off the bottom of the phone screen. */}
+      <div style={{ position: "relative", height: 0 }}>
+        {statusPill && (
+          <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 5, pointerEvents: "none" }}>
+            {statusPill}
+          </div>
+        )}
+      </div>
       <canvas ref={canvasRef} style={{ width: "100%", height: 44, display: "block", cursor: "pointer" }} />
       <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
         <span>{fmtTime(time)}</span>
@@ -944,7 +969,7 @@ export default function Run() {
       // in-panel source picker + list) is no taller than the cover+controls it
       // replaces — otherwise switching to Queue grew the page and forced a
       // scroll. Reserve = target readout + mode toggle + panel header + source
-      // row + transport + padding (+ the kiosk brand bar via bannerReserve).
+      // row + transport + padding (+ the sticky top bar via bannerReserve).
       : { maxHeight: `clamp(120px, calc(100dvh - ${560 + bannerReserve}px), 340px)`, overflowY: "auto" };
     return (
       <div className="card" style={cardStyle}>
@@ -1193,7 +1218,7 @@ export default function Run() {
                 {targetBlock}
                 {presetsGrid}
                 {stepsRow}
-                {buildMessages}
+                {statusInline}
               </div>
             </div>
             {transport}
@@ -1228,7 +1253,7 @@ export default function Run() {
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
           : presetsGrid}
-        {buildMessages}
+        {statusInline}
       </div>
       {transport}
       {lyricsDrawer}

@@ -138,11 +138,14 @@ describe("Run — mobile queue height is bounded", () => {
     // value parsing (clamp/calc/dvh).
     const style = screen.getByTestId("queue-list").getAttribute("style") || "";
     expect(style).toContain("100dvh");
-    expect(style).toContain("560px");   // chrome reserve (admin: bannerReserve 0)
+    expect(style).toContain("612px");   // 560 chrome + 52 sticky top bar (admin app-nav / kiosk brand bar)
     expect(style).toContain("340px");   // hard cap
     // Regression guard against the previous too-tall values.
     expect(style).not.toContain("420px");
     expect(style).not.toContain("500px");
+    // The admin layout must reserve the app-nav bar too — skipping it was how
+    // the mobile screen overflowed (560px was the bar-less reserve).
+    expect(style).not.toContain("560px");
   });
 });
 
@@ -211,6 +214,24 @@ describe("Run — connection visibility", () => {
     render(<Run />);
     expect(screen.queryByText(/Offline/)).toBeNull();
     expect(screen.queryByText(/Buffering/)).toBeNull();
+  });
+
+  it("floats the note above the waveform (inside the transport) while a track plays", () => {
+    // Out-of-flow placement: a banner that grew the column used to push the
+    // transport off the bottom of the phone screen.
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.buffering = true;
+    render(<Run />);
+    expect(screen.getByText(/Buffering/).closest(".run-transport")).toBeTruthy();
+  });
+
+  it("keeps the note inline pre-run (no transport exists yet)", () => {
+    h.current = null;
+    h.online = false;
+    render(<Run />);
+    const note = screen.getByText(/Offline — waiting for connection/);
+    expect(note.closest(".run-transport")).toBeNull();
   });
 });
 
