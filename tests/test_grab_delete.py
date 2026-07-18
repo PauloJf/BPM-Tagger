@@ -37,6 +37,28 @@ def test_delete_grab_missing_returns_false(tmp_path):
     assert db.delete_grab(999999) is False
 
 
+def test_delete_completed_grabs_only_removes_done(tmp_path):
+    db = _db(tmp_path)
+    d, f = _enqueue(db, "done1"), _enqueue(db, "fail1")
+    db.transition(d, "done", "filed")
+    db.transition(f, "failed", "no match")
+    db.add_grab_event(d, "info", "extra")
+
+    removed = db.delete_completed_grabs()
+
+    assert removed == 1
+    assert db.get_grab_item(d) is None
+    assert db.get_grab_events(d) == []
+    # Failed item and its history survive.
+    assert db.get_grab_item(f) is not None
+
+
+def test_delete_completed_grabs_none_is_zero(tmp_path):
+    db = _db(tmp_path)
+    _enqueue(db, "still-pending")
+    assert db.delete_completed_grabs() == 0
+
+
 def test_delete_grab_leaves_siblings_intact(tmp_path):
     db = _db(tmp_path)
     a, b = _enqueue(db, "a"), _enqueue(db, "b")

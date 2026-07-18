@@ -43,6 +43,9 @@ interface PlayerState {
   current: PlayerTrack | null;
   playing: boolean;
   error: string | null;
+  buffering: boolean;      // playback stalled waiting for data (slow/dropped link)
+  bufferedPct: number;     // % of the current track buffered ahead (0–100)
+  online: boolean;         // navigator.onLine — false when the connection dropped
   audioRef: RefObject<HTMLAudioElement>;
   // Queue
   queue: PlayerTrack[];
@@ -138,6 +141,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // MediaSession playbackState effect below.
   const [intendedPlaying, setIntendedPlaying] = useState(() => !!(current && saved?.playing));
   const [error, setError] = useState<string | null>(null);
+  // Slow-connection visibility: `buffering` while the element is waiting for
+  // data, `bufferedPct` how much of the current track has loaded, `online` from
+  // the browser's network status — so a stall reads as the network, not the app.
+  const [buffering, setBuffering] = useState(false);
+  const [bufferedPct, setBufferedPct] = useState(0);
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
+  // Run-mode look-ahead: silent <audio> elements that pre-buffer the next tracks.
+  const preRefs = useRef<(HTMLAudioElement | null)[]>([null, null]);
   const pendingPlay = useRef(!!(current && saved?.playing));
   // Path already loaded + started synchronously by goToPos, so the load effect
   // must not reload it (that would restart the fetch and kill iOS lock-screen
@@ -639,6 +650,88 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [next, endPreview]);
 
+  // Buffering + buffered-ahead % (slow-connection visibility). Attached once;
+  // reads the element directly. `timeupdate` doubles as a "we're advancing"
+  // signal that clears a stale buffering flag (it can't fire while truly stalled).
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const recalc = () => {
+      const d = a.duration;
+      if (!isFinite(d) || d <= 0) { setBufferedPct(0); return; }
+      let end = 0;
+      try {
+        const b = a.buffered;
+        for (let i = 0; i < b.length; i++) {
+          if (b.start(i) <= a.currentTime + 0.25 && b.end(i) > end) end = b.end(i);
+        }
+        if (!end && b.length) end = b.end(b.length - 1);
+      } catch { /* ignore */ }
+      setBufferedPct(Math.max(0, Math.min(100, Math.round((end / d) * 100))));
+    };
+    const onWaiting = () => setBuffering(true);
+    const onStalled = () => setBuffering(true);
+    const clear = () => { setBuffering(false); recalc(); };
+    a.addEventListener("waiting", onWaiting);
+    a.addEventListener("stalled", onStalled);
+    a.addEventListener("playing", clear);
+    a.addEventListener("canplay", clear);
+    a.addEventListener("canplaythrough", clear);
+    a.addEventListener("progress", recalc);
+    a.addEventListener("timeupdate", clear);
+    return () => {
+      a.removeEventListener("waiting", onWaiting);
+      a.removeEventListener("stalled", onStalled);
+      a.removeEventListener("playing", clear);
+      a.removeEventListener("canplay", clear);
+      a.removeEventListener("canplaythrough", clear);
+      a.removeEventListener("progress", recalc);
+      a.removeEventListener("timeupdate", clear);
+    };
+  }, []);
+
+  // Reset the buffering readout when the track changes (new load starts fresh).
+  useEffect(() => { setBuffering(false); setBufferedPct(0); }, [current?.path]);
+
+  // Browser online/offline — a dropped connection is shown as such, not as an
+  // app fault. (navigator.onLine is coarse but enough to distinguish the case.)
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+
+  // Run-mode look-ahead: while a tempo-locked run is playing (a predictable,
+  // long queue), pre-buffer the next couple of tracks in silent <audio>
+  // elements so a track boundary doesn't stall on a slow link. Gated to run
+  // mode so we never spend bandwidth prefetching outside it; never played.
+  const PRELOAD_AHEAD = 2;
+  useEffect(() => {
+    const slots = preRefs.current;
+    const clearSlot = (s: HTMLAudioElement | null) => {
+      if (s && s.getAttribute("src")) { s.removeAttribute("src"); try { s.load(); } catch { /* ignore */ } }
+    };
+    if (tempoLock == null || !playing || order.length <= 1) { slots.forEach(clearSlot); return; }
+    const wants: string[] = [];
+    for (let k = 1; k <= PRELOAD_AHEAD; k++) {
+      let np = pos + k;
+      if (np >= order.length) { if (repeat === "all") np %= order.length; else break; }
+      const t = queue[order[np]];
+      if (t && !t.ephemeral && !t.src) wants.push(audioUrl(t.path));
+    }
+    slots.forEach((s, i) => {
+      if (!s) return;
+      const want = wants[i] || "";
+      if (want) { if (s.getAttribute("src") !== want) { s.src = want; try { s.load(); } catch { /* ignore */ } } }
+      else clearSlot(s);
+    });
+  }, [current?.path, playing, order, pos, repeat, tempoLock, queue]);
+
   // Media Session: lock-screen / headset / notification controls (key for the
   // PWA running use case — the phone is locked mid-run). Metadata mirrors the
   // current track; cover art 404s are fine (the OS just shows no artwork).
@@ -873,7 +966,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      current, playing, error, audioRef,
+      current, playing, error, buffering, bufferedPct, online, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,
@@ -883,6 +976,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }}>
       {children}
       <audio ref={audioRef} preload="auto" />
+      {/* Run-mode look-ahead buffers — silent, never played (see PRELOAD_AHEAD). */}
+      <audio ref={(el) => { preRefs.current[0] = el; }} preload="auto" muted aria-hidden="true" style={{ display: "none" }} />
+      <audio ref={(el) => { preRefs.current[1] = el; }} preload="auto" muted aria-hidden="true" style={{ display: "none" }} />
     </Ctx.Provider>
   );
 }

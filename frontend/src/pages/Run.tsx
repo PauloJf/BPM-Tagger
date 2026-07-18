@@ -809,9 +809,24 @@ export default function Run() {
         </div>
       )}
       {buildErr && <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{buildErr}</div>}
-      {/* With the global player bar hidden on this page, stream errors would
-          otherwise be invisible here. */}
-      {player.error && <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{player.error}</div>}
+      {/* With the global player bar hidden on this page, stream errors / slow-
+          link stalls would otherwise be invisible here — so a runner doesn't
+          blame the app for what is really the network. Priority: offline > hard
+          error > buffering. */}
+      {!player.online ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
+          <span className="conn-dot conn-dot--off" /> Offline — waiting for connection…
+        </div>
+      ) : player.error ? (
+        <div style={{ textAlign: "center", fontSize: 12, color: "var(--err-fg)", marginBottom: 6 }}>{player.error}</div>
+      ) : player.buffering ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, fontSize: 12, color: "var(--warn-fg)", marginBottom: 6 }}>
+          <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M12 3a9 9 0 1 0 9 9" />
+          </svg>
+          Buffering{player.bufferedPct > 0 ? ` · ${player.bufferedPct}%` : "…"} — slow connection
+        </div>
+      ) : null}
     </>
   );
 

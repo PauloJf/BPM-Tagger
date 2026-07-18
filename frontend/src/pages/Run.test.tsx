@@ -10,6 +10,9 @@ const h = vi.hoisted(() => ({
   orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; fromPlaylist?: boolean }>,
   tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
   playing: false,
+  online: true,
+  buffering: false,
+  bufferedPct: 0,
   runSource: null as number | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
@@ -46,6 +49,7 @@ vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
+    error: null, buffering: h.buffering, bufferedPct: h.bufferedPct, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
     updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
     setTempoLock() {}, playQueue() {}, setRunSource() {},
@@ -79,6 +83,9 @@ beforeEach(() => {
   h.orderedQueue = [];
   h.tempoLock = null;
   h.playing = false;
+  h.online = true;
+  h.buffering = false;
+  h.bufferedPct = 0;
   h.runSource = null;
   h.starred = [];
   // A deliberately long name — the sort that used to spill across the cover art.
@@ -166,6 +173,44 @@ describe("Run — lock toggle mirrors the restored tempo lock (no reload desync)
     render(<Run />);
     expect(screen.getByLabelText("BPM locked")).toBeTruthy();
     expect(screen.queryByLabelText("BPM unlocked")).toBeNull();
+  });
+});
+
+describe("Run — connection visibility", () => {
+  it("shows an offline banner when the connection is down", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.online = false;
+    render(<Run />);
+    expect(screen.getByText(/Offline — waiting for connection/)).toBeTruthy();
+  });
+
+  it("shows a buffering banner with percentage while stalled and online", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.online = true;
+    h.buffering = true;
+    h.bufferedPct = 42;
+    render(<Run />);
+    expect(screen.getByText(/Buffering · 42%/)).toBeTruthy();
+  });
+
+  it("does not show a buffering banner when offline (offline takes priority)", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.online = false;
+    h.buffering = true;
+    render(<Run />);
+    expect(screen.queryByText(/Buffering/)).toBeNull();
+    expect(screen.getByText(/Offline/)).toBeTruthy();
+  });
+
+  it("shows no connection banner when online and not buffering", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    expect(screen.queryByText(/Offline/)).toBeNull();
+    expect(screen.queryByText(/Buffering/)).toBeNull();
   });
 });
 

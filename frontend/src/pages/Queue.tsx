@@ -86,6 +86,7 @@ export default function Queue() {
   const cancel = useMutation({ mutationFn: (id: number) => api.post(`/api/queue/${id}/cancel`), onSuccess: invalidate });
   const del = useMutation({ mutationFn: (id: number) => api.del(`/api/queue/${id}`), onSuccess: invalidate });
   const retryAll = useMutation({ mutationFn: () => api.post("/api/queue/retry-failed"), onSuccess: invalidate });
+  const clearDone = useMutation({ mutationFn: () => api.post("/api/queue/clear-completed"), onSuccess: invalidate });
 
   const items = queueQ.data?.items ?? [];
   const active = items.filter((i) => ACTIVE.has(i.status));
@@ -97,15 +98,30 @@ export default function Queue() {
       <PageHeader
         title="Queue"
         subtitle={Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(" · ") || "Nothing queued."}
-        actions={(counts.failed ?? 0) > 0 ? (
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={retryAll.isPending}
-            onClick={() => retryAll.mutate()}
-            title="Re-queue every failed item and search again"
-          >
-            {retryAll.isPending ? "Retrying…" : `Retry all failed (${counts.failed})`}
-          </button>
+        actions={((counts.failed ?? 0) > 0 || (counts.done ?? 0) > 0) ? (
+          <>
+            {(counts.failed ?? 0) > 0 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={retryAll.isPending}
+                onClick={() => retryAll.mutate()}
+                title="Re-queue every failed item and search again"
+              >
+                {retryAll.isPending ? "Retrying…" : `Retry all failed (${counts.failed})`}
+              </button>
+            )}
+            {(counts.done ?? 0) > 0 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: "var(--muted)" }}
+                disabled={clearDone.isPending}
+                onClick={() => clearDone.mutate()}
+                title="Remove every completed item from the history (downloaded files are kept)"
+              >
+                {clearDone.isPending ? "Clearing…" : `Clear completed (${counts.done})`}
+              </button>
+            )}
+          </>
         ) : undefined}
       />
 

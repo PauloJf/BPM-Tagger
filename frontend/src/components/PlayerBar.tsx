@@ -11,7 +11,7 @@ import { LyricsPanel } from "./LyricsPanel";
 import QueueSimilar from "./QueueSimilar";
 
 export default function PlayerBar() {
-  const { current, playing, error, audioRef, toggle, stop,
+  const { current, playing, error, buffering, bufferedPct, online, audioRef, toggle, stop,
           orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing, volume, setVolume,
           next, prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat, tempoLock } = usePlayer();
   const mini = useMiniPlayer();
@@ -108,8 +108,19 @@ export default function PlayerBar() {
             {current.title}
           </Link>
         )}
-        {error ? (
+        {!online ? (
+          <div className="player-bar-artist" style={{ color: "var(--warn-fg)", display: "flex", alignItems: "center", gap: 5 }}>
+            <span className="conn-dot conn-dot--off" /> Offline — waiting for connection…
+          </div>
+        ) : error ? (
           <div className="player-bar-artist" style={{ color: "var(--err-fg)" }}>{error}</div>
+        ) : buffering ? (
+          <div className="player-bar-artist" style={{ color: "var(--warn-fg)", display: "flex", alignItems: "center", gap: 5 }}>
+            <svg className="spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
+              <path d="M12 3a9 9 0 1 0 9 9" />
+            </svg>
+            Buffering{bufferedPct > 0 ? ` · ${bufferedPct}%` : "…"}
+          </div>
         ) : previewing ? (
           <div className="player-bar-artist" style={{ color: "var(--accent-2)" }}>Preview · returns to queue</div>
         ) : current.artist ? (

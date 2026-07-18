@@ -116,6 +116,16 @@ def cancel_item(item_id):
     return jsonify(ok=True)
 
 
+@queue_bp.route("/api/queue/clear-completed", methods=["POST"])
+@login_required
+def clear_completed():
+    """Remove every completed ('done') item from the history at once. Does not
+    touch failed/skipped items or any downloaded file."""
+    _check_csrf()
+    removed = state().db.delete_completed_grabs()
+    return jsonify(ok=True, removed=removed)
+
+
 @queue_bp.route("/api/queue/<int:item_id>", methods=["DELETE"])
 @login_required
 def delete_queue_item(item_id):

@@ -195,6 +195,23 @@ class GrabberMixin:
             conn.commit()
             return cur.rowcount > 0
 
+    def delete_completed_grabs(self) -> int:
+        """Remove every completed ('done') queue item and its children — the
+        History "Clear completed" action. Downloaded files already filed into the
+        library are untouched; this only clears the queue bookkeeping. Returns the
+        number of items removed."""
+        with self._connect() as conn:
+            ids = [r[0] for r in conn.execute(
+                "SELECT id FROM grab_queue WHERE status='done'").fetchall()]
+            if not ids:
+                return 0
+            qs = ",".join("?" * len(ids))
+            conn.execute(f"DELETE FROM grab_candidates WHERE queue_item_id IN ({qs})", ids)
+            conn.execute(f"DELETE FROM grab_events WHERE queue_item_id IN ({qs})", ids)
+            cur = conn.execute(f"DELETE FROM grab_queue WHERE id IN ({qs})", ids)
+            conn.commit()
+            return cur.rowcount
+
     def get_grab_item(self, item_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM grab_queue WHERE id=?", (item_id,)).fetchone()

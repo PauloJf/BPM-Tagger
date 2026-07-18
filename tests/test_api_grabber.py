@@ -438,3 +438,23 @@ def test_delete_inflight_queue_item_rejected(grab):
     r = client.delete(f"/api/queue/{item_id}", headers=csrf)
     assert r.status_code == 400 and r.get_json()["error"] == "not_deletable"
     assert st.db.get_grab_item(item_id) is not None
+
+
+def test_clear_completed_queue(grab):
+    """Clear completed removes only 'done' items; failed/pending survive."""
+    client, st, _ = grab
+    csrf = {"X-CSRF-Token": client._csrf}
+    d = st.db.enqueue_grab({"title": "Got it", "artist": "A", "spotify_track_id": "sp_done"})
+    st.db.transition(d, "done", "filed")
+    f = st.db.enqueue_grab({"title": "Nope", "artist": "B", "spotify_track_id": "sp_fail"})
+    st.db.transition(f, "failed", "no match")
+
+    r = client.post("/api/queue/clear-completed", headers=csrf)
+    assert r.status_code == 200 and r.get_json()["removed"] == 1
+    assert st.db.get_grab_item(d) is None
+    assert st.db.get_grab_item(f) is not None
+
+
+def test_clear_completed_requires_csrf(grab):
+    client, _, _ = grab
+    assert client.post("/api/queue/clear-completed").status_code == 403
