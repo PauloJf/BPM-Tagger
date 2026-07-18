@@ -35,7 +35,8 @@ vi.mock("@tanstack/react-query", () => ({
         run_octave_fold: true, run_stretch_limit_pct: 15, run_queue_size: 20,
       } } };
     if (k === "run-playlists") return { data: { playlists: h.playlists } };
-    if (k === "track-bpm") return { data: { track: { bpm: 120, locked: 0 }, quality: null } };
+    // play_count present so tests can assert the mobile layout doesn't render it.
+    if (k === "track-bpm") return { data: { track: { bpm: 120, locked: 0, play_count: 3 }, quality: null } };
     return { data: undefined };
   },
 }));
@@ -128,24 +129,45 @@ describe("Run — mobile source picker placement", () => {
   });
 });
 
-describe("Run — mobile queue height is bounded", () => {
-  it("caps the queue scroll area so switching to Queue doesn't overflow the screen", () => {
+describe("Run — mobile layout is flex-driven (no viewport math)", () => {
+  it("the queue list scrolls internally and carries no hand-tuned dvh clamp", () => {
     localStorage.setItem(MODE_KEY, "queue");
     h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
     h.orderedQueue = Array.from({ length: 40 }, (_, i) => ({ path: `/music/${i}.mp3`, title: `T${i}`, bpm: 120 }));
     render(<Run />);
-    // Read the raw inline style so the assertion doesn't depend on jsdom's CSS
-    // value parsing (clamp/calc/dvh).
+    // Raw inline style so the assertion doesn't depend on jsdom's CSS parsing.
     const style = screen.getByTestId("queue-list").getAttribute("style") || "";
-    expect(style).toContain("100dvh");
-    expect(style).toContain("612px");   // 560 chrome + 52 sticky top bar (admin app-nav / kiosk brand bar)
-    expect(style).toContain("340px");   // hard cap
-    // Regression guard against the previous too-tall values.
-    expect(style).not.toContain("420px");
-    expect(style).not.toContain("500px");
-    // The admin layout must reserve the app-nav bar too — skipping it was how
-    // the mobile screen overflowed (560px was the bar-less reserve).
-    expect(style).not.toContain("560px");
+    expect(style).toContain("overflow-y: auto");
+    // Regression guard: sizing now comes from the fixed-height flex column
+    // (.run-mobile-fill), not from viewport arithmetic that drifted every time
+    // a row was added or removed.
+    expect(style).not.toContain("dvh");
+  });
+
+  it("renders the cover in the flexible slot when playing (presets mode)", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    expect(screen.getByTestId("cover-slot")).toBeTruthy();
+  });
+
+  it("drops the cover slot in the Queue view (the queue takes its space)", () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    expect(screen.queryByTestId("cover-slot")).toBeNull();
+  });
+
+  it("hides the play count on mobile (vertical budget) — desktop-only detail", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.current = { path: "/music/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    // The mocked track detail has play data, but the mobile layout must not
+    // spend a line on it (useIsMobile is mocked true → mobile layout).
+    expect(screen.queryByText(/play(s)?$/)).toBeNull();
   });
 });
 

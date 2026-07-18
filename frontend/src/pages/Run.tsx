@@ -116,9 +116,10 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  *  next track's image has decoded — so a track change never blanks the cover,
  *  which previously collapsed the box and jumped the whole cockpit layout.
  *  Falls back to the ♪ placeholder when a cover 404s. */
-function RunCover({ path, coverSize, onClick, onMouseEnter, onMouseLeave, ariaLabel, ariaPressed, title, children }: {
+function RunCover({ path, coverSize, fillHeight, onClick, onMouseEnter, onMouseLeave, ariaLabel, ariaPressed, title, children }: {
   path: string;
-  coverSize: string;
+  coverSize?: string;    // width-driven square (desktop cockpit)
+  fillHeight?: boolean;  // height-driven square — fills the flexible mobile cover slot
   onClick?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -143,18 +144,30 @@ function RunCover({ path, coverSize, onClick, onMouseEnter, onMouseLeave, ariaLa
     return () => { cancelled = true; };
   }, [path, shown]);
 
-  // A fixed-aspect square box, centered in its (definite-width) parent via
-  // margin:auto, with the image absolutely filling it. width:min(size,100%)
-  // resolves fine here because the parent is a full-width flex/block, not a
-  // shrink-to-fit inline box — so it never collapses (the 2.6.6 bug) and the
-  // aspect-ratio always wins (no wide/off-square art), while the click target
-  // and any overlays share the exact cover footprint.
-  const box: React.CSSProperties = {
-    position: "relative", display: "block", width: `min(${coverSize}, 100%)`,
-    aspectRatio: "1 / 1", margin: "0 auto", borderRadius: 20, overflow: "hidden",
-    boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
-    border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
-  };
+  // A fixed-aspect square box with the image absolutely filling it. Two sizing
+  // modes:
+  // - width-driven (desktop): width:min(coverSize,100%), centered via
+  //   margin:auto. Resolves fine because the parent is a full-width flex/block,
+  //   not a shrink-to-fit inline box — so it never collapses (the 2.6.6 bug)
+  //   and the aspect-ratio always wins, while the click target and any overlays
+  //   share the exact cover footprint.
+  // - height-driven (mobile fill layout): height:100% of the flexible cover
+  //   slot, width derived by the aspect-ratio. The slot caps itself at 240px,
+  //   always below a phone column's width, so width never constrains (the
+  //   max-width is a guard for extreme landscape shapes, where it may crop).
+  const box: React.CSSProperties = fillHeight
+    ? {
+        position: "relative", display: "block", height: "100%", width: "auto", maxWidth: "100%",
+        aspectRatio: "1 / 1", borderRadius: 20, overflow: "hidden",
+        boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
+        border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
+      }
+    : {
+        position: "relative", display: "block", width: `min(${coverSize}, 100%)`,
+        aspectRatio: "1 / 1", margin: "0 auto", borderRadius: 20, overflow: "hidden",
+        boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
+        border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
+      };
   const inner = (
     <>
       {failed ? (
@@ -512,26 +525,20 @@ export default function Run() {
     color: "var(--text)", cursor: "pointer",
   };
 
-  // Mobile squeezes the cover so everything down to the transport fits one
-  // phone screen (whatever height is left after the fixed-size sections). On
-  // desktop the player column is vertically centered with room to spare, so
-  // the cover can breathe. Both mobile layouts sit under a ~52px sticky top
-  // bar — the kiosk brand bar in player mode (matches --player-bar-h), the
-  // app-nav hamburger bar in admin — so both reserve it; admin skipping it was
-  // exactly the height by which its transport spilled off the screen.
-  const bannerReserve = 52;
-  const coverSize = desktop
-    // Height-aware: derive the cover from the viewport height minus the fixed
-    // cockpit chrome (page header + title/details/toggle + transport) so it
-    // shrinks on short screens instead of overflowing, and grows on tall ones.
-    // Width is separately capped to the column (see coverImg) so it never
-    // exceeds its half of the cockpit.
-    ? "clamp(140px, calc(100dvh - 540px), 300px)"
-    // Reserve = everything below the cover on mobile (title, target with the
-    // flanking Rebuild, mode tabs, controls, transport + tight padding). With
-    // the header gone and Rebuild flanking the number (no extra row), 605 is the
-    // measured worst case (narrow phone, wrapped title) so it never scrolls.
-    : `clamp(64px, calc(100dvh - ${605 + bannerReserve}px), 240px)`;
+  // Desktop cover: height-aware — derived from the viewport height minus the
+  // fixed cockpit chrome (page header + title/details/toggle + transport) so
+  // it shrinks on short screens instead of overflowing, and grows on tall
+  // ones. Width is separately capped to the column so it never exceeds its
+  // half of the cockpit.
+  //
+  // Mobile doesn't size the cover from the viewport at all any more: the page
+  // is a fixed-height flex column (.run-mobile-fill, both admin and player
+  // mode) and the cover lives in a flexible slot (.run-cover-slot) that
+  // absorbs exactly the leftover height. No hand-tuned "measured worst case"
+  // constants — those drifted every time a line was added or removed and the
+  // transport slid off-screen; flexbox accounts for safe areas, browser vs
+  // PWA and screen size by construction.
+  const coverSize = "clamp(140px, calc(100dvh - 540px), 300px)";
 
   // Ambient glow tinted from the cover art, sitting behind the nav/content
   // (z-index -1 paints above the plain body background, below everything with
@@ -580,7 +587,7 @@ export default function Run() {
 
   // Now playing: cover + title/artist. Split into pieces so the desktop cockpit
   // can swap the cover slot for the tap card (nowPlayingDesktop) without touching
-  // the title/artist markup; mobile keeps the composed `nowPlaying`.
+  // the title/artist markup; mobile composes its own `nowPlayingMobile`.
   const titleArtist = current && (
     <>
       {playerMode ? (
@@ -605,8 +612,13 @@ export default function Run() {
           {current.title}
         </Link>
       )}
-      {current.artist && <div style={{ fontSize: 13, color: "var(--muted)" }}>{current.artist}</div>}
-      {detail?.play_count != null && (
+      {/* One line, ellipsized — a wrapping artist list would grow the fixed
+          part of the mobile column and break its no-scroll budget. */}
+      {current.artist && <div style={{ fontSize: 13, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.artist}</div>}
+      {/* Desktop only: on phones every fixed line below the cover is vertical
+          budget the one-screen layout can't spare, and the play count is the
+          least useful line mid-run. */}
+      {desktop && detail?.play_count != null && (
         <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><polygon points="6,4 20,12 6,20" /></svg>
           {detail.play_count} play{detail.play_count === 1 ? "" : "s"}
@@ -619,13 +631,16 @@ export default function Run() {
   // lives in the Queue view — see renderQueuePanel — reachable mid-run without
   // covering anything; pre-run it still shows as the labelled `sourcePicker`
   // block below (no cover is on screen yet then).
-  const nowPlaying = current && (
-    <div style={{ textAlign: "center", marginBottom: 12 }}>
-      <div style={{ marginBottom: 10 }}>
-        <RunCover path={current.path} coverSize={coverSize} />
+  // Mobile now-playing: the cover rides in the flexible slot (it soaks up the
+  // leftover height of the fixed-height column — see .run-cover-slot), the
+  // title/artist block below stays natural-height.
+  const nowPlayingMobile = current && (
+    <>
+      <div className="run-cover-slot" data-testid="cover-slot">
+        <RunCover path={current.path} fillHeight />
       </div>
-      {titleArtist}
-    </div>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>{titleArtist}</div>
+    </>
   );
 
   // Run source: whole library or a specific playlist. Only rendered when at least
@@ -950,8 +965,8 @@ export default function Run() {
   );
 
   // The run queue panel. `fill` makes it stretch to its container's full height
-  // (the desktop side column); otherwise it sizes to its content with a
-  // viewport-relative max height (the mobile Queue tab).
+  // (the desktop side column); otherwise it sizes to its content but shrinks
+  // to whatever the fixed-height mobile column has left (the Queue tab).
   const renderQueuePanel = (fill: boolean) => {
     const cardStyle: React.CSSProperties = fill
       ? {
@@ -962,15 +977,14 @@ export default function Run() {
           padding: 0, margin: 0, position: "absolute", inset: 0,
           display: "flex", flexDirection: "column",
         }
-      : { padding: 0, marginBottom: 12 };
+      // Mobile Queue tab: a short queue sizes to its content; a long one
+      // shrinks (flexShrink, bounded by minHeight:0) to the space the mobile
+      // fill column has left and the list scrolls inside — no viewport math,
+      // the flex container does the space accounting.
+      : { padding: 0, marginBottom: 12, display: "flex", flexDirection: "column", minHeight: 0, flexShrink: 1 };
     const listStyle: React.CSSProperties = fill
       ? { flex: 1, minHeight: 0, overflowY: "auto" }
-      // Mobile Queue tab: cap the scroll area so the whole panel (header + the
-      // in-panel source picker + list) is no taller than the cover+controls it
-      // replaces — otherwise switching to Queue grew the page and forced a
-      // scroll. Reserve = target readout + mode toggle + panel header + source
-      // row + transport + padding (+ the sticky top bar via bannerReserve).
-      : { maxHeight: `clamp(120px, calc(100dvh - ${560 + bannerReserve}px), 340px)`, overflowY: "auto" };
+      : { minHeight: 0, overflowY: "auto" };
     return (
       <div className="card" style={cardStyle}>
         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
@@ -1231,13 +1245,15 @@ export default function Run() {
   }
 
   return (
-    // Player mode fills the viewport (run-mobile-fill) so the transport pins to
-    // the bottom and the cockpit above distributes the leftover space; admin
-    // mobile keeps its normal top-down flow (the wrapper class is inert there).
-    <div className={playerMode ? "run-mobile-fill" : undefined}>
+    // Both admin and player mode fill the viewport (run-mobile-fill): the
+    // transport pins to the bottom, the flexible cover slot absorbs the
+    // leftover height, and the page never scrolls — the app-like behaviour a
+    // run player needs. (The fill height already accounts for the ~52px sticky
+    // top bar of either mode and the device safe areas — see the CSS.)
+    <div className="run-mobile-fill">
       {glowLayer}
       <div className="run-mobile-body">
-        {mode !== "queue" && nowPlaying}
+        {mode !== "queue" && nowPlayingMobile}
         {/* Tap needs the whole tap pad on screen at once; the target readout (its
             big number + native pill + the build/lock buttons) is dead weight while
             tapping — the lock is off in this mode anyway — so drop it here to keep

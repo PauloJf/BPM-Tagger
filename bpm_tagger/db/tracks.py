@@ -351,18 +351,20 @@ class TracksMixin:
         return {r["key"]: r["value"] for r in rows}
 
     # ── Play-count leaderboards (Navidrome-pulled; empty until a play sync) ────
-    def get_top_tracks(self, limit: int = 10) -> list[dict]:
+    def get_top_tracks(self, limit: int = 10, offset: int = 0) -> list[dict]:
         """Most-played library tracks, with album/artist so the Stats page can
-        link to the track, album and artist pages."""
+        link to the track, album and artist pages. Offset pages through the
+        leaderboard (the ORDER BY is fully deterministic, so pages never skip
+        or repeat rows)."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT file_path, title, artist, album, album_artist, bpm, play_count "
                 "FROM tracks WHERE status != 'deleted' AND COALESCE(play_count, 0) > 0 "
-                "ORDER BY play_count DESC, title COLLATE NOCASE LIMIT ?",
-                (limit,)).fetchall()
+                "ORDER BY play_count DESC, title COLLATE NOCASE, file_path LIMIT ? OFFSET ?",
+                (limit, offset)).fetchall()
         return [dict(r) for r in rows]
 
-    def get_top_artists(self, limit: int = 10) -> list[dict]:
+    def get_top_artists(self, limit: int = 10, offset: int = 0) -> list[dict]:
         """Most-played artists by summed play count. Groups on the album-artist
         (falling back to the track artist), matching the artist index so the
         `name` links straight to the artist page."""
@@ -372,8 +374,8 @@ class TracksMixin:
                 "SUM(COALESCE(play_count, 0)) AS plays, COUNT(*) AS tracks "
                 "FROM tracks WHERE status != 'deleted' AND COALESCE(play_count, 0) > 0 "
                 "AND COALESCE(NULLIF(album_artist, ''), artist, '') != '' "
-                "GROUP BY name ORDER BY plays DESC, name COLLATE NOCASE LIMIT ?",
-                (limit,)).fetchall()
+                "GROUP BY name ORDER BY plays DESC, name COLLATE NOCASE LIMIT ? OFFSET ?",
+                (limit, offset)).fetchall()
         return [dict(r) for r in rows]
 
     def get_total_plays(self) -> int:

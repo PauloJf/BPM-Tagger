@@ -878,8 +878,11 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
 }
 
 /* ── About page ───────────────────────────────────────────────────────────── */
-.about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
-@media (max-width: 700px) { .about-grid { grid-template-columns: 1fr; } }
+/* minmax(0,1fr), not 1fr: a bare 1fr track can't go below its content's
+   min-content width, so one long leaderboard row (track title + artist) made
+   the column wider than the phone screen and the whole page scrolled sideways. */
+.about-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 24px; }
+@media (max-width: 700px) { .about-grid { grid-template-columns: minmax(0, 1fr); } }
 .about-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 14px; }
 
 /* Stats "Most played" leaderboard rows (rank · name → · plays). */
@@ -1062,14 +1065,46 @@ body.has-player .container.container--run { padding-bottom: 24px; }
 @media (max-width: 900px) {
   .container.container--run,
   body.has-player .container.container--run { padding-top: 14px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
-  /* Player kiosk: fill the viewport so the transport (waveform + controls) pins
-     to the bottom and the cockpit above distributes the leftover space. 38px =
-     the run container's top+bottom padding; the sticky player bar above the
-     page eats --player-bar-h more, so subtract both to avoid a scroll. */
+  /* Mobile Run page (admin AND player mode): fill the viewport so the
+     transport (waveform + controls) pins to the bottom and the cockpit above
+     distributes the leftover space — no page scroll, like a native player.
+     The height budget, term by term:
+       38px            = the run container's top (14) + bottom (24) padding
+       --player-bar-h  = the sticky ~52px top bar (kiosk brand bar in player
+                         mode; admin's app-nav is ~50px — same budget)
+       env(top/bottom) = device safe areas (notch / home indicator) — the bars
+                         and the container pad themselves by these, so they're
+                         real spent height in an installed PWA; 0 in a browser,
+                         where dvh already tracks the URL-bar chrome instead.
+     min-height (not height): if a tiny/landscape screen can't hold even the
+     fixed rows at their natural size, the page falls back to scrolling rather
+     than crushing the controls. */
   .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px - var(--player-bar-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
   .run-mobile-fill .run-mobile-body {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; justify-content: center;
+  }
+  /* Fixed blocks keep their natural height — only the cover slot (below) and
+     the Queue card (inline flexShrink:1) may flex. Without this, a too-tall
+     total would squash the target readout instead of scrolling. */
+  .run-mobile-fill .run-mobile-body > * { flex-shrink: 0; }
+  .run-mobile-fill > .run-transport { flex-shrink: 0; }
+  /* The flexible cover slot: absorbs exactly the leftover column height (up
+     to the cover's 240px cap, down to a 72px floor). The cover inside is
+     height-driven (see RunCover fillHeight), so the layout fits any phone
+     without hand-tuned viewport constants — browser or PWA, iOS or Android,
+     safe areas included via the fill height above. */
+  .run-mobile-fill .run-mobile-body > .run-cover-slot {
+    flex: 1 1 0; min-height: 72px; max-height: 240px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 10px;
+  }
+  /* Short screens (old/small phones, ~2016 Androids and SEs): the fixed rows
+     alone need ~610px, so even the slot's 72px floor would push the transport
+     off-screen. Drop the artwork like native players do — the title/artist
+     line still identifies the track — and the rest fits without scrolling. */
+  @media (max-height: 690px) {
+    .run-mobile-fill .run-mobile-body > .run-cover-slot { display: none; }
   }
 }
 .player-bar {

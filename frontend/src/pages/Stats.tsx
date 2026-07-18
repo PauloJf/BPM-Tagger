@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
 import PageHeader from "../components/PageHeader";
+
+interface TopTrack { file_path: string; title: string | null; artist: string | null; album: string | null; album_artist: string | null; bpm: number | null; play_count: number }
+interface TopArtist { name: string; plays: number; tracks: number }
 
 interface StatsResponse {
   summary: {
@@ -23,9 +27,12 @@ interface StatsResponse {
   // (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played) plus
   // dynamic per-cadence-bin buckets keyed cad_<bpm> (10-BPM wide).
   run?: Record<string, number>;
-  // Most-played leaderboards (Navidrome-pulled; empty until a play sync runs).
-  top_tracks: { file_path: string; title: string | null; artist: string | null; album: string | null; album_artist: string | null; bpm: number | null; play_count: number }[];
-  top_artists: { name: string; plays: number; tracks: number }[];
+  // Most-played leaderboards: local + Navidrome-merged plays; the first page
+  // (15) with a has-more flag each — /api/stats/most_played serves the rest.
+  top_tracks: TopTrack[];
+  top_artists: TopArtist[];
+  top_tracks_more: boolean;
+  top_artists_more: boolean;
   total_plays: number;
   // Present only when the grabber is enabled.
   grabber?: {
@@ -56,6 +63,44 @@ const bigNum: React.CSSProperties = {
   fontFamily: "var(--mono)", fontSize: 22, fontWeight: 600, color: "var(--text)",
   letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums",
 };
+
+/** One most-played leaderboard: the first page comes with /api/stats, further
+ *  pages (15 rows each) load on Show more from /api/stats/most_played. Ranks
+ *  continue across pages; the button disappears once the board is exhausted. */
+function ShowMoreList<T>({ kind, initial, initialMore, row }: {
+  kind: "artists" | "tracks";
+  initial: T[];
+  initialMore: boolean;
+  row: (item: T, rank: number) => React.ReactNode;
+}) {
+  const [extra, setExtra] = useState<T[]>([]);
+  const [hasMore, setHasMore] = useState(initialMore);
+  const [loading, setLoading] = useState(false);
+
+  async function more() {
+    setLoading(true);
+    try {
+      const r = await api.get<{ items: T[]; has_more: boolean }>(
+        `/api/stats/most_played?kind=${kind}&offset=${initial.length + extra.length}`);
+      setExtra((e) => [...e, ...r.items]);
+      setHasMore(r.has_more);
+    } catch { /* keep the button so the user can retry */ } finally {
+      setLoading(false);
+    }
+  }
+
+  const items = [...initial, ...extra];
+  return (
+    <>
+      {items.map((it, i) => row(it, i + 1))}
+      {hasMore && (
+        <button className="btn btn-ghost btn-sm" style={{ width: "100%", marginTop: 8 }} disabled={loading} onClick={more}>
+          {loading ? "Loading…" : "Show more"}
+        </button>
+      )}
+    </>
+  );
+}
 
 function StatCard({ label, value, color, children }: { label: string; value: string; color: string; children?: React.ReactNode }) {
   return (
@@ -213,28 +258,45 @@ export default function Stats() {
           <div className="about-grid" style={{ marginTop: 0 }}>
             <div>
               <div className="stat-label" style={{ marginBottom: 8 }}>Top artists</div>
-              {statsQ.data.top_artists.length ? statsQ.data.top_artists.map((a, i) => (
-                <div key={a.name} className="lead-row">
-                  <span className="lead-rank">{i + 1}</span>
-                  <Link to={`/artist?name=${encodeURIComponent(a.name)}`} className="lead-name" title={`${a.name} — open for similar artists`}>{a.name}</Link>
-                  <span className="lead-count">{num(a.plays)}</span>
-                </div>
-              )) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
+              {statsQ.data.top_artists.length ? (
+                <ShowMoreList<TopArtist>
+                  kind="artists"
+                  initial={statsQ.data.top_artists}
+                  initialMore={statsQ.data.top_artists_more}
+                  row={(a, rank) => (
+                    <div key={a.name} className="lead-row">
+                      <span className="lead-rank">{rank}</span>
+                      <Link to={`/artist?name=${encodeURIComponent(a.name)}`} className="lead-name" title={`${a.name} — open for similar artists`}>{a.name}</Link>
+                      <span className="lead-count">{num(a.plays)}</span>
+                    </div>
+                  )}
+                />
+              ) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
             </div>
             <div>
               <div className="stat-label" style={{ marginBottom: 8 }}>Top tracks</div>
-              {statsQ.data.top_tracks.length ? statsQ.data.top_tracks.map((t, i) => (
-                <div key={t.file_path} className="lead-row">
-                  <span className="lead-rank">{i + 1}</span>
-                  <span className="lead-name" style={{ display: "flex", gap: 5, minWidth: 0 }}>
-                    <Link to={`/track?path=${encodeURIComponent(t.file_path)}`} style={{ color: "var(--text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.title || "—"}>{t.title || "—"}</Link>
-                    {t.artist && (
-                      <Link to={`/artist?name=${encodeURIComponent(t.artist)}`} style={{ color: "var(--muted)", textDecoration: "none", flexShrink: 0 }} title={`View ${t.artist}`}>· {t.artist}</Link>
-                    )}
-                  </span>
-                  <span className="lead-count">{num(t.play_count)}</span>
-                </div>
-              )) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
+              {statsQ.data.top_tracks.length ? (
+                <ShowMoreList<TopTrack>
+                  kind="tracks"
+                  initial={statsQ.data.top_tracks}
+                  initialMore={statsQ.data.top_tracks_more}
+                  row={(t, rank) => (
+                    <div key={t.file_path} className="lead-row">
+                      <span className="lead-rank">{rank}</span>
+                      <span className="lead-name" style={{ display: "flex", gap: 5, minWidth: 0 }}>
+                        <Link to={`/track?path=${encodeURIComponent(t.file_path)}`} style={{ color: "var(--text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.title || "—"}>{t.title || "—"}</Link>
+                        {t.artist && (
+                          // Shrinkable + ellipsized (was flexShrink 0): a long
+                          // artist name must never force the row wider than the
+                          // phone screen. The title keeps at least 40% of the row.
+                          <Link to={`/artist?name=${encodeURIComponent(t.artist)}`} style={{ color: "var(--muted)", textDecoration: "none", minWidth: 0, maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`View ${t.artist}`}>· {t.artist}</Link>
+                        )}
+                      </span>
+                      <span className="lead-count">{num(t.play_count)}</span>
+                    </div>
+                  )}
+                />
+              ) : <p style={{ color: "var(--muted)", fontSize: 13 }}>No plays yet.</p>}
             </div>
           </div>
           <p style={{ marginTop: 12, marginBottom: 0, fontSize: 11, color: "var(--muted)" }}>
