@@ -61,9 +61,10 @@ Open follow-ups (no plan doc yet):
 - ⬜ **Phase 5** — **Per-user association**: admin users panel mapping Navidrome users →
   playlists, Navidrome-credential player login (`nd_username` session), retire-or-keep
   `RUN_PASSWORD`, periodic playlist sync, "play everything, force tempo" toggle.
-- ⬜ Smaller deferral from Phase 2: **"queue missing in grabber" is Spotify-only** —
-  `grab_queue` is keyed on `spotify_track_id`, so missing Navidrome tracks can't be
-  queued yet.
+  Rides along (decided 2026-07-19): the Phase 2 deferral below.
+- ⬜ **"Queue missing in grabber" is Spotify-only** — `grab_queue` is keyed on
+  `spotify_track_id`, so missing Navidrome tracks can't be queued yet. Bundled into
+  Phase 5.
 
 ## Inbox candidate previews (⬜ not started)
 

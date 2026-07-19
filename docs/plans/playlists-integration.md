@@ -182,7 +182,7 @@ stays admin-only.
 | **2** ✅ | **Navidrome source**: Subsonic `getPlaylists`/`getPlaylist`, add-by-pick, sync+resolve+coverage, new/removed tracking UI. Metadata matching (not path) to sidestep multi-root fragility. Missing-track grabber-queue stays Spotify-only (grab_queue is keyed on spotify_track_id). |
 | **3** ✅ | **Run-mode integration**: `playlist=<id>` on `/api/run/queue` (pool = matched, BPM-tagged, non-disliked, non-tombstone tracks); `GET /api/run/playlists` (in `_PLAYER_ALLOWED`) with per-playlist available counts; Run-page source picker. All playlists shared to the player. |
 | **4** *(deferred)* | **Local source + "Add to playlist"** (from track pages and the Run player) — shipped together, since Local is inert without authoring. |
-| **5** *(deferred)* | **Per-user association**: admin users panel mapping Navidrome users → playlists; Navidrome player login (`nd_username` session); retire-or-keep `RUN_PASSWORD`; periodic sync; "play everything, force tempo" toggle. |
+| **5** *(deferred)* | **Per-user association**: admin users panel mapping Navidrome users → playlists; Navidrome player login (`nd_username` session); retire-or-keep `RUN_PASSWORD`; periodic sync; "play everything, force tempo" toggle. Also rides along (decided 2026-07-19): **grabber-queueing missing tracks from non-Spotify playlists** — `grab_queue` is keyed on `spotify_track_id`, so Navidrome/Local missing tracks need a source-agnostic enqueue path (cf. the Deezer-suggestions enqueue in `web/api/suggestions.py`, which already solves the no-Spotify-id dedupe problem). |
 
 Recommended first build: **Phase 1** — it's pure backend groundwork that keeps Spotify
 working while unlocking every other source.
