@@ -179,6 +179,7 @@ npm ci
 npm run dev        # Vite dev server (proxies the API)
 npm run typecheck  # tsc --noEmit
 npm run build      # emits frontend/dist (what Flask serves)
+npm test           # vitest component suite (src/**/*.test.tsx)
 ```
 
 ### Tests & lint
@@ -186,6 +187,7 @@ npm run build      # emits frontend/dist (what Flask serves)
 ```bash
 pytest -q                    # backend suite (pytest.ini sets pythonpath)
 ruff check bpm_tagger/ tests/
+cd frontend && npm test      # frontend suite (vitest) — required gate alongside typecheck/build
 ```
 
 ### CI & publishing
