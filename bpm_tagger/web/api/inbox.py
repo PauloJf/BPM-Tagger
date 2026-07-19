@@ -6,15 +6,49 @@ the user's query). skip marks it skipped.
 """
 
 import logging
+import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
+from ...integrations import deezer_catalog
 from ..auth import _check_csrf, login_required
 from ..state import state
 
 log = logging.getLogger(__name__)
 
 inbox_bp = Blueprint("api_inbox", __name__)
+
+# Lazy preview-URL resolution: Deezer preview links (cdns-preview-*.dzcdn.net) are
+# not immortal, so we resolve them on first click rather than storing them at search
+# time — and cache the result briefly so repeated clicks / re-renders don't re-hit
+# Deezer. Same lock-guarded, oldest-expiring-eviction style as the related cache in
+# web/api/suggestions.py. Empty results are cached too, so a track with no preview
+# isn't re-queried on every click.
+_PREVIEW_TTL = 3600.0          # seconds; Deezer preview URLs live comfortably longer
+_PREVIEW_CACHE_MAX = 500
+_cand_preview_cache: dict[int, tuple[float, str]] = {}   # cand_id -> (expires_at, url)
+_preview_lock = threading.Lock()
+
+
+def _cache_get(cache: dict, key) -> "str | None":
+    with _preview_lock:
+        ent = cache.get(key)
+        if not ent:
+            return None
+        expires_at, url = ent
+        if expires_at < time.monotonic():
+            cache.pop(key, None)
+            return None
+        return url
+
+
+def _cache_put(cache: dict, key, url: str) -> None:
+    with _preview_lock:
+        if len(cache) >= _PREVIEW_CACHE_MAX and key not in cache:
+            oldest = min(cache, key=lambda k: cache[k][0])
+            cache.pop(oldest, None)
+        cache[key] = (time.monotonic() + _PREVIEW_TTL, url)
 
 
 def _grabber():
@@ -125,3 +159,26 @@ def skip(item_id):
         return err
     db.transition(item_id, "skipped", "skipped from inbox")
     return jsonify(ok=True)
+
+
+@inbox_bp.route("/api/inbox/candidates/<int:cand_id>/preview")
+@login_required
+def candidate_preview(cand_id):
+    """Resolve a Deezer candidate's 30-second preview URL on demand (see the
+    lazy-resolution note at the top of the module). GET, no CSRF; the page is
+    already behind GrabberGate, so no grabber-enabled check is needed.
+
+    Non-Deezer candidates (yt-dlp etc.) and Deezer tracks with no preview return
+    a uniform 200-with-empty, matching the quiet-failure convention of
+    /api/related/*."""
+    cand = state().db.get_grab_candidate(cand_id)
+    if not cand:
+        return jsonify(error="not_found"), 404
+    dz_id = cand["provider_track_id"] or ""
+    if cand["provider"] != "deezer" or not dz_id:
+        return jsonify(preview_url="", dz_track_id="")
+    url = _cache_get(_cand_preview_cache, cand_id)
+    if url is None:
+        url = deezer_catalog.track_preview_url(dz_id)
+        _cache_put(_cand_preview_cache, cand_id, url)
+    return jsonify(preview_url=url, dz_track_id=dz_id)

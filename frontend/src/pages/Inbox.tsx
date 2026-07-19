@@ -7,6 +7,7 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
 import GrabberGate from "../components/GrabberGate";
 import EmptyState from "../components/EmptyState";
+import { PreviewButton } from "../components/trackBits";
 
 function durationDelta(itemMs: number | null, candMs: number | null): string {
   if (!itemMs || !candMs) return "—";
@@ -50,6 +51,26 @@ function CandidateCard({ cand, item, onChoose, busy }: {
           Δ {delta}
         </span>
         <div style={{ flex: 1 }} />
+        {cand.provider === "deezer" && cand.provider_track_id ? (
+          <PreviewButton
+            track={{ dz_track_id: cand.provider_track_id, title: cand.title || "", artist: cand.artist || "" }}
+            resolveUrl={() =>
+              api.get<{ preview_url: string }>(`/api/inbox/candidates/${cand.id}/preview`).then((r) => r.preview_url)}
+          />
+        ) : cand.url ? (
+          <a
+            className="btn btn-bare btn-sm"
+            href={cand.url}
+            target="_blank"
+            rel="noreferrer"
+            title="Open source page"
+            style={{ padding: "2px 6px", color: "var(--muted)" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 5h5v5M19 5l-8 8M11 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" />
+            </svg>
+          </a>
+        ) : null}
         <button className="btn btn-bare btn-sm" onClick={() => setOpen((o) => !o)}>{open ? "Hide" : "Details"}</button>
         <button className="btn btn-primary btn-sm" disabled={busy} onClick={onChoose}>Choose</button>
       </div>

@@ -223,3 +223,19 @@ def track_isrc(dz_track_id: str) -> str:
         log.debug("Deezer track ISRC lookup failed for %s: %s", dz_track_id, exc)
         return ""
     return (d.get("isrc") or "").upper()
+
+
+def track_preview_url(dz_track_id: str) -> str:
+    """The 30-second preview MP3 URL for a Deezer track id, "" on failure
+    or when Deezer has no preview for the track.
+
+    Same ``track/{id}`` endpoint as ``track_isrc()`` — kept separate because the
+    call sites differ and both are cheap + cached upstream."""
+    if not dz_track_id:
+        return ""
+    try:
+        d = _get(f"track/{dz_track_id}")
+    except Exception as exc:
+        log.debug("Deezer preview lookup failed for %s: %s", dz_track_id, exc)
+        return ""
+    return d.get("preview") or ""

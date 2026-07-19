@@ -2,7 +2,7 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **planned 2026-07-19, not started.**
+Status: **🔶 in progress 2026-07-19 — Part A shipped (Unreleased); Part B next.**
 Written to be built by a coding agent without further context — every touched file,
 signature, and edge case is spelled out. Read "What already exists" first: most of the
 machinery shipped with the Suggestions page (v2.5.0) and must be reused, not rebuilt.
@@ -53,7 +53,7 @@ the primary provider, this covers most inbox decisions.
 
 ---
 
-## Part A — candidate previews
+## Part A — candidate previews ✅
 
 ### A1. `integrations/deezer_catalog.py` — one new function
 

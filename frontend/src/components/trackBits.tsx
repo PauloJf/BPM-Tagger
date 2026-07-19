@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
 import { usePlayer, type PlayerTrack } from "../lib/player";
@@ -86,11 +87,19 @@ export const ArrowIcon = () => (
 /** A 30-second Deezer preview toggle for any track row carrying a preview_url.
  *  Runs through the normal ducking player: starting one while music plays fades
  *  the queue down and auto-resumes when the clip ends. The clip is ephemeral —
- *  it never persists into the saved queue. */
-export function PreviewButton({ track }: {
-  track: { dz_track_id: string; title: string; artist?: string; preview_url: string };
+ *  it never persists into the saved queue.
+ *
+ *  When the URL isn't known up front (the inbox resolves Deezer preview URLs
+ *  lazily), pass `resolveUrl` instead of `preview_url`: the first click fetches
+ *  the URL *and* starts playback (no click-twice). A resolved-but-empty result
+ *  disables the button as "No preview available". */
+export function PreviewButton({ track, resolveUrl }: {
+  track: { dz_track_id: string; title: string; artist?: string; preview_url?: string };
+  resolveUrl?: () => Promise<string>;   // lazy source, used when preview_url is absent
 }) {
   const player = usePlayer();
+  const [lazyUrl, setLazyUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const syntheticPath = `preview:dz:${track.dz_track_id}`;
   const isThis = player.isCurrent(syntheticPath);
   const playing = isThis && player.playing;
@@ -98,21 +107,41 @@ export function PreviewButton({ track }: {
   // back to the queue track, rather than pausing the clip in place and stranding
   // the ducked queue with no obvious way back to it.
   const ducking = playing && player.previewing;
+  const effectiveUrl = track.preview_url || lazyUrl;   // "" once resolved-but-empty
+  const unavailable = lazyUrl === "";
   const pt: PlayerTrack = {
     path: syntheticPath, title: track.title, artist: track.artist,
-    src: track.preview_url, ephemeral: true,
+    src: effectiveUrl || "", ephemeral: true,
   };
+
+  const onClick = () => {
+    if (loading || unavailable) return;
+    if (!effectiveUrl) {
+      // Lazy path: resolve on first click, then play the resolved URL immediately.
+      if (!resolveUrl) return;
+      setLoading(true);
+      resolveUrl()
+        .then((url) => {
+          setLazyUrl(url || "");
+          if (url) player.preview({ ...pt, src: url });
+        })
+        .catch(() => setLazyUrl(""))
+        .finally(() => setLoading(false));
+      return;
+    }
+    if (!isThis) player.preview(pt);
+    else if (ducking) player.endPreview();  // pause gesture → back to the queue
+    else player.toggle();                   // standalone clip, or resume a paused preview
+  };
+
   return (
     <button
       className="btn btn-bare btn-sm"
-      style={{ padding: "2px 6px", color: playing ? "var(--accent-2)" : "var(--muted)" }}
-      title={playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview (30s clip)"}
-      aria-label={playing ? (ducking ? "Stop preview" : "Pause preview") : "Preview"}
-      onClick={() => {
-        if (!isThis) player.preview(pt);
-        else if (ducking) player.endPreview();  // pause gesture → back to the queue
-        else player.toggle();                   // standalone clip, or resume a paused preview
-      }}
+      disabled={loading || unavailable}
+      style={{ padding: "2px 6px", color: playing ? "var(--accent-2)" : "var(--muted)", opacity: loading ? 0.5 : undefined }}
+      title={unavailable ? "No preview available" : playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview (30s clip)"}
+      aria-label={unavailable ? "No preview available" : playing ? (ducking ? "Stop preview" : "Pause preview") : "Preview"}
+      onClick={onClick}
     >
       {playing ? (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
