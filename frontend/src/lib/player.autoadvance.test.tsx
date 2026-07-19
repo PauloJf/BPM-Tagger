@@ -229,6 +229,30 @@ describe("auto-advance — slow-net full preload", () => {
     expect(pc.current?.path).toBe("/b.mp3");
     expect(audio.src.startsWith("blob:")).toBe(true);
   });
+
+  it("falls back to streaming when a preloaded blob fails to decode (Android WebView)", async () => {
+    mount();
+    act(() => pc.playQueue([A, B, C]));
+    act(() => pc.setTempoLock({ target: 150, octave: true, stretchLimitPct: 15 }));
+    await act(async () => { await flush(); await flush(); });
+
+    emit(audio, "ended");                        // advance to B, from its blob
+    expect(audio.src.startsWith("blob:")).toBe(true);
+
+    // The engine can't decode the blob → error. We must re-point at the network.
+    fa.setError(MEDIA_ERR);
+    emit(audio, "error");
+    expect(audio.src.startsWith("blob:")).toBe(false);
+    expect(audio.src).toContain("b.mp3");        // streaming the file instead
+    expect(pc.error).toBeNull();                 // no banner — recovered
+
+    // Blobs are now disabled for the session: the next advance streams directly.
+    fa.setError(null);
+    emit(audio, "ended");                        // advance to C
+    expect(pc.current?.path).toBe("/c.mp3");
+    expect(audio.src.startsWith("blob:")).toBe(false);
+    expect(audio.src).toContain("c.mp3");
+  });
 });
 
 describe("auto-advance — backgrounded / phone-locked (the run use case)", () => {

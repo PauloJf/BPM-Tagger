@@ -203,6 +203,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // URL) so they play from local memory — no boundary stalls on a slow link.
   const blobCache = useRef<Map<string, string>>(new Map());
   const prefetching = useRef<Map<string, AbortController>>(new Map());
+  // Some engines (seen on Android WebViews) won't decode a preloaded blob: URL,
+  // so the boundary errors while a fresh Rebuild (which streams over the network)
+  // plays fine. On the first such failure, give up on blobs for the rest of the
+  // session and stream instead — correctness over gaplessness. A new session
+  // re-enables it, so devices where blobs work are unaffected.
+  const blobPlaybackBroken = useRef(false);
   // Adaptive rebuffer hold: on an underrun, pause and wait for a growing amount
   // of buffered-ahead before resuming (foreground only — see beginHold).
   const rebufferHold = useRef(false);
@@ -381,6 +387,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [resumePlay]);
 
+  // The element source for a track: its own external URL, else the preloaded
+  // blob (unless blob playback proved broken on this engine), else stream it.
+  const pickSrc = useCallback((t: PlayerTrack) =>
+    t.src ?? (blobPlaybackBroken.current ? undefined : blobCache.current.get(t.path)) ?? audioUrl(t.path), []);
+
   // Load the source whenever the current track changes; seek + fade-in + auto-play as requested.
   useEffect(() => {
     const a = audioRef.current;
@@ -391,7 +402,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     syncedPath.current = null;
     if (alreadyStarted) { pendingPlay.current = false; return; }
     setError(null);
-    a.src = current.src ?? blobCache.current.get(current.path) ?? audioUrl(current.path);
+    a.src = pickSrc(current);
     a.load();
     const seekTo = seekTarget.current; seekTarget.current = null;
     const shouldPlay = pendingPlay.current; pendingPlay.current = false;
@@ -411,7 +422,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return () => a.removeEventListener("loadedmetadata", begin);
     }
     begin();
-  }, [current?.path, rampVolume]);
+  }, [current?.path, rampVolume, pickSrc]);
 
   // Tempo lock: stretch the current track onto the target BPM (pitch preserved).
   // defaultPlaybackRate too — load() resets playbackRate to it on track change,
@@ -496,7 +507,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
       a.defaultPlaybackRate = rate;   // load() resets playbackRate to this
-      a.src = track.src ?? blobCache.current.get(track.path) ?? audioUrl(track.path);
+      a.src = pickSrc(track);
       // Setting .src starts the load implicitly. We deliberately do NOT call
       // load() here: calling load()+play() synchronously inside the ended/click
       // handler makes some engines reject play() and fire spurious error events,
@@ -535,7 +546,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setPos(newPos);
     setCurrent(track);
-  }, []);
+  }, [pickSrc]);
 
   const next = useCallback((auto = false) => {
     clearPreview();                       // explicit queue action takes over (dec 6)
@@ -730,6 +741,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // through to the banner once recovery is exhausted.
       const c = currentRef.current;
       if (c && !c.ephemeral && intendedPlayingRef.current) {
+        // A preloaded blob the engine can't decode (seen on Android WebViews):
+        // the boundary errors while a network stream plays fine. Give up on
+        // blobs for the session and immediately re-point this track at the
+        // network — no retry storm, no "connecting"/"stalled" blinks.
+        if (!blobPlaybackBroken.current && (a.currentSrc || a.src).startsWith("blob:")) {
+          blobPlaybackBroken.current = true;
+          for (const ctrl of prefetching.current.values()) ctrl.abort();
+          prefetching.current.clear();
+          for (const url of blobCache.current.values()) URL.revokeObjectURL(url);
+          blobCache.current.clear();
+          setError(null);
+          a.src = audioUrl(c.path);   // stream instead of the bad blob
+          a.load();
+          a.play().catch(() => {});
+          return;
+        }
         if (document.visibilityState !== "visible") {
           // Backgrounded (locked phone): the OS paused the fetch. Resume the
           // moment the app is foregrounded — the browser reloads then.
@@ -971,7 +998,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // `intendedPlaying` holds true through stalls and boundaries, and still turns
   // the look-ahead off on a real pause / stop / queue end.
   useEffect(() => {
-    const active = tempoLock != null && intendedPlaying && order.length > 1;
+    // Skip the look-ahead entirely once blob playback proved broken on this
+    // engine — the blobs would only fail again (we stream instead).
+    const active = tempoLock != null && intendedPlaying && order.length > 1 && !blobPlaybackBroken.current;
     const wants = active ? upcomingPaths(order, pos, queue, repeat, PRELOAD_AHEAD) : [];
     const keep = new Set<string>(wants);
     if (current?.path) keep.add(current.path);   // keep the blob we may be playing from
