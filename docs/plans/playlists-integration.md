@@ -1,5 +1,7 @@
 # Plan: Multi-source Playlists (Spotify + Navidrome + Local) & Run-mode integration
 
+> Current status of all plans is tracked in [STATUS.md](STATUS.md).
+
 Status: **Phases 1–3 implemented** (2026-07-17). Phase 1: schema generalization,
 diff/upsert sync, legacy migration. Phase 2: Navidrome source (Subsonic
 `getPlaylists`/`getPlaylist`, metadata-matched coverage, source-aware add/sync API,

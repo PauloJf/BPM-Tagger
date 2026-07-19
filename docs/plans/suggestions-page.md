@@ -1,5 +1,7 @@
 # Plan: Suggested Artists & Tracks page (grabber) + Related panels
 
+> Current status of all plans is tracked in [STATUS.md](STATUS.md).
+
 Status: Parts A–C shipped in v2.5.0; Part D ("queue similar" on player bar + Run page)
 implemented in v2.5.1 (2026-07-14).
 

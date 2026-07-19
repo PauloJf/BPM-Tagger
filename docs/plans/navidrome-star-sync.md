@@ -1,5 +1,7 @@
 # Plan: Two-way star sync with Navidrome
 
+> Current status of all plans is tracked in [STATUS.md](STATUS.md).
+
 Status: implemented (v2.5.2, 2026-07-14) — schema, Subsonic client, merge driver
 (`integrations/star_sync.py`), `POST /api/settings/sync-stars`, Settings toggle +
 "Sync stars now" button, tests (`tests/test_star_sync.py`).
