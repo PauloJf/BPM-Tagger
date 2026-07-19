@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Local playlists + "Add to playlist".** Build a playlist by hand: create a **Local** playlist by name on the Playlists page, then add any library track to it from an **"Add to playlist"** button on the track's detail page or a Library row (a popover lists your local playlists, or creates a new one inline). Because a local track is on-disk by definition, added tracks count as **have** immediately — no sync, no missing tracks, nothing grabber-gated. Remove individual tracks from a Local playlist's detail page, or delete the whole playlist. Local playlists flow through the existing machinery unchanged — coverage counts, `.m3u` export, and the **Run-mode source picker** all treat them like any other source. (`docs/plans/playlists-integration.md` Phase 4.)
+
 ## v2.6.14 — 2026-07-18
 
 - **Completed downloads link into the library.** In the grabber **Queue**, a completed item's **title, artist and album** now link straight to its library **track / artist / album** pages (in-flight and failed items stay plain — they aren't filed yet).

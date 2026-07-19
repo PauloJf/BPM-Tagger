@@ -4,7 +4,7 @@ Auto-detects BPM for every track in your [Navidrome](https://www.navidrome.org/)
 
 Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia** RhythmExtractor2013, and **librosa** — so octave errors are caught automatically and disagreements are flagged for manual review.
 
-**Multi-source playlists:** watch playlists from **Spotify** and **Navidrome**, reconciled against your library (have / missing / new / removed) and usable as **Run-mode sources**. Navidrome playlists work with just your Navidrome credentials — no grabber. With the **optional Spotify grabber** (`GRABBER_ENABLED=true`) you can also add Spotify playlists by URL and **download the tracks you're missing** (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings. A **Suggestions** page recommends artists and tracks to grab next, derived from your library via the keyless Deezer catalog.
+**Multi-source playlists:** watch playlists from **Spotify** and **Navidrome**, or build your own **Local** playlists with an **"Add to playlist"** button on any track — reconciled against your library (have / missing / new / removed) and usable as **Run-mode sources**. Navidrome and Local playlists work with just your Navidrome credentials or nothing at all — no grabber. With the **optional Spotify grabber** (`GRABBER_ENABLED=true`) you can also add Spotify playlists by URL and **download the tracks you're missing** (Deezer via your own ARL, yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them into your library by a path template — with an ambiguity inbox and ntfy pings. A **Suggestions** page recommends artists and tracks to grab next, derived from your library via the keyless Deezer catalog.
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger) · Licensed under [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)
 
@@ -158,6 +158,8 @@ Every bit helps keep this project maintained and open source.
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**Unreleased** — **Local playlists + "Add to playlist".** Create a **Local** playlist by name, then add any library track to it from an **"Add to playlist"** button on the track page or a Library row. Added tracks are on-disk, so they count as **have** at once — no sync, no grabber. Remove tracks or delete the playlist anytime; Local playlists work as **Run-mode sources** and export to `.m3u` like every other source.
 
 **v2.6.14** — **Everything links into the library + layout audit.** Completed downloads in the grabber **Queue** now link their **title/artist/album** to the library's track/artist/album pages; the **track page links its album**; Add Music's **✓ in library** chip opens the matching track. A full breakpoint audit (every page, 320→1280px) fixed a long-standing collision where Tailwind's `.container` **capped every page at 768px on mid-size windows** (and broke the Run cockpit around 1000px), plus sideways scrolling on the Settings page at narrow-desktop widths, the Library **pagination** row on phones, and playlist-card cover/actions alignment.
 

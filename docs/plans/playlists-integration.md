@@ -2,12 +2,15 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Phases 1–3 implemented** (2026-07-17). Phase 1: schema generalization,
+Status: **Phases 1–4 implemented** (Phase 4: 2026-07-19). Phase 1: schema generalization,
 diff/upsert sync, legacy migration. Phase 2: Navidrome source (Subsonic
 `getPlaylists`/`getPlaylist`, metadata-matched coverage, source-aware add/sync API,
 front-end source picker + new/removed badges). Phase 3: run-queue playlist scope
 (`playlist=` param), player-readable `/api/run/playlists` + allowlist, Run-page
-source picker. Phases 4–5 proposed.
+source picker. Phase 4: Local source + "Add to playlist" (create-by-name,
+add-from-library on track pages and Library rows, per-track remove + delete;
+grabber-independent, flows through the shared coverage/m3u/run machinery unchanged).
+Phase 5 proposed.
 Supersedes the earlier "native playlist object" draft: we **reuse and generalize the
 existing Playlists section** instead of building a parallel system.
 
@@ -38,6 +41,19 @@ Per playlist track, the state is simply: **we have it and can play it**, or **we
   adds Navidrome playlists with the admin's **own** Subsonic creds, so `getPlaylists`
   returns the admin's own + public playlists — no "read another user's playlist by
   username under multi-library" problem until per-user association actually lands.
+- **Phase 5 auth = local player users, NOT Navidrome logins** (decided 2026-07-19).
+  Player accounts live in BPM Tagger's own DB (username + password hash, reusing the
+  `auth.py` hashing already used for `RUN_PASSWORD`), each associated with playlists
+  or flagged full-access. Navidrome credentials are never relayed or validated;
+  playlists keep being read with the admin's Subsonic creds — so the multi-library
+  username problem **never exists** and login works with Navidrome down. Trade-off
+  accepted: no road to per-user scrobbling/stars (plays stay attributed to the admin
+  account, as today); an optional "link to Navidrome user" field can come later.
+  Corollaries: **library/starred run sources are full-access-only** (a
+  playlist-restricted user gets only their playlists, including on the default
+  no-playlist `/api/run/queue` pool); playlist association is an **organizational
+  boundary, not a security one** — media streaming stays path-validated only (note
+  this in code).
 
 ## The hard rule (unchanged)
 
@@ -181,8 +197,8 @@ stays admin-only.
 | **1** ✅ | Schema generalization (rebuild + `source`), diff/upsert sync, membership tracking (new/removed tombstones). Spotify behavior preserved; 352 tests + ruff green. |
 | **2** ✅ | **Navidrome source**: Subsonic `getPlaylists`/`getPlaylist`, add-by-pick, sync+resolve+coverage, new/removed tracking UI. Metadata matching (not path) to sidestep multi-root fragility. Missing-track grabber-queue stays Spotify-only (grab_queue is keyed on spotify_track_id). |
 | **3** ✅ | **Run-mode integration**: `playlist=<id>` on `/api/run/queue` (pool = matched, BPM-tagged, non-disliked, non-tombstone tracks); `GET /api/run/playlists` (in `_PLAYER_ALLOWED`) with per-playlist available counts; Run-page source picker. All playlists shared to the player. |
-| **4** *(deferred)* | **Local source + "Add to playlist"** (from track pages and the Run player) — shipped together, since Local is inert without authoring. |
-| **5** *(deferred)* | **Per-user association**: admin users panel mapping Navidrome users → playlists; Navidrome player login (`nd_username` session); retire-or-keep `RUN_PASSWORD`; periodic sync; "play everything, force tempo" toggle. Also rides along (decided 2026-07-19): **grabber-queueing missing tracks from non-Spotify playlists** — `grab_queue` is keyed on `spotify_track_id`, so Navidrome/Local missing tracks need a source-agnostic enqueue path (cf. the Deezer-suggestions enqueue in `web/api/suggestions.py`, which already solves the no-Spotify-id dedupe problem). |
+| **4** ✅ | **Local source + "Add to playlist"** — create a Local playlist by name (`source='local'`, no external id); add library tracks from track pages and Library rows (each add sets `match_status='have'` + `matched_file_path` directly); remove tracks (explicit hard-delete) and delete playlists. Flows through the existing coverage / m3u / run-source machinery unchanged; nothing grabber-gated (no sync, no missing tracks). The Run *player* itself was intentionally left without an add button. |
+| **5** *(deferred)* | **Per-user access via local player users** (decided 2026-07-19; supersedes the earlier Navidrome-login / `nd_username` idea — see Locked decisions): `players` table (`username`, `password_hash`, `full_access`) + `player_playlists` join table; login tries admin password then player users, session carries the player id; `GET /api/run/playlists` filters to the user's playlists (all when full-access); `/api/run/queue` verifies playlist membership and gates the library/starred pools to full-access users; Settings → Users admin panel (create/delete, reset password, full-access toggle, playlist checkboxes); `RUN_PASSWORD` retires or becomes a shared "guest" user. Plus: periodic playlist sync; "play everything, force tempo" toggle. Also rides along: **grabber-queueing missing tracks from non-Spotify playlists** — `grab_queue` is keyed on `spotify_track_id`, so Navidrome/Local missing tracks need a source-agnostic enqueue path (cf. the Deezer-suggestions enqueue in `web/api/suggestions.py`, which already solves the no-Spotify-id dedupe problem). |
 
 Recommended first build: **Phase 1** — it's pure backend groundwork that keeps Spotify
 working while unlocking every other source.
@@ -193,7 +209,8 @@ working while unlocking every other source.
 
 - Navidrome `getPlaylists`/`getPlaylist` are supported by the deployed version and
   song `path`s resolve well via `_paths_match` on real data (Phase 2). (Admin's own
-  playlists → the multi-library username issue is out of scope until Phase 5.)
+  playlists only — and with Phase 5's local-users decision, per-user Subsonic reads
+  never happen, so the multi-library username issue never arises at all.)
 - The `playlists` **table rebuild** preserves all existing grabber playlists/tracks
   (Phase 1 test).
 - Diff/upsert sync preserves dates and `is_new` correctly across repeated syncs.

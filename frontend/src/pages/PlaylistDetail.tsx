@@ -51,12 +51,17 @@ export default function PlaylistDetail() {
     mutationFn: () => api.post<{ enqueued: number }>(`/api/playlists/${id}/enqueue-missing`),
     onSuccess: invalidate,
   });
+  const removeTrack = useMutation({
+    mutationFn: (ptId: number) => api.del(`/api/playlists/${id}/tracks/${ptId}`),
+    onSuccess: invalidate,
+  });
 
   const pl = tracksQ.data?.playlist;
   useTitle(pl?.name || "Playlist");
   const tracks = tracksQ.data?.tracks ?? [];
   const spotifyConnected = status.data?.spotify?.connected === true;
   const isSpotify = pl?.source === "spotify";
+  const isLocal = pl?.source === "local";
   const canSync = pl?.source === "navidrome" || (isSpotify && spotifyConnected);
 
   const tabs = [
@@ -87,9 +92,11 @@ export default function PlaylistDetail() {
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
         )}
-        <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync} onClick={() => sync.mutate()}>
-          {sync.isPending ? "Syncing…" : "Sync now"}
-        </button>
+        {!isLocal && (
+          <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync} onClick={() => sync.mutate()}>
+            {sync.isPending ? "Syncing…" : "Sync now"}
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
@@ -105,7 +112,9 @@ export default function PlaylistDetail() {
               <span className="chip chip--missing">✗ {pl.missing_count} missing</span>
               {pl.removed_count > 0 && <span className="chip chip--removed">− {pl.removed_count} removed</span>}
               <span className="chip chip--neutral">{pl.track_count} total</span>
-              <span className="chip chip--neutral" style={{ textTransform: "none" }}>{syncedLabel(pl.last_synced_at)}</span>
+              <span className="chip chip--neutral" style={{ textTransform: "none" }}>
+                {isLocal ? "local playlist" : syncedLabel(pl.last_synced_at)}
+              </span>
             </div>
           )}
         </div>
@@ -121,12 +130,17 @@ export default function PlaylistDetail() {
 
       <div className="tracks-table">
         {tracks.length === 0 ? (
-          <div className="tracks-row-empty">{tracksQ.isLoading ? "Loading…" : "No tracks."}</div>
+          <div className="tracks-row-empty">
+            {tracksQ.isLoading ? "Loading…"
+              : isLocal ? "No tracks yet — add tracks from a track page or the library “add to playlist” button."
+              : "No tracks."}
+          </div>
         ) : (
           tracks.map((t) => {
             // 'have' rows are matched to a local file → link into the library and
             // show its real BPM. Missing/queued/removed rows stay plain text.
             const inLib = t.derived_status === "have" && !!t.matched_file_path;
+            const label = t.title || "this track";
             const artist = t.local_artist || t.artist;
             const album = t.local_album || t.album;
             const albumArtist = t.local_album_artist || album || artist;
@@ -167,6 +181,20 @@ export default function PlaylistDetail() {
                       {dur}
                     </span>
                   ) : null}
+                  {isLocal && (
+                    <button
+                      className="btn btn-bare btn-sm"
+                      style={{ padding: "2px 4px", color: "var(--muted)" }}
+                      disabled={removeTrack.isPending}
+                      aria-label={`Remove ${label}`}
+                      title="Remove from playlist"
+                      onClick={() => { if (confirm(`Remove “${label}” from this playlist?`)) removeTrack.mutate(t.id); }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6 L6 18 M6 6 l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -14,6 +14,7 @@ import { useTitle } from "../hooks/useTitle";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { Cover, useArtwork } from "../components/Artwork";
 import RelatedPanel from "../components/RelatedPanel";
+import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
@@ -463,6 +464,12 @@ export default function TrackDetail() {
               <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
             </svg>
           </button>
+          <AddToPlaylistMenu
+            path={track.file_path}
+            className="btn btn-bare btn-sm"
+            style={{ padding: "2px 6px", color: "var(--muted)" }}
+            iconSize={14}
+          />
           <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>
             {track.analyzed_at ? track.analyzed_at.slice(0, 16).replace("T", " ") + " UTC" : ""}
           </span>

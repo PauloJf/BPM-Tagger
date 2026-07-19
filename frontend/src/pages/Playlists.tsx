@@ -32,13 +32,18 @@ function Chips({ p }: { p: Playlist }) {
   );
 }
 
-type AddBody = { url: string } | { id: string } | { source: "navidrome"; navidrome_id: string; name: string };
+type AddBody =
+  | { url: string }
+  | { id: string }
+  | { source: "navidrome"; navidrome_id: string; name: string }
+  | { source: "local"; name: string };
 
 export default function Playlists() {
   useTitle("Playlists");
   const qc = useQueryClient();
   const status = useGrabberStatus();
   const [url, setUrl] = useState("");
+  const [localName, setLocalName] = useState("");
   const [addErr, setAddErr] = useState("");
   const [browsing, setBrowsing] = useState<null | "spotify" | "navidrome">(null);
 
@@ -74,9 +79,13 @@ export default function Playlists() {
 
   const add = useMutation({
     mutationFn: (body: AddBody) => api.post("/api/playlists", body),
-    onSuccess: () => { setUrl(""); setAddErr(""); invalidate(); },
+    onSuccess: () => { setUrl(""); setLocalName(""); setAddErr(""); invalidate(); },
     onError: (e) => setAddErr(e instanceof ApiError ? e.message : "Failed to add playlist"),
   });
+  const addLocal = () => {
+    const name = localName.trim();
+    if (name) add.mutate({ source: "local", name });
+  };
   const toggle = useMutation({
     mutationFn: (v: { id: number; enabled: boolean }) => api.patch(`/api/playlists/${v.id}`, { enabled: v.enabled }),
     onSuccess: invalidate,
@@ -131,6 +140,23 @@ export default function Playlists() {
           )}
           <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => b === "navidrome" ? null : "navidrome")}>
             {browsing === "navidrome" ? "Hide Navidrome" : "Browse Navidrome"}
+          </button>
+        </div>
+
+        {/* Local playlist: a name is all it takes — tracks are added later from
+            the library (track pages / rows). No source, no sync, no grabber. */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+          <input
+            type="text"
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            placeholder="New local playlist name"
+            maxLength={120}
+            style={{ flex: 1, minWidth: 220, fontSize: 13 }}
+            onKeyDown={(e) => { if (e.key === "Enter") addLocal(); }}
+          />
+          <button className="btn btn-ghost btn-md" disabled={!localName.trim() || add.isPending} onClick={addLocal}>
+            Create local playlist
           </button>
         </div>
         {!spotifyConnected && (
@@ -219,9 +245,11 @@ export default function Playlists() {
                 {p.source === "spotify" && (
                   <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
                 )}
-                <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync(p)} onClick={() => sync.mutate(p.id)}>
-                  {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}
-                </button>
+                {p.source !== "local" && (
+                  <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync(p)} onClick={() => sync.mutate(p.id)}>
+                    {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}
+                  </button>
+                )}
                 <button className="btn btn-danger btn-sm" onClick={() => { if (confirm(`Remove "${p.name}"?`)) remove.mutate(p.id); }}>
                   Remove
                 </button>

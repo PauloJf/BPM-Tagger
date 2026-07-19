@@ -10,7 +10,7 @@ ships or a new plan lands.** Last updated: 2026-07-19 (v2.6.9).
 |---|---|---|
 | Suggestions page + Related panels + previews + queue-similar | [suggestions-page.md](suggestions-page.md) | ✅ Done (v2.5.0 / v2.5.1) |
 | Navidrome star sync | [navidrome-star-sync.md](navidrome-star-sync.md) | ✅ Done (v2.5.2); follow-ups open |
-| Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | 🔶 Phases 1–3 done; 4–5 open |
+| Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | 🔶 Phases 1–4 done; 5 open |
 | Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ⬜ Planned, not started |
 
 ---
@@ -55,12 +55,17 @@ Open follow-ups (no plan doc yet):
 - ✅ **Phase 3** — Run-mode integration: `playlist=` scope on `/api/run/queue`,
   player-readable `/api/run/playlists`, Run-page source picker. Refined through v2.6.6 –
   v2.6.9 (playlist-scoped refill, playlist top-up, playlist-vs-library behavior).
-- ⬜ **Phase 4** — **Local playlists + "Add to playlist"** (authoring from track pages
-  and the Run player; shipped together because a Local playlist is inert without an
-  authoring action).
-- ⬜ **Phase 5** — **Per-user association**: admin users panel mapping Navidrome users →
-  playlists, Navidrome-credential player login (`nd_username` session), retire-or-keep
-  `RUN_PASSWORD`, periodic playlist sync, "play everything, force tempo" toggle.
+- ✅ **Phase 4** — **Local playlists + "Add to playlist"** (2026-07-19): create a Local
+  playlist by name, add library tracks from track pages and Library rows (each add is
+  directly `have`), remove tracks / delete the playlist. Grabber-independent; reuses the
+  existing coverage / m3u / Run-source machinery unchanged. (The Run *player* was left
+  without an add button by decision.)
+- ⬜ **Phase 5** — **Per-user access via local player users** (decided 2026-07-19;
+  supersedes the Navidrome-credential-login idea): `players` + `player_playlists`
+  tables, Settings → Users admin panel, playlist-filtered `/api/run/playlists`,
+  membership check on `/api/run/queue` (library/starred pools full-access-only),
+  `RUN_PASSWORD` retired or kept as a shared guest user. Plus periodic playlist sync
+  and the "play everything, force tempo" toggle.
   Rides along (decided 2026-07-19): the Phase 2 deferral below.
 - ⬜ **"Queue missing in grabber" is Spotify-only** — `grab_queue` is keyed on
   `spotify_track_id`, so missing Navidrome tracks can't be queued yet. Bundled into

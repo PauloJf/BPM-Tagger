@@ -39,6 +39,18 @@ class PlaylistsMixin:
                                (navidrome_id,)).fetchone()
             return row["id"] if row else None
 
+    def add_local_playlist(self, name: str, image_url: str = "") -> int:
+        """Create an empty Local playlist (source='local', no external id). Tracks are
+        added by the user via add_track_to_local_playlist(); Local playlists never sync,
+        so membership changes there are explicit adds/removes, not diff tombstones."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO playlists (source, name, image_url, track_count, enabled, created_at) "
+                "VALUES ('local', ?, ?, 0, 1, ?)", (name, image_url, now))
+            conn.commit()
+            return cur.lastrowid
+
     def mark_playlist_synced(self, playlist_id: int, name: Optional[str] = None,
                              image_url: Optional[str] = None,
                              track_count: Optional[int] = None) -> None:
@@ -233,6 +245,65 @@ class PlaylistsMixin:
                 "UPDATE playlist_tracks SET match_status=?, matched_file_path=? WHERE id=?",
                 (match_status, matched_file_path, pt_id),
             )
+            conn.commit()
+
+    def _refresh_local_track_count(self, conn, playlist_id: int) -> None:
+        """Keep playlists.track_count in step with the live row count. Sync-based
+        sources stamp track_count from the source's reported total; Local has no
+        source, so its 'total' is simply however many rows the user has added."""
+        conn.execute(
+            "UPDATE playlists SET track_count = "
+            "(SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND removed_at IS NULL) "
+            "WHERE id = ?", (playlist_id, playlist_id))
+
+    def add_track_to_local_playlist(self, playlist_id: int, file_path: str) -> bool:
+        """Add a library track to a Local playlist as a directly-'have' row — a local
+        track is by definition present, so match_status/matched_file_path are set here
+        without any matching pass. The track's own file_path is the stable per-source id
+        (dedupe key), so re-adding the same track is a no-op. Returns True if a row was
+        inserted, False if it was already in the playlist. Raises ValueError if the
+        file isn't a known, non-deleted library track."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            t = conn.execute(
+                "SELECT * FROM tracks WHERE file_path = ? AND status != 'deleted'",
+                (file_path,)).fetchone()
+            if t is None:
+                raise ValueError("track not found")
+            position = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM playlist_tracks "
+                "WHERE playlist_id = ?", (playlist_id,)).fetchone()["n"]
+            # INSERT ... WHERE NOT EXISTS makes the add idempotent even if two clicks
+            # race — a second add for the same (playlist, file_path) inserts nothing.
+            cur = conn.execute("""
+                INSERT INTO playlist_tracks
+                    (playlist_id, source_track_id, spotify_track_id, position, title, artist,
+                     album, album_artist, duration_ms, isrc, track_no, disc_no, year, cover_url,
+                     added_at, norm_title, norm_artist, match_status, matched_file_path,
+                     first_seen_at, is_new, removed_at)
+                SELECT ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, 'have', ?, ?, 0, NULL
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM playlist_tracks WHERE playlist_id = ? AND source_track_id = ?)
+            """, (playlist_id, file_path, position, t["title"], t["artist"], t["album"],
+                  t["album_artist"], t["duration_ms"], t["isrc"], t["track_no"], t["disc_no"],
+                  t["year"], now, t["norm_title"], t["norm_artist"], file_path, now,
+                  playlist_id, file_path))
+            inserted = cur.rowcount > 0
+            if inserted:
+                self._refresh_local_track_count(conn, playlist_id)
+            conn.commit()
+            return inserted
+
+    def remove_playlist_track(self, pt_id: int) -> None:
+        """Hard-delete one playlist_tracks row (Local playlists: removal is an explicit
+        delete, not a sync tombstone). Refreshes the owning playlist's track_count."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT playlist_id FROM playlist_tracks WHERE id = ?", (pt_id,)).fetchone()
+            if row is None:
+                return
+            conn.execute("DELETE FROM playlist_tracks WHERE id = ?", (pt_id,))
+            self._refresh_local_track_count(conn, row["playlist_id"])
             conn.commit()
 
     def _queued_sids(self, conn) -> set:

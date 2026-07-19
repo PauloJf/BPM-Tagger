@@ -9,7 +9,7 @@ from flask import Blueprint, Response, jsonify, request
 from ...config import __version__
 from ...grabber.spotify import SpotifyError, parse_playlist_id
 from ..auth import _check_csrf, login_required
-from ..state import state
+from ..state import _assert_in_music_dir, state
 
 
 def _versions() -> dict:
@@ -64,7 +64,20 @@ def add_playlist():
     source = str(data.get("source") or "spotify").lower()
     if source == "navidrome":
         return _add_navidrome_playlist(data)
+    if source == "local":
+        return _add_local_playlist(data)
     return _add_spotify_playlist(data)
+
+
+def _add_local_playlist(data):
+    """Create an empty Local playlist. No grabber/Spotify needed — Local is authored
+    in-app by adding library tracks (see add_local_track), never synced from a source."""
+    name = str(data.get("name") or "").strip()
+    if not name:
+        return jsonify(error="A playlist name is required."), 400
+    db = state().db
+    row_id = db.add_local_playlist(name)
+    return jsonify(ok=True, playlist=db.get_playlist(row_id))
 
 
 def _add_spotify_playlist(data):
@@ -163,6 +176,47 @@ def playlist_tracks(pid):
     return jsonify(playlist=pl, tracks=tracks)
 
 
+@playlists_bp.route("/api/playlists/<int:pid>/tracks", methods=["POST"])
+@login_required
+def add_local_track(pid):
+    """Add a library track to a Local playlist (the "Add to playlist" action). Sets
+    match_status='have' directly — a local track is by definition present. Local only:
+    synced sources manage their own membership. Admin-only (not in _PLAYER_ALLOWED)."""
+    _check_csrf()
+    db = state().db
+    pl = db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    if pl.get("source") != "local":
+        return jsonify(error="Only local playlists accept manual track adds."), 400
+    data = request.get_json(force=True, silent=True) or {}
+    path = str(data.get("path") or "").strip()
+    if not path:
+        return jsonify(error="A track path is required."), 400
+    _assert_in_music_dir(path)
+    try:
+        added = db.add_track_to_local_playlist(pid, path)
+    except ValueError:
+        return jsonify(error="track_not_found"), 404
+    return jsonify(ok=True, added=added, playlist=db.get_playlist(pid))
+
+
+@playlists_bp.route("/api/playlists/<int:pid>/tracks/<int:pt_id>", methods=["DELETE"])
+@login_required
+def remove_local_track(pid, pt_id):
+    """Remove a track from a Local playlist (explicit hard-delete, with the client
+    confirming). Local only — synced sources drop tracks via their next sync."""
+    _check_csrf()
+    db = state().db
+    pl = db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    if pl.get("source") != "local":
+        return jsonify(error="Only local playlists support removing individual tracks."), 400
+    db.remove_playlist_track(pt_id)
+    return jsonify(ok=True, playlist=db.get_playlist(pid))
+
+
 @playlists_bp.route("/api/playlists/<int:pid>/export.m3u")
 @login_required
 def export_m3u(pid):
@@ -190,6 +244,8 @@ def sync_playlist(pid):
     pl = db.get_playlist(pid)
     if not pl:
         return jsonify(error="not_found"), 404
+    if pl.get("source") == "local":
+        return jsonify(error="Local playlists don't sync."), 400
     if pl.get("source") == "navidrome":
         from ...integrations.navidrome_playlists import navidrome_configured, sync_navidrome_playlist
         cfg = state().config
