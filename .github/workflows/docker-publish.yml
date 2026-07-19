@@ -51,3 +51,15 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:full
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}-full
+
+      # --- Docker Hub overview: synced from DOCKERHUB_README.md every publish.
+      #     Docker Hub caps the overview at 25,000 bytes — this step fails the
+      #     run (surfacing it in CI) if the file outgrows that again. ---
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
+          readme-filepath: ./DOCKERHUB_README.md
