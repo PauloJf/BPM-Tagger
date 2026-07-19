@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Player access simplified: Guest login + Player users.** The two overlapping halves of **Settings → Player access** are now clearly distinct roles instead of two ways to spell the same thing. The shared `RUN_PASSWORD` is presented as the **Guest login** — one password, full-library, on/off — and named accounts are **Player users**, which are now **always scoped** to the playlists you assign them (the full-access toggle is gone). A full-library non-admin login is the Guest login only; admin is unchanged. Existing named users keep working but are treated as scoped regardless of any previously-set full-access flag (assign them playlists if they had none). No database migration and no change to the `player` role, tables, or API — this is a role-clarity + UI cleanup.
+
 ## v2.7.0 — 2026-07-19
 
 - **Preview inbox candidates before choosing.** Each ambiguity-inbox candidate card gets a ▶ that plays the candidate's **30-second Deezer clip** through the ducking player — starting one while music is playing fades the queue down and auto-resumes when the clip ends, and nothing persists across a reload (same player path as the Suggestions/Related previews). A second ▶ next to the item title previews the **source track** the grabber is trying to fulfil (resolved from its ISRC via Deezer), so you can A/B the intended track against a candidate. Preview URLs are resolved lazily on first click and briefly cached — no schema change, no extra work at search time. **yt-dlp** candidates have no clip, so they show an **open-source-page** link instead; a candidate with no available Deezer preview dims to a disabled button. (`docs/plans/inbox-candidate-previews.md`.)

@@ -76,14 +76,15 @@ def test_create_player_rejects_admin_password(client, app):
 # ── login as a player user ────────────────────────────────────────────────────
 def test_player_login_and_identity(client, app):
     c, csrf = _admin(app)
-    c.post("/api/players", json={"username": "runner", "password": "runrunrun",
-                                 "full_access": True}, headers=csrf)
+    c.post("/api/players", json={"username": "runner", "password": "runrunrun"},
+           headers=csrf)
     pc, r = _login(app, username="runner", password="runrunrun")
     assert r.status_code == 200 and r.get_json()["role"] == "player"
     me = pc.get("/api/me").get_json()
     assert me["role"] == "player"
     assert me["username"] == "runner"
-    assert me["full_access"] is True
+    # Named player users are always playlist-scoped, never full-access.
+    assert me["full_access"] is False
 
 
 def test_player_login_wrong_and_disabled(client, app):
@@ -145,16 +146,20 @@ def test_restricted_player_sees_only_its_playlists(client, app, base_config):
     assert pc.get("/api/run/queue?bpm=150").status_code == 403
 
 
-def test_full_access_player_and_guest_see_everything(client, app, base_config):
+def test_named_player_is_always_scoped_even_if_full_access_requested(client, app, base_config):
+    """`full_access` is no longer honored for named users — a full-library non-admin
+    login is the shared Guest login only, so requesting it on a player is ignored."""
     c, csrf = _admin(app)
-    a = _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
-    b = _seed_playlist(base_config["db_path"], base_config["music_dir"], "b")
+    _a = _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
+    _b = _seed_playlist(base_config["db_path"], base_config["music_dir"], "b")
+    # Even asking for full_access: True yields a scoped user with no playlists.
     c.post("/api/players", json={"username": "full", "password": "fullpass1",
                                  "full_access": True}, headers=csrf)
     pc, _ = _login(app, username="full", password="fullpass1")
-    pls = pc.get("/api/run/playlists").get_json()["playlists"]
-    assert {p["id"] for p in pls} == {a, b}
-    assert pc.get("/api/run/queue?bpm=150").status_code == 200       # library pool OK
+    assert pc.get("/api/me").get_json()["full_access"] is False
+    # No playlists assigned → sees none, and the whole-library pool is forbidden.
+    assert pc.get("/api/run/playlists").get_json()["playlists"] == []
+    assert pc.get("/api/run/queue?bpm=150").status_code == 403
 
 
 def test_guest_is_full_access(app_with_guest, base_config):

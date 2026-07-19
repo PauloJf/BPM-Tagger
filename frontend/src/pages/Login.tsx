@@ -95,11 +95,11 @@ export default function Login() {
           ) : (
             <>
               <div className="login-card-title">Sign in</div>
-              <div className="login-card-sub">Admin: password only. Run user: username + password.</div>
+              <div className="login-card-sub">Admin &amp; guest: password only. Player user: username + password.</div>
               <form onSubmit={submit}>
                 <div className="login-field">
                   <label className="login-label" htmlFor="login-user">
-                    Username <span style={{ color: "var(--muted)", fontWeight: 400 }}>(run users only)</span>
+                    Username <span style={{ color: "var(--muted)", fontWeight: 400 }}>(player users only)</span>
                   </label>
                   <div className="login-input-wrap">
                     <input

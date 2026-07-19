@@ -15,7 +15,7 @@ type Saved = "" | "saving" | "ok" | "err";
 const SIDEBAR = [
   ["sec-grabber", "Grabber"],
   ["sec-password", "Password"],
-  ["sec-run-access", "Player Access"],
+  ["sec-run-access", "Player access"],
   ["sec-ntfy", "Notifications"],
   ["sec-scan", "Scan Behavior"],
   ["sec-mode", "Operating Mode"],
@@ -655,28 +655,34 @@ export default function Settings() {
             </form>
           </div>
 
-          {/* Player Access — the run-only password */}
+          {/* Player access — the shared Guest login + named Player users */}
           {(() => {
             const runEnabled = cfg?.run_password_hash === "********" || cfg?.run_password === "********";
             return (
               <div id="sec-run-access" className="settings-card card">
                 <div className="settings-card-header">
-                  <h2>Player Access</h2>
+                  <h2>Player access</h2>
                   <p>
-                    Set a second password that logs into a locked-down mode showing <strong>only the Run page</strong> —
-                    the tempo player, nothing else. Hand a phone or tablet to someone for a run without exposing your
-                    library, settings, or downloads. Leave it unset to keep the single admin login.
+                    Two ways to let someone into the locked-down mode that shows <strong>only the Run page</strong> —
+                    the tempo player, nothing else. The shared <strong>Guest login</strong> is one password with the
+                    whole library; <strong>Player users</strong> are named accounts scoped to specific playlists.
+                    Neither can reach your settings or downloads. Leave both off to keep the single admin login.
                   </p>
                 </div>
+                <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Guest login</h3>
+                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                  One shared password with full-library access — hand a phone or tablet to someone for a run without
+                  creating an account.
+                </p>
                 <div className="settings-fields">
                   <div style={{ fontSize: 12, color: runEnabled ? "var(--ok-fg)" : "var(--muted)", fontFamily: "var(--mono)" }}>
-                    {runEnabled ? "● Player access is enabled" : "○ Player access is off"}
+                    {runEnabled ? "● Guest login is enabled" : "○ Guest login is off"}
                   </div>
                 </div>
                 <form onSubmit={setRunPassword} style={{ marginTop: 12 }}>
                   <div className="settings-fields">
                     <div className="field-row">
-                      {fieldLabel(runEnabled ? "New run password" : "Run password")}
+                      {fieldLabel(runEnabled ? "New guest password" : "Guest password")}
                       <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
                     </div>
                     <div className="field-row">
@@ -685,7 +691,7 @@ export default function Settings() {
                     </div>
                     {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
                     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <SaveButton state={runPwSaved} label={runEnabled ? "Change run password" : "Enable player access"} />
+                      <SaveButton state={runPwSaved} label={runEnabled ? "Change guest password" : "Enable guest login"} />
                       {runEnabled && (
                         <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
                           Disable

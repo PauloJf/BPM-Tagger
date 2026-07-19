@@ -102,18 +102,18 @@ def api_me():
         "version": __version__,
         "csrf_token": _csrf_token(),
     }
-    # Player identity (Phase 5): a named player user reports its username + whether
-    # it's full-access, so the Run source picker can hide Whole-library/Starred from a
-    # restricted user. Admin and the shared guest are full-access with no username.
-    # (The server still gates every request regardless of what the client shows.)
+    # Player identity (Phase 5): a named player user reports its username; it is always
+    # playlist-scoped (full_access=False), so the Run source picker hides Whole-library/
+    # Starred. The shared Guest login (no player_id) and admin are full-access with no
+    # username. (The server still gates every request regardless of what the client shows.)
     if role == "player":
         pid = session.get("player_id")
         if pid is not None and st.db is not None:
             prow = st.db.get_player(pid)
             resp["username"] = prow["username"] if prow else None
-            resp["full_access"] = bool(prow["full_access"]) if prow else False
+            resp["full_access"] = False      # named player users are always scoped
         else:
-            resp["username"] = None          # shared guest (RUN_PASSWORD)
+            resp["username"] = None          # shared Guest login (RUN_PASSWORD)
             resp["full_access"] = True
     elif is_admin:
         resp["username"] = None

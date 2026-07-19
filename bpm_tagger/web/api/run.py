@@ -33,11 +33,13 @@ def _run_scope():
     """(full_access, allowed_playlist_ids) for the current session (Phase 5).
 
     ``g.player`` is set by login_required only for named player-user sessions;
-    admin and the shared guest leave it unset → full access. A restricted player
-    is scoped to the playlists it's associated with — the library/starred pool and
-    other playlists are off-limits."""
+    admin and the shared Guest login leave it unset → full access. Every named
+    player user is scoped to the playlists it's associated with — the
+    library/starred pool and other playlists are off-limits. (The legacy
+    ``full_access`` column is no longer honored: a full-library non-admin login
+    is the shared Guest login only.)"""
     p = getattr(g, "player", None)
-    if p is None or p.get("full_access"):
+    if p is None:
         return True, None
     return False, state().db.playlist_ids_for_player(p["id"])
 

@@ -4,9 +4,10 @@ import { api, ApiError } from "../lib/api";
 import type { PlayerUser, Playlist } from "../lib/types";
 import { Toggle } from "./Toggle";
 
-/** Settings → Player Access → Users (Phase 5). Admin-only CRUD for the local player
- *  accounts that log into Run mode: create/delete, reset password, full-access toggle,
- *  enable/disable, and per-user playlist scoping. */
+/** Settings → Player Access → Player users (Phase 5). Admin-only CRUD for the local
+ *  player accounts that log into Run mode: create/delete, reset password, enable/disable,
+ *  and per-user playlist scoping. Player users are always scoped to their assigned
+ *  playlists — the shared Guest login above is the only full-library non-admin login. */
 export default function PlayerUsers() {
   const qc = useQueryClient();
   const usersQ = useQuery({ queryKey: ["players"], queryFn: () => api.get<{ players: PlayerUser[] }>("/api/players") });
@@ -19,16 +20,15 @@ export default function PlayerUsers() {
   // ── create form ──
   const [nu, setNu] = useState("");
   const [np, setNp] = useState("");
-  const [nFull, setNFull] = useState(false);
   const [nIds, setNIds] = useState<number[]>([]);
   const [createErr, setCreateErr] = useState("");
 
   const createMut = useMutation({
     mutationFn: () => api.post("/api/players", {
-      username: nu, password: np, full_access: nFull, playlist_ids: nIds,
+      username: nu, password: np, playlist_ids: nIds,
     }),
     onSuccess: () => {
-      setNu(""); setNp(""); setNFull(false); setNIds([]); setCreateErr("");
+      setNu(""); setNp(""); setNIds([]); setCreateErr("");
       invalidate();
     },
     onError: (e) => setCreateErr(e instanceof ApiError ? e.message : "Failed to create user"),
@@ -40,11 +40,11 @@ export default function PlayerUsers() {
 
   return (
     <div style={{ marginTop: 18, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-      <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Run users</h3>
+      <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Player users</h3>
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-        Named accounts that sign in with a username + password. A <strong>full-access</strong> user
-        can run the whole library, starred tracks, and every playlist; a restricted user can only run
-        the playlists you check for them. (The run password above is a shared, full-access guest.)
+        Named accounts that sign in with a username + password and can only run the playlists
+        you check for them — never the whole library. (For a full-library login, use the shared
+        Guest login above.)
       </p>
 
       {/* existing users */}
@@ -61,7 +61,7 @@ export default function PlayerUsers() {
         onSubmit={(e) => { e.preventDefault(); createMut.mutate(); }}
         style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, background: "var(--surface)" }}
       >
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Add a run user</div>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Add a player user</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input
             type="text" value={nu} onChange={(e) => setNu(e.target.value)} placeholder="username"
@@ -74,13 +74,7 @@ export default function PlayerUsers() {
             style={{ flex: "1 1 160px", minWidth: 140, fontSize: 13 }}
           />
         </div>
-        <div className="field-row" style={{ marginBottom: nFull ? 0 : 10 }}>
-          <span style={{ fontSize: 13 }}>Full access <span style={{ color: "var(--muted)" }}>(library + all playlists)</span></span>
-          <Toggle on={nFull} onChange={setNFull} label="Full access" />
-        </div>
-        {!nFull && (
-          <PlaylistChecks playlists={playlists} selected={nIds} onToggle={(id) => setNIds((s) => toggleId(s, id))} />
-        )}
+        <PlaylistChecks playlists={playlists} selected={nIds} onToggle={(id) => setNIds((s) => toggleId(s, id))} />
         {createErr && <div style={{ color: "var(--err-fg)", fontSize: 12, marginTop: 8 }}>{createErr}</div>}
         <div style={{ marginTop: 12 }}>
           <button type="submit" className="btn btn-sm btn-primary" disabled={createMut.isPending}>
@@ -119,9 +113,9 @@ function UserRow({ user, playlists, onChanged }: {
         <span style={{ fontWeight: 600, fontSize: 14 }}>{user.username}</span>
         <span
           className="badge"
-          style={{ fontSize: 10, padding: "1px 7px", background: "var(--bg)", color: user.full_access ? "var(--accent-2)" : "var(--muted)" }}
+          style={{ fontSize: 10, padding: "1px 7px", background: "var(--bg)", color: "var(--muted)" }}
         >
-          {user.full_access ? "full access" : `${user.playlist_ids.length} playlist${user.playlist_ids.length === 1 ? "" : "s"}`}
+          {`${user.playlist_ids.length} playlist${user.playlist_ids.length === 1 ? "" : "s"}`}
         </span>
         {!user.enabled && <span className="badge" style={{ fontSize: 10, padding: "1px 7px", color: "var(--err-fg)" }}>disabled</span>}
         <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -130,7 +124,7 @@ function UserRow({ user, playlists, onChanged }: {
           </button>
           <button
             className="btn btn-bare btn-sm" style={{ fontSize: 12, color: "var(--err-fg)" }}
-            onClick={() => { if (confirm(`Delete run user "${user.username}"?`)) delMut.mutate(); }}
+            onClick={() => { if (confirm(`Delete player user "${user.username}"?`)) delMut.mutate(); }}
           >Delete</button>
         </span>
       </div>
@@ -138,24 +132,18 @@ function UserRow({ user, playlists, onChanged }: {
       {expand && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="field-row">
-            <span style={{ fontSize: 13 }}>Full access</span>
-            <Toggle on={user.full_access} onChange={(v) => patch.mutate({ full_access: v })} label="Full access" />
-          </div>
-          <div className="field-row">
             <span style={{ fontSize: 13 }}>Enabled</span>
             <Toggle on={user.enabled} onChange={(v) => patch.mutate({ enabled: v })} label="Enabled" />
           </div>
-          {!user.full_access && (
-            <PlaylistChecks
-              playlists={playlists}
-              selected={user.playlist_ids}
-              onToggle={(id) => patch.mutate({
-                playlist_ids: user.playlist_ids.includes(id)
-                  ? user.playlist_ids.filter((x) => x !== id)
-                  : [...user.playlist_ids, id],
-              })}
-            />
-          )}
+          <PlaylistChecks
+            playlists={playlists}
+            selected={user.playlist_ids}
+            onToggle={(id) => patch.mutate({
+              playlist_ids: user.playlist_ids.includes(id)
+                ? user.playlist_ids.filter((x) => x !== id)
+                : [...user.playlist_ids, id],
+            })}
+          />
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
             <input
               type="password" value={resetPw} onChange={(e) => setResetPw(e.target.value)}

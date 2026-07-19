@@ -1,9 +1,9 @@
 """Player-user administration (Phase 5, docs/plans/phase5-player-users.md §4).
 
-Admin-only CRUD for the local player accounts that log into Run mode. Each user is
-either full-access (library/starred + every playlist) or scoped to a set of
-playlists via player_playlists. Passwords are werkzeug hashes, exactly like the
-admin and RUN_PASSWORD credentials.
+Admin-only CRUD for the local player accounts that log into Run mode. Every player
+user is scoped to a set of playlists via player_playlists — a full-library non-admin
+login is the shared Guest login (RUN_PASSWORD) only. Passwords are werkzeug hashes,
+exactly like the admin and RUN_PASSWORD credentials.
 
 These routes are deliberately NOT in _PLAYER_ALLOWED, so the app-factory player-scope
 gate already 403s any player session before it reaches here; the in-handler
@@ -89,7 +89,9 @@ def create_player():
         return bad
     db = state().db
     try:
-        pid = db.add_player(username, _hash(password), bool(data.get("full_access")),
+        # Player users are always playlist-scoped; a full-library non-admin login
+        # is the shared Guest login (RUN_PASSWORD) only.
+        pid = db.add_player(username, _hash(password), False,
                             _clean_ids(data.get("playlist_ids")))
     except sqlite3.IntegrityError:
         return jsonify(error="That username is already taken."), 409
@@ -111,8 +113,7 @@ def patch_player(pid):
         return jsonify(error="not_found"), 404
     data = request.get_json(force=True, silent=True) or {}
     kwargs = {}
-    if "full_access" in data:
-        kwargs["full_access"] = bool(data["full_access"])
+    # `full_access` is intentionally ignored: player users are always playlist-scoped.
     if "enabled" in data:
         kwargs["enabled"] = bool(data["enabled"])
     if "playlist_ids" in data:

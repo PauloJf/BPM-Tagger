@@ -160,9 +160,10 @@ export interface Me {
   csrf_token: string;
   review_count: number;
   install_ping_ask?: boolean;
-  // Player identity (Phase 5). username is null for admin + the shared guest;
-  // full_access is true for admin/guest and full-access player users, false for a
-  // playlist-restricted user (the Run source picker hides library/starred for them).
+  // Player identity (Phase 5). username is null for admin + the shared Guest login;
+  // full_access is true only for admin and the Guest login. Named player users are
+  // always playlist-scoped (full_access false → the Run source picker hides
+  // library/starred for them).
   username?: string | null;
   full_access?: boolean;
 }
