@@ -47,6 +47,12 @@ export function rebufferHoldSeconds(stalls: number): number {
 }
 // How many upcoming tracks the run-mode look-ahead fully prefetches.
 const PRELOAD_AHEAD = 2;
+// Boundary-error recovery: a track transition on a slow/backgrounded link can
+// fire `error` on the element before the next track's data is ready. Rather than
+// declaring the file broken and stopping the run, retry the load a few times
+// (linear backoff) before surfacing a failure banner.
+const ERROR_MAX_RETRIES = 3;
+const ERROR_RETRY_MS = 600;
 /** Paths of the next `ahead` queued tracks to prefetch (skips external/preview
  *  clips, which have their own src and no library file). Pure — unit-tested. */
 export function upcomingPaths(
@@ -193,6 +199,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // An auto-advance play() was vetoed (iOS suspended/backgrounded the page at a
   // track boundary) — resume as soon as the app is visible again.
   const resumeOnShow = useRef(false);
+  // Bounded auto-retry for a transient media error at a track boundary (reset
+  // per track and on a successful play). The timer is cleared on track change.
+  const errorRetry = useRef(0);
+  const errorRetryTimer = useRef<number | null>(null);
   // Set before a setCurrent to seek the freshly-loaded track (used to restore a
   // preview's saved position) and to fade the next play in from silence.
   const seekTarget = useRef<number | null>(
@@ -648,7 +658,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onPlay = () => { setPlaying(true); setIntendedPlaying(true); setError(null); resumeOnShow.current = false; };
+    const onPlay = () => {
+      setPlaying(true); setIntendedPlaying(true); setError(null); resumeOnShow.current = false;
+      // Recovered — forget any boundary-error retries for this track.
+      errorRetry.current = 0;
+      if (errorRetryTimer.current != null) { clearTimeout(errorRetryTimer.current); errorRetryTimer.current = null; }
+    };
     const onPause = () => setPlaying(false);
     // Preview ended → resume the queue (dec 2); otherwise auto-advance.
     const onEnded = () => { setPlaying(false); if (previewSaved.current) endPreview(); else next(true); };
@@ -660,6 +675,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // genuinely missing/unsupported file — a 401 routes to the login screen.
     const onError = () => {
       setPlaying(false);
+      // Transient boundary failure while we still intend to play a real library
+      // track — the common case on a slow mobile link (the next track hadn't
+      // finished buffering at the boundary) or when a backgrounded tab's fetch
+      // was throttled. Recover instead of crying "file missing"; only fall
+      // through to the banner once recovery is exhausted.
+      const c = currentRef.current;
+      if (c && !c.ephemeral && intendedPlayingRef.current) {
+        if (document.visibilityState !== "visible") {
+          // Backgrounded (locked phone): the OS paused the fetch. Resume the
+          // moment the app is foregrounded — the browser reloads then.
+          resumeOnShow.current = true;
+          return;
+        }
+        if (errorRetry.current < ERROR_MAX_RETRIES) {
+          const attempt = errorRetry.current + 1;
+          errorRetry.current = attempt;
+          setError(null);
+          if (errorRetryTimer.current != null) clearTimeout(errorRetryTimer.current);
+          errorRetryTimer.current = window.setTimeout(() => {
+            errorRetryTimer.current = null;
+            if (!a.error || !intendedPlayingRef.current) return;   // already recovered / paused
+            a.load();                                              // clear the dead error state, re-fetch
+            a.play().catch(() => {});
+          }, ERROR_RETRY_MS * attempt);                            // 0.6s, 1.2s, 1.8s
+          return;
+        }
+      }
       const src = a.currentSrc || a.src;
       if (!src) { setError("Playback failed — the file may be missing or unsupported."); return; }
       fetch(src, { method: "HEAD", credentials: "same-origin" })
@@ -669,6 +711,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           if (r.status === 401) {
             setError("Session expired — sign in, then press play to resume.");
             notifyUnauthorized();
+          } else if (r.ok) {
+            // The file is reachable, so it wasn't missing — a decode blip or a
+            // slow-link stall we couldn't ride out. Invite a retry.
+            setError("Playback stalled — check your connection and press play to retry.");
           } else {
             setError("Playback failed — the file may be missing or unsupported.");
           }
@@ -686,6 +732,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
       a.removeEventListener("error", onError);
+      if (errorRetryTimer.current != null) { clearTimeout(errorRetryTimer.current); errorRetryTimer.current = null; }
     };
   }, [next, endPreview]);
 
@@ -797,6 +844,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     rebufferHold.current = false;
     if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
     stallCount.current = 0;
+    errorRetry.current = 0;
+    if (errorRetryTimer.current != null) { clearTimeout(errorRetryTimer.current); errorRetryTimer.current = null; }
   }, [current?.path]);
 
   // Cancel a managed hold as soon as intent flips to paused (so it never resumes).

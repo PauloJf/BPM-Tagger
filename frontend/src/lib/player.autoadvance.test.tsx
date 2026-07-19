@@ -34,6 +34,7 @@ function fakeAudio(audio: HTMLAudioElement) {
   let paused = true;
   let currentTime = 0;
   let bufferedEnd = 0;
+  let error: MediaError | null = null;
   const play = vi.fn(() => { paused = false; return Promise.resolve(); });
   const pause = vi.fn(() => { paused = true; });
   const load = vi.fn();
@@ -43,7 +44,7 @@ function fakeAudio(audio: HTMLAudioElement) {
   def("pause", { value: pause });
   def("load", { value: load });
   def("paused", { get: () => paused });
-  def("error", { get: () => null });
+  def("error", { get: () => error });
   def("duration", { get: () => 180 });
   def("currentTime", { get: () => currentTime, set: (v: number) => { currentTime = v; } });
   def("buffered", {
@@ -57,8 +58,12 @@ function fakeAudio(audio: HTMLAudioElement) {
     play, pause, load,
     setBuffered: (end: number) => { bufferedEnd = end; },
     setTime: (t: number) => { currentTime = t; },
+    setError: (e: MediaError | null) => { error = e; },
   };
 }
+
+const MEDIA_ERR = { code: 2, MEDIA_ERR_NETWORK: 2 } as unknown as MediaError;
+const ERROR_MAX_RETRIES = 3;   // mirrors the player's boundary-retry budget
 
 const emit = (audio: HTMLAudioElement, type: string) =>
   act(() => { audio.dispatchEvent(new Event(type)); });
@@ -88,7 +93,7 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => `blob:mock/${++n}`);
   URL.revokeObjectURL = vi.fn();
   global.fetch = vi.fn(() =>
-    Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(["x"])) } as unknown as Response));
+    Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) } as unknown as Response));
 });
 
 afterEach(() => cleanup());
@@ -194,6 +199,70 @@ describe("auto-advance — backgrounded / phone-locked (the run use case)", () =
     emit(audio, "ended");
     expect(pc.current?.path).toBe("/b.mp3");
     expect(audio.src.startsWith("blob:")).toBe(true);
+  });
+});
+
+describe("boundary error — transient failures recover instead of stopping the run", () => {
+  it("does not surface a banner on a transient error; auto-retries load+play (foreground)", async () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      act(() => pc.playQueue([A, B]));
+      const loadsBefore = fa.load.mock.calls.length;
+
+      // A transient media error at the boundary while we still intend to play.
+      fa.setError(MEDIA_ERR);
+      emit(audio, "error");
+      expect(pc.error).toBeNull();            // no scary "file missing" banner
+
+      // The retry fires after the backoff and reloads the element.
+      await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+      expect(fa.load.mock.calls.length).toBeGreaterThan(loadsBefore);
+
+      // It recovers — `playing` clears the error and resets the retry budget.
+      fa.setError(null);
+      emit(audio, "playing");
+      expect(pc.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("arms resume-on-show (no banner) when the error hits while backgrounded", () => {
+    mount();
+    act(() => pc.playQueue([A, B]));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+
+    fa.setError(MEDIA_ERR);
+    emit(audio, "error");
+    expect(pc.error).toBeNull();              // stays quiet while backgrounded
+
+    // Foregrounding auto-resumes without a tap.
+    fa.setError(null);
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    const playsBefore = fa.play.mock.calls.length;
+    emit(document as unknown as HTMLElement, "visibilitychange");
+    expect(fa.play.mock.calls.length).toBeGreaterThan(playsBefore);
+  });
+
+  it("surfaces a banner only after recovery is exhausted (genuinely broken file)", async () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      act(() => pc.playQueue([A, B]));
+      fa.setError(MEDIA_ERR);   // stays broken across every reload attempt
+
+      // Each reload re-fails, so re-emit `error` after each backoff window.
+      for (let i = 0; i < ERROR_MAX_RETRIES + 1; i++) {
+        emit(audio, "error");
+        await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+      }
+      // The HEAD probe (200) now classifies it as reachable-but-stalled, not a
+      // false "missing/unsupported".
+      expect(pc.error).toMatch(/Playback stalled/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
