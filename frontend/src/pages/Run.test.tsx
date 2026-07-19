@@ -45,7 +45,9 @@ vi.mock("../lib/api", () => ({
   api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn(() => Promise.resolve({})) },
   audioUrl: (p: string) => `/audio?path=${p}`,
 }));
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
+// fullAccess mirrors the real context's default (true until /api/me reports a
+// restricted player user) — the "Whole library" source option is gated on it.
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: true }) }));
 vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
