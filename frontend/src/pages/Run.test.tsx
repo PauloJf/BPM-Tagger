@@ -6,6 +6,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 // list per test via this hoisted, mutable holder.
 const h = vi.hoisted(() => ({
   role: "admin" as string | null,
+  fullAccess: true as boolean,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
   orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; fromPlaylist?: boolean }>,
   tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
@@ -13,7 +14,7 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   bufferedPct: 0,
-  runSource: null as number | null,
+  runSource: null as number | "mine" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
 }));
@@ -46,8 +47,9 @@ vi.mock("../lib/api", () => ({
   audioUrl: (p: string) => `/audio?path=${p}`,
 }));
 // fullAccess mirrors the real context's default (true until /api/me reports a
-// restricted player user) — the "Whole library" source option is gated on it.
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: true }) }));
+// restricted player user) — the "Whole library" and "All my music" source options
+// are gated on it, so tests drive it via the holder.
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess }) }));
 vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
@@ -82,6 +84,7 @@ beforeEach(() => {
   cleanup();
   localStorage.clear();
   h.role = "admin";
+  h.fullAccess = true;
   h.current = null;
   h.orderedQueue = [];
   h.tempoLock = null;
@@ -113,6 +116,32 @@ describe("Run — mobile source picker placement", () => {
     // Previously a picker sat overlaid on the cover here; there must be none now.
     expect(screen.queryByLabelText("Run source")).toBeNull();
     expect(screen.queryByTestId("queue-source")).toBeNull();
+  });
+
+  it("offers 'All my music' to a scoped player with 2+ playlists (but not 'Whole library')", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.role = "player";
+    h.fullAccess = false;
+    h.playlists = [
+      { id: 1, name: "Alpha", source: "spotify", available: 5, total: 10, image_url: null },
+      { id: 2, name: "Beta", source: "local", available: 3, total: 3, image_url: null },
+    ];
+    render(<Run />);
+    const select = screen.getByLabelText("Run source") as HTMLSelectElement;
+    const opts = Array.from(select.options).map((o) => o.textContent);
+    expect(opts).toContain("All my music");
+    expect(opts).not.toContain("Whole library");   // scoped players never get it
+  });
+
+  it("hides 'All my music' when a scoped player has only one playlist", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.role = "player";
+    h.fullAccess = false;
+    h.playlists = [{ id: 1, name: "Alpha", source: "spotify", available: 5, total: 10, image_url: null }];
+    render(<Run />);
+    const select = screen.getByLabelText("Run source") as HTMLSelectElement;
+    const opts = Array.from(select.options).map((o) => o.textContent);
+    expect(opts).not.toContain("All my music");
   });
 
   it("still offers the source picker pre-run (nothing playing yet)", () => {

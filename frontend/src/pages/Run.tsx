@@ -361,18 +361,22 @@ export default function Run() {
   const runPlaylists = runPlaylistsQ.data?.playlists ?? [];
   const selectedPlaylistId = source.startsWith("pl:") ? Number(source.slice(3)) : null;
   const selectedPlaylist = runPlaylists.find((p) => p.id === selectedPlaylistId) ?? null;
+  // "All my music": the pooled source — every playlist a scoped player may run,
+  // unioned server-side. Offered only to scoped players with 2+ playlists (below).
+  const pooled = source === "mine";
   // A stored selection that no longer exists (deleted playlist) falls back to library.
   useEffect(() => {
     if (selectedPlaylistId != null && runPlaylistsQ.data && !selectedPlaylist) setSource("library");
   }, [selectedPlaylistId, runPlaylistsQ.data, selectedPlaylist]);
   // A restricted (non-full-access) player can't run the whole library — it 403s.
   // If they're on "library" (or a now-missing playlist), snap to their first
-  // playlist so the picker never offers a source the server will refuse.
+  // playlist so the picker never offers a source the server will refuse. "mine"
+  // (the pooled source) is a valid scoped source, so it's left alone.
   useEffect(() => {
     if (fullAccess || !runPlaylistsQ.data) return;
-    const validPl = selectedPlaylistId != null && selectedPlaylist;
-    if (!validPl && runPlaylists.length > 0) setSource(`pl:${runPlaylists[0].id}`);
-  }, [fullAccess, runPlaylistsQ.data, selectedPlaylistId, selectedPlaylist, runPlaylists]);
+    const validSource = pooled || (selectedPlaylistId != null && !!selectedPlaylist);
+    if (!validSource && runPlaylists.length > 0) setSource(`pl:${runPlaylists[0].id}`);
+  }, [fullAccess, runPlaylistsQ.data, pooled, selectedPlaylistId, selectedPlaylist, runPlaylists]);
   // Disliked tracks are excluded server-side from future queue builds, so they
   // never appear in a fresh queueInfo — this only tracks what got disliked
   // *this session* on a track that's already sitting in the current queue.
@@ -462,13 +466,15 @@ export default function Run() {
     setBuilding(true);
     setBuildErr("");
     try {
-      const scope = selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
+      const scope = pooled ? "&playlist=mine" : selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
       const forceArg = force ? "&force=1" : "";
       const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}${forceArg}`);
       setQueueInfo(resp);
       if (!resp.tracks.length) {
         setBuildErr(selectedPlaylist
           ? `No tracks in "${selectedPlaylist.name}" match this BPM — widen the tolerance in Settings, pick another target, or choose a different source.`
+          : pooled
+          ? "None of your playlists have a track matching this BPM — widen the tolerance in Settings or pick another target."
           : "No tracks match this BPM — widen the tolerance in Settings or pick another target.");
         return;
       }
@@ -477,7 +483,7 @@ export default function Run() {
         0, { shuffle: false },
       );
       // Pin the run's source so the mid-run auto-refill stays scoped to it.
-      player.setRunSource(selectedPlaylistId);
+      player.setRunSource(pooled ? "mine" : selectedPlaylistId);
       player.setTempoLock(lockOn ? liveLock : null);
     } catch (e) {
       setBuildErr(e instanceof Error ? e.message : "Failed to build the queue");
@@ -672,6 +678,9 @@ export default function Run() {
           style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 260 }}
         >
           {fullAccess && <option value="library">Whole library</option>}
+          {/* Pooled source: only for a scoped player with more than one playlist
+              (with a single playlist it would just duplicate that playlist). */}
+          {!fullAccess && runPlaylists.length > 1 && <option value="mine">All my music</option>}
           {runPlaylists.map((p) => (
             <option key={p.id} value={`pl:${p.id}`}>{p.name} ({p.available})</option>
           ))}
@@ -682,6 +691,11 @@ export default function Run() {
           {selectedPlaylist.available === 0
             ? "No runnable tracks here — none matched a local file with a detected BPM."
             : `${selectedPlaylist.available} of ${selectedPlaylist.total} tracks available for runs`}
+        </div>
+      )}
+      {pooled && (
+        <div style={{ textAlign: "center", fontSize: 11, color: "var(--muted)" }}>
+          Running across all {runPlaylists.length} of your playlists
         </div>
       )}
     </div>
@@ -1084,11 +1098,12 @@ export default function Run() {
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
             const isCurrentRow = i === player.orderPos;
-            // In a playlist run, tracks added to fill the queue from the library
-            // (not in the playlist itself) are dimmed + italic so they read as
-            // clearly secondary to the playlist's own tracks. The playing row is
-            // kept full-opacity so "now playing" is never the faded one.
-            const fromLibrary = player.runSource != null && t.fromPlaylist === false;
+            // In a single-playlist run, tracks added to fill the queue from the
+            // library (not in the playlist itself) are dimmed + italic so they read
+            // as clearly secondary to the playlist's own tracks. A pooled ("mine")
+            // or whole-library run has no such distinction, so nothing is dimmed.
+            // The playing row is kept full-opacity so "now playing" is never faded.
+            const fromLibrary = player.runSource != null && player.runSource !== "mine" && t.fromPlaylist === false;
             return (
               <div key={`${t.path}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
                 {starred !== undefined && (

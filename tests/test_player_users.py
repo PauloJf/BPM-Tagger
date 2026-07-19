@@ -166,6 +166,22 @@ def test_restricted_player_topup_stays_in_scope(client, app, base_config):
     assert paths and all(p.endswith("/mine.mp3") for p in paths)
 
 
+def test_pooled_source_runs_union_of_players_playlists(client, app, base_config):
+    """`playlist=mine` pools every playlist the scoped player may run — and nothing
+    else. Tracks from both assigned playlists appear; an out-of-scope one never does."""
+    c, csrf = _admin(app)
+    a = _seed_playlist(base_config["db_path"], base_config["music_dir"], "a", bpm=150.0)
+    b = _seed_playlist(base_config["db_path"], base_config["music_dir"], "b", bpm=150.0)
+    _out = _seed_playlist(base_config["db_path"], base_config["music_dir"], "out", bpm=150.0)
+    c.post("/api/players", json={"username": "runner", "password": "runrunrun",
+                                 "playlist_ids": [a, b]}, headers=csrf)
+    pc, _ = _login(app, username="runner", password="runrunrun")
+    r = pc.get("/api/run/queue?bpm=150&count=20&playlist=mine")
+    assert r.status_code == 200
+    names = {p.rsplit("/", 1)[-1] for p in (t["path"] for t in r.get_json()["tracks"])}
+    assert names == {"a.mp3", "b.mp3"}      # both assigned playlists, never out.mp3
+
+
 def test_named_player_is_always_scoped_even_if_full_access_requested(client, app, base_config):
     """`full_access` is no longer honored for named users — a full-library non-admin
     login is the shared Guest login only, so requesting it on a player is ignored."""

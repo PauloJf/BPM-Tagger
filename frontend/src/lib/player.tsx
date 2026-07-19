@@ -88,8 +88,10 @@ interface PlayerState {
   // The run's source scope: a playlist id, or null for the whole library. Set
   // by the Run page on Start so the mid-run auto-refill stays inside the chosen
   // source instead of drifting back to the whole library.
-  runSource: number | null;
-  setRunSource(id: number | null): void;
+  // A playlist id, the "mine" pooled source (all of a scoped player's playlists),
+  // or null for the whole library.
+  runSource: number | "mine" | null;
+  setRunSource(id: number | "mine" | null): void;
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
@@ -123,7 +125,7 @@ interface SavedPlayer {
   shuffle: boolean; repeat: RepeatMode; volume: number;
   time?: number; playing?: boolean;
   tempoLock?: TempoLock | null;
-  runSource?: number | null;
+  runSource?: number | "mine" | null;
 }
 
 function loadSaved(): SavedPlayer | null {
@@ -208,9 +210,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [tempoLock, setTempoLock] = useState<TempoLock | null>(() => saved?.tempoLock ?? null);
   // Run source scope (playlist id | null). Mirrored to a ref so the auto-refill
   // effect can read it without adding a dependency that would re-fire it.
-  const [runSource, setRunSourceState] = useState<number | null>(() => saved?.runSource ?? null);
+  const [runSource, setRunSourceState] = useState<number | "mine" | null>(() => saved?.runSource ?? null);
   const runSourceRef = useRef(runSource);
-  const setRunSource = useCallback((id: number | null) => {
+  const setRunSource = useCallback((id: number | "mine" | null) => {
     runSourceRef.current = id;
     setRunSourceState(id);
   }, []);
@@ -415,7 +417,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Keep the refill inside the run's source: pass the playlist scope so a
     // playlist run reshuffles its own tracks (server's `recycled` fallback) once
     // the unplayed matches run out, instead of pulling from the whole library.
-    const body: { bpm: number; exclude: string[]; playlist?: number } = { bpm: tempoLock.target, exclude };
+    const body: { bpm: number; exclude: string[]; playlist?: number | "mine" } = { bpm: tempoLock.target, exclude };
     if (runSourceRef.current != null) body.playlist = runSourceRef.current;
     api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number; starred?: boolean; from_playlist?: boolean }[] }>(
       "/api/run/queue", body)

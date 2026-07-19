@@ -74,9 +74,13 @@ def api_run_queue():
         exclude_set = set()
 
     # Optional playlist scope: restrict the candidate pool to that playlist's
-    # matched local tracks instead of the whole library.
+    # matched local tracks instead of the whole library. The "mine" sentinel is the
+    # pooled source — every playlist the session may run, unioned (Phase 5); it flows
+    # through the playlist_id-None branch of _build, which for a scoped player draws
+    # from its own playlists (never the whole library).
     playlist_id = None
-    if playlist_raw not in (None, "", "library"):
+    pooled = str(playlist_raw).lower() == "mine"
+    if not pooled and playlist_raw not in (None, "", "library"):
         try:
             playlist_id = int(playlist_raw)
         except (ValueError, TypeError):
@@ -84,10 +88,11 @@ def api_run_queue():
         if not st.db.get_playlist(playlist_id):
             return jsonify(error="playlist not found"), 404
 
-    # Per-user scope (Phase 5): a restricted player may only run its own playlists,
-    # never another playlist and never the whole-library / starred pool (no playlist).
+    # Per-user scope (Phase 5): a restricted player may only run its own playlists —
+    # one at a time, or all of them pooled via "mine" — never another playlist and
+    # never the whole-library / starred pool (no playlist).
     full, allowed = _run_scope()
-    if not full:
+    if not full and not pooled:
         if playlist_id is None:
             return jsonify(error="forbidden"), 403
         if playlist_id not in allowed:
