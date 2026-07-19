@@ -505,11 +505,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.load();
       a.playbackRate = rate;
       a.volume = volumeRef.current;
+      const startSrc = a.src;   // identity for "is this still the track we started?"
       a.play().catch(() => {
-        // Vetoed (page suspended at the boundary) — retry when visible again.
-        // Skip if the queue has already moved on (e.g. rapid next presses).
-        const { queue, order, pos } = nav.current;
-        if (queue[order[pos]]?.path === track.path) resumeOnShow.current = true;
+        // A boundary play() can be rejected even though the element loads fine:
+        // calling load()+play() synchronously inside the `ended`/click handler
+        // throws AbortError ("interrupted by a call to load()") on some engines
+        // because load()'s async steps haven't settled — the track buffers to
+        // `canplay` but never starts (a blink, then silence). It can also be a
+        // genuine autoplay veto on a suspended page. Handle both: retry once the
+        // element can actually play (foreground), or arm resume-on-show
+        // (backgrounded). Bail if the queue moved on (a.src changed).
+        if (a.src !== startSrc) return;                     // superseded by a newer track
+        if (document.visibilityState !== "visible") { resumeOnShow.current = true; return; }
+        const tryPlay = () => {
+          if (a.src === startSrc && intendedPlayingRef.current) {
+            a.play().catch(() => { if (a.src === startSrc) resumeOnShow.current = true; });
+          }
+        };
+        // If the element is already playable, canplay may have fired before this
+        // rejection — retry now; otherwise wait for it.
+        if (a.readyState >= 3 /* HAVE_FUTURE_DATA */) { tryPlay(); return; }
+        const retry = () => { a.removeEventListener("canplay", retry); tryPlay(); };
+        a.addEventListener("canplay", retry);
       });
       syncedPath.current = track.path;
     } else {

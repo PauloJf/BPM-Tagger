@@ -35,7 +35,12 @@ function fakeAudio(audio: HTMLAudioElement) {
   let currentTime = 0;
   let bufferedEnd = 0;
   let error: MediaError | null = null;
-  const play = vi.fn(() => { paused = false; return Promise.resolve(); });
+  let readyState = 0;
+  let playFailsLeft = 0;
+  const play = vi.fn(() => {
+    if (playFailsLeft > 0) { playFailsLeft -= 1; return Promise.reject(new DOMException("interrupted by load()", "AbortError")); }
+    paused = false; return Promise.resolve();
+  });
   const pause = vi.fn(() => { paused = true; });
   const load = vi.fn();
   const def = (name: string, spec: PropertyDescriptor) =>
@@ -45,6 +50,7 @@ function fakeAudio(audio: HTMLAudioElement) {
   def("load", { value: load });
   def("paused", { get: () => paused });
   def("error", { get: () => error });
+  def("readyState", { get: () => readyState });
   def("duration", { get: () => 180 });
   def("currentTime", { get: () => currentTime, set: (v: number) => { currentTime = v; } });
   def("buffered", {
@@ -59,6 +65,8 @@ function fakeAudio(audio: HTMLAudioElement) {
     setBuffered: (end: number) => { bufferedEnd = end; },
     setTime: (t: number) => { currentTime = t; },
     setError: (e: MediaError | null) => { error = e; },
+    setReady: (n: number) => { readyState = n; },
+    failNextPlays: (n: number) => { playFailsLeft = n; },
   };
 }
 
@@ -111,6 +119,36 @@ describe("auto-advance — normal play", () => {
     expect(pc.current?.path).toBe("/b.mp3");
     expect(audio.src).toContain("b.mp3");
     expect(fa.play.mock.calls.length).toBeGreaterThan(playsBefore);
+  });
+
+  it("retries play on canplay when the boundary play() is interrupted (loads but won't start)", async () => {
+    // The "blinks buffering but doesn't start" bug: load()+play() synchronously
+    // at the boundary rejects with AbortError on some engines; the track reaches
+    // canplay but never plays. goToPos must retry play() on canplay.
+    mount();
+    act(() => pc.playQueue([A, B]));
+    fa.failNextPlays(1);                       // the advance play() rejects once
+    const playsBefore = fa.play.mock.calls.length;
+    emit(audio, "ended");                      // advance → goToPos → play() rejects
+    await act(async () => { await flush(); }); // let the rejection microtask arm the retry
+    emit(audio, "canplay");                     // element is now playable
+    await act(async () => { await flush(); });
+    expect(fa.play.mock.calls.length).toBeGreaterThan(playsBefore + 1);   // retried
+    expect(pc.current?.path).toBe("/b.mp3");
+  });
+
+  it("retries immediately (no canplay) when the element is already playable at rejection", async () => {
+    // Race guard: if canplay already fired before the rejection microtask, the
+    // retry must not depend on a future canplay — it checks readyState.
+    mount();
+    act(() => pc.playQueue([A, B]));
+    fa.failNextPlays(1);
+    fa.setReady(4);                            // HAVE_ENOUGH_DATA — canplay already passed
+    const playsBefore = fa.play.mock.calls.length;
+    emit(audio, "ended");
+    await act(async () => { await flush(); }); // rejection microtask retries right away
+    expect(fa.play.mock.calls.length).toBeGreaterThan(playsBefore + 1);
+    expect(pc.current?.path).toBe("/b.mp3");
   });
 
   it("calls load() on advance so the new source actually starts fetching", () => {
