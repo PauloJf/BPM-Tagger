@@ -159,7 +159,7 @@ Every bit helps keep this project maintained and open source.
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
 
-**v2.6.14** — **Everything links into the library + mobile polish.** Completed downloads in the grabber **Queue** now link their **title/artist/album** to the library's track/artist/album pages; the **track page links its album**; Add Music's **✓ in library** chip opens the matching track. A phone-width audit of every page fixed the last sideways-scroll case (the Library **pagination** row now wraps).
+**v2.6.14** — **Everything links into the library + layout audit.** Completed downloads in the grabber **Queue** now link their **title/artist/album** to the library's track/artist/album pages; the **track page links its album**; Add Music's **✓ in library** chip opens the matching track. A full breakpoint audit (every page, 320→1280px) fixed a long-standing collision where Tailwind's `.container` **capped every page at 768px on mid-size windows** (and broke the Run cockpit around 1000px), plus sideways scrolling on the Settings page at narrow-desktop widths, the Library **pagination** row on phones, and playlist-card cover/actions alignment.
 
 **v2.6.13** — **One-screen Run layout + Stats polish.** The phone Run page is now a fixed-height flex layout: the **cover flexes to the leftover height** and the page **never scrolls** — native-player feel in browser and installed PWA, safe areas and iOS/Android accounted for by construction (no more hand-tuned viewport math). Play count is desktop-only on the Run page. Stats: **Most played** now pages — 15 rows per list with **Show more** for the rest — and a long title/artist no longer forces the phone page to scroll sideways.
 

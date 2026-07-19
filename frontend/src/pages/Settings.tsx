@@ -502,7 +502,9 @@ export default function Settings() {
                     if (!grabberStatus.data?.enabled)
                       return <span style={{ color: "var(--muted)", fontSize: 13 }}>Enable + restart first</span>;
                     if (!sp?.configured)
-                      return <span style={{ color: "var(--warn-fg)", fontSize: 13 }}>Set SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI</span>;
+                      // overflowWrap: the env-var run is one unbreakable "word"
+                      // that otherwise forces sideways scrolling on narrow screens.
+                      return <span style={{ color: "var(--warn-fg)", fontSize: 13, overflowWrap: "anywhere" }}>Set SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI</span>;
                     if (sp.connected)
                       return (
                         <>
@@ -554,7 +556,9 @@ export default function Settings() {
                   <input type="password" value={grabber.deezerArl} placeholder="ARL token"
                          onChange={(e) => setGrabber({ ...grabber, deezerArl: e.target.value })}
                          style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {/* flexWrap: quality select + Test just miss the squeezed
+                      field cell around the ~700px layout — fold, don't overflow. */}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select value={grabber.deezerQuality} onChange={(e) => setGrabber({ ...grabber, deezerQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
                       <option value="MP3_128">MP3_128 (free)</option>
                       <option value="MP3_320">MP3_320 (paid)</option>
@@ -757,7 +761,9 @@ export default function Settings() {
                 </div>
                 <div className="field-row">
                   {fieldLabel("BPM range", "Plausibility window for octave correction")}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* flexWrap: two fixed 78px inputs just miss the squeezed
+                      field cell around the ~700px layout — fold, don't overflow. */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <input type="number" min={20} max={300} step={1} value={scan.bpmMin} onChange={(e) => setScan({ ...scan, bpmMin: +e.target.value })} style={{ width: 78, textAlign: "center" }} />
                     <span style={{ color: "var(--muted)" }}>—</span>
                     <input type="number" min={20} max={400} step={1} value={scan.bpmMax} onChange={(e) => setScan({ ...scan, bpmMax: +e.target.value })} style={{ width: 78, textAlign: "center" }} />

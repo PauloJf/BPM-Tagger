@@ -408,6 +408,10 @@ body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--playe
   .app-sidebar { display: none; }
   /* Also outrank body.sidebar-collapsed — no sidebar means no offset. */
   body, body.sidebar-collapsed { --sidebar-w: 0px; }
+  /* The sticky top bar (app-nav / kiosk bar) now eats viewport height — the
+     Run page's desktop cover clamp subtracts this so it doesn't overflow on
+     short windows in the 901-1100px band. */
+  :root { --run-topbar: 52px; }
 }
 
 /* Player kiosk top bar. Hidden on desktop (the PlayerNav sidebar carries the
@@ -602,7 +606,10 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 }
 
 /* ── Settings layout ──────────────────────────────────────────────────────── */
-.settings-layout { display: grid; grid-template-columns: 240px 1fr; gap: 24px; }
+/* minmax(0,1fr): a bare 1fr can't shrink below its content's min-content, so
+   a wide field row pushed the whole settings column past the viewport on
+   narrow-desktop widths (~700-830px) and the page scrolled sideways. */
+.settings-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; }
 .settings-sidebar {
   position: sticky; top: 16px; align-self: flex-start;
   display: flex; flex-direction: column; gap: 2px;
@@ -621,11 +628,20 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .settings-card-header h2 { font-size: 14px; font-weight: 600; margin-bottom: 2px; color: var(--text); }
 .settings-card-header p { font-size: 12px; color: var(--muted); }
 .settings-fields { display: flex; flex-direction: column; gap: 14px; }
-.field-row { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: flex-start; }
+.field-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 18px; align-items: flex-start; }
+/* Controls can never be wider than their cell — a default-width text input
+   (~180px intrinsic) in a squeezed cell must shrink, not overflow the card. */
+.settings-card input[type=text],
+.settings-card input[type=password],
+.settings-card input[type=number],
+.settings-card select { max-width: 100%; }
 .field-row-label { font-size: 13px; color: var(--text); margin-bottom: 2px; }
-.field-row-hint  { font-size: 11px; color: var(--muted); line-height: 1.4; }
+/* overflow-wrap: hints quote unbreakable tokens (env vars, paths, URLs) that
+   must fold inside the cell rather than widen the page on narrow screens. */
+.field-row-hint  { font-size: 11px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
 @media (max-width: 680px) {
-  .settings-layout { grid-template-columns: 1fr !important; gap: 12px !important; }
+  /* minmax(0,1fr), same reason as the desktop rule above. */
+  .settings-layout { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
   /* Sidebar becomes a horizontal scroll tab strip */
   .settings-sidebar {
     position: static !important; display: flex !important; flex-direction: row !important;
@@ -689,7 +705,9 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
 
 /* Slider */
 .slider-wrap { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 360px; }
-.slider-wrap input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+/* min-width:0 — a range input's ~130px intrinsic minimum otherwise pushes the
+   value readout out of a squeezed field cell (narrow-desktop settings). */
+.slider-wrap input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); cursor: pointer; }
 .slider-val { font-family: var(--mono); font-size: 12px; color: var(--text); min-width: 36px; font-variant-numeric: tabular-nums; }
 
 /* ── Track detail: waveform + tap + detectors ─────────────────────────────── */

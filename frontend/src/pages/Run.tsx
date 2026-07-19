@@ -538,7 +538,9 @@ export default function Run() {
   // constants — those drifted every time a line was added or removed and the
   // transport slid off-screen; flexbox accounts for safe areas, browser vs
   // PWA and screen size by construction.
-  const coverSize = "clamp(140px, calc(100dvh - 540px), 300px)";
+  // --run-topbar (design-system.css) is 52px below 1100px, where the sidebar
+  // gives way to the sticky app-nav bar that eats viewport height; 0 above.
+  const coverSize = "clamp(120px, calc(100dvh - 540px - var(--run-topbar, 0px)), 300px)";
 
   // Ambient glow tinted from the cover art, sitting behind the nav/content
   // (z-index -1 paints above the plain body background, below everything with
