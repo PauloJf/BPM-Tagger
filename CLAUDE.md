@@ -205,6 +205,12 @@ After every commit that changes user-facing behaviour, update **both**:
 
 Include README changes in the same commit or an immediate follow-up. Never leave source files committed with READMEs out of date.
 
+**On every release**, also bump the version in all three places (historically missed —
+the README header sat at v2.6.5 through nine releases):
+- `VERSION` (source of truth for CI)
+- the `**vX.Y.Z**` header near the top of `README.md`
+- the `| Version |` row in this file's Project Identity table
+
 ---
 
 ## Launch & Community
