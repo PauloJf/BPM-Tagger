@@ -5,6 +5,7 @@
 - **Completed downloads link into the library.** In the grabber **Queue**, a completed item's **title, artist and album** now link straight to its library **track / artist / album** pages (in-flight and failed items stay plain — they aren't filed yet).
 - **More library links.** The **track page** now links its **album** (next to the artist link, which already existed), and **Add Music**'s **✓ in library** chip links to the matching library track (as the Suggestions page already did).
 - **Mobile consistency sweep.** Audited every page at phone width with long titles/artists: the only page-wide sideways scroll left was the **Library pagination** row (Prev 1 … 28 29 Next couldn't fit beside the "Showing X of Y" count) — both now wrap onto extra lines instead of widening the page. Everything else — queue rows, inbox cards, playlists, review cards, duplicates, search results — stays within the screen and ellipsizes.
+- **Playlist cards aligned.** The cover now matches the card's two text lines exactly (a 44px square instead of one that overhung the name + chips beside it), and on phones the wrapped **auto-sync / Sync / Remove** row aligns **left** under the cover instead of floating detached to the right.
 
 ## v2.6.13 — 2026-07-18
 

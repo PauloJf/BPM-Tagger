@@ -982,8 +982,13 @@ a.lead-name:hover { color: var(--accent-2); }
   transition: border-color 0.15s, background 0.12s;
 }
 a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hover); }
+/* 44px square = exactly the card's two text lines (name line + chips row), so
+   the cover neither overhangs nor undershoots the text beside it. (A flexbox
+   stretch + aspect-ratio approach can't guarantee a square here — Chromium
+   doesn't transfer a stretched height into the ratio's width — so the size is
+   pinned to the measured two-line height instead.) */
 .pl-cover {
-  width: 52px; height: 52px; border-radius: 8px; object-fit: cover;
+  width: 44px; height: 44px; border-radius: 8px; object-fit: cover;
   flex-shrink: 0; background: var(--surface-2); display: grid; place-items: center;
   color: var(--muted);
 }
@@ -993,11 +998,13 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
 }
 .pl-card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 /* Mobile: the actions block was squeezing the playlist name to a few chars.
-   Wrap instead — name + chips get the full card width, actions drop below. */
+   Wrap instead — name + chips get the full card width, actions drop below,
+   left-aligned so they line up with the cover like everything else in the
+   card (right-aligned they floated detached from the content above). */
 @media (max-width: 700px) {
   .pl-card { flex-wrap: wrap; }
   .pl-card-main { flex-basis: 100%; }
-  .pl-card-actions { width: 100%; justify-content: flex-end; }
+  .pl-card-actions { width: 100%; justify-content: flex-start; }
 }
 .pl-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chip {
