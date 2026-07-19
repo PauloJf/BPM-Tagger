@@ -52,14 +52,33 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:full
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}-full
 
-      # --- Docker Hub overview: synced from DOCKERHUB_README.md every publish.
-      #     Docker Hub caps the overview at 25,000 bytes — this step fails the
-      #     run (surfacing it in CI) if the file outgrows that again. ---
+      # --- Docker Hub overview: synced from DOCKERHUB_README.md every publish. ---
 
+      # Docker Hub caps the overview at 25,000 bytes. Guard it as its own hard
+      # step so an oversize file still fails the run even when the sync below is
+      # best-effort.
+      - name: Check Docker Hub overview size (25KB cap)
+        run: |
+          bytes=$(wc -c < DOCKERHUB_README.md)
+          echo "DOCKERHUB_README.md is ${bytes} bytes (cap 25000)"
+          if [ "${bytes}" -gt 25000 ]; then
+            echo "::error::DOCKERHUB_README.md exceeds Docker Hub's 25,000-byte overview cap"
+            exit 1
+          fi
+
+      # The overview sync hits the Docker Hub *web API* (PATCH the repo), which is
+      # a different auth surface than the image push above: the image-push token
+      # can succeed while this 403s ("Forbidden") because updating the description
+      # needs the account password or a PAT scoped to write the repo. It's a
+      # nice-to-have, so it must not fail a publish whose images already pushed —
+      # continue-on-error keeps the run green and surfaces the 403 as a warning.
+      # Set DOCKERHUB_DESCRIPTION_TOKEN to a password / write-scoped PAT to make
+      # the sync actually succeed; it falls back to the push token otherwise.
       - name: Update Docker Hub description
+        continue-on-error: true
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN || secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
           readme-filepath: ./DOCKERHUB_README.md

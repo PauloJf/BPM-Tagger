@@ -1099,6 +1099,14 @@ export default function Run() {
             {sourcePicker}
           </div>
         )}
+        {/* Force-tempo toggle — mobile only (desktop keeps it in the controls
+            column). Lives here, not on the main run page, so it doesn't spend
+            vertical space that pushes the cover art off small screens (iPhone). */}
+        {!fill && (
+          <div data-testid="queue-force" style={{ padding: "10px 14px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+            {forceToggle}
+          </div>
+        )}
         {similarOpen && queueTrack?.artist && (
           <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
             <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
@@ -1352,7 +1360,9 @@ export default function Run() {
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
           : presetsGrid}
-        {mode !== "tap" && mode !== "queue" && forceToggle}
+        {/* Pre-run only: once a track is playing, the force toggle lives in the
+            Queue view (see renderQueuePanel) so it never eats cover-art space. */}
+        {!current && mode !== "tap" && mode !== "queue" && forceToggle}
         {statusInline}
       </div>
       {transport}

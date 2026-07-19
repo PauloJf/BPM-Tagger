@@ -162,6 +162,35 @@ describe("Run — mobile source picker placement", () => {
   });
 });
 
+describe("Run — force-tempo toggle placement (mobile)", () => {
+  it("puts the force toggle inside the Queue view", () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    const region = screen.getByTestId("queue-force");
+    expect(region.textContent).toMatch(/FORCE TEMPO/);
+  });
+
+  it("does NOT show the force toggle on the main run page during playback (presets mode)", () => {
+    // It used to sit under the presets and eat the vertical space that shoves the
+    // cover off small screens once a track is playing.
+    localStorage.setItem(MODE_KEY, "presets");
+    h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
+    h.orderedQueue = [h.current];
+    render(<Run />);
+    expect(screen.queryByText(/FORCE TEMPO/)).toBeNull();
+    expect(screen.queryByTestId("queue-force")).toBeNull();
+  });
+
+  it("still offers the force toggle pre-run on the main page (no cover yet)", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.current = null;
+    render(<Run />);
+    expect(screen.getByText(/FORCE TEMPO/)).toBeTruthy();
+  });
+});
+
 describe("Run — mobile layout is flex-driven (no viewport math)", () => {
   it("the queue list scrolls internally and carries no hand-tuned dvh clamp", () => {
     localStorage.setItem(MODE_KEY, "queue");
