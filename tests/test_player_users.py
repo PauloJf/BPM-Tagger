@@ -146,6 +146,26 @@ def test_restricted_player_sees_only_its_playlists(client, app, base_config):
     assert pc.get("/api/run/queue?bpm=150").status_code == 403
 
 
+def test_restricted_player_topup_stays_in_scope(client, app, base_config):
+    """A scoped player running a thin playlist tops up only from its own playlists,
+    never the whole library (regression: _build padded from get_run_candidates(None))."""
+    c, csrf = _admin(app)
+    # The player's own playlist has one runnable track at 150 BPM.
+    mine = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mine", bpm=150.0)
+    # A same-cadence track that lives only in a playlist the player can't reach —
+    # a tempting top-up candidate the old code would have pulled in.
+    _other = _seed_playlist(base_config["db_path"], base_config["music_dir"], "other", bpm=150.0)
+    c.post("/api/players", json={"username": "runner", "password": "runrunrun",
+                                 "playlist_ids": [mine]}, headers=csrf)
+    pc, _ = _login(app, username="runner", password="runrunrun")
+    # Ask for a queue far larger than the one in-scope track: the top-up must stay
+    # scoped, so the out-of-scope track never appears.
+    r = pc.get(f"/api/run/queue?bpm=150&count=20&playlist={mine}")
+    assert r.status_code == 200
+    paths = [t["path"] for t in r.get_json()["tracks"]]
+    assert paths and all(p.endswith("/mine.mp3") for p in paths)
+
+
 def test_named_player_is_always_scoped_even_if_full_access_requested(client, app, base_config):
     """`full_access` is no longer honored for named users — a full-library non-admin
     login is the shared Guest login only, so requesting it on a player is ignored."""

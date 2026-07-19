@@ -417,6 +417,28 @@ class TracksMixin:
                 ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_run_candidates_for_playlists(self, playlist_ids) -> list[dict]:
+        """Run candidates pooled across several playlists — the union of a scoped
+        player's assigned playlists, deduped by file_path. Used as the top-up pool
+        for a scoped player so a thin playlist never pads from the whole library.
+        An empty set of ids yields an empty pool."""
+        ids = list(dict.fromkeys(int(p) for p in playlist_ids))
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        join = (
+            "FROM playlist_tracks pt JOIN tracks t ON t.file_path = pt.matched_file_path "
+            f"WHERE pt.playlist_id IN ({placeholders}) AND pt.removed_at IS NULL "
+            "AND pt.match_status = 'have' AND t.status != 'deleted' AND t.bpm IS NOT NULL "
+            "AND (t.disliked IS NULL OR t.disliked = 0)"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count "
+                + join + " GROUP BY t.file_path", ids
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def count_run_candidates(self, playlist_id: int) -> int:
         """How many of a playlist's tracks are actually runnable (matched + BPM)."""
         with self._connect() as conn:

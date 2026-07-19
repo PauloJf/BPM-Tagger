@@ -134,22 +134,31 @@ def api_run_queue():
                                   x[2]))
         return found
 
+    def _library_pool(exclude_paths):
+        """The wider pool a run tops up from (and the whole pool for a library-source
+        run). A full-access session draws from the whole library; a scoped player
+        draws only from its own assigned playlists — never the whole library, so a
+        thin playlist can't leak out-of-scope tracks into the queue."""
+        if full:
+            return _matches(st.db.get_run_candidates(None), exclude_paths)
+        return _matches(st.db.get_run_candidates_for_playlists(allowed), exclude_paths)
+
     def _build(exclude_paths):
-        """Playlist matches first, then topped up from the whole library at the
-        same cadence when the playlist can't fill the queue — so a small
+        """Playlist matches first, then topped up from the session's wider pool at
+        the same cadence when the playlist can't fill the queue — so a small
         playlist (few tracks matching this target) never degenerates into one
-        song looping. A library-source run (no playlist) just matches the
-        whole library. Returns (matches, playlist_paths, topped_up) — the second
-        item is the set of file paths that came from the playlist itself."""
+        song looping. A library-source run (no playlist) just matches that wider
+        pool. Returns (matches, playlist_paths, topped_up) — the second item is
+        the set of file paths that came from the playlist itself."""
         if playlist_id is None:
-            return _matches(st.db.get_run_candidates(None), exclude_paths), set(), False
+            return _library_pool(exclude_paths), set(), False
         pl = _matches(st.db.get_run_candidates(playlist_id), exclude_paths)
         pl_paths = {m[0]["file_path"] for m in pl}
         if len(pl) >= count:
             return pl, pl_paths, False
-        # Not enough playlist tracks match here — fill the rest from the library,
-        # excluding what's already picked so nothing repeats.
-        lib = _matches(st.db.get_run_candidates(None), set(exclude_paths) | pl_paths)
+        # Not enough playlist tracks match here — fill the rest from the wider
+        # pool, excluding what's already picked so nothing repeats.
+        lib = _library_pool(set(exclude_paths) | pl_paths)
         return pl + lib, pl_paths, bool(lib)
 
     picked, pl_paths, topped_up = _build(exclude_set)

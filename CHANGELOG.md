@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Scoped players stay in scope.** Fixed a run-queue leak: when a restricted player ran one of their playlists and it was too thin to fill the queue at the target cadence, the top-up was drawn from the **whole library**, so out-of-scope tracks could land in (and play from) their run. A scoped player now tops up only from the union of its own assigned playlists — never the whole library. Full-access runs (admin, Guest login) are unchanged.
 - **Player access simplified: Guest login + Player users.** The two overlapping halves of **Settings → Player access** are now clearly distinct roles instead of two ways to spell the same thing. The shared `RUN_PASSWORD` is presented as the **Guest login** — one password, full-library, on/off — and named accounts are **Player users**, which are now **always scoped** to the playlists you assign them (the full-access toggle is gone). A full-library non-admin login is the Guest login only; admin is unchanged. Existing named users keep working but are treated as scoped regardless of any previously-set full-access flag (assign them playlists if they had none). No database migration and no change to the `player` role, tables, or API — this is a role-clarity + UI cleanup.
 
 ## v2.7.0 — 2026-07-19
