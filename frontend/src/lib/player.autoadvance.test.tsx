@@ -151,15 +151,17 @@ describe("auto-advance — normal play", () => {
     expect(pc.current?.path).toBe("/b.mp3");
   });
 
-  it("calls load() on advance so the new source actually starts fetching", () => {
-    // The hang fix: goToPos must load() the new src (as the rebuild path does),
-    // not just set .src — otherwise play() can sit in `waiting` forever after
-    // `ended`, which read as a hang at every track boundary.
+  it("does not call load() synchronously on advance (avoids the interrupt/reload loop)", () => {
+    // goToPos must NOT call load() in the same tick as play(): on some engines
+    // that rejects play() and fires spurious errors, which tripped the
+    // error-retry into a reload loop ("connecting" over and over). Setting .src
+    // loads implicitly; the canplay retry covers a not-yet-ready play().
     mount();
     act(() => pc.playQueue([A, B]));
     const loadsBefore = fa.load.mock.calls.length;
     emit(audio, "ended");
-    expect(fa.load.mock.calls.length).toBeGreaterThan(loadsBefore);
+    expect(fa.load.mock.calls.length).toBe(loadsBefore);   // no explicit load() on advance
+    expect(fa.play).toHaveBeenCalled();
   });
 });
 
@@ -325,6 +327,27 @@ describe("boundary error — transient failures recover instead of stopping the 
       // The HEAD probe (200) now classifies it as reachable-but-stalled, not a
       // false "missing/unsupported".
       expect(pc.error).toMatch(/Playback stalled/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reload forever when a stream flaps play/error (bounded, no infinite 'connecting')", async () => {
+    // Regression: onPlay used to reset the retry budget, so a stream that briefly
+    // played then re-errored reloaded on every cycle — an endless "connecting"
+    // blink. The budget must survive brief plays and cap per track.
+    vi.useFakeTimers();
+    try {
+      mount();
+      act(() => pc.playQueue([A, B]));
+      const loadsBefore = fa.load.mock.calls.length;
+      fa.setError(MEDIA_ERR);
+      for (let i = 0; i < 6; i++) {
+        emit(audio, "error");
+        await act(async () => { await vi.advanceTimersByTimeAsync(2500); });   // scheduled reload fires
+        emit(audio, "play");   // brief success between errors — must NOT refresh the budget
+      }
+      expect(fa.load.mock.calls.length - loadsBefore).toBeLessThanOrEqual(ERROR_MAX_RETRIES);
     } finally {
       vi.useRealTimers();
     }

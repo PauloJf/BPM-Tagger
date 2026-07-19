@@ -497,12 +497,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const rate = lockRate(track.bpm, tempoLock);
       a.defaultPlaybackRate = rate;   // load() resets playbackRate to this
       a.src = track.src ?? blobCache.current.get(track.path) ?? audioUrl(track.path);
-      // Explicitly kick the fetch. Setting .src alone does not reliably start
-      // loading a new resource right after `ended` (the element can sit in a
-      // `waiting` state forever, which reads as a hang at every track advance);
-      // load() aborts the finished stream and begins the new one, exactly as the
-      // rebuild path (the load effect) does — which is why Rebuild plays instantly.
-      a.load();
+      // Setting .src starts the load implicitly. We deliberately do NOT call
+      // load() here: calling load()+play() synchronously inside the ended/click
+      // handler makes some engines reject play() and fire spurious error events,
+      // which tripped the error-retry into a reload loop ("connecting" over and
+      // over). The real boundary hang was the rebuffer hold pausing a still-
+      // loading element — fixed by its start-grace — and a play() that was vetoed
+      // before the element was ready is handled by the canplay retry below.
       a.playbackRate = rate;
       a.volume = volumeRef.current;
       const startSrc = a.src;   // identity for "is this still the track we started?"
@@ -705,8 +706,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!a) return;
     const onPlay = () => {
       setPlaying(true); setIntendedPlaying(true); setError(null); resumeOnShow.current = false;
-      // Recovered — forget any boundary-error retries for this track.
-      errorRetry.current = 0;
+      // Cancel a pending boundary-error reload — we're playing now. Do NOT reset
+      // the retry budget here: a stream that briefly plays then re-errors would
+      // reset it on every `play`, reloading forever ("connecting" over and over).
+      // The budget resets per track instead (reset-on-path effect).
       if (errorRetryTimer.current != null) { clearTimeout(errorRetryTimer.current); errorRetryTimer.current = null; }
     };
     const onPause = () => setPlaying(false);
