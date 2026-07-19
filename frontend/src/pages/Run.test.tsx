@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   bufferedPct: 0,
+  bufferInfo: undefined as undefined | { phase: string; pct: number; aheadSec: number; stalls: number; ready: number; net: number },
   runSource: null as number | "mine" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
@@ -54,7 +55,7 @@ vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
-    error: null, buffering: h.buffering, bufferedPct: h.bufferedPct, online: h.online,
+    error: null, buffering: h.buffering, bufferedPct: h.bufferedPct, bufferInfo: h.bufferInfo, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
     updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
     setTempoLock() {}, playQueue() {}, setRunSource() {},
@@ -92,6 +93,7 @@ beforeEach(() => {
   h.online = true;
   h.buffering = false;
   h.bufferedPct = 0;
+  h.bufferInfo = undefined;
   h.runSource = null;
   h.starred = [];
   // A deliberately long name — the sort that used to spill across the cover art.
@@ -249,6 +251,16 @@ describe("Run — connection visibility", () => {
     h.bufferedPct = 42;
     render(<Run />);
     expect(screen.getByText(/Buffering · 42%/)).toBeTruthy();
+  });
+
+  it("shows detailed buffer diagnostics (phase, %, ahead, tries) when available", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [h.current];
+    h.online = true;
+    h.buffering = true;
+    h.bufferInfo = { phase: "hold", pct: 63, aheadSec: 3.2, stalls: 2, ready: 2, net: 2 };
+    render(<Run />);
+    expect(screen.getByText(/Rebuffering · 63% · 3\.2s ahead · try 2/)).toBeTruthy();
   });
 
   it("does not show a buffering banner when offline (offline takes priority)", () => {

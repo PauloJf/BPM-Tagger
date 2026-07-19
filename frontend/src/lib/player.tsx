@@ -33,6 +33,19 @@ export function lockRate(trackBpm: number | null | undefined, lock: TempoLock | 
 
 export type RepeatMode = "off" | "all" | "one";
 
+/** Live buffering diagnostics for the current track. Surfaced in the UI so a
+ *  stall reads as the network (not the app), and so slow-link behaviour on a
+ *  track boundary is actually debuggable instead of a silent spinner. */
+export interface BufferInfo {
+  phase: "idle" | "connecting" | "loading" | "waiting" | "stalled" | "hold" | "playing";
+  pct: number;       // % of the track buffered
+  aheadSec: number;  // seconds buffered ahead of the playhead
+  stalls: number;    // rebuffer holds on this track (retry count)
+  ready: number;     // HTMLMediaElement.readyState (0..4)
+  net: number;       // HTMLMediaElement.networkState (0..3)
+}
+export const IDLE_BUFFER_INFO: BufferInfo = { phase: "idle", pct: 0, aheadSec: 0, stalls: 0, ready: 0, net: 0 };
+
 const FADE_MS = 250;
 // How many of the most-recently-queued tracks the auto-refill tells the server
 // to avoid re-picking. Bounded rather than the whole run's history: only
@@ -53,6 +66,10 @@ const PRELOAD_AHEAD = 2;
 // (linear backoff) before surfacing a failure banner.
 const ERROR_MAX_RETRIES = 3;
 const ERROR_RETRY_MS = 600;
+// Seconds into a track below which a `waiting` is treated as initial load, not a
+// mid-track underrun. Pausing a still-loading element (the rebuffer hold) can
+// wedge it on mobile, and there's nothing playing to protect at the very start.
+const REBUFFER_START_GRACE_S = 2;
 /** Paths of the next `ahead` queued tracks to prefetch (skips external/preview
  *  clips, which have their own src and no library file). Pure — unit-tested. */
 export function upcomingPaths(
@@ -76,6 +93,7 @@ interface PlayerState {
   error: string | null;
   buffering: boolean;      // playback stalled waiting for data (slow/dropped link)
   bufferedPct: number;     // % of the current track buffered ahead (0–100)
+  bufferInfo: BufferInfo;  // detailed live buffering diagnostics for the current track
   online: boolean;         // navigator.onLine — false when the connection dropped
   audioRef: RefObject<HTMLAudioElement>;
   // Queue
@@ -179,6 +197,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // the browser's network status — so a stall reads as the network, not the app.
   const [buffering, setBuffering] = useState(false);
   const [bufferedPct, setBufferedPct] = useState(0);
+  const [bufferInfo, setBufferInfo] = useState<BufferInfo>(IDLE_BUFFER_INFO);
   const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
   // Run-mode look-ahead: fully download the next tracks into blobs (path → object
   // URL) so they play from local memory — no boundary stalls on a slow link.
@@ -190,6 +209,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const rebufferTimer = useRef<number | null>(null);
   const stallCount = useRef(0);
   const lastStallTime = useRef(0);
+  // Diagnostics: current buffering phase + a signature to dedupe state writes.
+  const bufferPhase = useRef<BufferInfo["phase"]>("idle");
+  const bufferSig = useRef("");
   const intendedPlayingRef = useRef(false);
   const pendingPlay = useRef(!!(current && saved?.playing));
   // Path already loaded + started synchronously by goToPos, so the load effect
@@ -473,8 +495,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (a) {
       setError(null);
       const rate = lockRate(track.bpm, tempoLock);
-      a.defaultPlaybackRate = rate;   // the load triggered by src= resets playbackRate to this
+      a.defaultPlaybackRate = rate;   // load() resets playbackRate to this
       a.src = track.src ?? blobCache.current.get(track.path) ?? audioUrl(track.path);
+      // Explicitly kick the fetch. Setting .src alone does not reliably start
+      // loading a new resource right after `ended` (the element can sit in a
+      // `waiting` state forever, which reads as a hang at every track advance);
+      // load() aborts the finished stream and begins the new one, exactly as the
+      // rebuild path (the load effect) does — which is why Rebuild plays instantly.
+      a.load();
       a.playbackRate = rate;
       a.volume = volumeRef.current;
       a.play().catch(() => {
@@ -764,9 +792,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       rebufferHold.current = false;
       if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
     };
-    const recalc = () => {
-      const d = a.duration;
-      if (!isFinite(d) || d <= 0) { setBufferedPct(0); return; }
+    // Buffered-to-end aligned with the current playhead range (for the % readout).
+    const bufferedEnd = () => {
       let end = 0;
       try {
         const b = a.buffered;
@@ -775,17 +802,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         if (!end && b.length) end = b.end(b.length - 1);
       } catch { /* ignore */ }
-      setBufferedPct(Math.max(0, Math.min(100, Math.round((end / d) * 100))));
+      return end;
+    };
+    // Publish live diagnostics (deduped) — the UI turns these into a readable
+    // "Connecting / Loading / 42% · 3.2s ahead · try 2" note.
+    const report = (phase?: BufferInfo["phase"]) => {
+      if (phase) bufferPhase.current = phase;
+      const d = a.duration;
+      const end = bufferedEnd();
+      const pct = isFinite(d) && d > 0 ? Math.max(0, Math.min(100, Math.round((end / d) * 100))) : 0;
+      const aheadSec = Math.max(0, Math.round((end - a.currentTime) * 10) / 10);
+      const info: BufferInfo = {
+        phase: bufferPhase.current, pct, aheadSec,
+        stalls: stallCount.current, ready: a.readyState, net: a.networkState,
+      };
+      const sig = `${info.phase}|${info.pct}|${info.aheadSec}|${info.stalls}|${info.ready}|${info.net}`;
+      if (sig === bufferSig.current) return;
+      bufferSig.current = sig;
+      setBufferInfo(info);
+    };
+    const recalc = () => {
+      const d = a.duration;
+      setBufferedPct(isFinite(d) && d > 0 ? Math.max(0, Math.min(100, Math.round((bufferedEnd() / d) * 100))) : 0);
+      // Publish live detail only while a buffering phase is showing — never on
+      // every timeupdate during smooth playback (that would churn re-renders for
+      // a banner that isn't even visible then).
+      if (bufferPhase.current !== "playing") report();
     };
     const beginHold = () => {
       const c = currentRef.current;
       if (rebufferHold.current || !intendedPlayingRef.current || !c || c.ephemeral) return;
       if (document.visibilityState !== "visible") return;   // let the browser recover when backgrounded
+      if (a.currentTime < REBUFFER_START_GRACE_S) return;   // initial load, not a mid-track underrun
       if (bufferedToEnd()) return;                           // whole track is here — nothing to wait for
       rebufferHold.current = true;
       const need = rebufferHoldSeconds(stallCount.current);
       stallCount.current += 1;
       lastStallTime.current = a.currentTime;
+      report("hold");
       a.pause();   // stop draining the last scraps; resume once `need` seconds are buffered ahead
       const poll = () => {
         if (!rebufferHold.current) return;
@@ -800,11 +854,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       };
       poll();
     };
-    const onWaiting = () => { setBuffering(true); beginHold(); };
-    const onStalled = () => setBuffering(true);
+    const onLoadStart = () => report("connecting");
+    const onLoadedData = () => report("loading");
+    const onWaiting = () => { setBuffering(true); report("waiting"); beginHold(); };
+    const onStalled = () => { setBuffering(true); report("stalled"); };
     const clear = () => {
       if (rebufferHold.current) return;   // don't fight an active hold
       setBuffering(false);
+      if (bufferPhase.current !== "playing") report("playing");   // publish the transition once
       recalc();
       // Decay the stall counter after a smooth stretch so one rough patch doesn't
       // keep the hold threshold inflated for the rest of the track.
@@ -817,6 +874,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (intendedPlayingRef.current) a.play().catch(() => {});
       }
     };
+    a.addEventListener("loadstart", onLoadStart);
+    a.addEventListener("loadeddata", onLoadedData);
     a.addEventListener("waiting", onWaiting);
     a.addEventListener("stalled", onStalled);
     a.addEventListener("playing", clear);
@@ -826,6 +885,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener("timeupdate", clear);
     document.addEventListener("visibilitychange", onHidden);
     return () => {
+      a.removeEventListener("loadstart", onLoadStart);
+      a.removeEventListener("loadeddata", onLoadedData);
       a.removeEventListener("waiting", onWaiting);
       a.removeEventListener("stalled", onStalled);
       a.removeEventListener("playing", clear);
@@ -841,6 +902,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Reset the buffering readout + any hold when the track changes.
   useEffect(() => {
     setBuffering(false); setBufferedPct(0);
+    bufferPhase.current = "idle"; bufferSig.current = "";
+    setBufferInfo(IDLE_BUFFER_INFO);
     rebufferHold.current = false;
     if (rebufferTimer.current != null) { clearTimeout(rebufferTimer.current); rebufferTimer.current = null; }
     stallCount.current = 0;
@@ -1175,7 +1238,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      current, playing, error, buffering, bufferedPct, online, audioRef,
+      current, playing, error, buffering, bufferedPct, bufferInfo, online, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,

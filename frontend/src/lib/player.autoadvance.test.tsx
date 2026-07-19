@@ -112,6 +112,17 @@ describe("auto-advance — normal play", () => {
     expect(audio.src).toContain("b.mp3");
     expect(fa.play.mock.calls.length).toBeGreaterThan(playsBefore);
   });
+
+  it("calls load() on advance so the new source actually starts fetching", () => {
+    // The hang fix: goToPos must load() the new src (as the rebuild path does),
+    // not just set .src — otherwise play() can sit in `waiting` forever after
+    // `ended`, which read as a hang at every track boundary.
+    mount();
+    act(() => pc.playQueue([A, B]));
+    const loadsBefore = fa.load.mock.calls.length;
+    emit(audio, "ended");
+    expect(fa.load.mock.calls.length).toBeGreaterThan(loadsBefore);
+  });
 });
 
 describe("auto-advance — slow-net buffering", () => {
@@ -119,9 +130,11 @@ describe("auto-advance — slow-net buffering", () => {
     mount();
     act(() => pc.playQueue([A, B]));
 
-    // Underrun with 10s buffered ahead (> the first hold step of 4s), so the
-    // hold engages (pauses) then immediately resumes on its first poll.
-    fa.setBuffered(10);
+    // A mid-track underrun (past the start grace) with 10s buffered ahead (> the
+    // first hold step of 4s), so the hold engages (pauses) then immediately
+    // resumes on its first poll.
+    fa.setTime(30);
+    fa.setBuffered(40);                       // buffered end 40s → 10s ahead of the 30s playhead
     emit(audio, "waiting");
     expect(fa.pause).toHaveBeenCalled();     // the hold paused to accumulate buffer
     expect(pc.buffering).toBe(false);        // ...and resumed once 4s was ahead
@@ -129,6 +142,20 @@ describe("auto-advance — slow-net buffering", () => {
     // The track eventually reaches the end and fires `ended`.
     emit(audio, "ended");
     expect(pc.current?.path).toBe("/b.mp3");
+  });
+
+  it("does NOT pause-hold on the initial buffering of a freshly-advanced track", () => {
+    // Regression: goToPos used to sit in `waiting` and the hold would pause a
+    // still-loading element (playhead at 0), wedging every track advance. The
+    // browser's own load handles the start; we must not pause it.
+    mount();
+    act(() => pc.playQueue([A, B]));
+    emit(audio, "ended");                     // advance to B (playhead ~0)
+    const pausesBefore = fa.pause.mock.calls.length;
+    fa.setTime(0);
+    fa.setBuffered(1);                        // barely anything buffered yet
+    emit(audio, "waiting");                   // initial load, not an underrun
+    expect(fa.pause.mock.calls.length).toBe(pausesBefore);   // never paused
   });
 
   it("advances even if a buffering flag is still set when the track ends", () => {

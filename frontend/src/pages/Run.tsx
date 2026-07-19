@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { usePlayer, lockRate } from "../lib/player";
+import { usePlayer, lockRate, type BufferInfo } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
 import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
@@ -47,6 +47,24 @@ function foldLabel(bpm: number, folded: number): string {
 export function pulsePeriodMs(lockOn: boolean, shifted: number | null, nativeBpm: number | null, target: number): number {
   const bpm = lockOn ? (shifted || target) : (nativeBpm || target);
   return Math.round(60000 / bpm);
+}
+
+/** Human-readable buffering diagnostics for the run status note. Turns the
+ *  player's live BufferInfo into "Connecting… / Loading · 42% · 3.2s ahead ·
+ *  try 2" so a stall on a slow link is legible instead of a silent spinner. */
+const BUFFER_PHASE_LABEL: Record<BufferInfo["phase"], string> = {
+  idle: "Buffering", connecting: "Connecting", loading: "Loading",
+  waiting: "Waiting for data", stalled: "Stalled", hold: "Rebuffering",
+  playing: "Buffering",
+};
+export function bufferNote(info: BufferInfo | undefined, pctFallback: number): string {
+  const phase = info?.phase ?? "idle";
+  const pct = info?.pct ?? pctFallback ?? 0;
+  const parts = [BUFFER_PHASE_LABEL[phase] ?? "Buffering"];
+  if (pct > 0) parts.push(`${pct}%`);
+  if (info && info.aheadSec > 0) parts.push(`${info.aheadSec.toFixed(1)}s ahead`);
+  if (info && info.stalls > 0) parts.push(`try ${info.stalls}`);
+  return parts.join(" · ");
 }
 
 /** Star toggle used in the queue list. */
@@ -853,7 +871,7 @@ export default function Run() {
               <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ flexShrink: 0 }}>
                 <path d="M12 3a9 9 0 1 0 9 9" />
               </svg>
-              Buffering{player.bufferedPct > 0 ? ` · ${player.bufferedPct}%` : "…"} — slow connection
+              {bufferNote(player.bufferInfo, player.bufferedPct)}
             </>
           ),
         }
