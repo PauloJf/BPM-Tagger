@@ -424,7 +424,8 @@ extra state to manage.
 
 ### Part C tests
 
-Frontend has no test runner — verification is `npm run typecheck` plus manual: start a
+Frontend had no test runner when this shipped (a vitest suite arrived later, in
+v2.6.11 — `npm test` is now a required gate) — verification was `npm run typecheck` plus manual: start a
 library track, hit preview on a suggested track (duck + auto-resume), preview with
 nothing playing (plays, doesn't persist across reload), preview URL 404 (error surfaces,
 queue restorable).

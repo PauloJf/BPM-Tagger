@@ -1,9 +1,12 @@
 # Design: Phase 5 — Local player users & source-agnostic grabber queue
 
 > Design proposal for Phase 5 of [playlists-integration.md](playlists-integration.md).
-> **PLAN ONLY** — no code yet. Decided 2026-07-19: Phase 5 auth uses **local player
-> users** (accounts in BPM Tagger's own DB), **not** Navidrome-credential login. See the
-> "Locked decisions" block in the parent plan.
+> **✅ Implemented 2026-07-19** (Unreleased) — built as designed, then rebased onto
+> v2.6.14 where `db.py` had been split into a `db/` package (players schema landed in
+> `db/base.py`, the CRUD in a new `db/players.py` mixin — see
+> [../rebase-2026-07-19.md](../rebase-2026-07-19.md)). Decided 2026-07-19: Phase 5 auth
+> uses **local player users** (accounts in BPM Tagger's own DB), **not**
+> Navidrome-credential login. See the "Locked decisions" block in the parent plan.
 
 ## Goal & non-goals
 
@@ -23,7 +26,7 @@ path so Navidrome (and future) playlists can queue their missing tracks.
 
 ---
 
-## 1. Schema (`db.py`, additive migration)
+## 1. Schema (`db/` package, additive migration)
 
 Two new tables, both plain `CREATE TABLE IF NOT EXISTS` added to `_create_grabber_tables`
 (or a sibling `_create_player_tables` called from `_migrate`). **No table rebuild** — unlike

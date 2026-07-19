@@ -237,7 +237,8 @@ Part B:
 - Item with ISRC → resolved id + url; item without ISRC → empty 200, catalog not called;
   unknown item → 404; ISRC cache hit → single catalog call.
 
-Frontend has no test runner — gate is `cd frontend && npm run typecheck && npm run build`.
+Frontend gates: `cd frontend && npm run typecheck && npm run build && npm test` (the
+vitest suite arrived in v2.6.11 — older "no test runner" claims are outdated).
 
 Manual verification (dev: `run.ps1` + `npm run dev`, need `GRABBER_ENABLED=true` and an
 item in `awaiting_user`):
