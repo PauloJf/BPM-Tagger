@@ -124,6 +124,13 @@ function InboxCard({ item, onChoose, onSearch, onResearch, onSkip, busy }: {
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <span className="badge badge--review"><span className="badge-dot" />needs review</span>
         <div style={{ fontSize: 16, fontWeight: 600 }}>{item.title}</div>
+        {item.isrc ? (
+          <PreviewButton
+            track={{ dz_track_id: `src:${item.id}`, title: item.title || "", artist: item.artist || "" }}
+            resolveUrl={() =>
+              api.get<{ preview_url: string }>(`/api/inbox/${item.id}/source-preview`).then((r) => r.preview_url)}
+          />
+        ) : null}
       </div>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>{item.artist}{item.album ? ` · ${item.album}` : ""}</div>
 

@@ -28,6 +28,7 @@ inbox_bp = Blueprint("api_inbox", __name__)
 _PREVIEW_TTL = 3600.0          # seconds; Deezer preview URLs live comfortably longer
 _PREVIEW_CACHE_MAX = 500
 _cand_preview_cache: dict[int, tuple[float, str]] = {}   # cand_id -> (expires_at, url)
+_src_preview_cache: dict[str, tuple[float, str]] = {}    # isrc  -> (expires_at, url)
 _preview_lock = threading.Lock()
 
 
@@ -182,3 +183,23 @@ def candidate_preview(cand_id):
         url = deezer_catalog.track_preview_url(dz_id)
         _cache_put(_cand_preview_cache, cand_id, url)
     return jsonify(preview_url=url, dz_track_id=dz_id)
+
+
+@inbox_bp.route("/api/inbox/<int:item_id>/source-preview")
+@login_required
+def source_preview(item_id):
+    """Resolve the Spotify *source* track's 30-second preview via a Deezer ISRC
+    lookup, so the intended track can be A/B'd against the candidates. GET, no
+    CSRF. Any status is fine (harmless); no ISRC → uniform 200-with-empty."""
+    item = state().db.get_grab_item(item_id)
+    if not item:
+        return jsonify(error="not_found"), 404
+    isrc = (item.get("isrc") or "").strip().upper()
+    if not isrc:
+        return jsonify(preview_url="", dz_track_id="")
+    url = _cache_get(_src_preview_cache, isrc)
+    if url is None:
+        res = deezer_catalog.track_by_isrc(isrc)
+        url = res.get("preview_url", "")
+        _cache_put(_src_preview_cache, isrc, url)
+    return jsonify(preview_url=url, dz_track_id=f"src:{item_id}")

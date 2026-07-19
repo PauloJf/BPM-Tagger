@@ -2,7 +2,7 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **🔶 in progress 2026-07-19 — Part A shipped (Unreleased); Part B next.**
+Status: **✅ done 2026-07-19 — Part A + Part B shipped (Unreleased).**
 Written to be built by a coding agent without further context — every touched file,
 signature, and edge case is spelled out. Read "What already exists" first: most of the
 machinery shipped with the Suggestions page (v2.5.0) and must be reused, not rebuilt.
@@ -162,7 +162,7 @@ button); no invalidation implications.
 
 ---
 
-## Part B — source-track preview (optional, separate commit)
+## Part B — source-track preview (optional, separate commit) ✅
 
 Lets you hear the *Spotify source* the candidates are being judged against.
 

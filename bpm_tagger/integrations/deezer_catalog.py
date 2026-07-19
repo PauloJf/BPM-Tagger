@@ -239,3 +239,20 @@ def track_preview_url(dz_track_id: str) -> str:
         log.debug("Deezer preview lookup failed for %s: %s", dz_track_id, exc)
         return ""
     return d.get("preview") or ""
+
+
+def track_by_isrc(isrc: str) -> dict:
+    """Resolve an ISRC to {"dz_track_id": str, "preview_url": str}; {} on failure.
+
+    Used to preview the *source* Spotify track an inbox item is trying to fulfil —
+    most Spotify-sourced items carry an ISRC."""
+    if not isrc:
+        return {}
+    try:
+        d = _get(f"track/isrc:{isrc.strip().upper()}")
+    except Exception as exc:
+        log.debug("Deezer ISRC lookup failed for %s: %s", isrc, exc)
+        return {}
+    if not d.get("id"):
+        return {}
+    return {"dz_track_id": str(d["id"]), "preview_url": d.get("preview") or ""}

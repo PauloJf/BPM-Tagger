@@ -11,7 +11,7 @@ ships or a new plan lands.** Last updated: 2026-07-19 (inbox candidate previews 
 | Suggestions page + Related panels + previews + queue-similar | [suggestions-page.md](suggestions-page.md) | ✅ Done (v2.5.0 / v2.5.1) |
 | Navidrome star sync | [navidrome-star-sync.md](navidrome-star-sync.md) | ✅ Done (v2.5.2); follow-ups open |
 | Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | ✅ Phases 1–5 done |
-| Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | 🔶 Part A done (Unreleased); Part B next |
+| Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ✅ Done (Unreleased) |
 
 ---
 
@@ -72,7 +72,7 @@ Open follow-ups (no plan doc yet):
   enqueues by metadata (adopting a confident Spotify match's id when connected) and reads
   as *queued* on its playlist via the `playlist_track_id` link. Shipped with Phase 5.
 
-## Inbox candidate previews (🔶 Part A done, Unreleased)
+## Inbox candidate previews (✅ done, Unreleased)
 
 Plan: [inbox-candidate-previews.md](inbox-candidate-previews.md) (2026-07-19). 30 s
 Deezer previews on inbox candidate cards (lazy URL resolution, no schema change), an
@@ -81,10 +81,11 @@ ISRC lookup. Reuses the Part C player/preview infrastructure end to end.
 
 - ✅ Part A — candidate previews (`GET /api/inbox/candidates/<id>/preview` + `PreviewButton`
   lazy `resolveUrl`; `deezer_catalog.track_preview_url`).
-- ⬜ Part B — source-track preview via `track/isrc:{ISRC}` (optional, separate commit).
+- ✅ Part B — source-track preview via `track/isrc:{ISRC}`
+  (`GET /api/inbox/<id>/source-preview`; `deezer_catalog.track_by_isrc`).
 
 Built against the v2.6.14 layout: the plan's `db.py` anchors are now the `db/` package
-(no schema change either way), and the TTL cache follows `web/api/suggestions.py`'s
+(no schema change either way), and the two TTL caches follow `web/api/suggestions.py`'s
 lock-guarded `time.monotonic()` style rather than the plan's bare-dict sketch.
 
 ---
