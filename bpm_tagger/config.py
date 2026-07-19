@@ -233,6 +233,10 @@ def build_config() -> dict:
         "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),
         "run_tolerance_pct":          float(os.environ.get("RUN_TOLERANCE_PCT", "4")),
         "run_stretch_limit_pct":      float(os.environ.get("RUN_STRETCH_LIMIT_PCT", "15")),
+        # "Play everything, force tempo": ignore the tolerance filter and force every
+        # candidate to the target via playbackRate (clamped for extreme outliers). The
+        # default for a run when the request doesn't send an explicit force flag.
+        "run_force_tempo":            os.environ.get("RUN_FORCE_TEMPO", "false").lower() == "true",
         "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
         # Save fetched/picked artist images as artist.jpg in the artist's own
         # folder (Navidrome convention) instead of only the app cache. Only
@@ -280,6 +284,10 @@ def build_config() -> dict:
         # Scrobble plays from the built-in player to Navidrome (which forwards
         # to Last.fm/ListenBrainz when configured there).
         "navidrome_scrobble":         os.environ.get("NAVIDROME_SCROBBLE", "false").lower() == "true",
+        # Background scheduler (Phase 5): minutes between automatic sync passes for
+        # playlists (Spotify+Navidrome), stars, and play counts. 0 = off (manual only).
+        # Floored to 5 min when non-zero. Runs only in the long-lived watch modes.
+        "sync_interval_minutes":      int(os.environ.get("SYNC_INTERVAL_MINUTES", "0")),
 
         # ── Grabber (M3+) ─────────────────────────────────────────────────────
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",

@@ -60,15 +60,20 @@ export default function PlaylistDetail() {
   useTitle(pl?.name || "Playlist");
   const tracks = tracksQ.data?.tracks ?? [];
   const spotifyConnected = status.data?.spotify?.connected === true;
+  const grabberEnabled = status.data?.enabled === true;
   const isSpotify = pl?.source === "spotify";
   const isLocal = pl?.source === "local";
   const canSync = pl?.source === "navidrome" || (isSpotify && spotifyConnected);
+  // Queuing missing tracks works for any synced source now (Phase 5) — a Navidrome
+  // playlist's missing tracks are grabbed by metadata via the shared enqueue helper.
+  // Gated on the grabber being enabled; Spotify additionally needs a live connection.
+  const canQueueMissing = !isLocal && grabberEnabled && (pl?.missing_count ?? 0) > 0;
 
   const tabs = [
     { key: "", label: "All" },
     { key: "have", label: "Have" },
     { key: "missing", label: "Missing" },
-    ...(isSpotify ? [{ key: "queued", label: "Queued" }] : []),
+    ...(!isLocal ? [{ key: "queued", label: "Queued" }] : []),
     ...((pl?.removed_count ?? 0) > 0 ? [{ key: "removed", label: "Removed" }] : []),
   ];
 
@@ -84,8 +89,13 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
-        {isSpotify && (pl?.missing_count ?? 0) > 0 && (
-          <button className="btn btn-soft btn-sm" disabled={enqueue.isPending || !spotifyConnected} onClick={() => enqueue.mutate()}>
+        {canQueueMissing && (
+          <button
+            className="btn btn-soft btn-sm"
+            disabled={enqueue.isPending || (isSpotify && !spotifyConnected)}
+            title={isSpotify && !spotifyConnected ? "Connect Spotify to queue missing tracks" : "Grab the missing tracks via the download providers"}
+            onClick={() => enqueue.mutate()}
+          >
             {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
           </button>
         )}

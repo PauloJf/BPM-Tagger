@@ -148,6 +148,7 @@ class _DBBase:
         self._migrate_playlists_schema(conn)
         self._create_grabber_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)
+        self._create_player_tables(conn)
 
         # Orphan sweep: DBs created before FK enforcement have no ON DELETE
         # CASCADE (added to the CREATE statements above, so only fresh DBs get
@@ -159,6 +160,33 @@ class _DBBase:
                      "WHERE queue_item_id NOT IN (SELECT id FROM grab_queue)")
         conn.execute("DELETE FROM playlist_tracks "
                      "WHERE playlist_id NOT IN (SELECT id FROM playlists)")
+
+    def _create_player_tables(self, conn):
+        """Local player-user accounts (Phase 5). Brand-new tables → purely additive,
+        no rebuild. `players` holds per-user login credentials (werkzeug hashes, same
+        as RUN_PASSWORD); `player_playlists` scopes a non-full-access user to a set of
+        playlists. The join table carries no FK constraint (the playlists table can be
+        rebuilt by the legacy migration above), so its rows are cleaned up in Python on
+        player/playlist delete (see delete_player / delete_playlist)."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS players (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,        -- stored lowercased (case-insensitive login)
+                password_hash TEXT NOT NULL,
+                full_access   INTEGER NOT NULL DEFAULT 0,  -- 1 = library/starred + all playlists
+                enabled       INTEGER NOT NULL DEFAULT 1,  -- 0 = disabled (also invalidates sessions)
+                created_at    TEXT,
+                last_login_at TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS player_playlists (
+                player_id   INTEGER NOT NULL,
+                playlist_id INTEGER NOT NULL,
+                PRIMARY KEY (player_id, playlist_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pp_player ON player_playlists(player_id)")
 
     def _migrate_playlists_schema(self, conn, finish: bool = False):
         """Generalize the Spotify-only playlists / playlist_tracks tables to the

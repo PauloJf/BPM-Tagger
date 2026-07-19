@@ -15,6 +15,16 @@ from .scan.scanner import BPMTagger
 log = logging.getLogger(__name__)
 
 
+def _start_periodic_sync(config, tagger, grabber):
+    """Launch the background sync scheduler (playlists + stars + play counts) in the
+    long-lived watch modes. Owned here, not by the grabber, so it runs with the grabber
+    disabled. No-op when sync_interval_minutes <= 0."""
+    if int(config.get("sync_interval_minutes", 0) or 0) <= 0:
+        return
+    from .integrations.periodic_sync import PeriodicSync
+    PeriodicSync(config, tagger.db, grabber).start()
+
+
 def main():
     level = os.environ.get("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(level=getattr(logging, level, logging.INFO),
@@ -71,12 +81,14 @@ def main():
         tagger.scan_directory(force=False)
         if grabber:
             grabber.start_background()
+        _start_periodic_sync(config, tagger, grabber)
         tagger.watch()
 
     elif mode == "watch_all":
         tagger.scan_directory(force=True)
         if grabber:
             grabber.start_background()
+        _start_periodic_sync(config, tagger, grabber)
         tagger.watch()
 
     elif mode == "report":

@@ -120,6 +120,11 @@ def healthz():
 @media_bp.route("/audio")
 @login_required
 def audio():
+    # NOTE (Phase 5): playlist association is an *organizational* boundary, not a
+    # security one. A player scoped to playlist X can still stream any path under
+    # MUSIC_DIR if they learn/guess it — streaming is gated by path-validation alone,
+    # NOT by playlist membership. This is intentional: Run-mode curation decides what
+    # a user is *offered*, not a DRM wall around the bytes.
     file_path = request.args.get("path", "")
     if not file_path:
         abort(400)

@@ -159,13 +159,19 @@ class GrabberService:
             self.pool.stop()
 
     def enqueue_missing(self, playlist_id: int) -> int:
-        """Manually enqueue every missing track of a playlist (re-attempts failed
-        ones, unlike the sync auto-enqueue). Returns how many were enqueued."""
+        """Manually enqueue every missing (non-tombstone) track of a playlist
+        (re-attempts failed ones, unlike the sync auto-enqueue). Source-agnostic
+        (Phase 5): routes through the shared enrich+enqueue helper so a NON-Spotify
+        playlist's missing tracks queue too — a Spotify-sourced row keeps its sid and
+        dedupes on it; a Navidrome row adopts a confident Spotify match's sid when
+        connected, else falls back to a normalized (title, artist) dedupe. Returns how
+        many were enqueued."""
+        from .enqueue import enqueue_track
         n = 0
         for pt in self.db.get_playlist_tracks(playlist_id, "missing"):
-            if pt.get("spotify_track_id") and not self.db.has_nonterminal_grab(pt["spotify_track_id"]):
-                if self.db.enqueue_grab(_grab_meta(pt)) is not None:
-                    n += 1
+            if enqueue_track(self.db, self, _grab_meta(pt),
+                             playlist_track_id=pt.get("id")) is not None:
+                n += 1
         self.sync.request_sync()
         return n
 

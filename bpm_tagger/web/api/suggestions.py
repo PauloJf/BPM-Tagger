@@ -22,7 +22,8 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
-from ...grabber.matching import library_match, normalize_artist, normalize_title, score
+from ...grabber.enqueue import enqueue_track
+from ...grabber.matching import library_match, normalize_artist, normalize_title
 from ...grabber.suggestions import SEED_LIMIT, TTL_DAYS, build_library_artists
 from ...integrations import deezer_catalog as dz
 from ..auth import _check_csrf, login_required
@@ -185,31 +186,10 @@ def queue_suggestion():
             "album_artist": artist, "duration_ms": data.get("duration_ms"),
             "cover_url": data.get("cover_url") or "", "isrc": ""}
 
-    adopted = False
-    try:
-        if g.client.is_connected() and (artist or title):
-            best, best_s = None, 0.0
-            for r in g.client.search_tracks(f"{artist} {title}".strip(), limit=5):
-                s, _ = score(meta, r)
-                if s > best_s:
-                    best_s, best = s, r
-            if best and best_s >= 0.9:
-                meta["spotify_track_id"] = best.get("spotify_track_id")
-                meta["isrc"] = best.get("isrc") or ""
-                meta["album_artist"] = best.get("album_artist") or meta["album_artist"]
-                meta["track_no"] = best.get("track_no")
-                meta["disc_no"] = best.get("disc_no")
-                meta["year"] = best.get("year")
-                adopted = True
-    except Exception as exc:  # never fail the enqueue on a lookup
-        log.debug("Spotify enrichment failed for suggestion: %s", exc)
-    if not adopted and dz_track_id:
-        try:
-            meta["isrc"] = dz.track_isrc(dz_track_id)
-        except Exception as exc:
-            log.debug("Deezer ISRC lookup failed for %s: %s", dz_track_id, exc)
-
-    item_id = state().db.enqueue_grab(meta)
+    # Shared enrichment+enqueue: adopt a confident Spotify match's sid/ISRC when
+    # connected, else the Deezer ISRC — same path the playlist "queue missing" action
+    # uses (grabber/enqueue.py).
+    item_id = enqueue_track(state().db, g, meta, dz_track_id=dz_track_id)
     if item_id is None:
         return jsonify(ok=False, error="already queued"), 409
     g.request_sync()

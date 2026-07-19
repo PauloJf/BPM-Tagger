@@ -6,11 +6,13 @@ interface AuthState {
   ready: boolean; // initial /api/me resolved
   authenticated: boolean;
   role: Role | null;
+  username: string | null;
+  fullAccess: boolean;
   version: string;
   reviewCount: number;
   installPingAsk: boolean;
   dismissInstallPingAsk: () => void;
-  login: (password: string) => Promise<void>;
+  login: (password: string, username?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -21,6 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [role, setRole] = useState<Role | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+  const [fullAccess, setFullAccess] = useState(true);
   const [version, setVersion] = useState("");
   const [reviewCount, setReviewCount] = useState(0);
   const [installPingAsk, setInstallPingAsk] = useState(false);
@@ -29,6 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCsrfToken(me.csrf_token);
     setAuthenticated(me.authenticated);
     setRole(me.role ?? null);
+    setUsername(me.username ?? null);
+    // Absent (admin / older API) → full access; only an explicit false restricts.
+    setFullAccess(me.full_access !== false);
     setVersion(me.version);
     setReviewCount(me.review_count || 0);
     setInstallPingAsk(Boolean(me.install_ping_ask));
@@ -55,8 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (password: string) => {
-      const res = await api.post<{ ok: boolean; csrf_token: string }>("/api/login", { password });
+    async (password: string, uname?: string) => {
+      // username is optional: blank keeps the legacy admin/guest password-only flow;
+      // a value logs in a named player user (Phase 5).
+      const body: { password: string; username?: string } = { password };
+      if (uname && uname.trim()) body.username = uname.trim();
+      const res = await api.post<{ ok: boolean; csrf_token: string }>("/api/login", body);
       setCsrfToken(res.csrf_token);
       // Pull fresh /api/me for version + review count now that we're in.
       await refresh();
@@ -82,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, role, version, reviewCount, installPingAsk, dismissInstallPingAsk, login, logout, refresh }}
+      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

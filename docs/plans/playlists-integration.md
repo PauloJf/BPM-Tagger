@@ -2,7 +2,7 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Phases 1–4 implemented** (Phase 4: 2026-07-19). Phase 1: schema generalization,
+Status: **Phases 1–5 implemented** (Phase 5: 2026-07-19). Phase 1: schema generalization,
 diff/upsert sync, legacy migration. Phase 2: Navidrome source (Subsonic
 `getPlaylists`/`getPlaylist`, metadata-matched coverage, source-aware add/sync API,
 front-end source picker + new/removed badges). Phase 3: run-queue playlist scope
@@ -10,7 +10,11 @@ front-end source picker + new/removed badges). Phase 3: run-queue playlist scope
 source picker. Phase 4: Local source + "Add to playlist" (create-by-name,
 add-from-library on track pages and Library rows, per-track remove + delete;
 grabber-independent, flows through the shared coverage/m3u/run machinery unchanged).
-Phase 5 proposed.
+Phase 5: per-user access via local player users (`players` + `player_playlists`,
+username login, scoped run sources, Settings → Users panel, `RUN_PASSWORD` kept as a
+shared guest), plus the "force tempo" run toggle, a background sync scheduler (closing
+the periodic star/play-count follow-up), and source-agnostic "queue missing" for
+Navidrome playlists. See [phase5-player-users.md](phase5-player-users.md).
 Supersedes the earlier "native playlist object" draft: we **reuse and generalize the
 existing Playlists section** instead of building a parallel system.
 
@@ -198,7 +202,7 @@ stays admin-only.
 | **2** ✅ | **Navidrome source**: Subsonic `getPlaylists`/`getPlaylist`, add-by-pick, sync+resolve+coverage, new/removed tracking UI. Metadata matching (not path) to sidestep multi-root fragility. Missing-track grabber-queue stays Spotify-only (grab_queue is keyed on spotify_track_id). |
 | **3** ✅ | **Run-mode integration**: `playlist=<id>` on `/api/run/queue` (pool = matched, BPM-tagged, non-disliked, non-tombstone tracks); `GET /api/run/playlists` (in `_PLAYER_ALLOWED`) with per-playlist available counts; Run-page source picker. All playlists shared to the player. |
 | **4** ✅ | **Local source + "Add to playlist"** — create a Local playlist by name (`source='local'`, no external id); add library tracks from track pages and Library rows (each add sets `match_status='have'` + `matched_file_path` directly); remove tracks (explicit hard-delete) and delete playlists. Flows through the existing coverage / m3u / run-source machinery unchanged; nothing grabber-gated (no sync, no missing tracks). The Run *player* itself was intentionally left without an add button. |
-| **5** *(deferred)* | **Per-user access via local player users** (decided 2026-07-19; supersedes the earlier Navidrome-login / `nd_username` idea — see Locked decisions): `players` table (`username`, `password_hash`, `full_access`) + `player_playlists` join table; login tries admin password then player users, session carries the player id; `GET /api/run/playlists` filters to the user's playlists (all when full-access); `/api/run/queue` verifies playlist membership and gates the library/starred pools to full-access users; Settings → Users admin panel (create/delete, reset password, full-access toggle, playlist checkboxes); `RUN_PASSWORD` retires or becomes a shared "guest" user. Plus: periodic playlist sync; "play everything, force tempo" toggle. Also rides along: **grabber-queueing missing tracks from non-Spotify playlists** — `grab_queue` is keyed on `spotify_track_id`, so Navidrome/Local missing tracks need a source-agnostic enqueue path (cf. the Deezer-suggestions enqueue in `web/api/suggestions.py`, which already solves the no-Spotify-id dedupe problem). |
+| **5** ✅ | **Per-user access via local player users** (decided 2026-07-19; supersedes the earlier Navidrome-login / `nd_username` idea — see Locked decisions): `players` table (`username`, `password_hash`, `full_access`) + `player_playlists` join table; login tries admin password then player users, session carries the player id; `GET /api/run/playlists` filters to the user's playlists (all when full-access); `/api/run/queue` verifies playlist membership and gates the library/starred pools to full-access users; Settings → Users admin panel (create/delete, reset password, full-access toggle, playlist checkboxes); `RUN_PASSWORD` retires or becomes a shared "guest" user. Plus: periodic playlist sync; "play everything, force tempo" toggle. Also rides along: **grabber-queueing missing tracks from non-Spotify playlists** — `grab_queue` is keyed on `spotify_track_id`, so Navidrome/Local missing tracks need a source-agnostic enqueue path (cf. the Deezer-suggestions enqueue in `web/api/suggestions.py`, which already solves the no-Spotify-id dedupe problem). |
 
 Recommended first build: **Phase 1** — it's pure backend groundwork that keeps Spotify
 working while unlocking every other source.

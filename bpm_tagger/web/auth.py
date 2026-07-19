@@ -10,7 +10,9 @@ import hmac
 import logging
 import secrets
 
-from flask import abort, current_app, jsonify, request, session
+from typing import Optional
+
+from flask import abort, current_app, g, jsonify, request, session
 from functools import wraps
 
 log = logging.getLogger(__name__)
@@ -58,6 +60,32 @@ def verify_run_password(candidate: str) -> bool:
     return bool(expected) and hmac.compare_digest(candidate, expected)
 
 
+def verify_player(username: str, candidate: str) -> Optional[dict]:
+    """Return the enabled player-user row whose username+password match, else None.
+
+    Reuses werkzeug ``check_password_hash`` — the same primitive
+    ``verify_ui_password`` / ``verify_run_password`` use. Usernames are stored
+    lowercased; matching is therefore case-insensitive. Disabled users never match
+    (an admin can lock a user out without deleting it)."""
+    if not username or not candidate:
+        return None
+    # Local import avoids any import cycle between auth.py and web.state.
+    from .state import state
+    db = state().db
+    if db is None:
+        return None
+    row = db.get_player_by_username(username)
+    if not row or not row.get("enabled"):
+        return None
+    from werkzeug.security import check_password_hash
+    try:
+        if check_password_hash(row["password_hash"], candidate):
+            return row
+    except Exception:
+        return None
+    return None
+
+
 def password_stamp(hashed: str, plain: str) -> str:
     """A short opaque value tied to the current password. Stored in every
     session at login and checked by login_required, so changing the password
@@ -79,13 +107,28 @@ def login_required(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        # A session is valid if its stamp matches either the admin password or
-        # the (optional) run-only password. The player-scope gate in the app
-        # factory further restricts which endpoints a "player" session reaches.
+        if not session.get("ok"):
+            return jsonify(error="unauthorized"), 401
+        # Player-USER sessions (Phase 5) carry a player_id and a per-user password
+        # stamp — the two global stamps below can't cover them. Validate against the
+        # live row instead: a missing/disabled user or a reset password (stamp
+        # mismatch) is rejected immediately, so delete/disable/reset all log the user
+        # out. The fresh row is stashed on g for the run-scope helper (§3).
+        if session.get("role") == "player" and session.get("player_id") is not None:
+            from .state import state
+            row = state().db.get_player(session["player_id"])
+            if not row or not row.get("enabled"):
+                return jsonify(error="unauthorized"), 401
+            if session.get("pw") != password_stamp(row["password_hash"], ""):
+                return jsonify(error="unauthorized"), 401
+            g.player = row
+            return f(*args, **kwargs)
+        # Admin, or the shared guest (RUN_PASSWORD) player with no player_id: a
+        # session is valid if its stamp matches the admin or the run-only password.
         valid = {current_app.config.get("PW_STAMP"),
                  current_app.config.get("RUN_PW_STAMP")}
         valid.discard(None)
-        if not session.get("ok") or session.get("pw") not in valid:
+        if session.get("pw") not in valid:
             return jsonify(error="unauthorized"), 401
         return f(*args, **kwargs)
     return wrapper

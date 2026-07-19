@@ -35,6 +35,7 @@ const WarnIcon = ({ size = 11 }: { size?: number }) => (
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState(false);
@@ -47,7 +48,7 @@ export default function Login() {
     setBusy(true);
     setError(false);
     try {
-      await login(password);
+      await login(password, username);
       navigate("/tracks", { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
@@ -94,8 +95,25 @@ export default function Login() {
           ) : (
             <>
               <div className="login-card-title">Sign in</div>
-              <div className="login-card-sub">Enter the UI password to continue</div>
+              <div className="login-card-sub">Admin: password only. Run user: username + password.</div>
               <form onSubmit={submit}>
+                <div className="login-field">
+                  <label className="login-label" htmlFor="login-user">
+                    Username <span style={{ color: "var(--muted)", fontWeight: 400 }}>(run users only)</span>
+                  </label>
+                  <div className="login-input-wrap">
+                    <input
+                      id="login-user"
+                      className="login-input"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      autoComplete="username"
+                      placeholder="Leave blank for admin"
+                      disabled={busy}
+                    />
+                  </div>
+                </div>
                 <div className="login-field">
                   <label className="login-label" htmlFor="login-pw">
                     Password

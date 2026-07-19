@@ -74,14 +74,11 @@ class PlaylistsMixin:
             playlists = [dict(r) for r in conn.execute(
                 "SELECT * FROM playlists ORDER BY name COLLATE NOCASE"
             ).fetchall()]
-            queued = {r["spotify_track_id"] for r in conn.execute(
-                f"SELECT DISTINCT spotify_track_id FROM grab_queue "
-                f"WHERE status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
-                GRAB_NONTERMINAL,
-            ).fetchall()}
+            queued = self._queued_sids(conn)
+            queued_pt = self._queued_pt_ids(conn)
             for p in playlists:
                 rows = conn.execute(
-                    "SELECT spotify_track_id, match_status, is_new, removed_at "
+                    "SELECT id, spotify_track_id, match_status, is_new, removed_at "
                     "FROM playlist_tracks WHERE playlist_id = ?",
                     (p["id"],),
                 ).fetchall()
@@ -92,7 +89,7 @@ class PlaylistsMixin:
                         continue
                     if r["is_new"]:
                         new += 1
-                    if r["spotify_track_id"] in queued:
+                    if r["spotify_track_id"] in queued or r["id"] in queued_pt:
                         q += 1
                     elif r["match_status"] == "have":
                         have += 1
@@ -130,6 +127,11 @@ class PlaylistsMixin:
     def delete_playlist(self, playlist_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
+            # player_playlists carries no FK constraint (the playlists table can be
+            # rebuilt by the legacy migration), so drop the player-scope join rows for
+            # this playlist here — a deleted playlist can't linger in any user's
+            # allowlist (Phase 5).
+            conn.execute("DELETE FROM player_playlists WHERE playlist_id = ?", (playlist_id,))
             conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
             conn.commit()
 
@@ -313,6 +315,17 @@ class PlaylistsMixin:
             GRAB_NONTERMINAL,
         ).fetchall()}
 
+    def _queued_pt_ids(self, conn) -> set:
+        """playlist_track_ids with a non-terminal grab in flight — lets a queued
+        non-Spotify track (no spotify_track_id) still read as 'queued' on its
+        playlist row, via the grab's playlist_track_id link (Phase 5)."""
+        return {r["playlist_track_id"] for r in conn.execute(
+            f"SELECT DISTINCT playlist_track_id FROM grab_queue "
+            f"WHERE playlist_track_id IS NOT NULL "
+            f"AND status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
+            GRAB_NONTERMINAL,
+        ).fetchall()}
+
     def get_playlist_tracks(self, playlist_id: int, status: str = "") -> list[dict]:
         """Playlist tracks with a derived per-row status (have|queued|missing|removed).
 
@@ -333,10 +346,13 @@ class PlaylistsMixin:
                 (playlist_id,),
             ).fetchall()]
             queued = self._queued_sids(conn)
+            queued_pt = self._queued_pt_ids(conn)
         for r in rows:
             if r["removed_at"]:
                 r["derived_status"] = "removed"
-            elif r["spotify_track_id"] in queued:
+            elif r["spotify_track_id"] in queued or r["id"] in queued_pt:
+                # A non-Spotify track (Navidrome) has no spotify_track_id to match on,
+                # so also honour the playlist_track_id link the grab carries (Phase 5).
                 r["derived_status"] = "queued"
             elif r["match_status"] == "have":
                 r["derived_status"] = "have"

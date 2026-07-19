@@ -48,6 +48,7 @@ export interface RunTrack {
   play_count?: number | null;
   run_bpm: number;   // BPM after octave fold (×½/×1/×2)
   rate: number;      // playbackRate that lands run_bpm on the target
+  clamped?: boolean; // force-tempo only: rate was clamped, so playback isn't exactly on target
   from_playlist?: boolean;  // from the selected playlist itself, vs a library top-up
 }
 
@@ -62,6 +63,7 @@ export interface RunQueueResponse {
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
   topped_up?: boolean;  // true when a playlist run was filled out with library tracks (too few matched)
   playlist?: number | null;   // playlist id the pool was scoped to, or null for the whole library
+  forced?: boolean;     // "play everything, force tempo" was on for this build
 }
 
 // A playlist offered as a run source, with how many tracks are actually runnable.
@@ -158,6 +160,21 @@ export interface Me {
   csrf_token: string;
   review_count: number;
   install_ping_ask?: boolean;
+  // Player identity (Phase 5). username is null for admin + the shared guest;
+  // full_access is true for admin/guest and full-access player users, false for a
+  // playlist-restricted user (the Run source picker hides library/starred for them).
+  username?: string | null;
+  full_access?: boolean;
+}
+
+// Player-user account, as returned by the admin /api/players endpoints.
+export interface PlayerUser {
+  id: number;
+  username: string;
+  full_access: boolean;
+  enabled: boolean;
+  playlist_ids: number[];
+  last_login_at: string | null;
 }
 
 export interface Waveform {

@@ -12,7 +12,8 @@ import time
 from flask import Blueprint, current_app, jsonify, request, session
 
 from ...config import __version__
-from ..auth import _check_csrf, _csrf_token, verify_run_password, verify_ui_password
+from ..auth import (_check_csrf, _csrf_token, password_stamp, verify_player,
+                    verify_run_password, verify_ui_password)
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def api_login():
     st = state()
     data = request.get_json(force=True, silent=True) or {}
     password = data.get("password", "")
+    username = str(data.get("username", "") or "").strip()
     ip = request.remote_addr or "unknown"
     now = time.time()
     with st.login_lock:
@@ -37,11 +39,20 @@ def api_login():
             st.login_lockout_until[ip] = now + st.lockout_seconds
             st.login_attempts[ip] = []
             return jsonify(ok=False, error="locked_out"), 429
-        # Admin password wins if both happen to match; the run-only password
-        # grants the restricted "player" role (Run page only).
+        # Resolution order (Phase 5):
+        #  * username given → a named player user (Run page only).
+        #  * username blank → admin password wins, else the shared-guest run
+        #    password grants the restricted "player" role (unchanged legacy flow).
         role = None
+        player_id = None
         if isinstance(password, str) and password:
-            if verify_ui_password(password):
+            if username:
+                player = verify_player(username, password)
+                if player:
+                    role = "player"
+                    player_id = player["id"]
+                    stamp = password_stamp(player["password_hash"], "")
+            elif verify_ui_password(password):
                 role = "admin"
                 stamp = current_app.config.get("PW_STAMP")
             elif verify_run_password(password):
@@ -53,6 +64,9 @@ def api_login():
             session["ok"] = True
             session["role"] = role
             session["pw"] = stamp
+            session["player_id"] = player_id   # None for admin + shared guest
+            if player_id is not None:
+                st.db.touch_player_login(player_id)
             # Persistent (sliding) session for both roles so the configured
             # lifetime is actually honored: admins get UI_SESSION_HOURS (via
             # PERMANENT_SESSION_LIFETIME), players get the longer RUN_SESSION
@@ -88,6 +102,22 @@ def api_me():
         "version": __version__,
         "csrf_token": _csrf_token(),
     }
+    # Player identity (Phase 5): a named player user reports its username + whether
+    # it's full-access, so the Run source picker can hide Whole-library/Starred from a
+    # restricted user. Admin and the shared guest are full-access with no username.
+    # (The server still gates every request regardless of what the client shows.)
+    if role == "player":
+        pid = session.get("player_id")
+        if pid is not None and st.db is not None:
+            prow = st.db.get_player(pid)
+            resp["username"] = prow["username"] if prow else None
+            resp["full_access"] = bool(prow["full_access"]) if prow else False
+        else:
+            resp["username"] = None          # shared guest (RUN_PASSWORD)
+            resp["full_access"] = True
+    elif is_admin:
+        resp["username"] = None
+        resp["full_access"] = True
     # Library stats and the install-ping prompt are admin-only — a player session
     # is a locked-down kiosk and never sees them.
     if is_admin and st.db is not None:

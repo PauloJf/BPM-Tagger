@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
+import PlayerUsers from "../components/PlayerUsers";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
@@ -137,6 +138,8 @@ export default function Settings() {
   const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, conf: 0.4 });
   const [mode, setMode] = useState("watch");
   const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false, scrobble: false });
+  const [syncInterval, setSyncInterval] = useState(0);
+  const [syncIntSaved, setSyncIntSaved] = useState<Saved>("");
   const [starSyncMsg, setStarSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [starSyncing, setStarSyncing] = useState(false);
   const [playPullMsg, setPlayPullMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -146,7 +149,7 @@ export default function Settings() {
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
     octave: true, preferStarred: true, preferFamiliar: false,
-    queueSize: 20, tolerance: 4, stretchLimit: 15,
+    queueSize: 20, tolerance: 4, stretchLimit: 15, forceTempo: false,
   });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
@@ -258,6 +261,7 @@ export default function Settings() {
     setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
+    setSyncInterval(n("sync_interval_minutes", 0));
     setPlayback(n("playback_buffer", 3));
     setRunSessionDays(n("run_session_days", 30));
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -279,6 +283,7 @@ export default function Settings() {
       queueSize: n("run_queue_size", 20),
       tolerance: n("run_tolerance_pct", 4),
       stretchLimit: n("run_stretch_limit_pct", 15),
+      forceTempo: b("run_force_tempo", false),
     });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
@@ -706,6 +711,7 @@ export default function Settings() {
                     </div>
                   </form>
                 )}
+                <PlayerUsers />
               </div>
             );
           })()}
@@ -889,6 +895,23 @@ export default function Settings() {
                   {fieldLabel("Scrobble plays", "Report tracks played in the built-in player (Run mode included) to Navidrome once they pass the halfway mark — play counts and 'last played' stay accurate, and Navidrome forwards to Last.fm/ListenBrainz if you've connected them there.")}
                   <Toggle on={nav.scrobble} onChange={(v) => setNav({ ...nav, scrobble: v })} label="Scrobble plays" />
                 </div>
+                <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  {fieldLabel("Background sync", "Minutes between automatic sync passes for playlists (Spotify + Navidrome), stars, and play counts. 0 = off (use the manual buttons only). Applies on the next restart; runs only in watch mode.")}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="number" min={0} max={1440} step={5} value={syncInterval}
+                      onChange={(e) => setSyncInterval(Math.max(0, Math.min(1440, Number(e.target.value) || 0)))}
+                      style={{ width: 90, fontFamily: "var(--mono)", textAlign: "center" }}
+                    />
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>min</span>
+                    <button
+                      type="button" className="btn btn-ghost btn-sm"
+                      onClick={() => saveSection("/api/settings/sync-interval", { sync_interval_minutes: syncInterval }, setSyncIntSaved)}
+                    >
+                      {syncIntSaved === "saving" ? "Saving…" : syncIntSaved === "ok" ? "Saved ✓" : syncIntSaved === "err" ? "Error" : "Save interval"}
+                    </button>
+                  </div>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <SaveButton state={navSaved} label="Save Navidrome Settings" />
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
@@ -944,6 +967,7 @@ export default function Settings() {
                 run_queue_size: run.queueSize,
                 run_tolerance_pct: run.tolerance,
                 run_stretch_limit_pct: run.stretchLimit,
+                run_force_tempo: run.forceTempo,
               }, setRunSaved);
             }}>
               <div className="field-row">
@@ -987,6 +1011,10 @@ export default function Settings() {
                          style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
                   <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
                 </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Play everything (force tempo)", "Default for new runs: ignore the match tolerance entirely and force every track onto the target cadence via the tempo lock (extreme rates are clamped). The Run page has a per-run toggle that overrides this.")}
+                <Toggle on={run.forceTempo} onChange={(v) => setRun({ ...run, forceTempo: v })} label="Play everything, force tempo" />
               </div>
               <div className="field-row">
                 {fieldLabel("Max stretch", "Upper bound (in %) for how far the tempo lock may speed up or slow down a track. Browser time-stretching starts to sound artificial beyond ~15%.")}

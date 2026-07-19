@@ -10,7 +10,7 @@ ships or a new plan lands.** Last updated: 2026-07-19 (v2.6.9).
 |---|---|---|
 | Suggestions page + Related panels + previews + queue-similar | [suggestions-page.md](suggestions-page.md) | ✅ Done (v2.5.0 / v2.5.1) |
 | Navidrome star sync | [navidrome-star-sync.md](navidrome-star-sync.md) | ✅ Done (v2.5.2); follow-ups open |
-| Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | 🔶 Phases 1–4 done; 5 open |
+| Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | ✅ Phases 1–5 done |
 | Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ⬜ Planned, not started |
 
 ---
@@ -39,9 +39,10 @@ Open: nothing planned. Ideas parked in the backlog below.
 
 Open follow-ups (no plan doc yet):
 
-- ⬜ **Periodic/background sync** for stars *and* play counts — both are manual-button
-  only today. Candidate approaches: piggyback on scan completion, or an interval thread
-  like the grabber's `SpotifySync` loop (`grabber/sync_engine.py`).
+- ✅ **Periodic/background sync** for stars *and* play counts — shipped with playlists
+  Phase 5 as a single `PeriodicSync` scheduler (`integrations/periodic_sync.py`, owned by
+  `main.py` so it runs with the grabber off). One `sync_interval_minutes` drives playlist
+  sync, star sync, and play-count pulls; each job self-gates on its own toggle/creds.
 - ⬜ **`starred_at` timestamp column** for a real newest-wins conflict policy. Low
   priority: with the boolean-flag + per-track-baseline design, conflicts are
   mathematically unreachable, so this only matters if sync semantics ever change.
@@ -60,16 +61,16 @@ Open follow-ups (no plan doc yet):
   directly `have`), remove tracks / delete the playlist. Grabber-independent; reuses the
   existing coverage / m3u / Run-source machinery unchanged. (The Run *player* was left
   without an add button by decision.)
-- ⬜ **Phase 5** — **Per-user access via local player users** (decided 2026-07-19;
-  supersedes the Navidrome-credential-login idea): `players` + `player_playlists`
-  tables, Settings → Users admin panel, playlist-filtered `/api/run/playlists`,
-  membership check on `/api/run/queue` (library/starred pools full-access-only),
-  `RUN_PASSWORD` retired or kept as a shared guest user. Plus periodic playlist sync
-  and the "play everything, force tempo" toggle.
-  Rides along (decided 2026-07-19): the Phase 2 deferral below.
-- ⬜ **"Queue missing in grabber" is Spotify-only** — `grab_queue` is keyed on
-  `spotify_track_id`, so missing Navidrome tracks can't be queued yet. Bundled into
-  Phase 5.
+- ✅ **Phase 5** — **Per-user access via local player users** (2026-07-19): `players` +
+  `player_playlists` tables, username login (`RUN_PASSWORD` kept as a shared full-access
+  guest), Settings → Player Access → Run users panel, playlist-filtered
+  `/api/run/playlists`, membership + library/starred gating on `/api/run/queue`. Plus the
+  **"play everything, force tempo"** run toggle, the **background sync scheduler**
+  (`integrations/periodic_sync.py`), and source-agnostic **"queue missing"** via a shared
+  `grabber/enqueue.py::enqueue_track` (normalized dedupe folded into `enqueue_grab`).
+- ✅ **"Queue missing in grabber" now source-agnostic** — a missing **Navidrome** track
+  enqueues by metadata (adopting a confident Spotify match's id when connected) and reads
+  as *queued* on its playlist via the `playlist_track_id` link. Shipped with Phase 5.
 
 ## Inbox candidate previews (⬜ not started)
 

@@ -20,6 +20,7 @@ import PageHeader from "../components/PageHeader";
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
 const SOURCE_KEY = "bpm.run.source";   // "library" | "pl:<id>"
+const FORCE_KEY = "bpm.run.force";     // "play everything, force tempo"
 
 const PRESET_DEFAULTS = [
   { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -286,7 +287,7 @@ export default function Run() {
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
   // the same limits; this just keeps the UI honest.
-  const { role } = useAuth();
+  const { role, fullAccess } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
   const mini = useMiniPlayer();
@@ -347,6 +348,10 @@ export default function Run() {
   // Run source: the whole library (default) or a specific playlist ("pl:<id>").
   const [source, setSourceState] = useState<string>(() => localStorage.getItem(SOURCE_KEY) || "library");
   const setSource = (s: string) => { setSourceState(s); localStorage.setItem(SOURCE_KEY, s); };
+  // "Play everything, force tempo": ignore the tolerance filter and force every
+  // track onto the target (server clamps extreme rates). Persisted per-device.
+  const [force, setForceState] = useState<boolean>(() => localStorage.getItem(FORCE_KEY) === "1");
+  const setForce = (v: boolean) => { setForceState(v); localStorage.setItem(FORCE_KEY, v ? "1" : "0"); };
 
   const runPlaylistsQ = useQuery({
     queryKey: ["run-playlists"],
@@ -360,6 +365,14 @@ export default function Run() {
   useEffect(() => {
     if (selectedPlaylistId != null && runPlaylistsQ.data && !selectedPlaylist) setSource("library");
   }, [selectedPlaylistId, runPlaylistsQ.data, selectedPlaylist]);
+  // A restricted (non-full-access) player can't run the whole library — it 403s.
+  // If they're on "library" (or a now-missing playlist), snap to their first
+  // playlist so the picker never offers a source the server will refuse.
+  useEffect(() => {
+    if (fullAccess || !runPlaylistsQ.data) return;
+    const validPl = selectedPlaylistId != null && selectedPlaylist;
+    if (!validPl && runPlaylists.length > 0) setSource(`pl:${runPlaylists[0].id}`);
+  }, [fullAccess, runPlaylistsQ.data, selectedPlaylistId, selectedPlaylist, runPlaylists]);
   // Disliked tracks are excluded server-side from future queue builds, so they
   // never appear in a fresh queueInfo — this only tracks what got disliked
   // *this session* on a track that's already sitting in the current queue.
@@ -450,7 +463,8 @@ export default function Run() {
     setBuildErr("");
     try {
       const scope = selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
-      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}`);
+      const forceArg = force ? "&force=1" : "";
+      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}${forceArg}`);
       setQueueInfo(resp);
       if (!resp.tracks.length) {
         setBuildErr(selectedPlaylist
@@ -657,7 +671,7 @@ export default function Run() {
           aria-label="Run source"
           style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 260 }}
         >
-          <option value="library">Whole library</option>
+          {fullAccess && <option value="library">Whole library</option>}
           {runPlaylists.map((p) => (
             <option key={p.id} value={`pl:${p.id}`}>{p.name} ({p.available})</option>
           ))}
@@ -859,6 +873,39 @@ export default function Run() {
   // `transport`), so it never reflows the layout.
   const statusInline = !current && statusPill && (
     <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>{statusPill}</div>
+  );
+
+  // "Play everything, force tempo" toggle — drops the BPM tolerance filter so any
+  // track can fill the queue, forced onto the target (server clamps extreme rates).
+  const forceToggle = (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+      <button
+        onClick={() => setForce(!force)}
+        aria-pressed={force}
+        title={force
+          ? "Force tempo is ON — every track is stretched onto the target, ignoring the BPM tolerance."
+          : "Play everything: ignore the BPM tolerance and force every track onto the target cadence."}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer",
+          fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em",
+          padding: "6px 12px", borderRadius: 999,
+          background: force ? "var(--accent-soft)" : "var(--surface)",
+          border: `1px solid ${force ? "var(--accent-border)" : "var(--border)"}`,
+          color: force ? "var(--accent-2)" : "var(--muted)",
+        }}
+      >
+        <span style={{
+          width: 26, height: 15, borderRadius: 999, position: "relative", flexShrink: 0,
+          background: force ? "var(--accent)" : "var(--border)", transition: "background 0.15s",
+        }}>
+          <span style={{
+            position: "absolute", top: 2, left: force ? 13 : 2, width: 11, height: 11,
+            borderRadius: 999, background: "white", transition: "left 0.15s",
+          }} />
+        </span>
+        FORCE TEMPO
+      </button>
+    </div>
   );
 
   // Desktop-only: extra track facts for the info column, drawn from the full
@@ -1234,6 +1281,7 @@ export default function Run() {
                 {targetBlock}
                 {presetsGrid}
                 {stepsRow}
+                {forceToggle}
                 {statusInline}
               </div>
             </div>
@@ -1271,6 +1319,7 @@ export default function Run() {
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
           : presetsGrid}
+        {mode !== "tap" && mode !== "queue" && forceToggle}
         {statusInline}
       </div>
       {transport}

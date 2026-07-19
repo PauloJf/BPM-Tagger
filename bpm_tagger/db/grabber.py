@@ -63,12 +63,16 @@ class GrabberMixin:
                          "cover_url, status, priority, created_at, updated_at")
 
     def enqueue_grab(self, meta: dict) -> Optional[int]:
-        """Insert a pending grab_queue item unless a non-terminal one already
-        exists for this spotify_track_id. Returns the new id, or None if skipped.
+        """Insert a pending grab_queue item unless a non-terminal one already exists
+        for this track. Returns the new id, or None if skipped.
 
-        The dedupe + insert is a single ``INSERT ... SELECT ... WHERE NOT EXISTS``
-        so two concurrent callers (background sync + a manual enqueue) can't both
-        pass a check-then-insert and create duplicate rows for one track."""
+        Dedupe key: ``spotify_track_id`` when present (atomic
+        ``INSERT ... SELECT ... WHERE NOT EXISTS`` so concurrent callers can't both
+        pass a check-then-insert). For tracks with NO spotify id (a Navidrome
+        playlist's missing track, a Deezer suggestion), fall back to a normalized
+        ``(title, artist)`` guard against the non-terminal queue — so every caller is
+        deduped, not just the Spotify ones. Both dedupes are non-terminal-only: a
+        re-grab after a terminal state (done/failed/skipped) is always allowed."""
         sid = meta.get("spotify_track_id")
         now = datetime.now(timezone.utc).isoformat()
         vals = (meta.get("playlist_track_id"), sid, meta.get("title"), meta.get("artist"),
@@ -89,6 +93,15 @@ class GrabberMixin:
                 if cur.rowcount == 0:
                     return None
             else:
+                from ..grabber.matching import normalize_artist, normalize_title
+                key = (normalize_title(meta.get("title")), normalize_artist(meta.get("artist")))
+                if key != ("", ""):
+                    placeholders = ",".join("?" * len(GRAB_NONTERMINAL))
+                    for r in conn.execute(
+                            f"SELECT title, artist FROM grab_queue "
+                            f"WHERE status IN ({placeholders})", GRAB_NONTERMINAL):
+                        if (normalize_title(r["title"]), normalize_artist(r["artist"])) == key:
+                            return None
                 cur = conn.execute(
                     f"INSERT INTO grab_queue ({self._GRAB_INSERT_COLS}) "
                     f"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)

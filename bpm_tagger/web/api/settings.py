@@ -220,6 +220,7 @@ def api_settings_run():
         "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
         "run_tolerance_pct":     _num(data.get("run_tolerance_pct"), 0.5, 30, 4.0),
         "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
+        "run_force_tempo":       bool(data.get("run_force_tempo", False)),
     }
     st.config.update(updates)
     save_settings(st.settings_path, updates)
@@ -357,6 +358,26 @@ def api_sync_play_counts():
     result = pull_play_counts(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
+
+
+@settings_bp.route("/api/settings/sync-interval", methods=["POST"])
+@login_required
+def api_settings_sync_interval():
+    """Admin-only: minutes between automatic playlist/star/play-count sync passes.
+    0 disables the background scheduler; otherwise clamped to 5–1440. Takes effect on
+    the next restart (the scheduler is started once, in the watch-mode entry point)."""
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    try:
+        raw = int(_json_body().get("sync_interval_minutes", 0))
+    except (ValueError, TypeError):
+        return jsonify(ok=False, error="Enter a number of minutes (0 to disable)."), 400
+    minutes = 0 if raw <= 0 else max(5, min(1440, raw))
+    st.config["sync_interval_minutes"] = minutes
+    save_settings(st.settings_path, {"sync_interval_minutes": minutes})
+    return jsonify(ok=True, sync_interval_minutes=minutes)
 
 
 @settings_bp.route("/api/settings/test-navidrome", methods=["POST"])
