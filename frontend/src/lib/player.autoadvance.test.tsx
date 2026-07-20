@@ -213,45 +213,23 @@ describe("auto-advance — slow-net buffering", () => {
   });
 });
 
-describe("auto-advance — slow-net full preload", () => {
-  it("plays the next track from its preloaded blob on ended", async () => {
+describe("auto-advance — tempo-locked runs stream over the network (blob preload disabled)", () => {
+  it("advances under a tempo lock by streaming the next track, never a blob URL", async () => {
+    // Regression: playing the boundary track from a preloaded blob: URL stalled
+    // whenever a tempo lock was on (both iOS and Android), while streaming the
+    // same file works everywhere. Preload is disabled, so advance must stream.
     mount();
     act(() => pc.playQueue([A, B, C]));
-    // A tempo lock turns on the run-mode look-ahead that downloads the next
-    // tracks into blobs.
     act(() => pc.setTempoLock({ target: 150, octave: true, stretchLimitPct: 15 }));
     await act(async () => { await flush(); await flush(); });
 
-    // B was prefetched, so the boundary plays it from local memory (blob:), not
-    // the network.
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    // No prefetch happens while preload is off.
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+
     emit(audio, "ended");
     expect(pc.current?.path).toBe("/b.mp3");
-    expect(audio.src.startsWith("blob:")).toBe(true);
-  });
-
-  it("falls back to streaming when a preloaded blob fails to decode (Android WebView)", async () => {
-    mount();
-    act(() => pc.playQueue([A, B, C]));
-    act(() => pc.setTempoLock({ target: 150, octave: true, stretchLimitPct: 15 }));
-    await act(async () => { await flush(); await flush(); });
-
-    emit(audio, "ended");                        // advance to B, from its blob
-    expect(audio.src.startsWith("blob:")).toBe(true);
-
-    // The engine can't decode the blob → error. We must re-point at the network.
-    fa.setError(MEDIA_ERR);
-    emit(audio, "error");
     expect(audio.src.startsWith("blob:")).toBe(false);
-    expect(audio.src).toContain("b.mp3");        // streaming the file instead
-    expect(pc.error).toBeNull();                 // no banner — recovered
-
-    // Blobs are now disabled for the session: the next advance streams directly.
-    fa.setError(null);
-    emit(audio, "ended");                        // advance to C
-    expect(pc.current?.path).toBe("/c.mp3");
-    expect(audio.src.startsWith("blob:")).toBe(false);
-    expect(audio.src).toContain("c.mp3");
+    expect(audio.src).toContain("b.mp3");        // streamed from the network
   });
 });
 
@@ -269,27 +247,21 @@ describe("auto-advance — backgrounded / phone-locked (the run use case)", () =
     expect(fa.play).toHaveBeenCalled();
   });
 
-  it("keeps prefetched blobs across a stall pause (look-ahead gated on intent, not `playing`)", async () => {
-    // Regression guard for the documented bug: keying the look-ahead on the
-    // element's `playing` state (which flips false on every stall pause and at
-    // every boundary) revoked the next track's blob right when it was needed, so
-    // a backgrounded run streamed at the boundary and could stop advancing.
+  it("advances after a stall pause under a tempo lock (streams, intent holds)", async () => {
+    // A stall pauses the element (`playing` flips false) but intent stays true,
+    // so the run keeps going. With preload disabled the boundary streams.
     mount();
     act(() => pc.playQueue([A, B, C]));
     act(() => pc.setTempoLock({ target: 150, octave: true, stretchLimitPct: 15 }));
     await act(async () => { await flush(); await flush(); });
-    const revokedBefore = (URL.revokeObjectURL as ReturnType<typeof vi.fn>).mock.calls.length;
 
-    // A stall pauses the element -> `playing` goes false, but intent holds.
     emit(audio, "pause");
     await act(async () => { await flush(); });
 
-    // The upcoming blob must not have been revoked, so the boundary still plays
-    // B from memory.
-    expect((URL.revokeObjectURL as ReturnType<typeof vi.fn>).mock.calls.length).toBe(revokedBefore);
     emit(audio, "ended");
     expect(pc.current?.path).toBe("/b.mp3");
-    expect(audio.src.startsWith("blob:")).toBe(true);
+    expect(audio.src).toContain("b.mp3");
+    expect(audio.src.startsWith("blob:")).toBe(false);
   });
 });
 

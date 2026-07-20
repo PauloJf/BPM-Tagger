@@ -60,6 +60,15 @@ export function rebufferHoldSeconds(stalls: number): number {
 }
 // How many upcoming tracks the run-mode look-ahead fully prefetches.
 const PRELOAD_AHEAD = 2;
+// Full-track blob preload for gapless playback on slow links. DISABLED: playing
+// the current track from a blob: URL breaks track-advance whenever a tempo lock
+// is on — the boundary buffers then stalls on real devices (iOS and Android),
+// while streaming the same file over the network plays fine everywhere (that's
+// why a Rebuild, whose first track is never preloaded, always works). The
+// prefetch is only ever active under a tempo lock, so the whole feature is
+// gated off here rather than deleted, so it can be revisited if the blob-decode
+// path is ever made reliable.
+const PRELOAD_BLOBS = false;
 // Boundary-error recovery: a track transition on a slow/backgrounded link can
 // fire `error` on the element before the next track's data is ready. Rather than
 // declaring the file broken and stopping the run, retry the load a few times
@@ -390,7 +399,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // The element source for a track: its own external URL, else the preloaded
   // blob (unless blob playback proved broken on this engine), else stream it.
   const pickSrc = useCallback((t: PlayerTrack) =>
-    t.src ?? (blobPlaybackBroken.current ? undefined : blobCache.current.get(t.path)) ?? audioUrl(t.path), []);
+    t.src ?? (PRELOAD_BLOBS && !blobPlaybackBroken.current ? blobCache.current.get(t.path) : undefined) ?? audioUrl(t.path), []);
 
   // Load the source whenever the current track changes; seek + fade-in + auto-play as requested.
   useEffect(() => {
@@ -996,9 +1005,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // `intendedPlaying` holds true through stalls and boundaries, and still turns
   // the look-ahead off on a real pause / stop / queue end.
   useEffect(() => {
-    // Skip the look-ahead entirely once blob playback proved broken on this
-    // engine — the blobs would only fail again (we stream instead).
-    const active = tempoLock != null && intendedPlaying && order.length > 1 && !blobPlaybackBroken.current;
+    // Skip the look-ahead when preload is disabled (see PRELOAD_BLOBS) or once
+    // blob playback proved broken on this engine — we stream instead.
+    const active = PRELOAD_BLOBS && tempoLock != null && intendedPlaying && order.length > 1 && !blobPlaybackBroken.current;
     const wants = active ? upcomingPaths(order, pos, queue, repeat, PRELOAD_AHEAD) : [];
     const keep = new Set<string>(wants);
     if (current?.path) keep.add(current.path);   // keep the blob we may be playing from
