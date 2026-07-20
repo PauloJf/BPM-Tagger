@@ -151,16 +151,16 @@ describe("auto-advance — normal play", () => {
     expect(pc.current?.path).toBe("/b.mp3");
   });
 
-  it("does not call load() synchronously on advance (avoids the interrupt/reload loop)", () => {
-    // goToPos must NOT call load() in the same tick as play(): on some engines
-    // that rejects play() and fires spurious errors, which tripped the
-    // error-retry into a reload loop ("connecting" over and over). Setting .src
-    // loads implicitly; the canplay retry covers a not-yet-ready play().
+  it("calls load() then play() on advance (mirrors the reliable rebuild path)", () => {
+    // goToPos mirrors the load effect used by Rebuild — load() then play() — so
+    // advance behaves identically to a rebuild, which plays reliably on Android
+    // where the old synchronous/rate-first path stalled. The canplay retry (see
+    // below) covers a play() that load() interrupted; the error path is bounded.
     mount();
     act(() => pc.playQueue([A, B]));
     const loadsBefore = fa.load.mock.calls.length;
     emit(audio, "ended");
-    expect(fa.load.mock.calls.length).toBe(loadsBefore);   // no explicit load() on advance
+    expect(fa.load.mock.calls.length).toBeGreaterThan(loadsBefore);   // load() on advance
     expect(fa.play).toHaveBeenCalled();
   });
 });

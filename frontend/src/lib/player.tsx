@@ -498,24 +498,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // track inside the same call stack as the media/lock-screen event keeps the
   // audio session alive.
   const goToPos = useCallback((newPos: number) => {
-    const { queue, order, tempoLock } = nav.current;
+    const { queue, order } = nav.current;
     const track = queue[order[newPos]];
     if (!track) return;
     const a = audioRef.current;
     setIntendedPlaying(true);
     if (a) {
       setError(null);
-      const rate = lockRate(track.bpm, tempoLock);
-      a.defaultPlaybackRate = rate;   // load() resets playbackRate to this
       a.src = pickSrc(track);
-      // Setting .src starts the load implicitly. We deliberately do NOT call
-      // load() here: calling load()+play() synchronously inside the ended/click
-      // handler makes some engines reject play() and fire spurious error events,
-      // which tripped the error-retry into a reload loop ("connecting" over and
-      // over). The real boundary hang was the rebuffer hold pausing a still-
-      // loading element — fixed by its start-grace — and a play() that was vetoed
-      // before the element was ready is handled by the canplay retry below.
-      a.playbackRate = rate;
+      // Mirror the rebuild path (the load effect), which plays reliably on every
+      // engine including Android: load() then play(), and let the tempo-lock
+      // effect set the playbackRate *after* playback starts. Setting a stretched
+      // rate on a cold element (before it has data) errors on some Android
+      // WebViews — the boundary would "buffer then stall" while iOS and the
+      // rebuild path (both set the rate post-start) play fine. The canplay retry
+      // below covers a play() that load()'s async steps interrupted.
+      a.load();
       a.volume = volumeRef.current;
       const startSrc = a.src;   // identity for "is this still the track we started?"
       a.play().catch(() => {
