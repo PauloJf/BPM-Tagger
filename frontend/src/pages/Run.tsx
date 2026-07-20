@@ -176,8 +176,15 @@ function RunCover({ path, coverSize, fillHeight, onClick, onMouseEnter, onMouseL
   //   max-width is a guard for extreme landscape shapes, where it may crop).
   const box: React.CSSProperties = fillHeight
     ? {
-        position: "relative", display: "block", height: "100%", width: "auto", maxWidth: "100%",
-        aspectRatio: "1 / 1", borderRadius: 20, overflow: "hidden",
+        // Absolutely fill the (position:relative) cover slot. top/bottom:0 gives a
+        // definite height that iOS Safari resolves reliably — a plain height:100%
+        // + aspect-ratio here collapses to zero width on iOS (the flex-basis:0
+        // slot's height is treated as indefinite for an in-flow percentage child),
+        // which blanked the cover on iPhone while Android rendered it fine. Width
+        // is derived from the square aspect-ratio and centred horizontally.
+        position: "absolute", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)",
+        width: "auto", maxWidth: "100%", aspectRatio: "1 / 1",
+        borderRadius: 20, overflow: "hidden",
         boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
         border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
       }

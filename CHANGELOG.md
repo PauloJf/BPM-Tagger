@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **iOS Run page: cover art shows again + tighter bottom spacing.** Two iPhone-only Run-mode fixes (Android was already correct). The **cover art** was collapsing to nothing on iOS Safari — the height-driven square relied on `height:100%` inside a flexible slot, which iOS treats as indefinite and shrinks to zero; it now fills the slot by absolute positioning, which iOS resolves reliably. And the **empty space below the transport** is gone: the page's bottom padding was adding the ~34px iPhone home-indicator inset *on top of* its 24px design gap, so iOS got an oversized gap while Android sat right; it now takes the larger of the two (`max()`), clearing the indicator without the extra gap and leaving Android unchanged.
+
 ## v2.7.1 — 2026-07-20
 
 - **Run mode auto-advance, hardened end-to-end.** A run of player fixes so tracks reliably advance under every network and playback condition — especially on mobile and under a tempo lock. The player now: **retries the boundary `play()`** when the browser loads the next track but refuses to start it (interrupted autoplay); **stops the "connecting" reload loop** that could restart a track instead of advancing; **falls back to streaming** when a preloaded blob won't decode; makes the manual/auto **advance mirror the full rebuild path** (fixing an Android boundary stall); **disables blob preload** entirely (it broke advance under a tempo lock); **recovers from transient track-boundary errors** instead of stopping the run; and adds **live buffer diagnostics** for tracking down advance hangs. On mobile, the **force-tempo toggle moved into the Queue view** so it isn't cut off. Backed by a new end-to-end auto-advance test guard across the buffer/preload paths.

@@ -1090,23 +1090,31 @@ body.has-player .container.container--run { padding-bottom: 24px; }
    reserve in pages/Run.tsx is tuned to this padding). Desktop keeps the
    standard container so the cockpit stays aligned with every other page. */
 @media (max-width: 900px) {
+  /* Bottom padding is max(design gap, safe area) — NOT their sum. The transport
+     is a floating bar (no full-bleed background), so this padding is the visible
+     gap below it. Summing 24px + the ~34px iOS home-indicator inset left an
+     oversized gap on iPhone (Android, inset 0, looked right at 24px). max()
+     keeps Android at 24px and lets the iOS inset alone clear the indicator. */
   .container.container--run,
-  body.has-player .container.container--run { padding-top: 14px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  body.has-player .container.container--run { padding-top: 14px; padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
   /* Mobile Run page (admin AND player mode): fill the viewport so the
      transport (waveform + controls) pins to the bottom and the cockpit above
      distributes the leftover space — no page scroll, like a native player.
-     The height budget, term by term:
-       38px            = the run container's top (14) + bottom (24) padding
+     The height budget, term by term (must mirror what actually consumes height
+     above/around the fill, or a gap/scroll appears):
+       14px            = the run container's top padding
+       max(24px,bottom)= the container's bottom padding (see the padding rule
+                         above — max(), not sum, of the design gap and the safe
+                         area, so it matches the container exactly)
        --player-bar-h  = the sticky ~52px top bar (kiosk brand bar in player
                          mode; admin's app-nav is ~50px — same budget)
-       env(top/bottom) = device safe areas (notch / home indicator) — the bars
-                         and the container pad themselves by these, so they're
-                         real spent height in an installed PWA; 0 in a browser,
-                         where dvh already tracks the URL-bar chrome instead.
+       env(top)        = the top safe area the top bar pads itself by (notch /
+                         Dynamic Island) — real spent height in an installed PWA;
+                         0 in a browser, where dvh already tracks the URL bar.
      min-height (not height): if a tiny/landscape screen can't hold even the
      fixed rows at their natural size, the page falls back to scrolling rather
      than crushing the controls. */
-  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 38px - var(--player-bar-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 14px - max(24px, env(safe-area-inset-bottom, 0px)) - var(--player-bar-h) - env(safe-area-inset-top, 0px)); }
   .run-mobile-fill .run-mobile-body {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; justify-content: center;
@@ -1123,6 +1131,10 @@ body.has-player .container.container--run { padding-bottom: 24px; }
      safe areas included via the fill height above. */
   .run-mobile-fill .run-mobile-body > .run-cover-slot {
     flex: 1 1 0; min-height: 72px; max-height: 240px;
+    /* position:relative so the cover (absolutely positioned, see RunCover
+       fillHeight) resolves its height against this slot's flex-computed height —
+       reliable on iOS Safari where an in-flow height:100% child collapses. */
+    position: relative;
     display: flex; align-items: center; justify-content: center;
     margin-bottom: 10px;
   }
