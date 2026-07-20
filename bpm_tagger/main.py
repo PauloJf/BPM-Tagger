@@ -120,8 +120,18 @@ def main():
     elif mode == "scan_review":
         tagger.scan_review()
 
+    elif mode == "disable_2fa":
+        # Escape hatch: a lost authenticator + lost recovery codes would otherwise
+        # lock the admin out. Clears the TOTP state in settings.json so the next
+        # admin login is password-only again.
+        from .config import save_settings
+        save_settings(settings_file_path(config["db_path"]),
+                      {"totp_enabled": False, "totp_secret": None,
+                       "totp_recovery_hashes": None})
+        log.info("Admin two-factor (TOTP) disabled — next admin login is password-only.")
+
     else:
-        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, scan_review, watch, watch_all, report, lock, unlock", mode)
+        log.error("Unknown MODE '%s'. Use: scan_all, scan_unscanned, scan_review, watch, watch_all, report, lock, unlock, disable_2fa", mode)
         sys.exit(1)
 
     # For non-blocking modes, keep the process alive so the UI thread stays up.

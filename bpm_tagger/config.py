@@ -251,6 +251,15 @@ def build_config() -> dict:
         # Set (in settings.json) the first time the password is changed from the
         # UI; once present it is authoritative and ui_password is ignored.
         "ui_password_hash":           "",
+        # Admin two-factor (TOTP). All UI-managed, persisted to settings.json:
+        #   totp_enabled          — whether the admin login requires a code.
+        #   totp_secret           — the base32 shared secret (a secret at rest,
+        #                           same trust level as the password hash).
+        #   totp_recovery_hashes  — werkzeug hashes of the unused one-time codes.
+        # A lost authenticator is recoverable via a code or `MODE=disable_2fa`.
+        "totp_enabled":               False,
+        "totp_secret":                "",
+        "totp_recovery_hashes":       [],
         "ui_secret_key":              os.environ.get("UI_SECRET_KEY", ""),
         # ── Player-only ("Run-only") access ──────────────────────────────────
         # A second password that logs into a restricted role able to reach ONLY
@@ -274,6 +283,15 @@ def build_config() -> dict:
         "ui_session_hours":           int(os.environ.get("UI_SESSION_HOURS", "24")),
         "ui_max_login_attempts":      int(os.environ.get("UI_MAX_LOGIN_ATTEMPTS", "5")),
         "ui_lockout_seconds":         int(os.environ.get("UI_LOCKOUT_SECONDS", "300")),
+        # Per-account (per-username, and the shared admin/guest key) backstop for
+        # a distributed attack — higher than the per-IP cap so it doesn't let a
+        # few hostile requests lock the single admin out from every IP.
+        "ui_account_max_login_attempts": int(os.environ.get("UI_ACCOUNT_MAX_LOGIN_ATTEMPTS", "15")),
+        # Global (all-IPs, all-accounts) brute-force backstop: a high threshold
+        # with a short cooldown so a broad distributed sweep is slowed without a
+        # legit crowd tripping it or an attacker cheaply DoSing the login.
+        "ui_global_max_login_attempts": int(os.environ.get("UI_GLOBAL_MAX_LOGIN_ATTEMPTS", "50")),
+        "ui_global_lockout_seconds":  int(os.environ.get("UI_GLOBAL_LOCKOUT_SECONDS", "60")),
         "workers":                    int(os.environ.get("WORKERS", "1")),
         "navidrome_url":              os.environ.get("NAVIDROME_URL", ""),
         "navidrome_user":             os.environ.get("NAVIDROME_USER", ""),

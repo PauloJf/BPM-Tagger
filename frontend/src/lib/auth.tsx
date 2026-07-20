@@ -12,7 +12,7 @@ interface AuthState {
   reviewCount: number;
   installPingAsk: boolean;
   dismissInstallPingAsk: () => void;
-  login: (password: string, username?: string) => Promise<void>;
+  login: (password: string, username?: string, totp?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -62,11 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (password: string, uname?: string) => {
+    async (password: string, uname?: string, totp?: string) => {
       // username is optional: blank keeps the legacy admin/guest password-only flow;
-      // a value logs in a named player user (Phase 5).
-      const body: { password: string; username?: string } = { password };
+      // a value logs in a named player user (Phase 5). totp is the admin's second
+      // factor, sent only on the second step after a "totp_required" challenge.
+      const body: { password: string; username?: string; totp?: string } = { password };
       if (uname && uname.trim()) body.username = uname.trim();
+      if (totp && totp.trim()) body.totp = totp.trim();
       const res = await api.post<{ ok: boolean; csrf_token: string }>("/api/login", body);
       setCsrfToken(res.csrf_token);
       // Pull fresh /api/me for version + review count now that we're in.

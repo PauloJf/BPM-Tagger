@@ -106,6 +106,9 @@ def create_app(config: dict) -> Flask:
     st.bpm_max = float(config.get("bpm_max", 200.0))
     st.max_login_attempts = int(config.get("ui_max_login_attempts", 5))
     st.lockout_seconds = int(config.get("ui_lockout_seconds", 300))
+    st.account_max_login_attempts = int(config.get("ui_account_max_login_attempts", 15))
+    st.global_max_login_attempts = int(config.get("ui_global_max_login_attempts", 50))
+    st.global_lockout_seconds = int(config.get("ui_global_lockout_seconds", 60))
     st.config = config
     st.settings_path = str(Path(config["db_path"]).parent / "settings.json")
     app.extensions["state"] = st

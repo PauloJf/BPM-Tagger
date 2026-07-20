@@ -21,6 +21,7 @@ settings_bp = Blueprint("settings", __name__)
 # Values that must never be returned to the client in the clear.
 _SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
                 "run_password", "run_password_hash",
+                "totp_secret", "totp_recovery_hashes",
                 "navidrome_pass", "spotify_client_secret",
                 "monochrome_api_key", "deezer_arl"}
 
@@ -55,6 +56,8 @@ def api_settings_get():
             out[key] = sorted(val)
         else:
             out[key] = val
+    # Surface how many one-time recovery codes are left (the hashes stay masked).
+    out["totp_recovery_remaining"] = len(cfg.get("totp_recovery_hashes") or [])
     return jsonify(settings=out, version=__version__, env_locked=env_locked_keys())
 
 
@@ -534,4 +537,94 @@ def api_settings_password():
     # device that changed the password stays logged in.
     current_app.config["PW_STAMP"] = password_stamp(hashed, "")
     session["pw"] = current_app.config["PW_STAMP"]
+    return jsonify(ok=True)
+
+
+# ── Admin two-factor (TOTP) ───────────────────────────────────────────────────
+# Enrolment is two steps so a mistyped/unscanned secret can't lock the admin out:
+#   setup   → mint a candidate secret (held in the session, NOT yet active)
+#   confirm → verify a live code against it, then enable + issue recovery codes
+# Disable requires the current password (removing a security control is sensitive).
+
+def _require_admin():
+    """403 for a player session; None for admin. 2FA is an admin-only control."""
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Admins only."), 403
+    return None
+
+
+@settings_bp.route("/api/settings/totp/setup", methods=["POST"])
+@login_required
+def api_settings_totp_setup():
+    """Begin enrolment: return a fresh secret + otpauth URI to scan/enter. The
+    secret is stashed in the session (not persisted) until confirm proves it works."""
+    if (deny := _require_admin()):
+        return deny
+    _check_csrf()
+    from ..totp import generate_secret, provisioning_uri
+    secret = generate_secret()
+    session["totp_pending"] = secret
+    return jsonify(ok=True, secret=secret,
+                   otpauth_uri=provisioning_uri(secret, account="admin"))
+
+
+@settings_bp.route("/api/settings/totp/confirm", methods=["POST"])
+@login_required
+def api_settings_totp_confirm():
+    """Finish enrolment: verify a code against the pending secret, then enable 2FA
+    and return one-time recovery codes (shown once; only their hashes are kept)."""
+    if (deny := _require_admin()):
+        return deny
+    _check_csrf()
+    st = state()
+    secret = session.get("totp_pending", "")
+    if not secret:
+        return jsonify(ok=False, error="Start setup again."), 400
+    code = str(_json_body().get("code", "") or "").strip()
+    from ..totp import generate_recovery_codes, normalize_recovery_code
+    from ..totp import verify as totp_verify
+    if not totp_verify(secret, code):
+        return jsonify(ok=False, error="That code didn't match — check your authenticator and try again."), 400
+    from werkzeug.security import generate_password_hash
+    codes = generate_recovery_codes()
+    hashes = [generate_password_hash(normalize_recovery_code(c)) for c in codes]
+    st.config["totp_enabled"] = True
+    st.config["totp_secret"] = secret
+    st.config["totp_recovery_hashes"] = hashes
+    save_settings(st.settings_path, {"totp_enabled": True, "totp_secret": secret,
+                                     "totp_recovery_hashes": hashes})
+    session.pop("totp_pending", None)
+    return jsonify(ok=True, recovery_codes=codes)
+
+
+@settings_bp.route("/api/settings/totp/disable", methods=["POST"])
+@login_required
+def api_settings_totp_disable():
+    """Turn 2FA off. Requires the current admin password — removing a second
+    factor shouldn't be possible from a merely-open session."""
+    if (deny := _require_admin()):
+        return deny
+    _check_csrf()
+    st = state()
+    if not verify_ui_password(str(_json_body().get("password", ""))):
+        return jsonify(ok=False, error="Current password is incorrect."), 400
+    st.config["totp_enabled"] = False
+    st.config["totp_secret"] = ""
+    st.config["totp_recovery_hashes"] = []
+    save_settings(st.settings_path, {"totp_enabled": False, "totp_secret": None,
+                                     "totp_recovery_hashes": None})
+    session.pop("totp_pending", None)
+    return jsonify(ok=True)
+
+
+@settings_bp.route("/api/settings/reset-lockouts", methods=["POST"])
+@login_required
+def api_settings_reset_lockouts():
+    """Admin-only: clear all active login lockouts and attempt counters. Useful
+    when a household member trips the lockout and you're still signed in. Clears
+    transient state only — it changes no threshold, so it can't weaken the policy."""
+    if (deny := _require_admin()):
+        return deny
+    _check_csrf()
+    state().clear_login_lockouts()
     return jsonify(ok=True)

@@ -42,18 +42,36 @@ export default function Login() {
   const [lockedOut, setLockedOut] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
+  // Admin 2FA: the server answers the password step with "totp_required" when a
+  // code is needed. We then show a code field and resubmit password + code.
+  const [totpStep, setTotpStep] = useState(false);
+  const [totp, setTotp] = useState("");
+  const [codeError, setCodeError] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(false);
+    setCodeError(false);
     try {
-      await login(password, username);
+      await login(password, username, totpStep ? totp : undefined);
       navigate("/tracks", { replace: true });
     } catch (err) {
+      const code = err instanceof ApiError ? err.message : "";
       if (err instanceof ApiError && err.status === 429) {
         setLockedOut(true);
+      } else if (code === "totp_required") {
+        // Password was right; move to the code step (keep the password in state).
+        setTotpStep(true);
+      } else if (code === "totp_invalid") {
+        setCodeError(true);
+        setShake(true);
+        setTimeout(() => setShake(false), 400);
+        setTotp("");
       } else {
+        // Wrong password (or anything else): drop back to the password step.
+        setTotpStep(false);
+        setTotp("");
         setError(true);
         setShake(true);
         setTimeout(() => setShake(false), 400);
@@ -62,6 +80,13 @@ export default function Login() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function backToPassword() {
+    setTotpStep(false);
+    setTotp("");
+    setCodeError(false);
+    setError(false);
   }
 
   return (
@@ -92,6 +117,53 @@ export default function Login() {
                 Wait and try again.
               </div>
             </div>
+          ) : totpStep ? (
+            <>
+              <div className="login-card-title">Two-factor</div>
+              <div className="login-card-sub">Enter the 6-digit code from your authenticator app.</div>
+              <form onSubmit={submit}>
+                <div className="login-field">
+                  <label className="login-label" htmlFor="login-totp">
+                    Authentication code
+                  </label>
+                  <div className="login-input-wrap">
+                    <input
+                      id="login-totp"
+                      className={"login-input" + (codeError ? " error" : "")}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={totp}
+                      onChange={(e) => setTotp(e.target.value.replace(/[^0-9a-zA-Z-]/g, ""))}
+                      autoFocus
+                      placeholder="123 456"
+                      maxLength={14}
+                      disabled={busy}
+                    />
+                  </div>
+                  {codeError && (
+                    <div className="login-error">
+                      <WarnIcon />
+                      Invalid code
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
+                    Lost your device? Enter a <strong>recovery code</strong> instead.
+                  </div>
+                </div>
+                <button className="login-submit" type="submit" disabled={busy}>
+                  {busy ? "Verifying…" : "Verify"}
+                </button>
+                <button
+                  type="button"
+                  onClick={backToPassword}
+                  disabled={busy}
+                  style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer" }}
+                >
+                  ← Back
+                </button>
+              </form>
+            </>
           ) : (
             <>
               <div className="login-card-title">Sign in</div>

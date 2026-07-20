@@ -15,6 +15,8 @@ type Saved = "" | "saving" | "ok" | "err";
 const SIDEBAR = [
   ["sec-grabber", "Grabber"],
   ["sec-password", "Password"],
+  ["sec-2fa", "Two-factor"],
+  ["sec-login-protection", "Login protection"],
   ["sec-run-access", "Player access"],
   ["sec-ntfy", "Notifications"],
   ["sec-scan", "Scan Behavior"],
@@ -347,6 +349,78 @@ export default function Settings() {
     }
   }
 
+  // ── Admin two-factor (TOTP) ────────────────────────────────────────────────
+  const [totpSetup, setTotpSetup] = useState<{ secret: string; uri: string } | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpErr, setTotpErr] = useState("");
+  const [totpBusy, setTotpBusy] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [totpDisablePw, setTotpDisablePw] = useState("");
+
+  async function startTotpSetup() {
+    setTotpErr("");
+    setTotpBusy(true);
+    try {
+      const r = await api.post<{ secret: string; otpauth_uri: string }>("/api/settings/totp/setup", {});
+      setTotpSetup({ secret: r.secret, uri: r.otpauth_uri });
+      setTotpCode("");
+    } catch (err) {
+      setTotpErr(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setTotpBusy(false);
+    }
+  }
+
+  async function confirmTotp(e: React.FormEvent) {
+    e.preventDefault();
+    setTotpErr("");
+    setTotpBusy(true);
+    try {
+      const r = await api.post<{ recovery_codes: string[] }>("/api/settings/totp/confirm", { code: totpCode });
+      setRecoveryCodes(r.recovery_codes);
+      setTotpSetup(null);
+      setTotpCode("");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    } catch (err) {
+      setTotpErr(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setTotpBusy(false);
+    }
+  }
+
+  async function disableTotp(e: React.FormEvent) {
+    e.preventDefault();
+    setTotpErr("");
+    setTotpBusy(true);
+    try {
+      await api.post("/api/settings/totp/disable", { password: totpDisablePw });
+      setTotpDisablePw("");
+      setRecoveryCodes(null);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    } catch (err) {
+      setTotpErr(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setTotpBusy(false);
+    }
+  }
+
+  // ── Login protection (read-only thresholds + reset lockouts) ────────────────
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMsg, setResetMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function resetLockouts() {
+    setResetBusy(true);
+    setResetMsg(null);
+    try {
+      await api.post("/api/settings/reset-lockouts", {});
+      setResetMsg({ ok: true, text: "Login lockouts cleared." });
+    } catch (err) {
+      setResetMsg({ ok: false, text: err instanceof Error ? err.message : "Failed" });
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   async function setRunPassword(e: React.FormEvent) {
     e.preventDefault();
     setRunPwErr("");
@@ -654,6 +728,149 @@ export default function Settings() {
               </div>
             </form>
           </div>
+
+          {/* Admin two-factor (TOTP) */}
+          {(() => {
+            const enabled = cfg?.totp_enabled === true;
+            const rawRemaining = cfg?.totp_recovery_remaining;
+            const remaining = typeof rawRemaining === "number" ? rawRemaining : null;
+            return (
+              <div id="sec-2fa" className="settings-card card">
+                <div className="settings-card-header">
+                  <h2>Two-factor authentication</h2>
+                  <p>
+                    Require a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password…)
+                    on top of the admin password. Applies to the <strong>admin</strong> login only.
+                  </p>
+                </div>
+                <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: enabled ? "var(--ok-fg)" : "var(--muted)", marginBottom: 12 }}>
+                  {enabled ? "● Two-factor is enabled" : "○ Two-factor is off"}
+                  {enabled && remaining !== null && (
+                    <span style={{ color: remaining <= 2 ? "var(--err-fg)" : "var(--muted)" }}>
+                      {"  ·  "}{remaining} recovery code{remaining === 1 ? "" : "s"} left
+                    </span>
+                  )}
+                </div>
+
+                {/* One-time recovery codes, shown once right after enabling. */}
+                {recoveryCodes && (
+                  <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 12, background: "var(--surface)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Save your recovery codes</div>
+                    <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 8px", lineHeight: 1.5 }}>
+                      Each works once if you lose your authenticator. This is the <strong>only</strong> time they're shown.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontFamily: "var(--mono)", fontSize: 13 }}>
+                      {recoveryCodes.map((c) => <span key={c}>{c}</span>)}
+                    </div>
+                    <button type="button" className="btn" style={{ marginTop: 10 }} onClick={() => setRecoveryCodes(null)}>
+                      I've saved them
+                    </button>
+                  </div>
+                )}
+
+                {!enabled && !totpSetup && (
+                  <button type="button" className="btn btn-primary" disabled={totpBusy} onClick={startTotpSetup}>
+                    {totpBusy ? "Starting…" : "Enable two-factor"}
+                  </button>
+                )}
+
+                {!enabled && totpSetup && (
+                  <form onSubmit={confirmTotp}>
+                    <p style={{ fontSize: 13, margin: "0 0 8px", lineHeight: 1.5 }}>
+                      Scan this in your authenticator app, or enter the key by hand, then type the current code to confirm.
+                    </p>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Secret key</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 15, letterSpacing: 1, wordBreak: "break-all", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 4 }}>
+                      {totpSetup.secret}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", wordBreak: "break-all", marginBottom: 12 }}>{totpSetup.uri}</div>
+                    <div className="settings-fields">
+                      <div className="field-row">
+                        {fieldLabel("Code from app")}
+                        <input type="text" inputMode="numeric" autoComplete="one-time-code" value={totpCode}
+                               onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, ""))}
+                               maxLength={6} placeholder="123456" style={{ maxWidth: 160, width: "100%", fontFamily: "var(--mono)" }} />
+                      </div>
+                      {totpErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{totpErr}</div>}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button type="submit" className="btn btn-primary" disabled={totpBusy || totpCode.length !== 6}>
+                          {totpBusy ? "Verifying…" : "Confirm & enable"}
+                        </button>
+                        <button type="button" className="btn" disabled={totpBusy} onClick={() => { setTotpSetup(null); setTotpErr(""); }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+
+                {enabled && (
+                  <form onSubmit={disableTotp} style={{ marginTop: 4 }}>
+                    <div className="settings-fields">
+                      <div className="field-row">
+                        {fieldLabel("Confirm password to disable")}
+                        <input type="password" required autoComplete="current-password" value={totpDisablePw}
+                               onChange={(e) => setTotpDisablePw(e.target.value)} style={{ maxWidth: 340, width: "100%" }} />
+                      </div>
+                      {totpErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{totpErr}</div>}
+                      <div>
+                        <button type="submit" className="btn" disabled={totpBusy}>
+                          {totpBusy ? "Disabling…" : "Disable two-factor"}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Login protection — read-only thresholds + a reset-lockouts action */}
+          {(() => {
+            const n = (k: string, d: number) => {
+              const v = cfg?.[k];
+              return typeof v === "number" ? v : d;
+            };
+            const rows: [string, string][] = [
+              ["Per IP", `${n("ui_max_login_attempts", 5)} attempts / 60s → ${n("ui_lockout_seconds", 300)}s lockout`],
+              ["Per account", `${n("ui_account_max_login_attempts", 15)} attempts / 60s → ${n("ui_lockout_seconds", 300)}s lockout`],
+              ["Global", `${n("ui_global_max_login_attempts", 50)} attempts / 60s → ${n("ui_global_lockout_seconds", 60)}s cooldown`],
+            ];
+            return (
+              <div id="sec-login-protection" className="settings-card card">
+                <div className="settings-card-header">
+                  <h2>Login protection</h2>
+                  <p>
+                    Failed logins are throttled at three levels to slow brute-force attacks. These are
+                    security defaults — tune them with the <code>UI_*_LOGIN_ATTEMPTS</code> environment
+                    variables (see the README); they're shown here read-only.
+                  </p>
+                </div>
+                <div className="settings-fields">
+                  {rows.map(([label, val]) => (
+                    <div key={label} className="field-row">
+                      {fieldLabel(label)}
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--muted)" }}>{val}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 4 }}>
+                    <button type="button" className="btn" disabled={resetBusy} onClick={resetLockouts}>
+                      {resetBusy ? "Clearing…" : "Reset login lockouts"}
+                    </button>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                      Clears active lockouts and attempt counters now — e.g. if someone tripped the limit and you're
+                      still signed in. Changes no threshold.
+                    </div>
+                    {resetMsg && (
+                      <div style={{ fontSize: 12, marginTop: 6, color: resetMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>
+                        {resetMsg.text}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Player access — the shared Guest login + named Player users */}
           {(() => {
