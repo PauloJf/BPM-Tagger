@@ -8,9 +8,11 @@ import { MiniPlayerProvider } from "./lib/miniPlayer";
 import ErrorBoundary from "./components/ErrorBoundary";
 import App from "./App";
 import { applyTheme, initialTheme } from "./lib/theme";
+import { applyAccentHue, initialAccentHue } from "./lib/accent";
 import "./index.css";
 
 applyTheme(initialTheme());
+applyAccentHue(initialAccentHue());
 
 // PWA install support. Registered in prod only so the dev server never fights
 // a stale worker; sw.js does no caching (see frontend/public/sw.js).

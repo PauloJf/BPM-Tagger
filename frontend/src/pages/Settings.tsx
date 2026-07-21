@@ -9,10 +9,12 @@ import PlayerUsers from "../components/PlayerUsers";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
+import { ACCENT_PRESETS, DEFAULT_ACCENT_HUE, accentSwatch, applyAccentHue, initialAccentHue } from "../lib/accent";
 
 type Saved = "" | "saving" | "ok" | "err";
 
 const SIDEBAR = [
+  ["sec-appearance", "Appearance"],
   ["sec-grabber", "Grabber"],
   ["sec-password", "Password"],
   ["sec-2fa", "Two-factor"],
@@ -69,6 +71,11 @@ export default function Settings() {
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
   const [purging, setPurging] = useState(false);
+  const [accentHue, setAccentHueState] = useState(() => initialAccentHue());
+  const setAccent = (hue: number) => {
+    applyAccentHue(hue);
+    setAccentHueState(hue);
+  };
   const deletedQ = useQuery({ queryKey: ["deleted"], queryFn: () => api.get<{ count: number }>("/api/deleted") });
   const [purgingDeleted, setPurgingDeleted] = useState(false);
 
@@ -549,6 +556,62 @@ export default function Settings() {
         </div>
 
         <div>
+          {/* Appearance */}
+          <div id="sec-appearance" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Appearance</h2>
+              <p>Accent color used across the interface — logo, buttons, focus rings, progress bars, and the login screen. Saved to this browser.</p>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
+              {ACCENT_PRESETS.map((p) => {
+                const active = Math.round(accentHue) === p.hue;
+                return (
+                  <button
+                    key={p.hue}
+                    type="button"
+                    onClick={() => setAccent(p.hue)}
+                    title={p.name}
+                    aria-label={p.name}
+                    aria-pressed={active}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      background: accentSwatch(p.hue),
+                      border: "2px solid transparent",
+                      boxShadow: active ? "0 0 0 2px var(--surface), 0 0 0 4px var(--text)" : "none",
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 440 }}>
+              <div className="slider-wrap" style={{ flex: 1 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={Math.round(accentHue)}
+                  onChange={(e) => setAccent(+e.target.value)}
+                  aria-label="Accent hue"
+                />
+                <span className="slider-val">{Math.round(accentHue)}°</span>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAccent(DEFAULT_ACCENT_HUE)}>
+                Reset
+              </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
+              <button type="button" className="btn btn-primary btn-sm" style={{ pointerEvents: "none" }}>
+                Primary
+              </button>
+              <span className="badge badge--accent">Accent</span>
+              <div style={{ flex: 1, maxWidth: 120, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--accent), var(--accent-2))" }} />
+            </div>
+          </div>
+
           {/* Grabber */}
           <div id="sec-grabber" className="settings-card card">
             <div className="settings-card-header">

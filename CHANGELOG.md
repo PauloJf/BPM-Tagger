@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.3 — 2026-07-21
+
+- **Custom accent color.** The interface's purple accent is now yours to change under **Settings → Appearance** — pick from a row of accent swatches (violet, blue, teal, green, amber, rose, and more) or dial in any hue with the slider. Because the whole design system already derives every accent shade from a single OKLCH hue, the change is instant and covers everything at once: the logo tile, buttons, badges, focus rings, sliders, progress bars, and the login screen's ambient glow and animated equalizer bars all recolor together — and because lightness and chroma stay fixed, any hue you pick stays balanced and readable in both light and dark themes. The choice is saved per-browser (like the light/dark toggle) and applied before the first paint, so there's no flash of the old color — including on the pre-login screen. The white equalizer bars in the logo stay white on whatever accent you choose; the baked PWA home-screen icons are unchanged.
+
 ## v2.7.2 — 2026-07-20
 
 - **Admin two-factor authentication (TOTP).** The admin login can now require a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password, …) on top of the password. Turn it on under **Settings → Two-factor**: scan the secret (or enter it by hand), confirm one live code, and save the **one-time recovery codes** shown once. At login, a correct password is followed by a code prompt; a recovery code works in a pinch (and is then spent). Implemented with the standard library — **no new dependency**. Applies to the admin only (the shared guest and player users are unchanged). Lost your authenticator *and* your recovery codes? `MODE=disable_2fa` turns it back off from the CLI. The TOTP secret and recovery-code hashes live in `settings.json` at the same trust level as the password hash.
