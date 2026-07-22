@@ -39,8 +39,11 @@ export function useWaveform(
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const WF_ACCENT = resolveColor("var(--accent)");
-    const WF_WAVE = resolveColor("var(--wave)");
+    // Concrete colors resolved from CSS vars for canvas use. Re-resolved when
+    // the accent/theme changes (the "bpm:appearance" event) since the canvas
+    // can't read the live CSS variable.
+    let WF_ACCENT = resolveColor("var(--accent)");
+    let WF_WAVE = resolveColor("var(--wave)");
 
     let logicalW = 0;
     let logicalH = 88;
@@ -144,8 +147,15 @@ export function useWaveform(
       initCanvas();
       renderNow();
     };
+    // Accent or theme changed → re-resolve the canvas colors and repaint.
+    const onAppearance = () => {
+      WF_ACCENT = resolveColor("var(--accent)");
+      WF_WAVE = resolveColor("var(--wave)");
+      renderNow();
+    };
 
     window.addEventListener("resize", onResize);
+    window.addEventListener("bpm:appearance", onAppearance);
     if (isActive) {
       canvas.addEventListener("mousedown", onMouseDown);
       document.addEventListener("mousemove", onMouseMove);
@@ -193,6 +203,7 @@ export function useWaveform(
       canvas.removeEventListener("touchmove", onTouchMove);
       canvas.removeEventListener("touchend", onTouchEnd);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("bpm:appearance", onAppearance);
       if (audio) {
         audio.removeEventListener("timeupdate", onTimeUpdate);
         audio.removeEventListener("play", startRaf);

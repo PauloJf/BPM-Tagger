@@ -52,4 +52,8 @@ export function applyAccentHue(hue: AccentHue) {
   const clamped = Math.max(0, Math.min(360, Math.round(hue)));
   document.documentElement.style.setProperty("--accent-h", String(clamped));
   localStorage.setItem(KEY, String(clamped));
+  // Canvas-drawn UI (the waveform) can't read CSS vars live — tell it to
+  // re-resolve its colors and repaint. Harmless before React mounts (no
+  // listeners yet). See hooks/useWaveform.ts.
+  window.dispatchEvent(new CustomEvent("bpm:appearance"));
 }
