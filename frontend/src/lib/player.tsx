@@ -143,6 +143,7 @@ interface PlayerState {
   jumpTo(orderPos: number): void;      // play a specific queue position
   removeAt(orderPos: number): void;    // drop a track from the queue
   moveAt(orderPos: number, dir: -1 | 1): void;  // reorder up/down
+  reorderTo(from: number, to: number): void;    // drag-and-drop to any position
   toggleShuffle(): void;
   cycleRepeat(): void;
   toggle(): void;
@@ -1233,6 +1234,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else if (pos === j) setPos(orderPos);
   }, []);
 
+  // Move a queue row to an arbitrary position (drag-and-drop). The currently
+  // playing row is tracked by its queue-index value so `pos` follows it wherever
+  // it lands, regardless of which rows moved around it.
+  const reorderTo = useCallback((from: number, to: number) => {
+    const { order, pos } = nav.current;
+    if (from < 0 || from >= order.length || to < 0 || to >= order.length || from === to) return;
+    const currentVal = order[pos];
+    const newOrder = order.slice();
+    const [moved] = newOrder.splice(from, 1);
+    newOrder.splice(to, 0, moved);
+    setOrder(newOrder);
+    const newPos = newOrder.indexOf(currentVal);
+    if (newPos >= 0) setPos(newPos);
+  }, []);
+
   const enqueue = useCallback((track: PlayerTrack) => {
     const { queue, order } = nav.current;
     if (order.length === 0) { play(track); return; }  // nothing playing → start it
@@ -1274,6 +1290,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!audioRef.current || !current) return;
       switch (e.key) {
         case "k": e.preventDefault(); toggle(); break;
+        case "q": e.preventDefault(); window.dispatchEvent(new CustomEvent("bpm:toggle-queue")); break;
+        case "l": e.preventDefault(); window.dispatchEvent(new CustomEvent("bpm:toggle-lyrics")); break;
         case "ArrowRight": next(false); break;
         case "ArrowLeft": prev(); break;
         case "+": case "=": setVolume(Math.min(1, volumeRef.current + 0.1)); break;
@@ -1299,7 +1317,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,
       play, playQueue, enqueue, playNext, preview, endPreview,
-      next: () => next(false), prev, jumpTo, removeAt, moveAt, toggleShuffle, cycleRepeat,
+      next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,
     }}>
       {children}

@@ -1201,6 +1201,12 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-queue-row.current { background: var(--accent-soft); }
 .player-queue-title { flex: 1; min-width: 0; display: flex; align-items: center; background: none; border: none; color: var(--text); cursor: pointer; font-size: 12px; text-align: left; padding: 4px 2px; }
 .player-queue-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.player-queue-grip { flex-shrink: 0; color: var(--muted); cursor: grab; font-size: 13px; line-height: 1; padding: 0 2px; user-select: none; }
+.player-queue-grip:active { cursor: grabbing; }
+.player-queue-bpm { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 1px 5px; border-radius: 6px; background: var(--chip-bg); }
+.player-queue-row.dragging { opacity: 0.4; }
+.player-queue-row.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
+.player-queue-row .art-thumb { flex-shrink: 0; }
 /* Lyrics drawer above the player bar (same chrome as the queue drawer) */
 .player-lyrics {
   position: absolute; right: 12px; bottom: calc(100% + 8px); z-index: 61;
@@ -1219,6 +1225,13 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-lyrics-line:hover { background: var(--row-hover); }
 .player-lyrics-line.current { color: var(--text); background: var(--accent-soft); font-weight: 550; }
 .player-lyrics-empty { padding: 8px; font-size: 12px; color: var(--muted); text-align: center; }
+/* Lyrics text-size stepper (S/M/L) */
+.lyrics-font-stepper { display: inline-flex; gap: 0; }
+.lyrics-font-stepper .btn { font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 0; }
+.lyrics-font-stepper .btn.active { color: var(--accent-2); }
+.player-lyrics-body.lyrics-font-s .player-lyrics-line { font-size: 11px; line-height: 1.55; }
+.player-lyrics-body.lyrics-font-m .player-lyrics-line { font-size: 13px; line-height: 1.65; }
+.player-lyrics-body.lyrics-font-l .player-lyrics-line { font-size: 16px; line-height: 1.75; }
 
 /* ── Resizable / maximizable drawers (queue + lyrics) ────────────────────────
    Both drawers are anchored bottom-right above the player bar, so the grab

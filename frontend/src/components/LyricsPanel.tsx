@@ -14,6 +14,14 @@ export interface LyricLine {
 // Leading [mm:ss.xx] stamps (a line may carry several, e.g. repeated chorus).
 const TS = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 
+// Lyrics text-size preference, persisted per-browser (mirrors lib/theme.ts).
+type LyricsFont = "s" | "m" | "l";
+const FONT_KEY = "bpm-lyrics-font";
+function initialLyricsFont(): LyricsFont {
+  const v = localStorage.getItem(FONT_KEY);
+  return v === "s" || v === "l" ? v : "m";
+}
+
 /** Parse lyrics text into lines. LRC-timed lines make the result synced
  *  (sorted by time, metadata tags like [ar:…] dropped); otherwise every
  *  non-empty line is kept in order for manual stepping. */
@@ -130,6 +138,11 @@ export function LyricsPanel({ path, audioRef, onClose }: {
     setManualIdx((i) => Math.max(0, Math.min((parsed?.lines.length ?? 1) - 1, i + d)));
 
   const drawer = useResizableDrawer({ key: "bpm-lyrics-size" });
+  const [font, setFont] = useState<LyricsFont>(initialLyricsFont);
+  const changeFont = (f: LyricsFont) => {
+    setFont(f);
+    try { localStorage.setItem(FONT_KEY, f); } catch { /* private mode */ }
+  };
 
   return (
     <div className={"player-lyrics" + (drawer.maximized ? " maximized" : "")} data-drawer style={drawer.style}>
@@ -144,6 +157,19 @@ export function LyricsPanel({ path, audioRef, onClose }: {
           )}
         </span>
         <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span className="lyrics-font-stepper" role="group" aria-label="Lyrics text size">
+            {(["s", "m", "l"] as const).map((f) => (
+              <button
+                key={f}
+                className={"btn btn-bare btn-sm" + (font === f ? " active" : "")}
+                onClick={() => changeFont(f)}
+                aria-pressed={font === f}
+                title={f === "s" ? "Small text" : f === "m" ? "Medium text" : "Large text"}
+              >
+                {f.toUpperCase()}
+              </button>
+            ))}
+          </span>
           <MaximizeButton maximized={drawer.maximized} onToggle={drawer.toggleMaximized} />
           {parsed && !parsed.synced && (
             <>
@@ -159,7 +185,7 @@ export function LyricsPanel({ path, audioRef, onClose }: {
       </div>
       <div
         ref={bodyRef}
-        className="player-lyrics-body"
+        className={"player-lyrics-body lyrics-font-" + font}
         onWheel={() => { suspendUntil.current = Date.now() + 4000; }}
         onTouchMove={() => { suspendUntil.current = Date.now() + 4000; }}
       >
