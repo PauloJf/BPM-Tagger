@@ -157,10 +157,10 @@ export default function Tracks() {
       if (q) sp.set("q", q);
       if (filter) sp.set("filter", filter);
       if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
-      const res = await api.get<{ tracks: { file_path: string; artist: string | null }[] }>(
+      const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null }[] }>(
         `/api/tracks/paths?${sp.toString()}`);
       const tracks = res.tracks.map((t) => ({
-        path: t.file_path, title: basename(t.file_path), artist: t.artist || "",
+        path: t.file_path, title: t.title?.trim() || basename(t.file_path), artist: t.artist || "",
       }));
       if (tracks.length) player.playQueue(tracks, 0, { shuffle: shuffleMode });
     } finally {

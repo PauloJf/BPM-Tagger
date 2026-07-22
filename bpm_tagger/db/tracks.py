@@ -215,13 +215,13 @@ class TracksMixin:
     def get_track_paths(self, q: str = "", filter: str = "",
                         bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
                         bpm_cadence: bool = False, limit: int = 5000) -> list[dict]:
-        """Ordered (file_path, artist) for every track matching the current
+        """Ordered (file_path, title, artist) for every track matching the current
         filter — feeds the player's Play All / Shuffle. Same ordering as the
         table; capped so a huge library can't build a pathological queue."""
         where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT file_path, artist FROM tracks {where} "
+                f"SELECT file_path, title, artist FROM tracks {where} "
                 "ORDER BY analyzed_at DESC LIMIT ?",
                 params + [limit]
             ).fetchall()

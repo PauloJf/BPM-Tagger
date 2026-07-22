@@ -15,13 +15,13 @@ import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { Cover, useArtwork } from "../components/Artwork";
 import RelatedPanel from "../components/RelatedPanel";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
+import { trackTitle } from "../components/trackBits";
 
 export default function TrackDetail() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const path = params.get("path") || "";
   const qc = useQueryClient();
-  useTitle(path ? basename(path) : "Track");
 
   const detailQ = useQuery({
     queryKey: ["track", path],
@@ -125,6 +125,9 @@ export default function TrackDetail() {
 
   const detail = detailQ.data;
   const track = detail?.track;
+  // Browser-tab title: the tag title once the track loads, basename as the
+  // pre-load / fallback value.
+  useTitle(track ? trackTitle(track) : path ? basename(path) : "Track");
 
   // ── Cover editing ──────────────────────────────────────────────────────────
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
@@ -234,7 +237,7 @@ export default function TrackDetail() {
   const isPlaying = active && player.playing;
   function togglePlay() {
     if (active) player.toggle();
-    else if (track) player.preview({ path, title: basename(track.file_path), artist: track.artist || "" });
+    else if (track) player.preview({ path, title: trackTitle(track), artist: track.artist || "" });
   }
   const { endPreview } = player;
   useEffect(() => () => endPreview(), [endPreview]);  // leaving resumes the queue (dec 8)
