@@ -922,8 +922,8 @@ export default function Run() {
         onClick={() => setForce(!force)}
         aria-pressed={force}
         title={force
-          ? "Force tempo is ON — every track is stretched onto the target, ignoring the BPM tolerance."
-          : "Play everything: ignore the BPM tolerance and force every track onto the target cadence."}
+          ? `Force tempo is ON — every track is queued regardless of BPM, then stretched toward the target. The ±${stretchLimitPct}% stretch cap still applies, so tracks too far from ${target} BPM won't reach it (marked ⚠).`
+          : `Play everything: ignore the BPM tolerance and stretch every track toward the target. The ±${stretchLimitPct}% stretch cap still applies, so tracks far from the target won't fully reach it.`}
         style={{
           display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer",
           fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em",
@@ -1130,6 +1130,10 @@ export default function Run() {
             const disliked = dislikedPaths.has(t.path);
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
+            // Capped: the stretch limit kept this track from reaching the target,
+            // so the folded BPM would need a rate the ±limit clamp won't allow.
+            const idealRate = tFolded ? target / tFolded : 1;
+            const capped = lockOn && tFolded != null && Math.abs(idealRate - tRate) > 0.001;
             const isCurrentRow = i === player.orderPos;
             // In a single-playlist run, tracks added to fill the queue from the
             // library (not in the playlist itself) are dimmed + italic so they read
@@ -1156,6 +1160,13 @@ export default function Run() {
                 </button>
                 {t.bpm != null && tFolded != null && (
                   <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", flexShrink: 0, textAlign: "right" }} title="native BPM · octave · stretch → what you hear">
+                    {capped && (
+                      <span
+                        aria-label="Stretch cap reached"
+                        title={`Stretch cap reached — this track can only reach ${Math.round(tFolded * tRate)} BPM, not the ${target} BPM target (±${stretchLimitPct}% limit). Raise the stretch limit in Settings to close the gap.`}
+                        style={{ color: "var(--warn-fg)", marginRight: 6, cursor: "help" }}
+                      >⚠</span>
+                    )}
                     {Math.round(t.bpm)} {foldLabel(t.bpm, tFolded)}
                     {lockOn && <span> {tRate.toFixed(2)}×</span>}
                     <span> → <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>{Math.round(tFolded * tRate)}</span></span>
