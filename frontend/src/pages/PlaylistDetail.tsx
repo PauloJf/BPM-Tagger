@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import type { Playlist, PlaylistTrack } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import { useAuth } from "../lib/auth";
+import PlaylistSuggestions from "../components/PlaylistSuggestions";
 
 function StatusChip({ s }: { s: string }) {
   if (s === "have") return <span className="chip chip--have">✓ have</span>;
@@ -32,6 +34,7 @@ export default function PlaylistDetail() {
   const id = params.get("id");
   const qc = useQueryClient();
   const status = useGrabberStatus();
+  const { role } = useAuth();
   const [tab, setTab] = useState("");
 
   const tracksQ = useQuery({
@@ -211,6 +214,12 @@ export default function PlaylistDetail() {
           })
         )}
       </div>
+
+      {/* Related-track suggestions — local playlists only, and admin-only since
+          the add endpoint is admin-scoped. */}
+      {isLocal && role === "admin" && tracks.length > 0 && (
+        <PlaylistSuggestions playlistId={id} tracks={tracks} />
+      )}
     </>
   );
 }
