@@ -9,6 +9,8 @@ import { useWaveform } from "../hooks/useWaveform";
 import { BpmDisplay } from "./BpmDisplay";
 import { LyricsPanel } from "./LyricsPanel";
 import QueueSimilar from "./QueueSimilar";
+import { MaximizeButton, ResizeHandle } from "./DrawerControls";
+import { useResizableDrawer } from "../hooks/useResizableDrawer";
 
 export default function PlayerBar() {
   const { current, playing, error, buffering, bufferedPct, online, audioRef, toggle, stop,
@@ -20,6 +22,7 @@ export default function PlayerBar() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
+  const queueDrawer = useResizableDrawer({ key: "bpm-queue-size" });
   // Ephemeral tracks (30-s Deezer preview clips) have a synthetic path with no
   // library file, so every file-backed lookup below must stay off for them —
   // otherwise waveform/BPM/cover fetches 403 against the fake path.
@@ -52,10 +55,12 @@ export default function PlayerBar() {
         </div>
       )}
       {queueOpen && hasQueue && (
-        <div className="player-queue">
+        <div className={"player-queue" + (queueDrawer.maximized ? " maximized" : "")} data-drawer style={queueDrawer.style}>
+          {!queueDrawer.small && <ResizeHandle onPointerDown={queueDrawer.startResize} />}
           <div className="player-queue-head">
             <span>Queue · {orderedQueue.length}</span>
             <span style={{ display: "flex", gap: 4 }}>
+              <MaximizeButton maximized={queueDrawer.maximized} onToggle={queueDrawer.toggleMaximized} />
               <button className="btn btn-bare btn-sm" onClick={() => { stop(); setQueueOpen(false); }} title="Clear the queue">Clear</button>
               <button className="btn btn-bare btn-sm" onClick={() => setQueueOpen(false)} aria-label="Close queue">✕</button>
             </span>

@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { LyricsResponse } from "../lib/types";
 import { useAudioTime } from "../hooks/useAudioTime";
+import { useResizableDrawer } from "../hooks/useResizableDrawer";
+import { MaximizeButton, ResizeHandle } from "./DrawerControls";
 
 export interface LyricLine {
   t: number | null; // seconds, null for plain (untimed) lines
@@ -127,8 +129,11 @@ export function LyricsPanel({ path, audioRef, onClose }: {
   const step = (d: number) =>
     setManualIdx((i) => Math.max(0, Math.min((parsed?.lines.length ?? 1) - 1, i + d)));
 
+  const drawer = useResizableDrawer({ key: "bpm-lyrics-size" });
+
   return (
-    <div className="player-lyrics">
+    <div className={"player-lyrics" + (drawer.maximized ? " maximized" : "")} data-drawer style={drawer.style}>
+      {!drawer.small && <ResizeHandle onPointerDown={drawer.startResize} />}
       <div className="player-queue-head">
         <span>
           Lyrics
@@ -139,6 +144,7 @@ export function LyricsPanel({ path, audioRef, onClose }: {
           )}
         </span>
         <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <MaximizeButton maximized={drawer.maximized} onToggle={drawer.toggleMaximized} />
           {parsed && !parsed.synced && (
             <>
               <button className="btn btn-bare btn-sm" onClick={() => step(-1)} disabled={activeIdx <= 0}

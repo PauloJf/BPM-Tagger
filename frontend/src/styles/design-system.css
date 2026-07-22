@@ -1220,6 +1220,37 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-lyrics-line.current { color: var(--text); background: var(--accent-soft); font-weight: 550; }
 .player-lyrics-empty { padding: 8px; font-size: 12px; color: var(--muted); text-align: center; }
 
+/* ── Resizable / maximizable drawers (queue + lyrics) ────────────────────────
+   Both drawers are anchored bottom-right above the player bar, so the grab
+   handle sits on the top-left corner and dragging it up/left grows the drawer.
+   Maximizing expands to a near-fullscreen panel that still leaves the bar
+   visible; Escape or the same button restores. */
+.drawer-resize-handle {
+  position: absolute; top: 0; left: 0; width: 18px; height: 18px; z-index: 2;
+  display: grid; place-items: center; cursor: nwse-resize; color: var(--muted);
+  border-top-left-radius: 12px; touch-action: none;
+}
+.drawer-resize-handle:hover { color: var(--text); }
+/* Nudge the header text clear of the corner handle (desktop only — the handle
+   isn't rendered on small screens). */
+@media (min-width: 701px) {
+  .player-queue[data-drawer] .player-queue-head,
+  .player-lyrics[data-drawer] .player-queue-head { padding-left: 24px; }
+}
+.player-queue.maximized,
+.player-lyrics.maximized {
+  width: min(900px, calc(100vw - 24px));
+  height: 85vh; max-height: 85vh;
+}
+/* Small screens: no drag handle; maximize becomes a full-width bottom sheet. */
+@media (max-width: 700px) {
+  .player-queue.maximized,
+  .player-lyrics.maximized {
+    left: 8px; right: 8px; width: auto;
+    height: 80vh; max-height: 80vh;
+  }
+}
+
 /* Pulsing BPM readout in the player bar */
 .player-bar-bpm { display: inline-flex; align-items: center; flex-shrink: 0; }
 @media (max-width: 700px) { .player-bar-bpm { display: none; } }
