@@ -11,6 +11,7 @@ class PlayersMixin:
         d = dict(r)
         d["full_access"] = bool(d.get("full_access"))
         d["enabled"] = bool(d.get("enabled"))
+        # accent_hue is an int or None (never coerced to bool).
         return d
 
     def list_players(self) -> list[dict]:
@@ -66,6 +67,15 @@ class PlayersMixin:
                 conn.execute(f"UPDATE players SET {', '.join(sets)} WHERE id = ?", vals)
             if playlist_ids is not None:
                 self._set_player_playlists(conn, player_id, playlist_ids)
+            conn.commit()
+
+    def set_player_accent(self, player_id: int, hue: Optional[int]) -> None:
+        """Persist a player user's chosen accent hue (0–360), or clear it (None →
+        fall back to the client default). Stored per-account so the accent follows
+        the user across browsers/devices."""
+        val = None if hue is None else max(0, min(360, int(hue)))
+        with self._connect() as conn:
+            conn.execute("UPDATE players SET accent_hue = ? WHERE id = ?", (val, player_id))
             conn.commit()
 
     def set_player_password(self, player_id: int, password_hash: str) -> None:

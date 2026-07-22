@@ -176,9 +176,13 @@ class _DBBase:
                 full_access   INTEGER NOT NULL DEFAULT 0,  -- 1 = library/starred + all playlists
                 enabled       INTEGER NOT NULL DEFAULT 1,  -- 0 = disabled (also invalidates sessions)
                 created_at    TEXT,
-                last_login_at TEXT
+                last_login_at TEXT,
+                accent_hue    INTEGER                      -- per-user OKLCH accent hue (NULL = default/inherit)
             )
         """)
+        # Additive migration for DBs created before the per-user accent column.
+        if "accent_hue" not in {row[1] for row in conn.execute("PRAGMA table_info(players)")}:
+            conn.execute("ALTER TABLE players ADD COLUMN accent_hue INTEGER")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS player_playlists (
                 player_id   INTEGER NOT NULL,

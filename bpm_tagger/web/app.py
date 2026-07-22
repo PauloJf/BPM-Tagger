@@ -64,6 +64,8 @@ _PLAYER_ALWAYS = {None, "static", "spa", "spa_assets"}
 _PLAYER_ALLOWED = {
     # Auth / bootstrap
     "api_auth.api_me", "api_auth.api_login", "api_auth.api_logout",
+    # Per-user accent preference (a player user persists it; the shared Guest is a no-op)
+    "api_auth.api_accent",
     # Building and playing the run queue (+ the playlist sources it can draw from)
     "api_run.api_run_queue", "api_run.api_run_playlists",
     "media.audio", "media.healthz", "media.api_scrobble",

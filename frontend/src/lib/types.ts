@@ -166,6 +166,9 @@ export interface Me {
   // library/starred for them).
   username?: string | null;
   full_access?: boolean;
+  // Per-user accent hue (0–360), persisted server-side so it follows the account
+  // across devices. null = no preference → the SPA keeps its localStorage value.
+  accent_hue?: number | null;
 }
 
 // Player-user account, as returned by the admin /api/players endpoints.

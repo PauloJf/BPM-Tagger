@@ -12,8 +12,8 @@ import time
 from flask import Blueprint, current_app, jsonify, request, session
 
 from ...config import __version__, save_settings
-from ..auth import (_check_csrf, _csrf_token, password_stamp, verify_player,
-                    verify_run_password, verify_ui_password)
+from ..auth import (_check_csrf, _csrf_token, login_required, password_stamp,
+                    verify_player, verify_run_password, verify_ui_password)
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -149,18 +149,23 @@ def api_me():
     # playlist-scoped (full_access=False), so the Run source picker hides Whole-library/
     # Starred. The shared Guest login (no player_id) and admin are full-access with no
     # username. (The server still gates every request regardless of what the client shows.)
+    # Per-user accent hue (server-side, follows the account across devices). None
+    # means "no preference" → the SPA keeps its per-browser localStorage value.
+    resp["accent_hue"] = None
     if role == "player":
         pid = session.get("player_id")
         if pid is not None and st.db is not None:
             prow = st.db.get_player(pid)
             resp["username"] = prow["username"] if prow else None
             resp["full_access"] = False      # named player users are always scoped
+            resp["accent_hue"] = prow.get("accent_hue") if prow else None
         else:
             resp["username"] = None          # shared Guest login (RUN_PASSWORD)
-            resp["full_access"] = True
+            resp["full_access"] = True        # accent stays per-browser (no account row)
     elif is_admin:
         resp["username"] = None
         resp["full_access"] = True
+        resp["accent_hue"] = st.config.get("accent_hue")
     # Library stats and the install-ping prompt are admin-only — a player session
     # is a locked-down kiosk and never sees them.
     if is_admin and st.db is not None:
@@ -178,3 +183,42 @@ def api_me():
         and str(st.config.get("install_ping_url") or "").strip()
     )
     return jsonify(resp)
+
+
+@api_auth_bp.route("/api/accent", methods=["POST"])
+@login_required
+def api_accent():
+    """Persist the current user's accent hue server-side so it follows the account
+    across browsers/devices. Body: ``{"hue": 0-360}`` to set, or ``{"hue": null}``
+    to clear (fall back to the client default).
+
+    - A named player user is stored on its ``players`` row.
+    - The admin is stored in settings.json (updated in-memory too, no restart).
+    - The shared Guest login (RUN_PASSWORD, no account row) has nowhere to persist
+      it, so the call is accepted as a no-op and the SPA keeps its localStorage
+      value. ``persisted`` in the response says which happened.
+    """
+    _check_csrf()
+    st = state()
+    data = request.get_json(force=True, silent=True) or {}
+    raw = data.get("hue", None)
+    hue = None
+    if raw is not None:
+        try:
+            hue = max(0, min(360, int(raw)))
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="invalid_hue"), 400
+
+    role = session.get("role")
+    persisted = False
+    if role == "player" and session.get("player_id") is not None:
+        if st.db is not None:
+            st.db.set_player_accent(session["player_id"], hue)
+            persisted = True
+    elif role == "admin":
+        st.config["accent_hue"] = hue          # None → key removed by save_settings
+        save_settings(st.settings_path, {"accent_hue": hue})
+        persisted = True
+    # else: shared Guest — accepted, but not stored server-side.
+
+    return jsonify(ok=True, accent_hue=hue, persisted=persisted)

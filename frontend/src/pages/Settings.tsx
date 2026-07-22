@@ -72,10 +72,22 @@ export default function Settings() {
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
   const [purging, setPurging] = useState(false);
   const [accentHue, setAccentHueState] = useState(() => initialAccentHue());
+  // Persist the accent to the account too (follows the user across devices).
+  // Applied locally at once for instant feedback; the server write is debounced
+  // so dragging the hue slider doesn't spray POSTs. The shared Guest login has
+  // no account row, so the server accepts it as a no-op (see /api/accent).
+  const accentSaveTimer = useRef<number | null>(null);
   const setAccent = (hue: number) => {
     applyAccentHue(hue);
     setAccentHueState(hue);
+    if (accentSaveTimer.current) window.clearTimeout(accentSaveTimer.current);
+    accentSaveTimer.current = window.setTimeout(() => {
+      api.post("/api/accent", { hue: Math.round(hue) }).catch(() => { /* stays local */ });
+    }, 400);
   };
+  useEffect(() => () => {
+    if (accentSaveTimer.current) window.clearTimeout(accentSaveTimer.current);
+  }, []);
   const deletedQ = useQuery({ queryKey: ["deleted"], queryFn: () => api.get<{ count: number }>("/api/deleted") });
   const [purgingDeleted, setPurgingDeleted] = useState(false);
 
@@ -560,7 +572,7 @@ export default function Settings() {
           <div id="sec-appearance" className="settings-card card">
             <div className="settings-card-header">
               <h2>Appearance</h2>
-              <p>Accent color used across the interface — logo, buttons, focus rings, progress bars, and the login screen. Saved to this browser.</p>
+              <p>Accent color used across the interface — logo, buttons, focus rings, progress bars, and the login screen. Saved to your account, so it follows you across browsers and devices.</p>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
               {ACCENT_PRESETS.map((p) => {

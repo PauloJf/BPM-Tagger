@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "./api";
 import type { Me, Role } from "./types";
+import { applyAccentHue } from "./accent";
 
 interface AuthState {
   ready: boolean; // initial /api/me resolved
@@ -39,6 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setVersion(me.version);
     setReviewCount(me.review_count || 0);
     setInstallPingAsk(Boolean(me.install_ping_ask));
+    // Reconcile the per-account accent (set on another device) into this browser.
+    // main.tsx already applied the localStorage value pre-mount to avoid a flash;
+    // this overrides it once the server tells us the account's real preference.
+    // null = no preference → keep whatever localStorage/default is showing.
+    if (me.accent_hue != null) applyAccentHue(me.accent_hue);
   }, []);
 
   const dismissInstallPingAsk = useCallback(() => setInstallPingAsk(false), []);
