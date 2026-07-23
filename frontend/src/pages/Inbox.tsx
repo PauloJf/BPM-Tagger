@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { GrabCandidate, InboxItem } from "../lib/types";
@@ -162,7 +163,20 @@ function InboxCard({ item, expanded, onToggle, onChoose, onSearch, onResearch, o
             </>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded ? 14 : 0 }}>{item.artist}{item.album ? ` · ${item.album}` : ""}</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded ? 14 : 0 }}>
+          {item.artist ? (
+            // stopPropagation: navigate without toggling the card open/closed.
+            <Link
+              to={`/artist?name=${encodeURIComponent(item.artist)}`}
+              style={{ color: "inherit", textDecoration: "none" }}
+              title={`View ${item.artist}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.artist}
+            </Link>
+          ) : null}
+          {item.album ? ` · ${item.album}` : ""}
+        </div>
       </div>
 
       {expanded && (<>
