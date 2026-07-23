@@ -9,6 +9,7 @@ import { useTitle } from "../hooks/useTitle";
 import { ArtistImage, ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
 import RelatedPanel from "../components/RelatedPanel";
+import ArtistModal from "../components/ArtistModal";
 
 interface ArtistResp {
   name: string;
@@ -44,6 +45,20 @@ export default function Artist() {
     enabled: !!name,
   });
 
+  // Deezer catalog browser: the first click resolves the library name to a
+  // Deezer artist id, then the shared ArtistModal (albums/singles/top tracks,
+  // preview + add-to-queue) opens for it.
+  const [dzOpen, setDzOpen] = useState(false);
+  const dzQ = useQuery({
+    queryKey: ["deezer-resolve", name],
+    queryFn: () => api.get<{ artist: { dz_id: string; name: string; image_url: string } | null }>(
+      `/api/deezer/resolve?name=${encodeURIComponent(name)}`),
+    enabled: dzOpen && !!name,
+    staleTime: Infinity,
+  });
+  const dzArtist = dzQ.data?.artist ?? null;
+  const dzNotFound = dzQ.isSuccess && !dzArtist;
+
   const tracks = q.data?.tracks ?? [];
   const stats = q.data?.stats;
   const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path), artist: t.artist || "" });
@@ -75,6 +90,17 @@ export default function Artist() {
         </div>
         <div className="detail-header-actions">
           <ArtToggle show={showArt} onToggle={toggleArt} />
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={!name || dzQ.isFetching || dzNotFound}
+            onClick={() => setDzOpen(true)}
+            title="Browse this artist's albums and tracks on Deezer — preview and add to the download queue"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+              <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+            </svg>
+            {dzQ.isFetching ? "Opening…" : dzNotFound ? "Not on Deezer" : "Browse Deezer"}
+          </button>
           <button className="btn btn-ghost btn-sm" disabled={!name} onClick={() => setPickerOpen(true)} title="Change artist image">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
               <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -135,6 +161,10 @@ export default function Artist() {
       )}
 
       {name && <RelatedPanel artist={name} context="artist" />}
+
+      {dzOpen && dzArtist && (
+        <ArtistModal dzId={dzArtist.dz_id} name={dzArtist.name} onClose={() => setDzOpen(false)} />
+      )}
 
       {pickerOpen && (
         <ImagePicker

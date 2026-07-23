@@ -377,6 +377,24 @@ def test_related_reachable_with_grabber_disabled(client, base_config):
     assert client.get("/api/related/tracks?name=").get_json() == {"tracks": []}
 
 
+def test_deezer_resolve_endpoint(sug, monkeypatch):
+    client, _, _ = sug
+    calls = {"n": 0}
+
+    def fake_search(name):
+        calls["n"] += 1
+        return _art(name) if name == "ResolveMe" else None
+    monkeypatch.setattr(dc, "search_artist", fake_search)
+    body = client.get("/api/deezer/resolve?name=ResolveMe").get_json()
+    assert body["artist"]["dz_id"] == "dz:ResolveMe"
+    # Same normalized name hits the cache — no second Deezer call.
+    client.get("/api/deezer/resolve?name=resolveme")
+    assert calls["n"] == 1
+    assert client.get("/api/deezer/resolve?name=").get_json() == {"artist": None}
+    # No Deezer match resolves to null, not an error.
+    assert client.get("/api/deezer/resolve?name=NopeUnknownXyz").get_json()["artist"] is None
+
+
 # ── Deezer catalog: artist / albums / album shaping ──────────────────────────
 def test_deezer_album_seconds_to_ms(monkeypatch):
     def fake_get(url, params=None, timeout=None):

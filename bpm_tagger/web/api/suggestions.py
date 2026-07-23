@@ -331,6 +331,23 @@ def related_description():
     return jsonify(payload)
 
 
+@suggestions_bp.route("/api/deezer/resolve")
+@login_required
+def deezer_resolve():
+    """Resolve a library artist name to its Deezer artist ({dz_id, name,
+    image_url}) so the artist page can open the catalog browser. Login-gated,
+    read-only. ``artist`` is null when Deezer has no match — never an error."""
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify(artist=None)
+    ck = "resolve:" + normalize_artist(name)
+    payload = _cache_get(ck)
+    if payload is None:
+        payload = {"artist": dz.search_artist(name)}
+        _cache_put(ck, payload)
+    return jsonify(payload)
+
+
 def _dedupe_albums(albums: list[dict]) -> list[dict]:
     """Collapse Deezer's frequent duplicate/regional releases by normalized
     title, keeping the first (newest) occurrence."""
