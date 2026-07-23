@@ -108,8 +108,10 @@ function CandidateCard({ cand, item, onChoose, busy }: {
   );
 }
 
-function InboxCard({ item, onChoose, onSearch, onResearch, onSkip, busy }: {
+function InboxCard({ item, expanded, onToggle, onChoose, onSearch, onResearch, onSkip, busy }: {
   item: InboxItem;
+  expanded: boolean;
+  onToggle: () => void;
   onChoose: (candId: number) => void;
   onSearch: (query: string) => void;
   onResearch: () => void;
@@ -119,21 +121,51 @@ function InboxCard({ item, onChoose, onSearch, onResearch, onSkip, busy }: {
   // Pre-fill the edit box with the original query so a tweak-and-retry is easy.
   const [query, setQuery] = useState(`${item.artist || ""} ${item.title || ""}`.trim());
   const [editing, setEditing] = useState(false);
+  const bestScore = item.candidates.reduce<number | null>(
+    (best, c) => (c.score != null && (best == null || c.score > best) ? c.score : best), null);
   return (
     <div className="card">
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-        <span className="badge badge--review"><span className="badge-dot" />needs review</span>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{item.title}</div>
-        {item.isrc ? (
-          <PreviewButton
-            track={{ dz_track_id: `src:${item.id}`, title: item.title || "", artist: item.artist || "" }}
-            resolveUrl={() =>
-              api.get<{ preview_url: string }>(`/api/inbox/${item.id}/source-preview`).then((r) => r.preview_url)}
-          />
-        ) : null}
+      {/* Whole header toggles the card; inner buttons stop propagation. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+        style={{ cursor: "pointer" }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ alignSelf: "center", flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} aria-hidden>
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+          <span className="badge badge--review"><span className="badge-dot" />needs review</span>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{item.title}</div>
+          {item.isrc ? (
+            <span onClick={(e) => e.stopPropagation()}>
+              <PreviewButton
+                track={{ dz_track_id: `src:${item.id}`, title: item.title || "", artist: item.artist || "" }}
+                resolveUrl={() =>
+                  api.get<{ preview_url: string }>(`/api/inbox/${item.id}/source-preview`).then((r) => r.preview_url)}
+              />
+            </span>
+          ) : null}
+          {!expanded && (
+            <>
+              <div style={{ flex: 1 }} />
+              <span className="chip chip--neutral" style={{ alignSelf: "center" }}>
+                {item.candidates.length} candidate{item.candidates.length === 1 ? "" : "s"}
+              </span>
+              {bestScore != null && (
+                <span className="chip chip--active" style={{ alignSelf: "center" }}>best {Math.round(bestScore * 100)}%</span>
+              )}
+            </>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded ? 14 : 0 }}>{item.artist}{item.album ? ` · ${item.album}` : ""}</div>
       </div>
-      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>{item.artist}{item.album ? ` · ${item.album}` : ""}</div>
 
+      {expanded && (<>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         {item.candidates.length === 0 ? (
           <div style={{ color: "var(--muted)", fontSize: 13 }}>No candidates found — try a different search.</div>
@@ -167,6 +199,7 @@ function InboxCard({ item, onChoose, onSearch, onResearch, onSkip, busy }: {
           </>
         )}
       </div>
+      </>)}
     </div>
   );
 }
@@ -175,6 +208,9 @@ export default function Inbox() {
   useTitle("Inbox");
   const qc = useQueryClient();
   const status = useGrabberStatus();
+  // Cards start collapsed so a full inbox scans as a compact list; ids absent
+  // from the map are collapsed, so items resolved elsewhere just drop out.
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const inboxQ = useQuery({
     queryKey: ["inbox"],
@@ -196,6 +232,9 @@ export default function Inbox() {
   const busy = choose.isPending || search.isPending || research.isPending || researchAll.isPending || skip.isPending;
 
   const items = inboxQ.data?.items ?? [];
+  const anyExpanded = items.some((it) => expanded[it.id]);
+  const toggleAll = () =>
+    setExpanded(anyExpanded ? {} : Object.fromEntries(items.map((it) => [it.id, true])));
 
   return (
     <GrabberGate title="Inbox" subtitle="Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip.">
@@ -207,14 +246,19 @@ export default function Inbox() {
             : "Ambiguous matches waiting for a decision — choose a candidate, refine the search, or skip."
         }
         actions={items.length > 0 ? (
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={busy}
-            onClick={() => researchAll.mutate()}
-            title="Re-run the default search for every item in the inbox"
-          >
-            {researchAll.isPending ? "Searching…" : `Search all again (${items.length})`}
-          </button>
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={toggleAll}>
+              {anyExpanded ? "Collapse all" : "Expand all"}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => researchAll.mutate()}
+              title="Re-run the default search for every item in the inbox"
+            >
+              {researchAll.isPending ? "Searching…" : `Search all again (${items.length})`}
+            </button>
+          </>
         ) : undefined}
       />
 
@@ -227,6 +271,8 @@ export default function Inbox() {
               key={it.id}
               item={it}
               busy={busy}
+              expanded={!!expanded[it.id]}
+              onToggle={() => setExpanded((m) => ({ ...m, [it.id]: !m[it.id] }))}
               onChoose={(candId) => choose.mutate({ id: it.id, candId })}
               onSearch={(query) => search.mutate({ id: it.id, query })}
               onResearch={() => research.mutate(it.id)}
