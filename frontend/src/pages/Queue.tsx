@@ -22,9 +22,11 @@ const inheritLink: React.CSSProperties = { color: "inherit", textDecoration: "no
 function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: (id: number) => void; onCancel: (id: number) => void; onDelete: (id: number) => void }) {
   const active = ACTIVE.has(item.status);
   const removable = item.status === "failed" || item.status === "skipped";
-  // A completed grab has been filed into the library — link its title/artist/
-  // album straight to the track/artist/album pages (same inherit-color link
-  // style as the playlist rows). Anything not filed yet stays plain text.
+  // A completed grab has been filed into the library — link its title/album
+  // straight to the track/album pages (same inherit-color link style as the
+  // playlist rows); those pages need the file on disk, so unfiled items stay
+  // plain text. The artist page is useful even for artists you don't own yet
+  // (Related panel, Browse Deezer), so the artist always links.
   const inLibrary = item.status === "done" && !!item.final_path;
   return (
     <div className="q-row">
@@ -39,7 +41,7 @@ function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: 
           )}
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {inLibrary && item.artist ? (
+          {item.artist ? (
             <Link to={`/artist?name=${encodeURIComponent(item.artist)}`} style={inheritLink} title={`View ${item.artist}`}>{item.artist}</Link>
           ) : (
             item.artist
