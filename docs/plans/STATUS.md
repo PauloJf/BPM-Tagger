@@ -2,7 +2,8 @@
 
 One page tracking every plan in `docs/plans/`: what shipped, what's open, and loose
 follow-ups that never got their own plan doc. **Update this file whenever a plan phase
-ships or a new plan lands.** Last updated: 2026-07-19 (inbox candidate previews shipped, Unreleased).
+ships or a new plan lands.** Last updated: 2026-07-26 (both v2.10.0 plans shipped: run-settings
+simplification, playlist playback + queue hygiene).
 
 ## Overview
 
@@ -12,6 +13,8 @@ ships or a new plan lands.** Last updated: 2026-07-19 (inbox candidate previews 
 | Navidrome star sync | [navidrome-star-sync.md](navidrome-star-sync.md) | ✅ Done (v2.5.2); follow-ups open |
 | Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | ✅ Phases 1–5 done |
 | Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ✅ Done (Unreleased) |
+| Run settings — single "max stretch" slider | [run-settings-single-stretch-slider.md](run-settings-single-stretch-slider.md) | ✅ Done (v2.10.0, breaking) |
+| Playlist playback + queue hygiene | [playlist-playback-and-queue-hygiene.md](playlist-playback-and-queue-hygiene.md) | ✅ Done (v2.10.0) |
 
 ---
 
@@ -87,6 +90,56 @@ ISRC lookup. Reuses the Part C player/preview infrastructure end to end.
 Built against the v2.6.14 layout: the plan's `db.py` anchors are now the `db/` package
 (no schema change either way), and the two TTL caches follow `web/api/suggestions.py`'s
 lock-guarded `time.monotonic()` style rather than the plan's bare-dict sketch.
+
+---
+
+## Run settings — single "max stretch" slider (✅ done, v2.10.0)
+
+Plan: [run-settings-single-stretch-slider.md](run-settings-single-stretch-slider.md)
+(2026-07-26), shipped `612b9b6`. Deleted **Match tolerance** (`run_tolerance_pct`) and
+**Force tempo** (`run_force_tempo`); `run_stretch_limit_pct` is now the single authority,
+enforced both as a server-side selection filter and as the existing client playback clamp.
+
+Rationale: tolerance and max stretch measure the same quantity (`|target/folded − 1|`) at
+different stages, so they swapped authority depending on the force toggle and admitted a
+broken config (tolerance > stretch limit queued tracks that could never reach the target).
+
+**Breaking** — removed two env vars. Stale keys are swept out of the config on load
+(`config._DEAD_SETTINGS`) rather than erroring, so no migration was needed.
+
+---
+
+## Playlist playback + queue hygiene (✅ done, v2.10.0)
+
+Plan: [playlist-playback-and-queue-hygiene.md](playlist-playback-and-queue-hygiene.md)
+(2026-07-26). All four phases shipped 2026-07-26:
+
+- ✅ **Phase 1 — player context** (`9a83c9b`): `playQueue`/`play` now clear `tempoLock` +
+  `runSource` via a shared `endRunMode()`, fixing a live bug where playing an album or the
+  library mid-run left the run's auto-refill appending tracks from the old source at the
+  old target. Adding to a queue (`enqueue`/`enqueueMany`/`playNext`) and previews
+  deliberately don't. Plus `enqueueMany`, which appends a batch in one write — looping
+  `enqueue` re-reads a post-render `nav.current` and drops all but the last track.
+- ✅ **Phase 2 — loudness enrichment** (`c7dd902`): `local_loudness_lufs` through
+  `get_playlist_tracks()` and `PlaylistTrack`, so playlist playback gets v2.9.0's volume
+  levelling instead of playing hot next to album queues.
+- ✅ **Phase 3 — PlaylistDetail UI** (`f0d9df0`): **▶ Play / ⇄ Shuffle / + Add to queue**
+  over the `have` rows of the active status tab, with the playable count on the button when
+  it's smaller than the list. Plus the **"Enqueue missing" → "Download missing"** rename
+  (UI only; the `enqueue-missing` endpoint is unchanged).
+- ✅ **Phase 4 — docs** (`95d2da5`): README feature bullet + a Run-mode paragraph on what
+  does and doesn't end a run, DOCKERHUB_README, CHANGELOG.
+
+Two notes from the build: `Run.test.tsx` mocks `../lib/player` rather than mounting it (the
+plan assumed otherwise), so its regression test asserts the *call order* — both setters
+after `playQueue` — against a recording stub, with the real-state assertions in the new
+`player.queuehygiene.test.tsx`. And `enqueue`/`enqueueMany` delegate to `play`/`playQueue`
+on an empty queue, so those paths do clear the lock; unreachable mid-run, since a run
+always has a non-empty queue.
+
+Recorded as out of scope: unifying the PlayerBar queue drawer and the Run page queue
+panel into one `<QueuePanel>`; explicitly *not* as a `/queue` page (name taken by the
+Grabber queue, and the queue is a transient surface, not a destination).
 
 ---
 
