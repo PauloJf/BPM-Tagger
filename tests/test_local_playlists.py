@@ -450,6 +450,133 @@ def test_api_import_returns_counts(base_config):
         "added": 1, "already_present": 0, "skipped_missing": 1}
 
 
+# ── bulk add by path list (save a run queue as a playlist) ────────────────────
+
+def test_bulk_add_counts_and_order(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    b = _seed_track(db, "/music/b.mp3", "B")
+    pid = db.add_local_playlist("Dest")
+    db.add_track_to_local_playlist(pid, a)          # already there
+
+    counts = db.add_tracks_to_local_playlist(
+        pid, [b, a, "/music/ghost.mp3"])
+    assert counts == {"added": 1, "already_present": 1, "skipped_missing": 1}
+    # Appended in input order, after the tracks already present.
+    assert [r["title"] for r in db.get_playlist_tracks(pid)] == ["A", "B"]
+    assert db.get_playlist(pid)["track_count"] == 2
+
+
+def test_bulk_add_appends_in_the_given_order(db):
+    paths = [_seed_track(db, f"/music/{n}.mp3", n) for n in ("A", "B", "C")]
+    pid = db.add_local_playlist("Dest")
+    db.add_tracks_to_local_playlist(pid, [paths[2], paths[0], paths[1]])
+    assert [r["title"] for r in db.get_playlist_tracks(pid)] == ["C", "A", "B"]
+    assert [r["position"] for r in db.get_playlist_tracks(pid)] == [0, 1, 2]
+
+
+def test_bulk_add_skips_a_deleted_track_without_raising(db):
+    """The single-track add raises ValueError; a bulk caller must not lose the
+    rest of the queue to one stale path."""
+    ok = _seed_track(db, "/music/a.mp3", "A")
+    gone = _seed_track(db, "/music/gone.mp3", "Gone", status="deleted")
+    pid = db.add_local_playlist("Dest")
+    assert db.add_tracks_to_local_playlist(pid, [gone, ok]) == {
+        "added": 1, "already_present": 0, "skipped_missing": 1}
+    assert [r["title"] for r in db.get_playlist_tracks(pid)] == ["A"]
+
+
+def test_bulk_add_of_nothing_is_a_noop(db):
+    pid = db.add_local_playlist("Dest")
+    assert db.add_tracks_to_local_playlist(pid, []) == {
+        "added": 0, "already_present": 0, "skipped_missing": 0}
+    assert db.get_playlist(pid)["track_count"] == 0
+
+
+def test_bulk_add_dedupes_within_one_call(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    pid = db.add_local_playlist("Dest")
+    assert db.add_tracks_to_local_playlist(pid, [a, a]) == {
+        "added": 1, "already_present": 1, "skipped_missing": 0}
+    assert len(db.get_playlist_track_rows(pid)) == 1
+
+
+def test_api_bulk_add_returns_counts(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    one = _seed_api_track(base_config, "one")
+    two = _seed_api_track(base_config, "two")
+    ghost = os.path.join(base_config["music_dir"], "ghost.mp3")
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+
+    r = client.post(f"/api/playlists/{pid}/tracks",
+                    json={"paths": [one, two, ghost]}, headers=csrf)
+    assert r.status_code == 200
+    assert r.get_json()["counts"] == {
+        "added": 2, "already_present": 0, "skipped_missing": 1}
+    titles = [t["title"] for t in client.get(f"/api/playlists/{pid}/tracks").get_json()["tracks"]]
+    assert titles == ["one", "two"]
+
+
+def test_api_single_path_body_is_unchanged(base_config):
+    """Back-compat: the existing {"path": ...} callers keep their response."""
+    client = _app(base_config).test_client()
+    _, csrf = _login(client, "s3cret")
+    path = _seed_api_track(base_config)
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+
+    body = client.post(f"/api/playlists/{pid}/tracks",
+                       json={"path": path}, headers=csrf).get_json()
+    assert body["added"] is True and "counts" not in body
+
+
+def test_api_bulk_add_rejects_a_path_outside_music_dir(base_config):
+    client = _app(base_config).test_client()
+    _, csrf = _login(client, "s3cret")
+    good = _seed_api_track(base_config)
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+    r = client.post(f"/api/playlists/{pid}/tracks",
+                    json={"paths": [good, "/etc/passwd"]}, headers=csrf)
+    assert r.status_code == 403
+    # Rejected before anything was written — not a partial add.
+    assert client.get(f"/api/playlists/{pid}/tracks").get_json()["tracks"] == []
+
+
+@pytest.mark.parametrize("paths", ["nope", [1, 2], [{"p": 1}]])
+def test_api_bulk_add_rejects_a_malformed_list(base_config, paths):
+    client = _app(base_config).test_client()
+    _, csrf = _login(client, "s3cret")
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+    assert client.post(f"/api/playlists/{pid}/tracks", json={"paths": paths},
+                       headers=csrf).status_code == 400
+
+
+def test_api_bulk_add_caps_the_batch(base_config):
+    client = _app(base_config).test_client()
+    _, csrf = _login(client, "s3cret")
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+    too_many = [os.path.join(base_config["music_dir"], f"{i}.mp3") for i in range(501)]
+    assert client.post(f"/api/playlists/{pid}/tracks", json={"paths": too_many},
+                       headers=csrf).status_code == 400
+
+
+def test_api_bulk_add_rejects_non_local(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    path = _seed_api_track(base_config)
+    from bpm_tagger.web.state import state
+    with app.app_context():
+        pid = state().db.add_playlist("SPX", "Spotify PL")
+    assert client.post(f"/api/playlists/{pid}/tracks", json={"paths": [path]},
+                       headers=csrf).status_code == 400
+
+
 # ── library "not in a playlist" filter + stats count ──────────────────────────
 
 def test_unplaylisted_filter_and_count(db):

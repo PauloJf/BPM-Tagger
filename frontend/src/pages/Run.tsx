@@ -10,6 +10,7 @@ import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, Tr
 import { useTapTempo } from "../hooks/useTapTempo";
 import { LyricsPanel } from "../components/LyricsPanel";
 import QueueSimilar from "../components/QueueSimilar";
+import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
@@ -1088,6 +1089,20 @@ export default function Run() {
                 aria-expanded={similarOpen}
                 title={`Tracks similar to ${queueTrack.artist} — in-library matches queue onto this run's cadence`}
               >≈ Similar</button>
+            )}
+            {/* Save the queue you're actually running as a local playlist.
+                Admin-only, like the rest of playlist management (the endpoint
+                403s a player anyway), and only worth offering with a queue. */}
+            {role === "admin" && !playerMode && player.orderedQueue.length > 0 && (
+              <AddToPlaylistMenu
+                paths={player.orderedQueue.map((t) => t.path)}
+                heading="Save queue to…"
+                label="Save…"
+                title="Save this run queue as a local playlist"
+                className="btn btn-bare btn-sm"
+                style={{ padding: 0, fontSize: 11, color: "var(--muted)" }}
+                iconSize={11}
+              />
             )}
             {!playerMode && (
               <Link to="/settings#sec-run" style={{ fontSize: 11, color: "var(--accent-2)" }}>Settings</Link>

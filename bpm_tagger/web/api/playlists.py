@@ -30,6 +30,10 @@ log = logging.getLogger(__name__)
 
 playlists_bp = Blueprint("api_playlists", __name__)
 
+# Ceiling on a single bulk add. Comfortably above any run queue, low enough that
+# one request can't be turned into an unbounded write.
+_MAX_BULK_PATHS = 500
+
 
 def _grabber():
     st = state()
@@ -216,9 +220,14 @@ def playlist_tracks(pid):
 @playlists_bp.route("/api/playlists/<int:pid>/tracks", methods=["POST"])
 @login_required
 def add_local_track(pid):
-    """Add a library track to a Local playlist (the "Add to playlist" action). Sets
+    """Add library tracks to a Local playlist (the "Add to playlist" action). Sets
     match_status='have' directly — a local track is by definition present. Local only:
-    synced sources manage their own membership. Admin-only (not in _PLAYER_ALLOWED)."""
+    synced sources manage their own membership. Admin-only (not in _PLAYER_ALLOWED).
+
+    Takes either {"path": "..."} for one track (unchanged response, so existing
+    callers keep working) or {"paths": [...]} to append many in order, which
+    answers with the same {added, already_present, skipped_missing} counts shape
+    the bulk import uses."""
     _check_csrf()
     db = state().db
     pl = db.get_playlist(pid)
@@ -227,6 +236,19 @@ def add_local_track(pid):
     if pl.get("source") != "local":
         return jsonify(error="Only local playlists accept manual track adds."), 400
     data = request.get_json(force=True, silent=True) or {}
+
+    if "paths" in data:
+        raw = data.get("paths")
+        if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
+            return jsonify(error="'paths' must be a list of track paths."), 400
+        if len(raw) > _MAX_BULK_PATHS:
+            return jsonify(error=f"Too many tracks at once (max {_MAX_BULK_PATHS})."), 400
+        paths = [p.strip() for p in raw if p.strip()]
+        for p in paths:
+            _assert_in_music_dir(p)
+        counts = db.add_tracks_to_local_playlist(pid, paths)
+        return jsonify(ok=True, counts=counts, playlist=db.get_playlist(pid))
+
     path = str(data.get("path") or "").strip()
     if not path:
         return jsonify(error="A track path is required."), 400

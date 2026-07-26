@@ -74,6 +74,30 @@ describe("AddToPlaylistMenu — bulk import mode", () => {
   });
 });
 
+describe("AddToPlaylistMenu — bulk paths mode", () => {
+  it("posts the path list and reports the same counts toast as an import", async () => {
+    h.post.mockResolvedValue({ counts: { added: 3, already_present: 1, skipped_missing: 0 } });
+    render(<AddToPlaylistMenu paths={["/music/a.mp3", "/music/b.mp3"]} heading="Save queue to…" label="Save…" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to playlist" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Alpha/ }));
+
+    await waitFor(() => expect(screen.getByText("Alpha: Added 3 · 1 already there")).toBeTruthy());
+    expect(h.post).toHaveBeenCalledWith("/api/playlists/1/tracks",
+      { paths: ["/music/a.mp3", "/music/b.mp3"] });
+  });
+
+  it("lists every local playlist — there's no source to exclude", async () => {
+    h.post.mockResolvedValue({ counts: { added: 1, already_present: 0, skipped_missing: 0 } });
+    render(<AddToPlaylistMenu paths={["/music/a.mp3"]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to playlist" }));
+    expect(screen.getByRole("menuitem", { name: /Alpha/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /Beta/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /Remote/ })).toBeNull();
+  });
+});
+
 describe("AddToPlaylistMenu — single-track mode", () => {
   it("posts the track path and reports added / already-in", async () => {
     h.post.mockResolvedValue({ added: true });

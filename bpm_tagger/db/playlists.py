@@ -338,6 +338,52 @@ class PlaylistsMixin:
             conn.commit()
             return inserted
 
+    def add_tracks_to_local_playlist(self, playlist_id: int, file_paths: list[str]) -> dict:
+        """Append a list of library paths to a Local playlist, in the given order.
+
+        The bulk sibling of add_track_to_local_playlist, and the same idempotent
+        INSERT … WHERE NOT EXISTS keyed on (playlist_id, source_track_id =
+        file_path) — but in one connection and one transaction, where looping the
+        single-track version would open a connection per path. A path with no
+        live library row counts as skipped_missing rather than raising, since a
+        bulk caller (saving a whole run queue) shouldn't lose the other 40 tracks
+        to one stale entry. Returns {added, already_present, skipped_missing}."""
+        now = datetime.now(timezone.utc).isoformat()
+        added = already = skipped = 0
+        with self._connect() as conn:
+            position = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM playlist_tracks "
+                "WHERE playlist_id = ?", (playlist_id,)).fetchone()["n"]
+            for path in file_paths:
+                t = conn.execute(
+                    "SELECT * FROM tracks WHERE file_path = ? AND status != 'deleted'",
+                    (path,)).fetchone()
+                if t is None:
+                    skipped += 1
+                    continue
+                cur = conn.execute("""
+                    INSERT INTO playlist_tracks
+                        (playlist_id, source_track_id, spotify_track_id, position, title, artist,
+                         album, album_artist, duration_ms, isrc, track_no, disc_no, year, cover_url,
+                         added_at, norm_title, norm_artist, match_status, matched_file_path,
+                         first_seen_at, is_new, removed_at)
+                    SELECT ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, 'have', ?, ?, 0, NULL
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM playlist_tracks WHERE playlist_id = ? AND source_track_id = ?)
+                """, (playlist_id, path, position, t["title"], t["artist"], t["album"],
+                      t["album_artist"], t["duration_ms"], t["isrc"], t["track_no"], t["disc_no"],
+                      t["year"], now, t["norm_title"], t["norm_artist"], path, now,
+                      playlist_id, path))
+                if cur.rowcount > 0:
+                    added += 1
+                    position += 1
+                else:
+                    already += 1
+            if added:
+                self._refresh_local_track_count(conn, playlist_id)
+            conn.commit()
+        return {"added": added, "already_present": already, "skipped_missing": skipped}
+
     def import_playlist_tracks(self, dest_id: int, src_id: int) -> dict:
         """Copy every library-backed ('have') track from one playlist into a Local
         playlist, skipping duplicates. Any source (Spotify / Navidrome / Local) may

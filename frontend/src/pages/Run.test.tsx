@@ -79,6 +79,12 @@ vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => true }));   // force
 vi.mock("../components/PageHeader", () => ({ default: () => null }));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/QueueSimilar", () => ({ default: () => null }));
+// Stand-in that surfaces the props Run passes, so the queue-panel wiring can be
+// asserted without dragging the popover's own query/mutation plumbing in here.
+vi.mock("../components/AddToPlaylistMenu", () => ({
+  default: ({ paths, label }: { paths?: string[]; label?: string }) =>
+    <button data-testid="save-queue" data-paths={JSON.stringify(paths ?? null)}>{label}</button>,
+}));
 
 // Import after the mocks are registered.
 import Run, { pulsePeriodMs } from "./Run";
@@ -548,5 +554,39 @@ describe("Run — changing the source mid-run prompts a Rebuild", () => {
     // Switch the source to the whole library → should prompt a Rebuild.
     fireEvent.change(screen.getByLabelText("Run source"), { target: { value: "library" } });
     expect(await screen.findByText(/Source changed to your whole library/i)).toBeTruthy();
+  });
+});
+
+describe("Run — saving the queue as a playlist", () => {
+  const showQueue = () => localStorage.setItem(MODE_KEY, "queue");
+
+  it("offers Save with the queue's paths, in queue order", () => {
+    showQueue();
+    h.current = { path: "/music/a.mp3", title: "A" };
+    h.orderedQueue = [
+      { path: "/music/a.mp3", title: "A" },
+      { path: "/music/b.mp3", title: "B" },
+    ];
+    render(<Run />);
+
+    const save = screen.getByTestId("save-queue");
+    expect(JSON.parse(save.getAttribute("data-paths")!))
+      .toEqual(["/music/a.mp3", "/music/b.mp3"]);
+  });
+
+  it("hides Save from a player — playlist management is admin-only", () => {
+    showQueue();
+    h.role = "player";
+    h.current = { path: "/music/a.mp3", title: "A" };
+    h.orderedQueue = [{ path: "/music/a.mp3", title: "A" }];
+    render(<Run />);
+    expect(screen.queryByTestId("save-queue")).toBeNull();
+  });
+
+  it("hides Save when there is no queue to save", () => {
+    showQueue();
+    h.orderedQueue = [];
+    render(<Run />);
+    expect(screen.queryByTestId("save-queue")).toBeNull();
   });
 });

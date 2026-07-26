@@ -4,16 +4,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { Playlist } from "../lib/types";
 
+/** Per-track outcome counts, shared by both bulk modes. */
+type Counts = { added: number; already_present: number; skipped_missing: number };
+
 /** Trigger + popover for adding tracks to a Local playlist.
  *
- *  Two modes, same UI (a list of the user's Local playlists + an inline
- *  "New playlist…" create):
+ *  Three modes, same UI (a list of the user's Local playlists + an inline
+ *  "New playlist…" create). Pass exactly one of them:
  *   - default (`path`): add one library track — posts to
  *     /api/playlists/<id>/tracks (sets the row to 'have' directly).
  *   - bulk (`importFrom`): copy every library-backed track from another playlist —
  *     posts to /api/playlists/<id>/import; the toast reports added / already-there /
  *     not-in-library counts. The source playlist is filtered out of the target list
  *     so it can't be imported into itself.
+ *   - bulk (`paths`): add an arbitrary list of library paths, in order — posts
+ *     the same /api/playlists/<id>/tracks endpoint with {paths} and reports the
+ *     same counts. This is what saves a run queue as a playlist.
  *
  *  Playlist *management* is admin-only, so callers must not render this in the
  *  player role — the backend 403s it regardless.
@@ -22,10 +28,11 @@ import type { Playlist } from "../lib/types";
  *  so it never clips inside a table row or a `<Link>`, and it clamps to the
  *  viewport so it stays on-screen on narrow phones. */
 export default function AddToPlaylistMenu({
-  path, importFrom, heading = "Add to playlist", label,
+  path, paths, importFrom, heading = "Add to playlist", label,
   className, style, title = "Add to playlist", iconSize = 12,
 }: {
   path?: string;
+  paths?: string[];
   importFrom?: number;
   heading?: string;
   label?: string;      // when set, the trigger shows this text beside the icon
@@ -60,14 +67,21 @@ export default function AddToPlaylistMenu({
   // Apply the pick to one (existing or freshly-created) local playlist, returning
   // the status message. Single-track add vs. bulk import diverge only here.
   async function pick(id: number, name: string): Promise<{ ok: boolean; text: string }> {
-    if (importFrom != null) {
-      const res = await api.post<{ counts: { added: number; already_present: number; skipped_missing: number } }>(
-        `/api/playlists/${id}/import`, { from_playlist_id: importFrom });
-      const c = res.counts;
+    // Both bulk modes answer with the same counts shape, so they share a toast.
+    const countsToast = (c: Counts) => {
       const parts = [`Added ${c.added}`];
       if (c.already_present) parts.push(`${c.already_present} already there`);
       if (c.skipped_missing) parts.push(`${c.skipped_missing} not in library`);
       return { ok: true, text: `${name}: ${parts.join(" · ")}` };
+    };
+    if (importFrom != null) {
+      const res = await api.post<{ counts: Counts }>(
+        `/api/playlists/${id}/import`, { from_playlist_id: importFrom });
+      return countsToast(res.counts);
+    }
+    if (paths) {
+      const res = await api.post<{ counts: Counts }>(`/api/playlists/${id}/tracks`, { paths });
+      return countsToast(res.counts);
     }
     const res = await api.post<{ added: boolean }>(`/api/playlists/${id}/tracks`, { path });
     return { ok: true, text: res.added ? `Added to ${name}` : `Already in ${name}` };
