@@ -237,9 +237,7 @@ def api_settings_run():
         "run_prefer_starred":    bool(data.get("run_prefer_starred", True)),
         "run_prefer_familiar":   bool(data.get("run_prefer_familiar", False)),
         "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
-        "run_tolerance_pct":     _num(data.get("run_tolerance_pct"), 0.5, 30, 4.0),
         "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
-        "run_force_tempo":       bool(data.get("run_force_tempo", False)),
     }
     st.config.update(updates)
     save_settings(st.settings_path, updates)

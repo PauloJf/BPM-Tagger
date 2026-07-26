@@ -51,8 +51,7 @@ export interface RunTrack {
   starred: boolean;
   play_count?: number | null;
   run_bpm: number;   // BPM after octave fold (×½/×1/×2)
-  rate: number;      // playbackRate that lands run_bpm on the target
-  clamped?: boolean; // force-tempo only: rate was clamped, so playback isn't exactly on target
+  rate: number;      // playbackRate that lands run_bpm on the target (always in-limit)
   from_playlist?: boolean;  // from the selected playlist itself, vs a library top-up
   loudness_lufs?: number | null;  // for the player's volume levelling
 }
@@ -62,13 +61,12 @@ export interface RunQueueResponse {
   target: number;
   count: number;
   octave_fold: boolean;
-  tolerance_pct: number;
+  stretch_limit_pct: number;  // the max-stretch limit this queue was selected under
   prefer_starred: boolean;
   prefer_familiar?: boolean;
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
   topped_up?: boolean;  // true when a playlist run was filled out with library tracks (too few matched)
   playlist?: number | null;   // playlist id the pool was scoped to, or null for the whole library
-  forced?: boolean;     // "play everything, force tempo" was on for this build
 }
 
 // A playlist offered as a run source, with how many tracks are actually runnable.

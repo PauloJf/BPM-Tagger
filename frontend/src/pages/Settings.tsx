@@ -191,7 +191,7 @@ export default function Settings() {
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
     octave: true, preferStarred: true, preferFamiliar: false,
-    queueSize: 20, tolerance: 4, stretchLimit: 15, forceTempo: false,
+    queueSize: 20, stretchLimit: 15,
   });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
@@ -328,9 +328,7 @@ export default function Settings() {
       preferStarred: b("run_prefer_starred", true),
       preferFamiliar: b("run_prefer_familiar", false),
       queueSize: n("run_queue_size", 20),
-      tolerance: n("run_tolerance_pct", 4),
       stretchLimit: n("run_stretch_limit_pct", 15),
-      forceTempo: b("run_force_tempo", false),
     });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
@@ -1340,9 +1338,7 @@ export default function Settings() {
                 run_prefer_starred: run.preferStarred,
                 run_prefer_familiar: run.preferFamiliar,
                 run_queue_size: run.queueSize,
-                run_tolerance_pct: run.tolerance,
                 run_stretch_limit_pct: run.stretchLimit,
-                run_force_tempo: run.forceTempo,
               }, setRunSaved);
             }}>
               <div className="field-row">
@@ -1379,20 +1375,7 @@ export default function Settings() {
                        style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
               </div>
               <div className="field-row">
-                {fieldLabel("Match tolerance", "How far (in %) a track's octave-folded BPM may sit from the target and still be queued. The tempo lock stretches this remainder away during playback.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={0.5} max={30} step={0.5} value={run.tolerance}
-                         onChange={(e) => setRun({ ...run, tolerance: +e.target.value })}
-                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Play everything (force tempo)", "Default for new runs: ignore the match tolerance entirely and force every track onto the target cadence via the tempo lock (extreme rates are clamped). The Run page has a per-run toggle that overrides this.")}
-                <Toggle on={run.forceTempo} onChange={(v) => setRun({ ...run, forceTempo: v })} label="Play everything, force tempo" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Max stretch", "Upper bound (in %) for how far the tempo lock may speed up or slow down a track. Browser time-stretching starts to sound artificial beyond ~15%.")}
+                {fieldLabel("Max stretch", "How far (in %) a track may be sped up or slowed down to reach your cadence. Tracks that can't get there within this limit aren't queued. Browser time-stretching starts to sound artificial past ~15%.")}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input type="number" min={1} max={50} step={1} value={run.stretchLimit}
                          onChange={(e) => setRun({ ...run, stretchLimit: +e.target.value })}

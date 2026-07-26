@@ -30,6 +30,21 @@ def test_override_overwrites_env_values(tmp_path):
     assert out["new_key"] == "x"
 
 
+def test_override_drops_dead_settings(tmp_path):
+    """Settings removed in a past release don't leak back in from a stale file.
+
+    v2.10.0 folded match tolerance + force tempo into the max-stretch limit; an
+    upgraded install still has both keys sitting in its settings.json."""
+    db = tmp_path / "bpm_tagger.db"
+    (tmp_path / "settings.json").write_text(json.dumps({
+        "run_tolerance_pct": 2.0, "run_force_tempo": True, "run_stretch_limit_pct": 20,
+    }))
+    out = load_settings_override({"db_path": str(db)})
+    assert "run_tolerance_pct" not in out
+    assert "run_force_tempo" not in out
+    assert out["run_stretch_limit_pct"] == 20      # the surviving key still applies
+
+
 def test_override_corrupt_json_is_ignored(tmp_path):
     db = tmp_path / "bpm_tagger.db"
     (tmp_path / "settings.json").write_text("{ not valid json ")

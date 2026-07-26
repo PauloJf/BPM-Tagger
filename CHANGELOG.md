@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.10.0 — 2026-07-26
+
+### Breaking
+
+- **`RUN_TOLERANCE_PCT` and `RUN_FORCE_TEMPO` are removed.** Both env vars, both **Settings → Run Mode** fields ("Match tolerance", "Play everything (force tempo)"), and the Run page's **FORCE TEMPO** toggle are gone. **Max stretch** (`RUN_STRETCH_LIMIT_PCT`, default **15%**) is now the only setting that decides what a run plays.
+  - **What to expect after upgrading.** If you had tolerance at its 4% default, your queues get **wider** — anything reachable within ±15% is now eligible, where before only tracks within ±4% of the target were. Tuned it down to 1%? Wider still. To get the old tight matching back, lower **Max stretch** to the value tolerance used to have. Queues will be shorter than your queue size on a small library, which is the honest answer rather than a silently padded one.
+  - **Stale config is ignored, not fatal.** `RUN_TOLERANCE_PCT` / `RUN_FORCE_TEMPO` left in a compose file are no-ops (nothing validates them), and leftover keys in `/data/settings.json` are swept out of the config on load. No migration needed, nothing to edit before upgrading.
+  - **A stale browser tab is safe too.** A tab that outlived the deploy still appends `?force=1` when building a queue; the server ignores the parameter instead of rejecting the request.
+
+### Why
+
+Match tolerance and max stretch were never two concepts. Both measured the same quantity — the fractional distance of `playbackRate` from 1 — in the same units, just at different stages: tolerance filtered which tracks got queued, max stretch capped how far playback could pull them. Nothing told you ±4% and ±15% were on the same scale.
+
+Worse, **which one actually governed your queue flipped with the force toggle**. Off: tolerance (4%) was stricter than the cap (15%), so the cap never fired — it was inert. On: tolerance was bypassed, so the cap became the real filter, except it applied *after* selection — leaving tracks in your queue that could never reach your cadence, carrying a ⚠. And tolerance 20% with max stretch 15% was a reachable, silently broken configuration.
+
+Max stretch is a real ceiling (past roughly ±20%, browser time-stretching smears transients), so it had to stay. Tolerance was only a preference — and selection already sorts closest-match-first and truncates to your queue size, so the queue was *already* best-matches-first. Tolerance's one remaining effect was making queues shorter than requested, which reads as a bug more often than a feature. With tolerance gone, force tempo had no filter left to bypass.
+
+### Changed
+
+- **Max stretch is enforced twice, consistently.** At **selection** (new): the server drops any candidate whose post-fold deviation exceeds the limit, so nothing unreachable ever enters a queue. At **playback** (unchanged): the client clamps `playbackRate` to the same bound. Ordering is untouched — closest-first, starred-first, familiar-first as configured.
+- **The ⚠ "out of reach" badge stays**, because selection only guarantees in-limit *at build time*. Move the target slider without rebuilding, or lower Max stretch under a queue restored from a previous session, and a queued track can fall out of spec. The badge now names the drift ("queued for a different target… rebuild the queue") instead of telling you to raise a limit.
+- The run queue header reads `built for 155 BPM · max ±15.0%`, and the **Max stretch** help text in Settings now carries the whole model: how far a track may be pulled, that unreachable tracks aren't queued, and where time-stretching starts to sound artificial.
+- The `/api/run/queue` response returns `stretch_limit_pct` in place of `tolerance_pct`, and drops the per-track `clamped` flag and the top-level `forced` flag. The server's old 0.5–2.0 rate guard is gone too: with selection enforcing the limit, every returned rate is in-limit by construction.
+
 ## v2.9.0 — 2026-07-26
 
 - **Volume levelling between tracks.** Every track's perceived loudness is now measured during the BPM scan — integrated **LUFS** per ITU-R BS.1770 / EBU R128, the same measure streaming services level to — and the player uses it to bring loud masters down to a **target loudness**, so a hot track no longer blasts you mid-run. Details:

@@ -181,8 +181,8 @@ services:
       # RUN_OCTAVE_FOLD: "true"        # half/double-time tracks count as matches
       # RUN_PREFER_STARRED: "true"     # fill run queues with starred tracks first
       # RUN_QUEUE_SIZE: "20"           # tracks per run queue
-      # RUN_TOLERANCE_PCT: "4"         # max % distance from target after octave fold
-      # RUN_STRETCH_LIMIT_PCT: "15"    # cap % for the tempo-lock time stretch
+      # RUN_STRETCH_LIMIT_PCT: "15"    # max % a track may be stretched to reach the
+      #                                # target — also what makes it eligible at all
 
       # -----------------------------------------------------------------------
       # Hash refresh (run once after upgrading from an older version)

@@ -162,32 +162,25 @@ describe("Run — mobile source picker placement", () => {
   });
 });
 
-describe("Run — force-tempo toggle placement (mobile)", () => {
-  it("puts the force toggle inside the Queue view", () => {
+describe("Run — the force-tempo toggle is gone (v2.10.0: max stretch is the only knob)", () => {
+  // Guards against a partial revert: max stretch now filters at selection, so
+  // there is no tolerance left for a force toggle to bypass. It must not come
+  // back in any of its three old render sites (queue view, main page pre-run,
+  // desktop controls column).
+  it("does not render it in the Queue view", () => {
     localStorage.setItem(MODE_KEY, "queue");
     h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
     h.orderedQueue = [h.current];
     render(<Run />);
-    const region = screen.getByTestId("queue-force");
-    expect(region.textContent).toMatch(/FORCE TEMPO/);
-  });
-
-  it("does NOT show the force toggle on the main run page during playback (presets mode)", () => {
-    // It used to sit under the presets and eat the vertical space that shoves the
-    // cover off small screens once a track is playing.
-    localStorage.setItem(MODE_KEY, "presets");
-    h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
-    h.orderedQueue = [h.current];
-    render(<Run />);
-    expect(screen.queryByText(/FORCE TEMPO/)).toBeNull();
     expect(screen.queryByTestId("queue-force")).toBeNull();
+    expect(screen.queryByText(/FORCE TEMPO/)).toBeNull();
   });
 
-  it("still offers the force toggle pre-run on the main page (no cover yet)", () => {
+  it("does not render it pre-run on the main page", () => {
     localStorage.setItem(MODE_KEY, "presets");
     h.current = null;
     render(<Run />);
-    expect(screen.getByText(/FORCE TEMPO/)).toBeTruthy();
+    expect(screen.queryByText(/FORCE TEMPO/)).toBeNull();
   });
 });
 
@@ -438,6 +431,21 @@ describe("Run — beat pulse shows the ×2 octave schematically", () => {
   });
 });
 
+describe("Run — the queue header reports the limit the queue was built under", () => {
+  it("shows 'built for N BPM · max ±X%' from the build response", async () => {
+    localStorage.setItem(MODE_KEY, "queue");
+    localStorage.setItem(TARGET_KEY, "155");
+    vi.mocked(api.get).mockResolvedValue({
+      tracks: [{ path: "/x.mp3", title: "X", artist: "Ar", bpm: 155, starred: false, run_bpm: 155, rate: 1 }],
+      target: 155, count: 1, octave_fold: true, stretch_limit_pct: 15,
+      prefer_starred: true, playlist: null,
+    });
+    render(<Run />);
+    fireEvent.click(screen.getByLabelText("Start run"));
+    expect(await screen.findByText(/built for 155 BPM · max ±15\.0%/)).toBeTruthy();
+  });
+});
+
 describe("Run — changing the source mid-run prompts a Rebuild", () => {
   it("warns that the source changed after a build, until Rebuild", async () => {
     localStorage.setItem(MODE_KEY, "presets");
@@ -445,7 +453,7 @@ describe("Run — changing the source mid-run prompts a Rebuild", () => {
     localStorage.setItem(SOURCE_KEY, "pl:1");   // start scoped to the playlist
     vi.mocked(api.get).mockResolvedValue({
       tracks: [{ path: "/x.mp3", title: "X", artist: "Ar", bpm: 155, starred: false, run_bpm: 155, rate: 1, from_playlist: true }],
-      target: 155, count: 1, octave_fold: true, tolerance_pct: 4,
+      target: 155, count: 1, octave_fold: true, stretch_limit_pct: 15,
       prefer_starred: true, playlist: 1,
     });
     render(<Run />);

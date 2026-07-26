@@ -141,6 +141,61 @@ def test_run_queue_octave_fold_off(client, base_config, app):
     assert data["octave_fold"] is False
 
 
+def test_run_queue_stretch_limit_is_the_selection_filter(client, base_config, app):
+    """Max stretch alone decides eligibility: a track that can't be pulled onto the
+    target within the limit is never queued (there is no separate tolerance)."""
+    _login(client)
+    app.extensions["state"].config["run_octave_fold"] = False   # keep the math direct
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("inside",  140.0, 0),   # 150/140 → 7.1% stretch, inside the 15% limit
+        ("outside", 120.0, 0),   # 150/120 → 25% stretch, beyond it
+    ])
+    data = client.get("/api/run/queue?bpm=150").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"inside"}
+    assert data["stretch_limit_pct"] == 15.0
+    # Every returned rate is in-limit by construction — no clamping needed.
+    assert abs(data["tracks"][0]["rate"] - 150 / 140) < 1e-3
+
+
+def test_run_queue_stretch_limit_boundary_is_inclusive(client, base_config, app):
+    """A track sitting exactly on the limit qualifies (and one just past doesn't)."""
+    _login(client)
+    st = app.extensions["state"]
+    st.config["run_octave_fold"] = False
+    st.config["run_stretch_limit_pct"] = 25.0
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("on_limit",   120.0, 0),   # 150/120 - 1 == 0.25 exactly → in
+        ("past_limit", 100.0, 0),   # 150/100 - 1 == 0.50        → out
+    ])
+    data = client.get("/api/run/queue?bpm=150").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"on_limit"}
+    assert data["stretch_limit_pct"] == 25.0
+
+
+def test_run_queue_raising_the_limit_widens_the_pool(client, base_config, app):
+    """The one slider is the whole knob — raising it admits tracks it had excluded."""
+    _login(client)
+    st = app.extensions["state"]
+    st.config["run_octave_fold"] = False
+    _seed(base_config["db_path"], base_config["music_dir"], [("far", 120.0, 0)])
+    assert client.get("/api/run/queue?bpm=150").get_json()["tracks"] == []
+    st.config["run_stretch_limit_pct"] = 30.0
+    data = client.get("/api/run/queue?bpm=150").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"far"}
+
+
+def test_run_queue_tolerates_a_stale_force_param(client, base_config):
+    """A tab that outlived the deploy still sends ?force=1 — it's ignored, not a 400."""
+    _login(client)
+    _seed(base_config["db_path"], base_config["music_dir"], [("a", 150.0, 0)])
+    r = client.get("/api/run/queue?bpm=150&force=1")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert {t["title"] for t in data["tracks"]} == {"a"}
+    assert "forced" not in data          # the flag is gone from the response
+    assert "tolerance_pct" not in data
+
+
 def test_run_queue_prefers_starred_within_count(client, base_config):
     _login(client)
     rows = [(f"plain{i}", 150.0, 0) for i in range(10)]
@@ -327,7 +382,6 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
         "run_octave_fold": False,
         "run_prefer_starred": False,
         "run_queue_size": 9999,
-        "run_tolerance_pct": 2.5,
         "run_stretch_limit_pct": 0,
     }, headers=csrf)
     assert r.status_code == 200
@@ -341,7 +395,6 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
     assert cfg["run_octave_fold"] is False
     assert cfg["run_prefer_starred"] is False
     assert cfg["run_queue_size"] == 200                # clamped
-    assert cfg["run_tolerance_pct"] == 2.5
     assert cfg["run_stretch_limit_pct"] == 1.0         # clamped
 
     settings = client.get("/api/settings").get_json()["settings"]

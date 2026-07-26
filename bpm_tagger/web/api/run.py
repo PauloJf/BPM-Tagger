@@ -1,9 +1,11 @@
 """Run mode: build a tempo-locked playback queue for a target cadence.
 
 Given a target BPM, select tracks whose detected BPM — octave-folded to ×½/×1/×2
-when enabled, so a 75 BPM song serves a 150 SPM run at native speed — lands
-within a configurable tolerance of the target. Starred tracks are preferred.
-Each returned track carries the playback rate the client applies via
+when enabled, so a 75 BPM song serves a 150 SPM run at native speed — can be
+pulled onto the target within the max-stretch limit (``run_stretch_limit_pct``).
+That one limit is the whole eligibility rule: a track that can't reach the
+cadence within it never enters the queue. Starred tracks are preferred. Each
+returned track carries the playback rate the client applies via
 ``audio.playbackRate`` (pitch preserved by the browser).
 
 POSTing an ``exclude`` list of file paths — the client's auto-refill sends the
@@ -24,9 +26,10 @@ from ..state import state
 run_bp = Blueprint("api_run", __name__)
 
 MAX_EXCLUDE = 500  # defensive cap — the client sends a bounded recent-history window
-# Force-tempo playbackRate clamp: octave folding keeps most tracks well inside this,
-# so the clamp only bites genuine outliers (e.g. a 60 BPM track forced to a 180 target).
-RATE_MIN, RATE_MAX = 0.5, 2.0
+# Slack on the eligibility comparison so a track sitting exactly on the limit isn't
+# dropped by float rounding (150/120 is exact, 120/100 is not). Matches the same
+# epsilon in the frontend's QueueSimilar reachability check.
+_LIMIT_EPS = 1e-9
 
 
 def _run_scope():
@@ -61,7 +64,6 @@ def api_run_queue():
         bpm_raw = body.get("bpm")
         count_raw = body.get("count")
         playlist_raw = body.get("playlist")
-        force_raw = body.get("force")
         exclude = body.get("exclude") or []
         if not isinstance(exclude, list):
             return jsonify(error="exclude must be a list of paths"), 400
@@ -70,8 +72,9 @@ def api_run_queue():
         bpm_raw = request.args.get("bpm")
         count_raw = request.args.get("count")
         playlist_raw = request.args.get("playlist")
-        force_raw = request.args.get("force")
         exclude_set = set()
+    # A stale client (a tab that outlived the deploy) may still send ?force=1 —
+    # it's simply never read, so the request succeeds against the new rule.
 
     # Optional playlist scope: restrict the candidate pool to that playlist's
     # matched local tracks instead of the whole library. The "mine" sentinel is the
@@ -112,15 +115,11 @@ def api_run_queue():
     octave = bool(cfg.get("run_octave_fold", True))
     prefer_starred = bool(cfg.get("run_prefer_starred", True))
     prefer_familiar = bool(cfg.get("run_prefer_familiar", False))
-    tol = max(0.005, float(cfg.get("run_tolerance_pct", 4.0)) / 100.0)
-    # "Play everything, force tempo": drop the tolerance filter so every candidate
-    # qualifies, forcing each to the target via playbackRate. Per-request flag wins;
-    # the run_force_tempo setting is the default when the request doesn't say.
-    if force_raw is None:
-        force = bool(cfg.get("run_force_tempo", False))
-    else:
-        force = (force_raw if isinstance(force_raw, bool)
-                 else str(force_raw).lower() in ("1", "true", "yes", "on"))
+    # Max stretch is the single eligibility rule: how far playbackRate may move
+    # from 1 to land a track on the target. Enforced here at selection so nothing
+    # unreachable enters the queue, and again client-side by lockRate at playback
+    # (the target slider can move a built queue, and the limit itself can drop).
+    limit = max(0.01, float(cfg.get("run_stretch_limit_pct", 15.0)) / 100.0)
 
     # Score candidates: eligibility by post-fold deviation from target (minus
     # whatever's excluded), selection by (starred first, then most-played first
@@ -132,7 +131,7 @@ def api_run_queue():
                 continue
             folded = _fold(t["bpm"], target, octave)
             dev = abs(target / folded - 1.0)
-            if force or dev <= tol:   # force: every candidate qualifies
+            if dev <= limit + _LIMIT_EPS:
                 found.append((t, folded, dev))
         found.sort(key=lambda x: (not x[0]["starred"] if prefer_starred else False,
                                   -(x[0]["play_count"] or 0) if prefer_familiar else 0,
@@ -179,18 +178,8 @@ def api_run_queue():
     picked = picked[:count]
     random.shuffle(picked)
 
-    def _rate(folded):
-        """playbackRate to hit the target, clamped in force mode so an outlier can't
-        produce a chipmunk/rumble artifact. Returns (rate, clamped)."""
-        raw = target / folded
-        if force:
-            r = min(RATE_MAX, max(RATE_MIN, raw))
-            return round(r, 4), (r != raw)
-        return round(raw, 4), False
-
     tracks = []
     for (t, folded, _dev) in picked:
-        rate, clamped = _rate(folded)
         tracks.append({
             "path":    t["file_path"],
             "title":   t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
@@ -202,18 +191,15 @@ def api_run_queue():
             # for anything not measured yet, which plays at full volume.
             "loudness_lufs": t["loudness_lufs"],
             "run_bpm": round(folded, 2),              # BPM after octave fold
-            "rate":    rate,                          # playbackRate to hit target
-            # When clamped, playback is NOT exactly at target (the track was too far
-            # off even after octave folding) — the UI notes it as "forced".
-            "clamped": clamped,
+            # playbackRate to hit target — in-limit by construction (see _matches).
+            "rate":    round(target / folded, 4),
             # From the selected playlist itself vs. a library top-up (marks the UI).
             "from_playlist": t["file_path"] in pl_paths,
         })
     return jsonify(tracks=tracks, target=target, count=len(tracks),
-                   octave_fold=octave, tolerance_pct=tol * 100,
+                   octave_fold=octave, stretch_limit_pct=limit * 100,
                    prefer_starred=prefer_starred, prefer_familiar=prefer_familiar,
-                   recycled=recycled, topped_up=topped_up, playlist=playlist_id,
-                   forced=force)
+                   recycled=recycled, topped_up=topped_up, playlist=playlist_id)
 
 
 @run_bp.route("/api/run/stat", methods=["POST"])

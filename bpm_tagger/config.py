@@ -52,6 +52,14 @@ def env_locked_keys() -> list:
     return [cfg_key for env, cfg_key in _ENV_LOCKABLE.items() if env in os.environ]
 
 
+# Settings dropped in a past release. A stale settings.json still carries them
+# (save_settings only removes a key when handed an explicit None), and
+# load_settings_override does a blind config.update — so sweep them out rather
+# than let dead keys reappear in the config dict and the /api/settings payload.
+# v2.10.0: max stretch became the single run-queue authority.
+_DEAD_SETTINGS = ("run_tolerance_pct", "run_force_tempo")
+
+
 def _read_version() -> str:
     # VERSION lives at the repository / image root, one directory above this package.
     root = Path(__file__).resolve().parent.parent
@@ -125,6 +133,8 @@ def load_settings_override(config: dict) -> dict:
                 data = json.load(f)
             # Env-locked keys stay authoritative from the environment.
             for key in env_locked_keys():
+                data.pop(key, None)
+            for key in _DEAD_SETTINGS:
                 data.pop(key, None)
             config.update(data)
         except Exception as exc:
@@ -241,12 +251,11 @@ def build_config() -> dict:
         # pulled from Navidrome). Off = closest BPM first, as before.
         "run_prefer_familiar":        os.environ.get("RUN_PREFER_FAMILIAR", "false").lower() == "true",
         "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),
-        "run_tolerance_pct":          float(os.environ.get("RUN_TOLERANCE_PCT", "4")),
+        # The single authority over a run queue: how far (%) playbackRate may move
+        # from 1 to land a track on the target cadence. Enforced at selection (a
+        # track that can't reach the target within it isn't queued) and again at
+        # playback (the client clamps to the same bound).
         "run_stretch_limit_pct":      float(os.environ.get("RUN_STRETCH_LIMIT_PCT", "15")),
-        # "Play everything, force tempo": ignore the tolerance filter and force every
-        # candidate to the target via playbackRate (clamped for extreme outliers). The
-        # default for a run when the request doesn't send an explicit force flag.
-        "run_force_tempo":            os.environ.get("RUN_FORCE_TEMPO", "false").lower() == "true",
         "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
         # Save fetched/picked artist images as artist.jpg in the artist's own
         # folder (Navidrome convention) instead of only the app cache. Only

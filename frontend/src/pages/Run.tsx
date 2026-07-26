@@ -20,7 +20,6 @@ import PageHeader from "../components/PageHeader";
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
 const SOURCE_KEY = "bpm.run.source";   // "library" | "pl:<id>"
-const FORCE_KEY = "bpm.run.force";     // "play everything, force tempo"
 
 const PRESET_DEFAULTS = [
   { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -373,10 +372,6 @@ export default function Run() {
   // Run source: the whole library (default) or a specific playlist ("pl:<id>").
   const [source, setSourceState] = useState<string>(() => localStorage.getItem(SOURCE_KEY) || "library");
   const setSource = (s: string) => { setSourceState(s); localStorage.setItem(SOURCE_KEY, s); };
-  // "Play everything, force tempo": ignore the tolerance filter and force every
-  // track onto the target (server clamps extreme rates). Persisted per-device.
-  const [force, setForceState] = useState<boolean>(() => localStorage.getItem(FORCE_KEY) === "1");
-  const setForce = (v: boolean) => { setForceState(v); localStorage.setItem(FORCE_KEY, v ? "1" : "0"); };
 
   const runPlaylistsQ = useQuery({
     queryKey: ["run-playlists"],
@@ -492,15 +487,14 @@ export default function Run() {
     setBuildErr("");
     try {
       const scope = pooled ? "&playlist=mine" : selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
-      const forceArg = force ? "&force=1" : "";
-      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}${forceArg}`);
+      const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}`);
       setQueueInfo(resp);
       if (!resp.tracks.length) {
         setBuildErr(selectedPlaylist
-          ? `No tracks in "${selectedPlaylist.name}" match this BPM — widen the tolerance in Settings, pick another target, or choose a different source.`
+          ? `No tracks in "${selectedPlaylist.name}" can reach this BPM — raise Max stretch in Settings, pick another target, or choose a different source.`
           : pooled
-          ? "None of your playlists have a track matching this BPM — widen the tolerance in Settings or pick another target."
-          : "No tracks match this BPM — widen the tolerance in Settings or pick another target.");
+          ? "None of your playlists have a track that can reach this BPM — raise Max stretch in Settings or pick another target."
+          : "No tracks can reach this BPM — raise Max stretch in Settings or pick another target.");
         return;
       }
       player.playQueue(
@@ -915,39 +909,6 @@ export default function Run() {
     <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>{statusPill}</div>
   );
 
-  // "Play everything, force tempo" toggle — drops the BPM tolerance filter so any
-  // track can fill the queue, forced onto the target (server clamps extreme rates).
-  const forceToggle = (
-    <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-      <button
-        onClick={() => setForce(!force)}
-        aria-pressed={force}
-        title={force
-          ? `Force tempo is ON — every track is queued regardless of BPM, then stretched toward the target. The ±${stretchLimitPct}% stretch cap still applies, so tracks too far from ${target} BPM won't reach it (marked ⚠).`
-          : `Play everything: ignore the BPM tolerance and stretch every track toward the target. The ±${stretchLimitPct}% stretch cap still applies, so tracks far from the target won't fully reach it.`}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer",
-          fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em",
-          padding: "6px 12px", borderRadius: 999,
-          background: force ? "var(--accent-soft)" : "var(--surface)",
-          border: `1px solid ${force ? "var(--accent-border)" : "var(--border)"}`,
-          color: force ? "var(--accent-2)" : "var(--muted)",
-        }}
-      >
-        <span style={{
-          width: 26, height: 15, borderRadius: 999, position: "relative", flexShrink: 0,
-          background: force ? "var(--accent)" : "var(--border)", transition: "background 0.15s",
-        }}>
-          <span style={{
-            position: "absolute", top: 2, left: force ? 13 : 2, width: 11, height: 11,
-            borderRadius: 999, background: "white", transition: "left 0.15s",
-          }} />
-        </span>
-        FORCE TEMPO
-      </button>
-    </div>
-  );
-
   // Desktop-only: extra track facts for the info column, drawn from the full
   // detail fetch (album, per-track BPM confidence, length, play count).
   const trackDetails = detail && (
@@ -1080,7 +1041,7 @@ export default function Run() {
           <span style={{ fontWeight: 600, fontSize: 13 }}>Run queue · {player.orderedQueue.length}</span>
           {queueInfo && (
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              built for {queueInfo.target} BPM · ±{queueInfo.tolerance_pct.toFixed(1)}%
+              built for {queueInfo.target} BPM · max ±{queueInfo.stretch_limit_pct.toFixed(1)}%
               {player.orderedQueue.length < queueSize ? ` · ${player.orderedQueue.length}/${queueSize}` : ""}
             </span>
           )}
@@ -1107,14 +1068,6 @@ export default function Run() {
             {sourcePicker}
           </div>
         )}
-        {/* Force-tempo toggle — mobile only (desktop keeps it in the controls
-            column). Lives here, not on the main run page, so it doesn't spend
-            vertical space that pushes the cover art off small screens (iPhone). */}
-        {!fill && (
-          <div data-testid="queue-force" style={{ padding: "10px 14px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-            {forceToggle}
-          </div>
-        )}
         {similarOpen && queueTrack?.artist && (
           <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
             <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
@@ -1131,8 +1084,11 @@ export default function Run() {
             const disliked = dislikedPaths.has(t.path);
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
-            // Capped: the stretch limit kept this track from reaching the target,
-            // so the folded BPM would need a rate the ±limit clamp won't allow.
+            // Capped: the stretch limit keeps this track from reaching the target.
+            // A freshly built queue can't contain one — selection drops anything
+            // out of reach — but a queue drifts out of spec afterwards when the
+            // target slider moves without a rebuild, or Max stretch is lowered
+            // under a persisted queue. The clamp keeps playback sane; this marks it.
             const idealRate = tFolded ? target / tFolded : 1;
             const capped = lockOn && tFolded != null && Math.abs(idealRate - tRate) > 0.001;
             const isCurrentRow = i === player.orderPos;
@@ -1164,7 +1120,7 @@ export default function Run() {
                     {capped && (
                       <span
                         aria-label="Stretch cap reached"
-                        title={`Stretch cap reached — this track can only reach ${Math.round(tFolded * tRate)} BPM, not the ${target} BPM target (±${stretchLimitPct}% limit). Raise the stretch limit in Settings to close the gap.`}
+                        title={`Out of reach — this track was queued for a different target and tops out at ${Math.round(tFolded * tRate)} BPM, not ${target} (±${stretchLimitPct}% limit). Rebuild the queue for a fresh match.`}
                         style={{ color: "var(--warn-fg)", marginRight: 6, cursor: "help" }}
                       >⚠</span>
                     )}
@@ -1341,7 +1297,6 @@ export default function Run() {
                 {targetBlock}
                 {presetsGrid}
                 {stepsRow}
-                {forceToggle}
                 {statusInline}
               </div>
             </div>
@@ -1379,9 +1334,6 @@ export default function Run() {
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
           : presetsGrid}
-        {/* Pre-run only: once a track is playing, the force toggle lives in the
-            Queue view (see renderQueuePanel) so it never eats cover-art space. */}
-        {!current && mode !== "tap" && mode !== "queue" && forceToggle}
         {statusInline}
       </div>
       {transport}
