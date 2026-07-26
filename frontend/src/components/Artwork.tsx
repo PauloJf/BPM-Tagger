@@ -51,6 +51,66 @@ export function ArtistImage({ name, fallbackPath, size, style, v }: { name: stri
   );
 }
 
+/** Cover art from an arbitrary URL, with the same ♪ placeholder as <Cover>.
+ *
+ *  Used for playlist rows we don't own a local file for: the source's own
+ *  artwork (Spotify's CDN — allowed by the CSP's img-src). A Navidrome row's
+ *  cover_url is a bare Subsonic coverArt id rather than a URL, so it simply
+ *  fails to load and falls through to the placeholder — which is why the column
+ *  degrades rather than breaks. */
+export function RemoteCover({ url, size, style }: { url: string; size: number; style?: React.CSSProperties }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  const box = { width: size, height: size, ...style };
+  if (failed || !url) return <ArtPlaceholder size={size} style={style} />;
+  return (
+    <img
+      className="art-thumb"
+      src={url}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      style={box}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** A Local playlist's cover: the custom image the user set, else a server-built
+ *  collage of the playlist's own tracks, else the ♪ placeholder (the endpoint
+ *  404s when the playlist has no artwork to work with). Bump `v` after setting
+ *  or clearing a cover to get past the endpoint's max-age. */
+export function PlaylistCover({ id, size, v, style }: { id: string | number; size: number; v?: number; style?: React.CSSProperties }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [id, v]);
+  const box = { width: size, height: size, ...style };
+  if (failed) return <div className="pl-cover" style={box}>♪</div>;
+  return (
+    <img
+      className="pl-cover"
+      src={`/api/playlists/${id}/cover${v ? `?v=${v}` : ""}`}
+      alt=""
+      loading="lazy"
+      style={box}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** The ♪ box every artwork component falls back to. Keeps a fixed-size cell
+ *  filled so a grid column stays aligned when art is missing. */
+export function ArtPlaceholder({ size, round, style }: { size: number; round?: boolean; style?: React.CSSProperties }) {
+  return (
+    <div
+      className={"art-thumb" + (round ? " art-thumb--round" : "")}
+      style={{ width: size, height: size, ...style, fontSize: Math.max(12, size * 0.34) }}
+      aria-hidden
+    >
+      ♪
+    </div>
+  );
+}
+
 /** Embedded cover art for a library file, with a ♪ placeholder when the file
  *  has none. The endpoint serves ETag/max-age headers so repeats hit cache;
  *  bump `v` after a cover edit to bust it. */
@@ -59,13 +119,7 @@ export function Cover({ path, size, round, style, v }: { path: string; size: num
   useEffect(() => setFailed(false), [path, v]);
   const cls = "art-thumb" + (round ? " art-thumb--round" : "");
   const box = { width: size, height: size, ...style };
-  if (failed) {
-    return (
-      <div className={cls} style={{ ...box, fontSize: Math.max(12, size * 0.34) }} aria-hidden>
-        ♪
-      </div>
-    );
-  }
+  if (failed) return <ArtPlaceholder size={size} round={round} style={style} />;
   return (
     <img
       className={cls}

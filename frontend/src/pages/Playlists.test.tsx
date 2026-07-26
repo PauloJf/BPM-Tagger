@@ -99,3 +99,21 @@ describe("Playlists — pinning", () => {
     expect(screen.getByText("Threshold intervals")).toBeTruthy();
   });
 });
+
+describe("Playlists — card artwork", () => {
+  const srcs = (c: HTMLElement) => Array.from(c.querySelectorAll("img")).map((i) => i.getAttribute("src"));
+
+  it("points a local card at the cover endpoint", () => {
+    // Local playlists have no image_url — the endpoint serves a custom cover or
+    // an auto-collage, and 404s into the ♪ placeholder when there's neither.
+    h.playlists = [pl({ id: 4, source: "local", image_url: null })];
+    const { container } = render(<Playlists />);
+    expect(srcs(container)).toContain("/api/playlists/4/cover");
+  });
+
+  it("leaves a synced card on its source's image_url", () => {
+    h.playlists = [pl({ id: 4, source: "spotify", image_url: "https://i.scdn.co/image/pl" })];
+    const { container } = render(<Playlists />);
+    expect(srcs(container)).toEqual(["https://i.scdn.co/image/pl"]);
+  });
+});

@@ -1054,6 +1054,11 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
   display: grid; grid-template-columns: 32px 1fr 90px; gap: 12px; align-items: center;
   padding: 10px 14px; border-bottom: 1px solid var(--border);
 }
+/* Artwork column, added only when artwork is on — a separate class rather than
+   a change to the base, because the removed-row and empty states reuse the base
+   grid. The cover is a fixed track, so long titles still ellipsize in 1fr and
+   the row never forces the page sideways on a phone. */
+.pl-track-row--art { grid-template-columns: 32px 38px 1fr 90px; }
 .pl-track-row:last-child { border-bottom: none; }
 .pl-track-row--removed { opacity: 0.55; }
 

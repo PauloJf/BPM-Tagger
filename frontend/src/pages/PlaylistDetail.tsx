@@ -10,6 +10,9 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
+import { ArtPlaceholder, ArtToggle, Cover, PlaylistCover, RemoteCover, useArtwork } from "../components/Artwork";
+import { ImagePicker } from "../components/ImagePicker";
+import { apiUpload } from "../lib/api";
 
 const PlayIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>;
 const ShuffleIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>;
@@ -123,6 +126,11 @@ export default function PlaylistDetail() {
   const { role } = useAuth();
   const player = usePlayer();
   const [tab, setTab] = useState("");
+  const [showArt, toggleArt] = useArtwork();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Bumped after a cover set/delete so the browser refetches the (max-age'd)
+  // cover endpoint instead of showing the old image.
+  const [coverV, setCoverV] = useState(0);
 
   const tracksQ = useQuery({
     queryKey: ["playlist-tracks", id, tab],
@@ -182,6 +190,23 @@ export default function PlaylistDetail() {
   const canRename = role === "admin" && isLocal && !!pl;
   const canEditDescription = role === "admin" && !!pl;
   const description = pl?.description || "";
+  // Local playlists have no image_url — their art comes from the cover endpoint
+  // (a custom pick, else an auto-collage of their own tracks), which 404s into
+  // the ♪ placeholder when there's neither.
+  const canSetCover = role === "admin" && isLocal;
+
+  async function applyCover(pick: { url?: string; file?: File }) {
+    if (pick.url) await api.post(`/api/playlists/${id}/cover`, { url: pick.url });
+    else if (pick.file) await apiUpload(`/api/playlists/${id}/cover`, pick.file);
+    setCoverV(Date.now());
+    setPickerOpen(false);
+  }
+
+  async function resetCover() {
+    await api.del(`/api/playlists/${id}/cover`);
+    setCoverV(Date.now());
+    setPickerOpen(false);
+  }
 
   const tabs = [
     { key: "", label: "All" },
@@ -261,9 +286,19 @@ export default function PlaylistDetail() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-        {pl?.image_url ? (
-          <img src={pl.image_url} alt="" className="pl-cover" style={{ width: 72, height: 72 }} referrerPolicy="no-referrer" />
-        ) : null}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          {isLocal ? (
+            <PlaylistCover id={id} v={coverV} size={72} />
+          ) : pl?.image_url ? (
+            <img src={pl.image_url} alt="" className="pl-cover" style={{ width: 72, height: 72 }} referrerPolicy="no-referrer" />
+          ) : null}
+          {canSetCover && (
+            <button className="btn btn-bare btn-sm" style={{ fontSize: 11, padding: "2px 4px", color: "var(--muted)" }}
+              onClick={() => setPickerOpen(true)}>
+              Set cover…
+            </button>
+          )}
+        </div>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 8 }}>
             {/* Renaming is Local-only — a synced playlist's name is rewritten by
@@ -314,12 +349,16 @@ export default function PlaylistDetail() {
         </div>
       </div>
 
-      <div className="filter-pills" style={{ marginBottom: 16, width: "fit-content" }}>
-        {tabs.map((t) => (
-          <button key={t.key} className={"filter-pill" + (tab === t.key ? " active" : "")} onClick={() => setTab(t.key)}>
-            {t.label}
-          </button>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <div className="filter-pills" style={{ width: "fit-content" }}>
+          {tabs.map((t) => (
+            <button key={t.key} className={"filter-pill" + (tab === t.key ? " active" : "")} onClick={() => setTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1 }} />
+        <ArtToggle show={showArt} onToggle={toggleArt} />
       </div>
 
       <div className="tracks-table">
@@ -340,10 +379,18 @@ export default function PlaylistDetail() {
             const albumArtist = t.local_album_artist || album || artist;
             const dur = fmtDur(t.local_duration_ms ?? t.duration_ms);
             return (
-              <div key={t.id} className={"pl-track-row" + (t.removed_at ? " pl-track-row--removed" : "")}>
+              <div className={"pl-track-row" + (showArt ? " pl-track-row--art" : "") + (t.removed_at ? " pl-track-row--removed" : "")} key={t.id}>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
                   {String(t.position + 1).padStart(2, "0")}
                 </span>
+                {/* A matched row shows the real file's embedded art; an unmatched
+                    one falls back to whatever the source gave us, then to ♪ — so
+                    the column is always the same width and the rows stay aligned. */}
+                {showArt && (
+                  inLib ? <Cover path={t.matched_file_path!} size={38} />
+                    : t.cover_url ? <RemoteCover url={t.cover_url} size={38} />
+                    : <ArtPlaceholder size={38} />
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
                     {inLib ? (
@@ -412,6 +459,19 @@ export default function PlaylistDetail() {
           the add endpoint is admin-scoped. */}
       {isLocal && role === "admin" && tracks.length > 0 && (
         <PlaylistSuggestions playlistId={id} tracks={tracks} />
+      )}
+
+      {pickerOpen && (
+        <ImagePicker
+          kind="album"
+          title={`Playlist cover — ${pl?.name || ""}`}
+          initialQuery={pl?.name || ""}
+          onPick={applyCover}
+          // Always offered: clearing a cover that was never set is harmless and
+          // it's what takes a playlist back to its auto-collage.
+          onReset={resetCover}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </>
   );

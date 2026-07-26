@@ -75,6 +75,8 @@ const btn = (name: RegExp) => screen.getByRole("button", { name }) as HTMLButton
 
 beforeEach(() => {
   cleanup();
+  // Artwork defaults to shown; individual tests flip the stored preference.
+  localStorage.clear();
   vi.mocked(api.patch).mockClear();
   h.tracks = [];
   h.playlist = counts();
@@ -237,6 +239,78 @@ describe("PlaylistDetail — rename and description", () => {
     render(<PlaylistDetail />);
     expect(screen.getByText("Threshold intervals")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Edit description/ })).toBeNull();
+  });
+});
+
+describe("PlaylistDetail — track artwork", () => {
+  const imgs = (c: HTMLElement) => Array.from(c.querySelectorAll("img")).map((i) => i.getAttribute("src"));
+
+  it("shows a matched row's embedded art from the local file", () => {
+    h.tracks = [have(1)];
+    const { container } = render(<PlaylistDetail />);
+    expect(imgs(container)).toContain("/api/track/cover?path=%2Fmusic%2F1.mp3");
+    expect(container.querySelector(".pl-track-row--art")).toBeTruthy();
+  });
+
+  it("falls back to the source's own cover_url on an unmatched row", () => {
+    h.tracks = [t({ id: 2, title: "Missing", derived_status: "missing",
+                    match_status: "missing", cover_url: "https://i.scdn.co/image/abc" })];
+    const { container } = render(<PlaylistDetail />);
+    expect(imgs(container)).toContain("https://i.scdn.co/image/abc");
+  });
+
+  it("keeps the column aligned with a placeholder when a row has no art at all", () => {
+    // A Navidrome row's cover_url is a bare coverArt id, not a URL — it 404s
+    // into this same placeholder, so the grid must not collapse.
+    h.tracks = [t({ id: 2, title: "Missing", derived_status: "missing",
+                    match_status: "missing", cover_url: null })];
+    const { container } = render(<PlaylistDetail />);
+    expect(imgs(container)).toHaveLength(0);
+    expect(container.querySelector(".art-thumb")).toBeTruthy();
+    expect(container.querySelector(".pl-track-row--art")).toBeTruthy();
+  });
+
+  it("renders today's exact grid when artwork is toggled off", () => {
+    localStorage.setItem("bpmtagger.showArtwork", "0");
+    h.tracks = [have(1)];
+    const { container } = render(<PlaylistDetail />);
+    expect(imgs(container)).toHaveLength(0);
+    expect(container.querySelector(".pl-track-row--art")).toBeNull();
+    expect(container.querySelector(".pl-track-row")).toBeTruthy();
+  });
+});
+
+describe("PlaylistDetail — local playlist cover", () => {
+  it("renders the cover endpoint for a local playlist", () => {
+    h.playlist = counts({ source: "local", image_url: null });
+    const { container } = render(<PlaylistDetail />);
+    const srcs = Array.from(container.querySelectorAll("img")).map((i) => i.getAttribute("src"));
+    expect(srcs).toContain("/api/playlists/1/cover");
+  });
+
+  it("leaves a synced playlist on its source's image_url", () => {
+    h.playlist = counts({ source: "spotify", image_url: "https://i.scdn.co/image/pl" });
+    const { container } = render(<PlaylistDetail />);
+    const srcs = Array.from(container.querySelectorAll("img")).map((i) => i.getAttribute("src"));
+    expect(srcs).toContain("https://i.scdn.co/image/pl");
+    expect(srcs.some((s) => s?.includes("/api/playlists/1/cover"))).toBe(false);
+  });
+
+  it("offers Set cover… only to an admin on a local playlist", () => {
+    h.playlist = counts({ source: "local" });
+    render(<PlaylistDetail />);
+    expect(screen.getByRole("button", { name: /Set cover/ })).toBeTruthy();
+
+    cleanup();
+    h.role = "player";
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Set cover/ })).toBeNull();
+
+    cleanup();
+    h.role = "admin";
+    h.playlist = counts({ source: "spotify" });
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Set cover/ })).toBeNull();
   });
 });
 

@@ -7,6 +7,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { Toggle } from "../components/Toggle";
 import PageHeader from "../components/PageHeader";
+import { PlaylistCover } from "../components/Artwork";
 
 const SOURCE_META: Record<PlaylistSource, { label: string; glyph: string; cls: string }> = {
   spotify: { label: "Spotify", glyph: "●", cls: "pl-src--spotify" },
@@ -232,7 +233,12 @@ export default function Playlists() {
           playlists.map((p) => (
             <div key={p.id} className="pl-card">
               <Link to={`/playlist?id=${p.id}`} className="pl-card-main">
-                {p.image_url ? (
+                {/* Local playlists have no image_url; their art is served (custom
+                    pick, else an auto-collage of their tracks) by the cover
+                    endpoint, which 404s into the same ♪ placeholder. */}
+                {p.source === "local" ? (
+                  <PlaylistCover id={p.id} size={44} />
+                ) : p.image_url ? (
                   <img src={p.image_url} alt="" className="pl-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="pl-cover">♪</div>
