@@ -497,6 +497,14 @@ export default function Run() {
           : "No tracks can reach this BPM — raise Max stretch in Settings or pick another target.");
         return;
       }
+      // ⚠ ORDER IS LOAD-BEARING — do not reorder these three calls.
+      // playQueue() exits run mode (clears the tempo lock and the run source) so
+      // that hitting Play elsewhere can't hijack a run. Starting a run therefore
+      // has to clear-then-re-set: all three writes land in the same batch, so the
+      // last write per key wins and the run starts locked and scoped. Setting the
+      // lock/source *before* playQueue would have them wiped instead — the run
+      // would play native and the auto-refill would drift to the whole library.
+      // Guarded by a regression test in Run.test.tsx.
       player.playQueue(
         resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
           starred: t.starred, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),

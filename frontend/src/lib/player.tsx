@@ -157,6 +157,9 @@ interface PlayerState {
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
   enqueue(track: PlayerTrack): void;   // append to the queue
+  /** Append a batch in ONE write. Looping `enqueue` would re-read the same
+   *  post-render `nav.current` every iteration and drop all but the last track. */
+  enqueueMany(tracks: PlayerTrack[]): void;
   playNext(track: PlayerTrack): void;  // insert right after the current track
   preview(track: PlayerTrack): void;   // duck the queue, play track, resume on end/leave
   endPreview(): void;                  // fade back to the saved queue track
@@ -551,6 +554,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Called by every take-over path (play/playQueue/next/prev/stop) — also cancels
   // any in-flight fade so a pending swap can't clobber the new track.
   const clearPreview = () => { cancelRamp(); previewSaved.current = null; setPreviewing(false); };
+
+  // Leaving run mode: a *new* queue replacing the old one (play / playQueue)
+  // ends any run in progress. Without this, hitting Play on an album, a playlist
+  // or the Tracks page left the run's tempo lock stretching the new queue onto
+  // your cadence, and left `runSource` pointing at the old run — so the mid-run
+  // auto-refill kept topping the new queue up from the *previous* source at the
+  // *previous* target. Deliberately NOT called from preview/endPreview (a
+  // preview ducks and returns to the run), from enqueue/enqueueMany/playNext
+  // (adding to a running queue shouldn't end the run), or from the auto-refill
+  // (it appends via setQueue directly). See the note at Run.tsx's startRun:
+  // starting a run calls playQueue and then re-sets both, in that order.
+  const endRunMode = () => { setTempoLock(null); setRunSource(null); };
 
   // Queue jumps swap the source and call play() synchronously on the element,
   // then sync React state. Deferring the swap to the load effect breaks iOS
@@ -1138,6 +1153,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // One-off play (e.g. a library/search row): becomes a single-item queue so
     // prev/next are inert and shuffle has no stale context. Takes over any preview.
     clearPreview();
+    endRunMode();
     setQueue([track]);
     setOrder([0]);
     setPos(0);
@@ -1155,6 +1171,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playQueue = useCallback((tracks: PlayerTrack[], startIndex = 0, opts?: { shuffle?: boolean }) => {
     if (tracks.length === 0) return;
     clearPreview();
+    endRunMode();
     const start = Math.max(0, Math.min(startIndex, tracks.length - 1));
     const useShuffle = opts?.shuffle ?? nav.current.shuffle;
     let ord: number[];
@@ -1309,6 +1326,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setOrder([...order, idx]);
   }, [play]);
 
+  // Append a whole batch. This exists because `enqueue` cannot be looped: it
+  // reads `nav.current`, which is only refreshed by an effect *after* render, so
+  // N calls in one tick all read the same snapshot and every write but the last
+  // is lost. One read + one write per batch is the only correct shape.
+  const enqueueMany = useCallback((tracks: PlayerTrack[]) => {
+    if (!tracks.length) return;
+    const { queue, order } = nav.current;
+    if (order.length === 0) { playQueue(tracks); return; }  // nothing playing → start it
+    const base = queue.length;
+    setQueue([...queue, ...tracks]);
+    setOrder([...order, ...tracks.map((_, i) => base + i)]);
+  }, [playQueue]);
+
   const playNext = useCallback((track: PlayerTrack) => {
     const { queue, order, pos } = nav.current;
     if (order.length === 0) { play(track); return; }
@@ -1368,7 +1398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,
-      play, playQueue, enqueue, playNext, preview, endPreview,
+      play, playQueue, enqueue, enqueueMany, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,
     }}>

@@ -18,6 +18,11 @@ const h = vi.hoisted(() => ({
   runSource: null as number | "mine" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
+  // Ordered log of the player mutations startRun makes, plus the last value each
+  // setter received — startRun's clear-then-re-set order is load-bearing.
+  calls: [] as string[],
+  lockSet: undefined as undefined | null | { target: number; octave: boolean; stretchLimitPct: number },
+  sourceSet: "unset" as unknown,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -58,7 +63,9 @@ vi.mock("../lib/player", () => ({
     error: null, buffering: h.buffering, bufferedPct: h.bufferedPct, bufferInfo: h.bufferInfo, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
     updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
-    setTempoLock() {}, playQueue() {}, setRunSource() {},
+    setTempoLock(lock: typeof h.lockSet) { h.calls.push("setTempoLock"); h.lockSet = lock; },
+    playQueue() { h.calls.push("playQueue"); },
+    setRunSource(id: unknown) { h.calls.push("setRunSource"); h.sourceSet = id; },
     next() {}, prev() {}, toggle() {}, jumpTo() {},
   }),
 }));
@@ -96,6 +103,9 @@ beforeEach(() => {
   h.bufferInfo = undefined;
   h.runSource = null;
   h.starred = [];
+  h.calls = [];
+  h.lockSet = undefined;
+  h.sourceSet = "unset";
   // A deliberately long name — the sort that used to spill across the cover art.
   h.playlists = [{ id: 1, name: "Long Playlist Name That Covered The Art", source: "spotify", available: 5, total: 10, image_url: null }];
 });
@@ -443,6 +453,57 @@ describe("Run — the queue header reports the limit the queue was built under",
     render(<Run />);
     fireEvent.click(screen.getByLabelText("Start run"));
     expect(await screen.findByText(/built for 155 BPM · max ±15\.0%/)).toBeTruthy();
+  });
+});
+
+describe("Run — starting a run sets the tempo lock and run source, after playQueue", () => {
+  // playQueue now *exits run mode* (clears both) so Play elsewhere can't hijack
+  // a run. startRun therefore clear-then-re-sets, relying on all three writes
+  // landing in one batch. That ordering is invisible and easy to "tidy" away —
+  // these assertions fail loudly if anyone moves the setters above playQueue.
+  const build = () => {
+    vi.mocked(api.get).mockResolvedValue({
+      tracks: [{ path: "/x.mp3", title: "X", artist: "Ar", bpm: 155, starred: false,
+                 run_bpm: 155, rate: 1, from_playlist: true }],
+      target: 155, count: 1, octave_fold: true, stretch_limit_pct: 15,
+      prefer_starred: true, playlist: 1,
+    });
+  };
+
+  it("both are set, and both are re-set AFTER playQueue cleared them", async () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    localStorage.setItem(TARGET_KEY, "155");
+    localStorage.setItem(SOURCE_KEY, "pl:1");
+    build();
+    render(<Run />);
+    fireEvent.click(screen.getByLabelText("Start run"));
+    await screen.findByLabelText("Rebuild queue");
+
+    // The run is locked to the target and scoped to the chosen playlist.
+    expect(h.lockSet).toEqual({ target: 155, octave: true, stretchLimitPct: 15 });
+    expect(h.sourceSet).toBe(1);
+    // …and both writes come after the queue takeover, or playQueue would wipe them.
+    const q = h.calls.lastIndexOf("playQueue");
+    expect(q).toBeGreaterThanOrEqual(0);
+    expect(h.calls.lastIndexOf("setRunSource")).toBeGreaterThan(q);
+    expect(h.calls.lastIndexOf("setTempoLock")).toBeGreaterThan(q);
+  });
+
+  it("scopes a pooled run to 'mine' (still after playQueue)", async () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    localStorage.setItem(TARGET_KEY, "155");
+    localStorage.setItem(SOURCE_KEY, "mine");
+    h.playlists = [
+      { id: 1, name: "Alpha", source: "spotify", available: 5, total: 10, image_url: null },
+      { id: 2, name: "Beta", source: "local", available: 3, total: 3, image_url: null },
+    ];
+    build();
+    render(<Run />);
+    fireEvent.click(screen.getByLabelText("Start run"));
+    await screen.findByLabelText("Rebuild queue");
+
+    expect(h.sourceSet).toBe("mine");
+    expect(h.calls.lastIndexOf("setRunSource")).toBeGreaterThan(h.calls.lastIndexOf("playQueue"));
   });
 });
 
