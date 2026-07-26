@@ -3,11 +3,33 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Playlist, PlaylistTrack } from "../lib/types";
+import { basename } from "../lib/paths";
+import { usePlayer, type PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
+
+const PlayIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>;
+const ShuffleIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>;
+const AddIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ marginRight: 4 }}><path d="M12 5v14M5 12h14" /></svg>;
+
+/** The rows of a playlist that can actually be played: matched to a local file.
+ *  Everything a PlayerTrack needs already rides along on a 'have' row — including
+ *  the library track's loudness, which drives volume levelling. Exported for the
+ *  component test. */
+export function playableTracks(tracks: PlaylistTrack[]): PlayerTrack[] {
+  return tracks
+    .filter((t) => t.derived_status === "have" && !!t.matched_file_path)
+    .map((t) => ({
+      path: t.matched_file_path!,
+      title: t.title || basename(t.matched_file_path!),
+      artist: t.local_artist || t.artist || "",
+      bpm: t.local_bpm ?? null,
+      loudnessLufs: t.local_loudness_lufs ?? null,
+    }));
+}
 
 function StatusChip({ s }: { s: string }) {
   if (s === "have") return <span className="chip chip--have">✓ have</span>;
@@ -36,6 +58,7 @@ export default function PlaylistDetail() {
   const qc = useQueryClient();
   const status = useGrabberStatus();
   const { role } = useAuth();
+  const player = usePlayer();
   const [tab, setTab] = useState("");
 
   const tracksQ = useQuery({
@@ -51,7 +74,9 @@ export default function PlaylistDetail() {
     qc.invalidateQueries({ queryKey: ["grabber-status"] });
   };
   const sync = useMutation({ mutationFn: () => api.post(`/api/playlists/${id}/sync`), onSuccess: invalidate });
-  const enqueue = useMutation({
+  // Grabs the missing tracks via the download providers. The route keeps its
+  // original name (it's the download queue); only the button says "Download".
+  const downloadMissing = useMutation({
     mutationFn: () => api.post<{ enqueued: number }>(`/api/playlists/${id}/enqueue-missing`),
     onSuccess: invalidate,
   });
@@ -63,6 +88,16 @@ export default function PlaylistDetail() {
   const pl = tracksQ.data?.playlist;
   useTitle(pl?.name || "Playlist");
   const tracks = tracksQ.data?.tracks ?? [];
+  // Playback works off the rows currently shown, so a tab filter is respected:
+  // on the Have tab you play what you see. `tracks` is already server-filtered
+  // by `tab`, so no extra filtering is needed here.
+  const playable = playableTracks(tracks);
+  const canPlay = playable.length > 0;
+  // Surface the count only when it differs from what's listed — a 50-track
+  // Spotify playlist with 12 matched must read "Play (12)", or the button looks
+  // broken; on the Have tab the numbers agree and a count would be noise.
+  const playLabel = canPlay && playable.length !== tracks.length ? ` (${playable.length})` : "";
+  const noPlayReason = "No tracks in this playlist are in your library yet";
   const spotifyConnected = status.data?.spotify?.connected === true;
   const grabberEnabled = status.data?.enabled === true;
   const isSpotify = pl?.source === "spotify";
@@ -93,14 +128,41 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!canPlay}
+          title={canPlay ? "Play this playlist's library tracks" : noPlayReason}
+          onClick={() => player.playQueue(playable, 0, { shuffle: false })}
+        >
+          <PlayIcon />
+          Play{playLabel}
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
+          disabled={!canPlay}
+          title={canPlay ? "Play this playlist's library tracks in a random order" : noPlayReason}
+          onClick={() => player.playQueue(playable, 0, { shuffle: true })}
+        >
+          <ShuffleIcon />
+          Shuffle{playLabel}
+        </button>
+        <button
+          className="btn btn-bare btn-sm"
+          disabled={!canPlay}
+          title={canPlay ? "Append this playlist's library tracks to the current queue" : noPlayReason}
+          onClick={() => player.enqueueMany(playable)}
+        >
+          <AddIcon />
+          Add to queue
+        </button>
         {canQueueMissing && (
           <button
             className="btn btn-soft btn-sm"
-            disabled={enqueue.isPending || (isSpotify && !spotifyConnected)}
-            title={isSpotify && !spotifyConnected ? "Connect Spotify to queue missing tracks" : "Grab the missing tracks via the download providers"}
-            onClick={() => enqueue.mutate()}
+            disabled={downloadMissing.isPending || (isSpotify && !spotifyConnected)}
+            title={isSpotify && !spotifyConnected ? "Connect Spotify to download missing tracks" : "Grab the missing tracks via the download providers"}
+            onClick={() => downloadMissing.mutate()}
           >
-            {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
+            {downloadMissing.isPending ? "Downloading…" : `Download missing (${pl?.missing_count})`}
           </button>
         )}
         {role === "admin" && (pl?.have_count ?? 0) > 0 && (
