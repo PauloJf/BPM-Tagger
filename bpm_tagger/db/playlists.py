@@ -406,13 +406,16 @@ class PlaylistsMixin:
         the coverage filters and only appear in the unfiltered detail view."""
         with self._connect() as conn:
             # LEFT JOIN the matched local file so 'have' rows carry the library
-            # track's real BPM / duration / (library) artist+album — used by the
-            # detail page to show run-readiness and link into the track/artist/
-            # album pages. NULL on unmatched rows.
+            # track's real BPM / duration / loudness / (library) artist+album —
+            # used by the detail page to show run-readiness, link into the
+            # track/artist/album pages, and to build a playback queue that gets
+            # the same volume levelling as album and library playback (the
+            # loudness feeds PlayerTrack.loudnessLufs). NULL on unmatched rows.
             rows = [dict(r) for r in conn.execute(
                 "SELECT pt.*, t.bpm AS local_bpm, t.duration_ms AS local_duration_ms, "
                 "t.detector AS local_detector, t.artist AS local_artist, "
-                "t.album AS local_album, t.album_artist AS local_album_artist "
+                "t.album AS local_album, t.album_artist AS local_album_artist, "
+                "t.loudness_lufs AS local_loudness_lufs "
                 "FROM playlist_tracks pt "
                 "LEFT JOIN tracks t ON t.file_path = pt.matched_file_path AND t.status != 'deleted' "
                 "WHERE pt.playlist_id = ? ORDER BY pt.position",

@@ -435,4 +435,7 @@ export interface PlaylistTrack {
   local_artist?: string | null;
   local_album?: string | null;
   local_album_artist?: string | null;
+  // Feeds PlayerTrack.loudnessLufs so playlist playback gets the same volume
+  // levelling as album/library playback (null = never measured → no attenuation).
+  local_loudness_lufs?: number | null;
 }

@@ -61,6 +61,43 @@ def test_add_track_is_directly_have(db):
     assert db.get_playlist(pid)["track_count"] == 1
 
 
+def test_have_rows_carry_the_library_tracks_loudness(db):
+    """'have' rows must expose the matched file's loudness.
+
+    The playlist detail page builds a playback queue straight from these rows, and
+    PlayerTrack.loudnessLufs drives v2.9.0's volume levelling — without this column
+    playlist playback would come out un-levelled while album and library playback
+    are levelled, audible immediately on a mixed queue. An unmeasured track stays
+    None (the player reads that as "no attenuation"), and an unmatched row has no
+    file to read a loudness from at all.
+    """
+    measured = _seed_track(db, "/music/loud.mp3", "Loud")
+    unmeasured = _seed_track(db, "/music/quiet.mp3", "Quiet")
+    with db._connect() as conn:
+        conn.execute("UPDATE tracks SET loudness_lufs = -8.5 WHERE file_path = ?", (measured,))
+        conn.commit()
+    pid = db.add_local_playlist("PL")
+    db.add_track_to_local_playlist(pid, measured)
+    db.add_track_to_local_playlist(pid, unmeasured)
+
+    rows = _rows(db, pid)
+    assert rows["Loud"]["local_loudness_lufs"] == pytest.approx(-8.5)
+    assert rows["Quiet"]["local_loudness_lufs"] is None
+
+
+def test_missing_rows_have_no_local_loudness(db):
+    """A row with no matched file gets NULL from the LEFT JOIN, not a KeyError."""
+    pid = db.add_local_playlist("PL")
+    with db._connect() as conn:
+        conn.execute(
+            "INSERT INTO playlist_tracks (playlist_id, position, title, artist, "
+            "match_status) VALUES (?, 0, 'Nope', 'Ar', 'missing')", (pid,))
+        conn.commit()
+    row = _rows(db, pid)["Nope"]
+    assert row["derived_status"] == "missing"
+    assert row["local_loudness_lufs"] is None
+
+
 def test_add_track_is_idempotent(db):
     path = _seed_track(db, "/music/a.mp3", "A")
     pid = db.add_local_playlist("PL")
