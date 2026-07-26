@@ -61,7 +61,8 @@ export default function Artist() {
 
   const tracks = q.data?.tracks ?? [];
   const stats = q.data?.stats;
-  const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path), artist: t.artist || "" });
+  const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path),
+    artist: t.artist || "", bpm: t.bpm, loudnessLufs: t.loudness_lufs });
   const playAll = (shuffle: boolean) => { if (tracks.length) player.playQueue(tracks.map(toPT), 0, { shuffle }); };
 
   // Group by album, preserving the album-ordered sequence from the API.

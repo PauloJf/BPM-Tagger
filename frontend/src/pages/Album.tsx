@@ -37,7 +37,8 @@ export default function Album() {
   const tracks = q.data?.tracks ?? [];
   const stats = q.data?.stats;
   const aa = q.data?.album_artist || albumArtist;
-  const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path), artist: t.artist || "" });
+  const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path),
+    artist: t.artist || "", bpm: t.bpm, loudnessLufs: t.loudness_lufs });
   const playAll = (shuffle: boolean) => { if (tracks.length) player.playQueue(tracks.map(toPT), 0, { shuffle }); };
 
   const [pickerOpen, setPickerOpen] = useState(false);

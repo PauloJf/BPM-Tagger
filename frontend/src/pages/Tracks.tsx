@@ -157,10 +157,12 @@ export default function Tracks() {
       if (q) sp.set("q", q);
       if (filter) sp.set("filter", filter);
       if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
-      const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null }[] }>(
+      const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null;
+        loudness_lufs: number | null }[] }>(
         `/api/tracks/paths?${sp.toString()}`);
       const tracks = res.tracks.map((t) => ({
         path: t.file_path, title: t.title?.trim() || basename(t.file_path), artist: t.artist || "",
+        loudnessLufs: t.loudness_lufs,
       }));
       if (tracks.length) player.playQueue(tracks, 0, { shuffle: shuffleMode });
     } finally {
@@ -410,7 +412,8 @@ export default function Tracks() {
               const title = trackTitle(t);
               const subtitle = trackSubtitle(t);
               const folder = parentName(t.file_path);
-              const meta = { path: t.file_path, title, artist: t.artist || "", bpm: t.bpm };
+              const meta = { path: t.file_path, title, artist: t.artist || "", bpm: t.bpm,
+                loudnessLufs: t.loudness_lufs };
               return (
                 <Link key={t.file_path} to={trackHref(t.file_path)} className={"tracks-row" + (flagged ? " flagged" : "")}>
                   <div className="col-track" style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>

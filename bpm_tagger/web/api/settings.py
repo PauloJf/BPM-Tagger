@@ -178,12 +178,28 @@ def api_settings_navidrome():
 def api_settings_playback():
     _check_csrf()
     st = state()
+    data = _json_body()
     try:
-        buf = max(0.0, min(30.0, float(_json_body().get("playback_buffer", 3) or 3)))
+        buf = max(0.0, min(30.0, float(data.get("playback_buffer", 3) or 3)))
     except (ValueError, TypeError):
         buf = 3.0
-    updates = {"playback_buffer": buf}
+    try:
+        # -30..-5 LUFS spans "quiet podcast" to "loudness-war master"; -14 is the
+        # streaming-platform norm and the default.
+        target = max(-30.0, min(-5.0, float(data.get("loudness_target_lufs", -14) or -14)))
+    except (ValueError, TypeError):
+        target = -14.0
+    updates = {
+        "playback_buffer":      buf,
+        "normalize_playback":   bool(data.get("normalize_playback", True)),
+        "loudness_target_lufs": target,
+        "measure_loudness":     bool(data.get("measure_loudness", True)),
+    }
     st.config.update(updates)
+    # The scanner holds its own config copy, so a live scan picks up a
+    # measure_loudness change without a restart (mirrors the Navidrome block).
+    if st.tagger is not None:
+        st.tagger.config.update(updates)
     save_settings(st.settings_path, updates)
     return jsonify(ok=True)
 

@@ -21,6 +21,7 @@ from flask.sessions import SecureCookieSessionInterface
 from ..db import BPMDatabase
 from .api.auth import api_auth_bp
 from .api.images import images_bp
+from .api.loudness import loudness_bp
 from .api.lyrics import lyrics_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
@@ -187,7 +188,7 @@ def create_app(config: dict) -> Flask:
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
-               run_bp, suggestions_bp, players_bp):
+               run_bp, suggestions_bp, players_bp, loudness_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.9.0 — 2026-07-26
+
+- **Volume levelling between tracks.** Every track's perceived loudness is now measured during the BPM scan — integrated **LUFS** per ITU-R BS.1770 / EBU R128, the same measure streaming services level to — and the player uses it to bring loud masters down to a **target loudness**, so a hot track no longer blasts you mid-run. Details:
+  - Files that already carry a **ReplayGain tag** (beets, Picard, foobar2000, loudgain) have it read from the header instead of being re-measured, so an already-tagged library costs no extra scan time. Opus `R128_TRACK_GAIN` headers are understood too.
+  - Levelling only ever turns a track **down** — `HTMLMediaElement.volume` is capped at full, so there is no headroom to boost a quiet track without routing playback through Web Audio. Quiet tracks and unmeasured tracks play untouched.
+  - Your **volume slider stays yours**: the levelling is a multiplier on top of it, so the slider still reads 0–100% of *your* chosen level.
+  - **Settings → Playback** has the on/off toggle, the target (default **-14 LUFS**, range -30…-5), a measure-during-scans toggle, and a **Measure missing loudness** back-fill that walks everything scanned before this existed (one file at a time, so it won't starve a running scan). A single track can also be re-measured on demand — the escape hatch for an old ReplayGain 1.0 tag that reads a few LU off.
+  - New env vars: `MEASURE_LOUDNESS`, `NORMALIZE_PLAYBACK`, `LOUDNESS_TARGET_LUFS`. New dependency: `pyloudnorm` (pure Python; numpy/scipy already ship with librosa).
+
 ## v2.8.0 — 2026-07-23
 
 - **Player queue drawer gets a text-size stepper, and both drawers gain an XL size.** The queue drawer now has the same **S / M / L** text-size stepper the lyrics drawer had — and both drawers get a new, larger **XL** step (so the S/M/L/XL scale is shared). Your choice is remembered per browser, per drawer.

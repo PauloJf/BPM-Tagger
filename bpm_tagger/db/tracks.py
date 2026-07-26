@@ -41,14 +41,17 @@ class TracksMixin:
                      bpm_es: Optional[float], bpm_lb: Optional[float],
                      confidence: Optional[float], detector: Optional[str],
                      status: str, needs_review: bool = False, error: Optional[str] = None,
-                     waveform_peaks: Optional[str] = None):
+                     waveform_peaks: Optional[str] = None,
+                     loudness_lufs: Optional[float] = None,
+                     loudness_source: Optional[str] = None):
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO tracks
                     (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence,
-                     detector, analyzed_at, status, needs_review, error_message, waveform_peaks)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     detector, analyzed_at, status, needs_review, error_message, waveform_peaks,
+                     loudness_lufs, loudness_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     file_hash      = excluded.file_hash,
                     bpm            = excluded.bpm,
@@ -62,9 +65,14 @@ class TracksMixin:
                     needs_review   = excluded.needs_review,
                     reviewed       = 0,
                     error_message  = excluded.error_message,
-                    waveform_peaks = COALESCE(excluded.waveform_peaks, waveform_peaks)
+                    waveform_peaks = COALESCE(excluded.waveform_peaks, waveform_peaks),
+                    -- Same COALESCE treatment as the waveform: an error pass (or a
+                    -- scan with measurement off) must not wipe a good measurement.
+                    loudness_lufs   = COALESCE(excluded.loudness_lufs, loudness_lufs),
+                    loudness_source = COALESCE(excluded.loudness_source, loudness_source)
             """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence,
-                  detector, now, status, int(needs_review), error, waveform_peaks))
+                  detector, now, status, int(needs_review), error, waveform_peaks,
+                  loudness_lufs, loudness_source))
             conn.commit()
 
     def lock_track(self, file_path: str, bpm: Optional[float]):
@@ -146,6 +154,36 @@ class TracksMixin:
             )
             conn.commit()
 
+    def save_loudness(self, file_path: str, lufs: Optional[float],
+                      source: Optional[str]) -> None:
+        """Back-fill loudness for a track analyzed before this column existed (or
+        before measurement was switched on). Unlike upsert_track this writes
+        unconditionally, so a re-measure can replace a 'tag'-sourced estimate."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tracks SET loudness_lufs = ?, loudness_source = ? WHERE file_path = ?",
+                (lufs, source, file_path),
+            )
+            conn.commit()
+
+    def count_unmeasured_loudness(self) -> int:
+        """Live tracks with no loudness value yet — drives the backfill progress UI."""
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM tracks "
+                "WHERE status != 'deleted' AND loudness_lufs IS NULL"
+            ).fetchone()[0]
+
+    def get_unmeasured_loudness_paths(self, limit: int) -> list[str]:
+        """Paths of live tracks still missing a loudness value, oldest first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path FROM tracks "
+                "WHERE status != 'deleted' AND loudness_lufs IS NULL "
+                "ORDER BY analyzed_at LIMIT ?", (limit,)
+            ).fetchall()
+        return [r["file_path"] for r in rows]
+
     def needs_analysis(self, file_path: str, file_hash: str) -> bool:
         track = self.get_track(file_path)
         if not track:
@@ -225,7 +263,7 @@ class TracksMixin:
         where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT file_path, title, artist FROM tracks {where} "
+                f"SELECT file_path, title, artist, loudness_lufs FROM tracks {where} "
                 "ORDER BY analyzed_at DESC LIMIT ?",
                 params + [limit]
             ).fetchall()
@@ -410,13 +448,13 @@ class TracksMixin:
         with self._connect() as conn:
             if playlist_id is None:
                 rows = conn.execute(
-                    "SELECT file_path, title, artist, bpm, starred, play_count FROM tracks "
+                    "SELECT file_path, title, artist, bpm, starred, play_count, loudness_lufs FROM tracks "
                     "WHERE status != 'deleted' AND bpm IS NOT NULL "
                     "AND (disliked IS NULL OR disliked = 0)"
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count "
+                    "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count, t.loudness_lufs "
                     + self._PLAYLIST_RUN_JOIN + " GROUP BY t.file_path", (playlist_id,)
                 ).fetchall()
         return [dict(r) for r in rows]
@@ -438,7 +476,7 @@ class TracksMixin:
         )
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count "
+                "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count, t.loudness_lufs "
                 + join + " GROUP BY t.file_path", ids
             ).fetchall()
         return [dict(r) for r in rows]

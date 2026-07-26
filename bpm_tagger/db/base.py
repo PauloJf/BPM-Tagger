@@ -110,6 +110,9 @@ class _DBBase:
             # ── Navidrome play counts (pulled; NULL = never pulled) ───────────
             ("play_count",     "INTEGER"),
             ("last_played",    "TEXT"),               # OpenSubsonic 'played' timestamp
+            # ── Loudness normalization (NULL = never measured) ────────────────
+            ("loudness_lufs",   "REAL"),  # integrated loudness, ITU-R BS.1770
+            ("loudness_source", "TEXT"),  # tag (existing ReplayGain) | measured
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")

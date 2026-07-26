@@ -331,7 +331,9 @@ class GrabberMixin:
 
     def record_managed_track(self, file_path: str, file_hash: str, meta: dict,
                              bpm: Optional[float], bpm_dr, bpm_es, bpm_lb,
-                             confidence, detector: str, spotify_track_id: str) -> None:
+                             confidence, detector: str, spotify_track_id: str,
+                             loudness_lufs: Optional[float] = None,
+                             loudness_source: Optional[str] = None) -> None:
         """Insert/replace a downloaded, tagged, BPM-analyzed track as managed=1.
         file_hash MUST be computed AFTER the BPM tag write (watcher anti-loop)."""
         now = datetime.now(timezone.utc).isoformat()
@@ -341,8 +343,9 @@ class GrabberMixin:
                     (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence,
                      detector, analyzed_at, status, needs_review, managed, spotify_track_id,
                      title, artist, album, album_artist, track_no, disc_no, year, isrc,
-                     duration_ms, norm_title, norm_artist, tags_indexed_hash)
-                VALUES (?,?,?,?,?,?,?,?,?, 'done', 0, 1, ?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     duration_ms, norm_title, norm_artist, tags_indexed_hash,
+                     loudness_lufs, loudness_source)
+                VALUES (?,?,?,?,?,?,?,?,?, 'done', 0, 1, ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     file_hash=excluded.file_hash, bpm=excluded.bpm, bpm_dr=excluded.bpm_dr,
                     bpm_es=excluded.bpm_es, bpm_lb=excluded.bpm_lb,
@@ -353,10 +356,13 @@ class GrabberMixin:
                     album_artist=excluded.album_artist, track_no=excluded.track_no,
                     disc_no=excluded.disc_no, year=excluded.year, isrc=excluded.isrc,
                     duration_ms=excluded.duration_ms, norm_title=excluded.norm_title,
-                    norm_artist=excluded.norm_artist, tags_indexed_hash=excluded.tags_indexed_hash
+                    norm_artist=excluded.norm_artist, tags_indexed_hash=excluded.tags_indexed_hash,
+                    loudness_lufs=COALESCE(excluded.loudness_lufs, loudness_lufs),
+                    loudness_source=COALESCE(excluded.loudness_source, loudness_source)
             """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence, detector, now,
                   spotify_track_id, meta.get("title"), meta.get("artist"), meta.get("album"),
                   meta.get("album_artist"), meta.get("track_no"), meta.get("disc_no"),
                   meta.get("year"), meta.get("isrc"), meta.get("duration_ms"),
-                  meta.get("norm_title"), meta.get("norm_artist"), file_hash))
+                  meta.get("norm_title"), meta.get("norm_artist"), file_hash,
+                  loudness_lufs, loudness_source))
             conn.commit()

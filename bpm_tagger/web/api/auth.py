@@ -166,6 +166,10 @@ def api_me():
         resp["username"] = None
         resp["full_access"] = True
         resp["accent_hue"] = st.config.get("accent_hue")
+    # Loudness levelling — every role's player needs these on boot to decide
+    # whether, and how far, to attenuate a track (see bpm/loudness.py).
+    resp["normalize_playback"] = bool(st.config.get("normalize_playback", True))
+    resp["loudness_target_lufs"] = float(st.config.get("loudness_target_lufs", -14))
     # Library stats and the install-ping prompt are admin-only — a player session
     # is a locked-down kiosk and never sees them.
     if is_admin and st.db is not None:

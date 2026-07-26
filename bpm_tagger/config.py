@@ -211,6 +211,16 @@ def build_config() -> dict:
         "use_deeprhythm":             os.environ.get("USE_DEEPRHYTHM", "false").lower() == "true"
                                       and os.environ.get("WITH_DEEPRHYTHM", "false").lower() == "true",
         "use_essentia":               os.environ.get("USE_ESSENTIA", "true").lower() == "true",
+        # ── Loudness normalization ────────────────────────────────────────────
+        # Measure integrated loudness (LUFS) alongside BPM. Existing ReplayGain
+        # tags are reused when present, so the extra decode only happens for
+        # untagged files.
+        "measure_loudness":           os.environ.get("MEASURE_LOUDNESS", "true").lower() == "true",
+        # Playback target. Loud tracks are attenuated to meet it; quiet ones are
+        # left alone (the player can only turn down — see bpm/loudness.py).
+        "loudness_target_lufs":       float(os.environ.get("LOUDNESS_TARGET_LUFS", "-14")),
+        # Whether the player actually applies the levelling.
+        "normalize_playback":         os.environ.get("NORMALIZE_PLAYBACK", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
         # ── Anonymous install ping (opt-in, one-time; see install_ping.py) ────

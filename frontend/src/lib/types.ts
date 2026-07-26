@@ -36,6 +36,10 @@ export interface Track {
   // Navidrome play data (null until pulled)
   play_count?: number | null;
   last_played?: string | null;
+  // Integrated loudness (LUFS) + where it came from ('tag' | 'measured').
+  // null = never measured, which the player treats as "play at full volume".
+  loudness_lufs?: number | null;
+  loudness_source?: string | null;
 }
 
 // ── Run mode ──────────────────────────────────────────────────────────────
@@ -50,6 +54,7 @@ export interface RunTrack {
   rate: number;      // playbackRate that lands run_bpm on the target
   clamped?: boolean; // force-tempo only: rate was clamped, so playback isn't exactly on target
   from_playlist?: boolean;  // from the selected playlist itself, vs a library top-up
+  loudness_lufs?: number | null;  // for the player's volume levelling
 }
 
 export interface RunQueueResponse {
@@ -170,6 +175,9 @@ export interface Me {
   // Per-user accent hue (0–360), persisted server-side so it follows the account
   // across devices. null = no preference → the SPA keeps its localStorage value.
   accent_hue?: number | null;
+  // Loudness levelling, server-configured and sent to every role's player.
+  normalize_playback?: boolean;
+  loudness_target_lufs?: number;
 }
 
 // Player-user account, as returned by the admin /api/players endpoints.

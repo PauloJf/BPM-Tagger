@@ -237,7 +237,8 @@ export default function TrackDetail() {
   const isPlaying = active && player.playing;
   function togglePlay() {
     if (active) player.toggle();
-    else if (track) player.preview({ path, title: trackTitle(track), artist: track.artist || "" });
+    else if (track) player.preview({ path, title: trackTitle(track), artist: track.artist || "",
+      bpm: track.bpm, loudnessLufs: track.loudness_lufs });
   }
   const { endPreview } = player;
   useEffect(() => () => endPreview(), [endPreview]);  // leaving resumes the queue (dec 8)

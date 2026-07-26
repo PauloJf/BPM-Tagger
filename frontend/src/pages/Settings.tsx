@@ -44,6 +44,11 @@ interface LyricsFillStatus {
   running: boolean; total: number; done: number; filled: number; not_found: number;
 }
 
+interface LoudnessFillStatus {
+  running: boolean; total: number; done: number;
+  measured: number; tagged: number; failed: number; remaining: number;
+}
+
 function fmtBytes(n: number): string {
   if (!n) return "0 B";
   const u = ["B", "KB", "MB", "GB"];
@@ -111,6 +116,21 @@ export default function Settings() {
     await api.post("/api/lyrics/fill/cancel", {});
     qc.invalidateQueries({ queryKey: ["lyrics-fill"] });
   }
+  // Loudness back-fill: same poll-while-running pattern. `remaining` is queried
+  // live, so it also tells you how much is left before you ever press start.
+  const loudnessFillQ = useQuery({
+    queryKey: ["loudness-fill"],
+    queryFn: () => api.get<LoudnessFillStatus>("/api/loudness/fill/status"),
+    refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
+  });
+  async function startLoudnessFill() {
+    await api.post("/api/loudness/fill/start", {});
+    qc.invalidateQueries({ queryKey: ["loudness-fill"] });
+  }
+  async function cancelLoudnessFill() {
+    await api.post("/api/loudness/fill/cancel", {});
+    qc.invalidateQueries({ queryKey: ["loudness-fill"] });
+  }
 
   const [applied, setApplied] = useState<Record<string, string>>({});
   async function startFill() {
@@ -166,6 +186,7 @@ export default function Settings() {
   const [playPullMsg, setPlayPullMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [playPulling, setPlayPulling] = useState(false);
   const [playback, setPlayback] = useState(3);
+  const [loud, setLoud] = useState({ normalize: true, target: -14, measure: true });
   const [run, setRun] = useState({
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
@@ -284,6 +305,11 @@ export default function Settings() {
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
     setSyncInterval(n("sync_interval_minutes", 0));
     setPlayback(n("playback_buffer", 3));
+    setLoud({
+      normalize: b("normalize_playback", true),
+      target: n("loudness_target_lufs", -14),
+      measure: b("measure_loudness", true),
+    });
     setRunSessionDays(n("run_session_days", 30));
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
                             { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
@@ -1233,9 +1259,9 @@ export default function Settings() {
           <div id="sec-playback" className="settings-card card">
             <div className="settings-card-header">
               <h2>Playback</h2>
-              <p>Controls audio buffering in the track detail player.</p>
+              <p>Audio buffering and volume levelling for the built-in player.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback }, setPlaySaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback, normalize_playback: loud.normalize, loudness_target_lufs: loud.target, measure_loudness: loud.measure }, setPlaySaved); }}>
               <div className="field-row">
                 {fieldLabel("Buffer before play", "Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).")}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1243,10 +1269,61 @@ export default function Settings() {
                   <span style={{ color: "var(--muted)", fontSize: 13 }}>s</span>
                 </div>
               </div>
+              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                {fieldLabel("Level volume between tracks", "Bring every track to a consistent loudness so a hot master doesn't jump out mid-run. Tracks louder than the target are turned down; quieter ones play as-is (the player can only attenuate). Tracks with no measurement play untouched.")}
+                <Toggle on={loud.normalize} onChange={(v) => setLoud({ ...loud, normalize: v })} label="Level volume" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Target loudness", "The level tracks are brought down to, in LUFS. -14 matches what streaming services use. Lower means quieter and more tracks get attenuated; higher leaves more alone.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={-30} max={-5} step={0.5} value={loud.target}
+                    disabled={!loud.normalize}
+                    onChange={(e) => setLoud({ ...loud, target: Math.max(-30, Math.min(-5, +e.target.value)) })}
+                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
+                  />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>LUFS</span>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Measure during scans", "Measure each track's loudness while it's being analyzed for BPM. Files that already carry a ReplayGain tag are read instead of measured, so most tagged libraries cost nothing extra.")}
+                <Toggle on={loud.measure} onChange={(v) => setLoud({ ...loud, measure: v })} label="Measure loudness" />
+              </div>
               <div style={{ marginTop: 14 }}>
                 <SaveButton state={playSaved} label="Save Playback Settings" />
               </div>
             </form>
+            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
+                Tracks scanned before levelling existed have no measurement yet. This measures them
+                in the background — one file at a time, so it won't starve a running scan. Existing
+                ReplayGain tags are reused where present.
+              </p>
+              {(() => {
+                const f = loudnessFillQ.data;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button"
+                            disabled={f?.running || f?.remaining === 0} onClick={startLoudnessFill}>
+                      {f?.running ? "Measuring…" : "Measure missing loudness"}
+                    </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLoudnessFill}>Cancel</button>
+                    )}
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} done · {f.measured} measured · {f.tagged} from tags · {f.failed} failed
+                      </span>
+                    )}
+                    {f && !f.running && (
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                        {f.remaining === 0 ? "Every track is measured." : `${f.remaining} track${f.remaining === 1 ? "" : "s"} still unmeasured.`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* Run mode */}

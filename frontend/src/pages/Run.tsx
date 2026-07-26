@@ -504,7 +504,8 @@ export default function Run() {
         return;
       }
       player.playQueue(
-        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred, fromPlaylist: t.from_playlist })),
+        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+          starred: t.starred, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),
         0, { shuffle: false },
       );
       // Pin the run's source so the mid-run auto-refill stays scoped to it.

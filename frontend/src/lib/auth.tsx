@@ -13,6 +13,10 @@ interface AuthState {
   reviewCount: number;
   installPingAsk: boolean;
   dismissInstallPingAsk: () => void;
+  // Loudness levelling, from /api/me — the player reads these to decide how far
+  // to attenuate each track (see gainMultiplier in player.tsx).
+  normalizePlayback: boolean;
+  loudnessTargetLufs: number;
   login: (password: string, username?: string, totp?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -29,6 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState("");
   const [reviewCount, setReviewCount] = useState(0);
   const [installPingAsk, setInstallPingAsk] = useState(false);
+  const [normalizePlayback, setNormalizePlayback] = useState(true);
+  const [loudnessTargetLufs, setLoudnessTargetLufs] = useState(-14);
 
   const applyMe = useCallback((me: Me) => {
     setCsrfToken(me.csrf_token);
@@ -40,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setVersion(me.version);
     setReviewCount(me.review_count || 0);
     setInstallPingAsk(Boolean(me.install_ping_ask));
+    // Absent (older API) → keep the defaults rather than silently disabling.
+    if (me.normalize_playback != null) setNormalizePlayback(me.normalize_playback);
+    if (me.loudness_target_lufs != null) setLoudnessTargetLufs(me.loudness_target_lufs);
     // Reconcile the per-account accent (set on another device) into this browser.
     // main.tsx already applied the localStorage value pre-mount to avoid a flash;
     // this overrides it once the server tells us the account's real preference.
@@ -101,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, login, logout, refresh }}
+      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>
@@ -112,4 +121,12 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/** Auth state when there is one, otherwise null — for consumers that must work
+ *  outside an AuthProvider. The player uses this: it only wants the loudness
+ *  settings, and hard-requiring the provider would make it unmountable on its
+ *  own (which its tests do). */
+export function useAuthOptional() {
+  return useContext(AuthContext);
 }

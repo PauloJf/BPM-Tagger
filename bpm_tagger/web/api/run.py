@@ -198,6 +198,9 @@ def api_run_queue():
             "bpm":     t["bpm"],
             "starred": bool(t["starred"]),
             "play_count": t["play_count"],
+            # Integrated loudness (LUFS) so the player can level this track; NULL
+            # for anything not measured yet, which plays at full volume.
+            "loudness_lufs": t["loudness_lufs"],
             "run_bpm": round(folded, 2),              # BPM after octave fold
             "rate":    rate,                          # playbackRate to hit target
             # When clamped, playback is NOT exactly at target (the track was too far

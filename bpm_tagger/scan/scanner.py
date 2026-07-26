@@ -11,6 +11,7 @@ from typing import Optional
 
 from watchdog.observers import Observer
 
+from ..bpm.loudness import analyze_loudness
 from ..bpm.pipeline import ScanProgress, detect_bpm
 from ..bpm.tags import get_file_hash, write_bpm_tag
 from ..bpm.waveform import compute_waveform_peaks
@@ -85,12 +86,19 @@ class BPMTagger:
             # Compute waveform while the file is still warm in the OS page cache
             waveform_peaks = compute_waveform_peaks(file_path)
 
+            # Same rationale — and an existing ReplayGain tag short-circuits the
+            # decode entirely, so most already-tagged libraries pay nothing here.
+            lufs = source = None
+            if self.config.get("measure_loudness", True):
+                lufs, source = analyze_loudness(file_path)
+
             self.db.upsert_track(
                 file_path, file_hash,
                 bpm, result["bpm_dr"], result["bpm_es"], result["bpm_lb"],
                 result["confidence"], result["detector"],
                 "done", needs_review=result["needs_review"],
                 waveform_peaks=waveform_peaks,
+                loudness_lufs=lufs, loudness_source=source,
             )
 
             if self.notifier:

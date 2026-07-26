@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 
+from ..bpm.loudness import analyze_loudness
 from ..bpm.lyrics import is_synced, write_lyrics
 from ..bpm.pipeline import detect_bpm
 from ..bpm.tags import get_file_hash, write_bpm_tag
@@ -219,6 +220,11 @@ class GrabPipeline:
         result = detect_bpm(out_path, self.config)
         if self.config.get("write_tags", True) and result.get("bpm"):
             write_bpm_tag(out_path, result["bpm"], self.config.get("preserve_mtime", True))
+        # Loudness too, while the staged file is still warm. Measured (not read from
+        # a tag) — we just transcoded, so any provider ReplayGain tag is stale.
+        lufs = loudness_source = None
+        if self.config.get("measure_loudness", True):
+            lufs, loudness_source = analyze_loudness(out_path, prefer_tag=False)
 
         # 6 — render path + atomically place under music_dir (copy-then-replace:
         #     /data and /music may be different filesystems), then record the DB
@@ -234,7 +240,8 @@ class GrabPipeline:
         self.db.record_managed_track(
             final, fresh_hash, meta, result.get("bpm"), result.get("bpm_dr"),
             result.get("bpm_es"), result.get("bpm_lb"), result.get("confidence"),
-            result.get("detector"), meta.get("spotify_track_id") or "")
+            result.get("detector"), meta.get("spotify_track_id") or "",
+            loudness_lufs=lufs, loudness_source=loudness_source)
         if lyrics_text:
             self.db.set_lyrics_state(final, "fetched", is_synced(lyrics_text))
 

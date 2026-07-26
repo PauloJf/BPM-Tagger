@@ -82,6 +82,9 @@ docker compose up -d && docker compose logs -f
 | `USE_DEEPRHYTHM` | `false` | CNN detector (~500 MB/worker); **only effective on the `:full` image** — ignored on `:latest` (slim, no PyTorch) |
 | `USE_ESSENTIA` | `true` | Essentia RhythmExtractor2013 detector |
 | `OCTAVE_CORRECTION` | `true` | Auto-fix 2× BPM errors between detectors |
+| `MEASURE_LOUDNESS` | `true` | Measure loudness (LUFS) during the scan; existing ReplayGain tags are reused |
+| `NORMALIZE_PLAYBACK` | `true` | Level playback volume so loud masters don't jump out |
+| `LOUDNESS_TARGET_LUFS` | `-14` | Target playback loudness in LUFS (range -30…-5) |
 | `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM gap that flags a track for review |
 | `ENABLE_UI` | `false` | Start the web UI |
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
@@ -116,6 +119,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 - **Cover art everywhere** — embedded covers on library rows, browse cards, artist/album pages and track detail, with a show/hide toggle and cached delivery
 - **Artist images** — a custom image you pick, local `artist.jpg` (Navidrome convention), or opt-in, rate-limited fetching from Deezer's public API (`FETCH_ARTIST_IMAGES`), cached on disk; falls back to album art. `ARTIST_IMAGES_TO_LIBRARY` saves fetched/picked images as `artist.jpg` in the artist's folder so Navidrome sees them too
 - **Image editing** — change a track's cover, set an album cover across all its tracks at once, or pick a custom artist image — searching Spotify/Deezer, pasting a URL, or uploading a file
+- **Volume levelling** — each track's loudness (LUFS, EBU R128) is measured during the scan (existing **ReplayGain** tags reused), and the player attenuates loud masters to a configurable target (default **-14 LUFS**) so nothing jumps out mid-run; your volume slider still applies on top
 - **Lyrics** — plain or synced (LRC) lyrics from LRCLIB per track or in bulk, viewable/editable on the track page, stored embedded or as `.lrc` sidecars (Navidrome-compatible); a **player lyrics drawer** follows synced lyrics live (click a line to seek), steps plain lyrics manually, has an **S / M / L / XL** text-size stepper, and can be **maximized or drag-resized**
 - **Navidrome star sync** — two-way: stars set here push to Navidrome as favourites, stars set in Navidrome pull in (feeding Run mode's starred preference); per-track baseline merge, path + fuzzy matching, manual **Sync stars now** trigger
 - **Navidrome scrobbling & play counts** — opt-in: built-in-player plays (Run mode included) scrobble to Navidrome at the halfway mark (reaching Last.fm/ListenBrainz through it); **Pull play counts** imports Navidrome's play counts, shown per track and usable as a **prefer familiar tracks** run-queue preference. Your BPM tags also power Navidrome **smart playlists** (`.nsp` with a `bpm` range) for cadence playlists in any Subsonic client
@@ -161,6 +165,8 @@ Every bit helps keep this project maintained and open source.
 ## Changelog
 
 Full history: [CHANGELOG.md](https://github.com/PauloJf/BPM-Tagger/blob/main/CHANGELOG.md)
+
+**v2.9.0** — **Volume levelling.** Every track's perceived loudness is now measured during the BPM scan (integrated LUFS, ITU-R BS.1770 / EBU R128 — the same measure streaming services level to), and the player uses it to bring loud masters down to a **target loudness** so one hot track doesn't blast you mid-run. Files that already carry a **ReplayGain tag** are read instead of re-measured, so an already-tagged library costs nothing extra. Levelling only ever turns tracks *down* (the HTML audio element has no headroom above full volume), quieter and unmeasured tracks play untouched, and your volume slider stays yours — the levelling multiplies on top of it. **Settings → Playback** has the on/off toggle, the target (default **-14 LUFS**), a measure-during-scans toggle, and a **Measure missing loudness** back-fill for libraries scanned before this existed; a single track can also be re-measured on demand.
 
 **v2.8.0** — **Copy playlists into local ones + a "No playlist" filter.** Any playlist's detail page (Spotify, Navidrome, or another Local) gets an **"Add all to playlist…"** action that copies every library-backed track into a local playlist you pick or create inline — duplicates skipped, unowned tracks reported as *not in library*, safe to repeat. The **"Add to playlist"** button now also sits on each **have** row of a playlist page for cherry-picking one track. A new **"No playlist"** library filter (with a live count) surfaces tracks that aren't in *any* playlist. The player **queue drawer** gains the **S/M/L text-size stepper** the lyrics drawer had, and both drawers get a larger **XL** step. Also fixes long artist names overflowing the player bar, and the playlist detail header rendering blank **have / missing** chips and hiding the **Export .m3u** button.
 

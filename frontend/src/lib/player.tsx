@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { api, audioUrl, notifyUnauthorized } from "./api";
+import { useAuthOptional } from "./auth";
 
 export interface PlayerTrack {
   path: string;            // identity key; for previews a synthetic "preview:dz:<id>"
@@ -10,6 +11,27 @@ export interface PlayerTrack {
   ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
   fromPlaylist?: boolean;  // run mode: from the selected playlist vs a library top-up
   starred?: boolean;       // run mode: last-known star state (for the queue's star toggle)
+  loudnessLufs?: number | null;  // integrated loudness for volume levelling (null = unmeasured)
+}
+
+// Never attenuate by more than this, however extreme a track's measured
+// loudness. A corrupt or wildly hot value would otherwise drop a track to a
+// whisper; capping it means the worst case is "still a bit loud", not "silent".
+const MAX_ATTENUATION_DB = -20;
+
+/** Volume multiplier (0..1) that levels one track onto `targetLufs`.
+ *
+ *  Mirrors `gain_db_for` in bpm/loudness.py: **attenuation only**, because this
+ *  scales `HTMLMediaElement.volume`, which is hard-clamped to [0, 1] — a boost
+ *  would need a Web Audio GainNode. So loud tracks come down to meet the quiet
+ *  ones. Unmeasured tracks (null) and levelling-off both return 1, i.e. play
+ *  exactly as before. */
+export function gainMultiplier(
+  lufs: number | null | undefined, targetLufs: number, enabled = true,
+): number {
+  if (!enabled || lufs == null || !isFinite(lufs)) return 1;
+  const gainDb = Math.max(MAX_ATTENUATION_DB, Math.min(0, targetLufs - lufs));
+  return Math.pow(10, gainDb / 20);   // amplitude dB → linear multiplier
 }
 
 /** Run-mode tempo lock: stretch every queued track onto one target BPM. */
@@ -268,6 +290,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const volumeRef = useRef(volume);
   const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
 
+  // Loudness levelling: the current track's attenuation multiplier. Every write
+  // to `audio.volume` goes through effVolume() so the slider stays the user's
+  // 0..1 setting while the element carries slider × level. Kept in a ref (not
+  // state) because the volume writes happen inside callbacks and effects that
+  // must not re-run just because the level changed.
+  // Optional on purpose: the player must still mount without an AuthProvider,
+  // in which case levelling is simply off until the settings arrive.
+  const auth = useAuthOptional();
+  const normalizePlayback = auth?.normalizePlayback ?? false;
+  const loudnessTargetLufs = auth?.loudnessTargetLufs ?? -14;
+  const levelRef = useRef(1);
+  const effVolume = useCallback(
+    () => Math.max(0, Math.min(1, volumeRef.current * levelRef.current)), []);
+  // Refreshed during render, i.e. before any effect runs, so the load effect
+  // starts a new track at *its own* level rather than the previous track's.
+  levelRef.current = gainMultiplier(current?.loudnessLufs, loudnessTargetLufs, normalizePlayback);
+
   // Ducking preview: while active, the queue track + position + play-state are
   // stashed here and restored when the preview ends or the user leaves.
   const previewSaved = useRef<{ track: PlayerTrack; time: number; wasPlaying: boolean } | null>(null);
@@ -330,8 +369,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const vol = Math.max(0, Math.min(1, v));
     volumeRef.current = vol;
     setVolumeState(vol);
-    if (audioRef.current) audioRef.current.volume = vol;
-  }, []);
+    if (audioRef.current) audioRef.current.volume = effVolume();
+  }, [effVolume]);
 
   // Volume ramp for fades. rAF animates the volume for smoothness, but the
   // completion (`done`) and the final volume are driven by a setTimeout so the
@@ -420,11 +459,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const begin = () => {
       if (seekTo != null && isFinite(seekTo)) { try { a.currentTime = seekTo; } catch { /* ignore */ } }
       if (shouldPlay) {
-        a.volume = doFadeIn ? 0 : volumeRef.current;
+        a.volume = doFadeIn ? 0 : effVolume();
         a.play().catch(() => {});
-        if (doFadeIn) rampVolume(0, volumeRef.current, FADE_MS);
+        if (doFadeIn) rampVolume(0, effVolume(), FADE_MS);
       } else {
-        a.volume = volumeRef.current;
+        a.volume = effVolume();
       }
     };
     if (seekTo != null) {
@@ -432,7 +471,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return () => a.removeEventListener("loadedmetadata", begin);
     }
     begin();
-  }, [current?.path, rampVolume, pickSrc]);
+  }, [current?.path, rampVolume, pickSrc, effVolume]);
+
+  // Re-apply levelling when the *settings* change mid-track. Deliberately NOT
+  // keyed on `current`: a track change is already covered because levelRef is
+  // refreshed during render (above), so the load effect's own volume write —
+  // and its fade-in ramp — already use the new track's level. Keying this on
+  // `current` too would fire after that effect and stomp a fade-in's silent
+  // first frame back up to full volume.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.volume = effVolume();
+  }, [normalizePlayback, loudnessTargetLufs, effVolume]);
 
   // Tempo lock: stretch the current track onto the target BPM (pitch preserved).
   // defaultPlaybackRate too — load() resets playbackRate to it on track change,
@@ -472,13 +522,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // the unplayed matches run out, instead of pulling from the whole library.
     const body: { bpm: number; exclude: string[]; playlist?: number | "mine" } = { bpm: tempoLock.target, exclude };
     if (runSourceRef.current != null) body.playlist = runSourceRef.current;
-    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number; starred?: boolean; from_playlist?: boolean }[] }>(
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number;
+      starred?: boolean; from_playlist?: boolean; loudness_lufs?: number | null }[] }>(
       "/api/run/queue", body)
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
         let batch: PlayerTrack[] = resp.tracks.map((t) =>
-          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred, fromPlaylist: t.from_playlist }));
+          ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred,
+            fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs }));
         // Defense in depth: the exclude window is bounded, so the currently
         // playing track could in principle fall outside it on a huge queue.
         const noRepeat = batch.filter((t) => t.path !== cur?.path);
@@ -524,7 +576,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // rebuild path (both set the rate post-start) play fine. The canplay retry
       // below covers a play() that load()'s async steps interrupted.
       a.load();
-      a.volume = volumeRef.current;
+      a.volume = effVolume();
       const startSrc = a.src;   // identity for "is this still the track we started?"
       a.play().catch(() => {
         // A boundary play() can be rejected even though the element loads fine:
