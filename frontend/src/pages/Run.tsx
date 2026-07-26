@@ -402,6 +402,30 @@ export default function Run() {
   // *this session* on a track that's already sitting in the current queue.
   const [dislikedPaths, setDislikedPaths] = useState<Set<string>>(() => new Set());
 
+  // Keep the playing row vertically centered in the queue card: instantly when
+  // the panel appears (opening the mobile Queue tab, or the desktop column
+  // mounting), smoothly as playback advances while it's visible. Rect-based
+  // math (not offsetTop) so it's independent of which ancestor is positioned.
+  const queueListRef = useRef<HTMLDivElement | null>(null);
+  const playingRowRef = useRef<HTMLDivElement | null>(null);
+  const queueWasVisible = useRef(false);
+  useEffect(() => {
+    const list = queueListRef.current;
+    const row = playingRowRef.current;
+    const justAppeared = !!list && !!row && !queueWasVisible.current;
+    queueWasVisible.current = !!list && !!row;
+    if (!list || !row) return;
+    const delta = (row.getBoundingClientRect().top - list.getBoundingClientRect().top)
+      - (list.clientHeight - row.offsetHeight) / 2;
+    const top = list.scrollTop + delta;
+    // Instant when the panel just appeared, and whenever the page isn't
+    // visible: smooth scrolling animates on rAF, which is frozen while a
+    // locked-screen / backgrounded PWA auto-advances tracks — the animation
+    // would silently never run and the queue would stay parked off-center.
+    if (justAppeared || document.hidden || typeof list.scrollTo !== "function") list.scrollTop = top;
+    else list.scrollTo({ top, behavior: "smooth" });
+  }, [mode, player.orderPos, player.orderedQueue.length]);
+
   // Keep the playing track fresh: fixing its BPM on the track page (or via
   // tap-tempo here) and coming back re-fetches this, and updateTrackBpm
   // re-stretches a live tempo lock. The full detail also feeds the desktop
@@ -1037,8 +1061,10 @@ export default function Run() {
         }
       // Mobile Queue tab: a short queue sizes to its content; a long one
       // shrinks (flexShrink, bounded by minHeight:0) to the space the mobile
-      // fill column has left and the list scrolls inside — no viewport math,
-      // the flex container does the space accounting.
+      // fill column has left and the list scrolls inside. The shrink only
+      // bites because the Queue tab hard-caps the column height (the
+      // run-queue-open class on .run-mobile-fill) — under min-height alone
+      // there's no negative free space and the page would scroll instead.
       : { padding: 0, marginBottom: 12, display: "flex", flexDirection: "column", minHeight: 0, flexShrink: 1 };
     const listStyle: React.CSSProperties = fill
       ? { flex: 1, minHeight: 0, overflowY: "auto" }
@@ -1081,7 +1107,7 @@ export default function Run() {
             <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
           </div>
         )}
-        <div data-testid="queue-list" style={listStyle}>
+        <div data-testid="queue-list" ref={queueListRef} style={listStyle}>
           {player.orderedQueue.length === 0 && (
             <div style={{ padding: 16, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
               No queue yet — set a target and hit Start run.
@@ -1107,7 +1133,7 @@ export default function Run() {
             // The playing row is kept full-opacity so "now playing" is never faded.
             const fromLibrary = player.runSource != null && player.runSource !== "mine" && t.fromPlaylist === false;
             return (
-              <div key={`${t.path}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
+              <div key={`${t.path}-${i}`} ref={isCurrentRow ? playingRowRef : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
                 {starred !== undefined && (
                   <Star on={starred} onToggle={() => toggleStar(t.path, starred)} />
                 )}
@@ -1323,7 +1349,9 @@ export default function Run() {
     // leftover height, and the page never scrolls — the app-like behaviour a
     // run player needs. (The fill height already accounts for the ~52px sticky
     // top bar of either mode and the device safe areas — see the CSS.)
-    <div className="run-mobile-fill">
+    // run-queue-open turns the fill's min-height into a hard height cap so a
+    // long queue scrolls inside its card instead of growing the page.
+    <div className={mode === "queue" ? "run-mobile-fill run-queue-open" : "run-mobile-fill"}>
       {glowLayer}
       <div className="run-mobile-body">
         {mode !== "queue" && nowPlayingMobile}

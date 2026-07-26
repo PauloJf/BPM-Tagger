@@ -120,6 +120,27 @@ describe("Run — mobile source picker placement", () => {
     expect(region.querySelector("select[aria-label='Run source']")).toBeTruthy();
   });
 
+  it("hard-caps the fill column height on the Queue tab (card scrolls, never the page)", () => {
+    // min-height alone lets a long queue grow the column (and the page scroll);
+    // the Queue tab must add run-queue-open, which turns the budget into a
+    // definite height so the card shrinks and scrolls internally instead.
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
+    h.orderedQueue = [h.current];
+    const { container } = render(<Run />);
+    expect(container.querySelector(".run-mobile-fill")?.classList.contains("run-queue-open")).toBe(true);
+  });
+
+  it("drops the height cap on the other tabs (tiny screens may fall back to page scroll)", () => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };
+    h.orderedQueue = [h.current];
+    const { container } = render(<Run />);
+    const fill = container.querySelector(".run-mobile-fill");
+    expect(fill).toBeTruthy();
+    expect(fill!.classList.contains("run-queue-open")).toBe(false);
+  });
+
   it("does NOT overlay a source picker on the cover during playback (presets mode)", () => {
     localStorage.setItem(MODE_KEY, "presets");
     h.current = { path: "/music/a.mp3", title: "A", artist: "Artist", bpm: 120 };

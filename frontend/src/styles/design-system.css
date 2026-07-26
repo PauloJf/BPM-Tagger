@@ -1114,7 +1114,13 @@ body.has-player .container.container--run { padding-bottom: 24px; }
      min-height (not height): if a tiny/landscape screen can't hold even the
      fixed rows at their natural size, the page falls back to scrolling rather
      than crushing the controls. */
-  .run-mobile-fill { display: flex; flex-direction: column; min-height: calc(100dvh - 14px - max(24px, env(safe-area-inset-bottom, 0px)) - var(--player-bar-h) - env(safe-area-inset-top, 0px)); }
+  .run-mobile-fill { --run-fill-h: calc(100dvh - 14px - max(24px, env(safe-area-inset-bottom, 0px)) - var(--player-bar-h) - env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; min-height: var(--run-fill-h); }
+  /* Queue tab: the budget becomes a hard cap (height, not just min-height).
+     min-height alone never constrains — a long queue grows the column and the
+     page scrolls; a definite height gives the flex layout negative free space,
+     so the Queue card (the one flexShrink:1 child) shrinks and its list
+     scrolls inside the card instead. */
+  .run-mobile-fill.run-queue-open { height: var(--run-fill-h); }
   .run-mobile-fill .run-mobile-body {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; justify-content: center;
