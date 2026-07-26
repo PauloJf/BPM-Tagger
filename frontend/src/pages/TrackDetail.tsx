@@ -44,6 +44,8 @@ export default function TrackDetail() {
   const [unlockMsg, setUnlockMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeMsg, setReanalyzeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [measureMsg, setMeasureMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [metaForm, setMetaForm] = useState({ title: "", artist: "", album: "", album_artist: "", track_no: "", disc_no: "", year: "", isrc: "" });
   const [applyTemplate, setApplyTemplate] = useState(false);
   const [metaMsg, setMetaMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -318,6 +320,29 @@ export default function TrackDetail() {
     }
   }
 
+  /** Force a fresh loudness measurement, ignoring any ReplayGain tag on the file.
+   *  The escape hatch for a value that looks wrong — an RG1-era tag reads a few LU
+   *  off the real gated loudness, and a re-measure replaces it. */
+  async function measureLoudness() {
+    setMeasuring(true);
+    setMeasureMsg(null);
+    try {
+      const res = await api.post<{ ok: boolean; loudness_lufs?: number; error?: string }>(
+        "/api/track/loudness/measure", { file_path: path });
+      if (res.ok) {
+        setMeasureMsg({ ok: true, text: `${res.loudness_lufs?.toFixed(1)} LUFS` });
+        qc.invalidateQueries({ queryKey: ["track", path] });
+        qc.invalidateQueries({ queryKey: ["tracks"] });
+      } else {
+        setMeasureMsg({ ok: false, text: res.error || "Could not measure this file." });
+      }
+    } catch {
+      setMeasureMsg({ ok: false, text: "Request failed." });
+    } finally {
+      setMeasuring(false);
+    }
+  }
+
   if (!path) return <p style={{ color: "var(--muted)" }}>No track selected.</p>;
   if (detailQ.isLoading) return <p style={{ color: "var(--muted)" }}>Loading…</p>;
   if (detailQ.isError || !track) return <p style={{ color: "var(--err-fg)" }}>Track not found.</p>;
@@ -571,6 +596,19 @@ export default function TrackDetail() {
                   {track.play_count != null && (
                     <span style={{ marginLeft: 14 }}>plays · <span style={{ color: "var(--text)" }}>{track.play_count}</span></span>
                   )}
+                  <span style={{ marginLeft: 14 }} title={
+                    track.loudness_lufs == null
+                      ? "Not measured yet — this track plays at full volume, unlevelled."
+                      : track.loudness_source === "tag"
+                        ? "Read from the file's existing ReplayGain tag, not measured here."
+                        : "Measured from the audio (integrated LUFS, ITU-R BS.1770)."
+                  }>
+                    loudness ·{" "}
+                    <span style={{ color: track.loudness_lufs != null ? "var(--text)" : "var(--muted)" }}>
+                      {track.loudness_lufs != null ? `${track.loudness_lufs.toFixed(1)} LUFS` : "—"}
+                    </span>
+                    {track.loudness_source && ` (${track.loudness_source})`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -628,6 +666,18 @@ export default function TrackDetail() {
                 {reanalyzing ? "Analyzing…" : "Re-analyze"}
               </button>
               {reanalyzeMsg && <div style={{ fontSize: 12, color: reanalyzeMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", display: "flex", alignItems: "center", gap: 6 }}>{reanalyzeMsg.text}</div>}
+              <button
+                className="btn btn-ghost btn-md"
+                onClick={measureLoudness}
+                disabled={measuring}
+                title="Measure this track's loudness from the audio, ignoring any ReplayGain tag. Used to level playback volume."
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={measuring ? { transformOrigin: "center", animation: "spin 0.8s linear infinite" } : undefined}>
+                  <path d="M4 18 v-4 M9 18 v-9 M14 18 v-6 M19 18 v-12" />
+                </svg>
+                {measuring ? "Measuring…" : "Measure loudness"}
+              </button>
+              {measureMsg && <div style={{ fontSize: 12, color: measureMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", display: "flex", alignItems: "center", gap: 6 }}>{measureMsg.text}</div>}
             </div>
           </div>
 

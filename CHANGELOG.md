@@ -6,7 +6,7 @@
   - Files that already carry a **ReplayGain tag** (beets, Picard, foobar2000, loudgain) have it read from the header instead of being re-measured, so an already-tagged library costs no extra scan time. Opus `R128_TRACK_GAIN` headers are understood too.
   - Levelling only ever turns a track **down** — `HTMLMediaElement.volume` is capped at full, so there is no headroom to boost a quiet track without routing playback through Web Audio. Quiet tracks and unmeasured tracks play untouched.
   - Your **volume slider stays yours**: the levelling is a multiplier on top of it, so the slider still reads 0–100% of *your* chosen level.
-  - **Settings → Playback** has the on/off toggle, the target (default **-14 LUFS**, range -30…-5), a measure-during-scans toggle, and a **Measure missing loudness** back-fill that walks everything scanned before this existed (one file at a time, so it won't starve a running scan). A single track can also be re-measured on demand — the escape hatch for an old ReplayGain 1.0 tag that reads a few LU off.
+  - **Settings → Playback** has the on/off toggle, the target (default **-14 LUFS**, range -30…-5), a measure-during-scans toggle, and a **Measure missing loudness** back-fill that walks everything scanned before this existed (one file at a time, so it won't starve a running scan). A track's detail page shows its loudness and where the value came from (tag vs. measured), with a **Measure loudness** button that re-measures from the audio and ignores the tag — the escape hatch for an old ReplayGain 1.0 tag that reads a few LU off.
   - New env vars: `MEASURE_LOUDNESS`, `NORMALIZE_PLAYBACK`, `LOUDNESS_TARGET_LUFS`. New dependency: `pyloudnorm` (pure Python; numpy/scipy already ship with librosa).
 
 ## v2.8.0 — 2026-07-23
