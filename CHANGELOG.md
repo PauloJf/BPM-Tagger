@@ -24,6 +24,15 @@ Max stretch is a real ceiling (past roughly ±20%, browser time-stretching smear
 - The run queue header reads `built for 155 BPM · max ±15.0%`, and the **Max stretch** help text in Settings now carries the whole model: how far a track may be pulled, that unreachable tracks aren't queued, and where time-stretching starts to sound artificial.
 - The `/api/run/queue` response returns `stretch_limit_pct` in place of `tolerance_pct`, and drops the per-track `clamped` flag and the top-level `forced` flag. The server's old 0.5–2.0 rate guard is gone too: with selection enforcing the limit, every returned rate is in-limit by construction.
 
+### Playlist playback + queue hygiene
+
+- **Play a playlist.** Every playlist's detail page now has **▶ Play**, **⇄ Shuffle** and **+ Add to queue** — it was the only track list in the app you couldn't play, while Album, Artist and Library all had Play all / Shuffle. Details:
+  - Only **library-backed** rows are playable (status **have**, with a matched file). Each carries the matched track's **BPM, artist and loudness**, so a playlist queue gets the same **volume levelling** as an album queue rather than playing hot.
+  - The actions follow the **status tab** you're on: on **Have** you play exactly the rows you see. On a mixed tab the button carries the playable count — `▶ Play (12)` for a 50-track Spotify playlist with 12 matched — instead of silently playing fewer tracks than the page lists.
+  - All three disable, with an explanatory tooltip, when nothing in the playlist is in your library yet.
+- **Starting a queue now ends a run in progress** — a bug fix, not just a new rule. Playing an album, an artist, a playlist or the library mid-run used to leave the run's **tempo lock** stretching the new queue onto your cadence, and left the run's **source** pinned — so the mid-run auto-refill kept appending tracks from the *previous* source at the *previous* target, quietly turning your album into a run queue. Both are now released whenever a new queue takes over. **Adding** to a queue is unaffected (**+ Add to queue**, **Play next**, **≈ Similar**), and so is a 30-second **preview**: a run keeps its lock and keeps refilling. To run *to* a playlist, pick it as the Run source — that path is cadence-aware, a raw Play-all isn't.
+- **"Enqueue missing" is now "Download missing".** With a play queue on the same page, "queue" meant two unrelated things — one queues audio for playback, the other queues files for download. UI label only: the `enqueue-missing` endpoint is unchanged, so nothing scripted against the API breaks.
+
 ## v2.9.0 — 2026-07-26
 
 - **Volume levelling between tracks.** Every track's perceived loudness is now measured during the BPM scan — integrated **LUFS** per ITU-R BS.1770 / EBU R128, the same measure streaming services level to — and the player uses it to bring loud masters down to a **target loudness**, so a hot track no longer blasts you mid-run. Details:
