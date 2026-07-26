@@ -1059,6 +1059,9 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
    grid. The cover is a fixed track, so long titles still ellipsize in 1fr and
    the row never forces the page sideways on a phone. */
 .pl-track-row--art { grid-template-columns: 32px 38px 1fr 90px; }
+/* Drag-to-reorder feedback, same vocabulary as the player queue drawer. */
+.pl-track-row.dragging { opacity: 0.4; }
+.pl-track-row.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
 .pl-track-row:last-child { border-bottom: none; }
 .pl-track-row--removed { opacity: 0.55; }
 

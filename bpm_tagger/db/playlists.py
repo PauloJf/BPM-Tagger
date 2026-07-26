@@ -396,6 +396,29 @@ class PlaylistsMixin:
             conn.commit()
         return {"added": added, "already_present": already, "skipped_missing": skipped}
 
+    def reorder_local_playlist(self, playlist_id: int, ordered_ids: list[int]) -> bool:
+        """Rewrite every live row's position from the given complete id order.
+
+        Full-order rather than a per-row move: positions are only meaningful
+        relative to each other, and one atomic rewrite can't leave the playlist
+        half-reordered if the client dies mid-drag. The caller must send exactly
+        the live row ids — no more, no fewer — so a stale client that missed a
+        concurrent add or remove is rejected (False) instead of silently
+        dropping or duplicating positions. Local playlists hard-delete rather
+        than tombstone, but the live filter is applied anyway so the invariant
+        doesn't depend on that."""
+        with self._connect() as conn:
+            live = [r["id"] for r in conn.execute(
+                "SELECT id FROM playlist_tracks WHERE playlist_id = ? AND removed_at IS NULL",
+                (playlist_id,)).fetchall()]
+            if len(ordered_ids) != len(live) or set(ordered_ids) != set(live):
+                return False
+            conn.executemany(
+                "UPDATE playlist_tracks SET position = ? WHERE id = ?",
+                [(pos, pt_id) for pos, pt_id in enumerate(ordered_ids)])
+            conn.commit()
+        return True
+
     def remove_playlist_track(self, pt_id: int) -> None:
         """Hard-delete one playlist_tracks row (Local playlists: removal is an explicit
         delete, not a sync tombstone). Refreshes the owning playlist's track_count."""

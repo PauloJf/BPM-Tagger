@@ -219,6 +219,8 @@ export default function PlaylistDetail() {
   const [sortKey, setSortKey] = useState<SortKey>("position");
   const [search, setSearch] = useState("");
   const [dupsOnly, setDupsOnly] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [showArt, toggleArt] = useArtwork();
   const [pickerOpen, setPickerOpen] = useState(false);
   // Bumped after a cover set/delete so the browser refetches the (max-age'd)
@@ -305,6 +307,33 @@ export default function PlaylistDetail() {
   // (a custom pick, else an auto-collage of their own tracks), which 404s into
   // the ♪ placeholder when there's neither.
   const canSetCover = role === "admin" && isLocal;
+  // Reordering is only meaningful over the untouched playlist order: a sorted,
+  // searched or duplicates-only view is a projection, and dropping a row into
+  // it has no single obvious meaning. So the drag handles and ↑/↓ appear only
+  // on the plain All tab of a local playlist, where the rows on screen ARE the
+  // playlist. (The endpoint takes the complete order, which is exactly what
+  // `tracks` is in that state.)
+  const canReorder = role === "admin" && isLocal && tab === ""
+    && sortKey === "position" && !search.trim() && !dupsOnly;
+
+  const reorder = useMutation({
+    mutationFn: (order: number[]) => api.post(`/api/playlists/${id}/reorder`, { order }),
+    // Either way the server is the truth: on success to pick up anything else
+    // that changed, on failure to roll the optimistic order back.
+    onSettled: invalidate,
+  });
+
+  function moveRow(from: number, to: number) {
+    if (from === to || to < 0 || to >= tracks.length) return;
+    const next = [...tracks];
+    next.splice(to, 0, ...next.splice(from, 1));
+    // Paint the new order immediately; the row positions are renumbered so the
+    // displayed track numbers don't jump around while the POST is in flight.
+    qc.setQueryData(["playlist-tracks", id, tab],
+      (old: { playlist: Playlist; tracks: PlaylistTrack[] } | undefined) =>
+        old ? { ...old, tracks: next.map((t, i) => ({ ...t, position: i })) } : old);
+    reorder.mutate(next.map((t) => t.id));
+  }
 
   async function applyCover(pick: { url?: string; file?: File }) {
     if (pick.url) await api.post(`/api/playlists/${id}/cover`, { url: pick.url });
@@ -517,7 +546,7 @@ export default function PlaylistDetail() {
               : "No tracks."}
           </div>
         ) : (
-          tracks.map((t) => {
+          tracks.map((t, i) => {
             // 'have' rows are matched to a local file → link into the library and
             // show its real BPM. Missing/queued/removed rows stay plain text.
             const inLib = t.derived_status === "have" && !!t.matched_file_path;
@@ -527,8 +556,21 @@ export default function PlaylistDetail() {
             const albumArtist = t.local_album_artist || album || artist;
             const dur = fmtDur(trackDuration(t));
             return (
-              <div className={"pl-track-row" + (showArt ? " pl-track-row--art" : "") + (t.removed_at ? " pl-track-row--removed" : "")} key={t.id}>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
+              <div
+                key={t.id}
+                className={"pl-track-row"
+                  + (showArt ? " pl-track-row--art" : "")
+                  + (t.removed_at ? " pl-track-row--removed" : "")
+                  + (dragIdx === i ? " dragging" : "")
+                  + (dragOverIdx === i && dragIdx !== null && dragIdx !== i ? " drag-over" : "")}
+                draggable={canReorder}
+                onDragStart={canReorder ? (e) => { setDragIdx(i); e.dataTransfer.effectAllowed = "move"; } : undefined}
+                onDragOver={canReorder ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverIdx !== i) setDragOverIdx(i); } : undefined}
+                onDrop={canReorder ? (e) => { e.preventDefault(); if (dragIdx !== null) moveRow(dragIdx, i); setDragIdx(null); setDragOverIdx(null); } : undefined}
+                onDragEnd={canReorder ? () => { setDragIdx(null); setDragOverIdx(null); } : undefined}
+              >
+                <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                  {canReorder && <span className="player-queue-grip" aria-hidden title="Drag to reorder">⠿</span>}
                   {String(t.position + 1).padStart(2, "0")}
                 </span>
                 {/* A matched row shows the real file's embedded art; an unmatched
@@ -575,6 +617,29 @@ export default function PlaylistDetail() {
                   ) : null}
                   {role === "admin" && (inLib || isLocal) && (
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      {/* Touch and keyboard equivalent of the drag handle — HTML5
+                          drag doesn't exist on a phone, and this is the testable
+                          path (both compute the same full-order payload). */}
+                      {canReorder && (
+                        <>
+                          <button
+                            className="btn btn-bare btn-sm"
+                            style={{ padding: "2px 4px", color: "var(--muted)" }}
+                            disabled={i === 0 || reorder.isPending}
+                            aria-label={`Move ${label} up`}
+                            title="Move up"
+                            onClick={() => moveRow(i, i - 1)}
+                          >↑</button>
+                          <button
+                            className="btn btn-bare btn-sm"
+                            style={{ padding: "2px 4px", color: "var(--muted)" }}
+                            disabled={i === tracks.length - 1 || reorder.isPending}
+                            aria-label={`Move ${label} down`}
+                            title="Move down"
+                            onClick={() => moveRow(i, i + 1)}
+                          >↓</button>
+                        </>
+                      )}
                       {inLib && (
                         <AddToPlaylistMenu
                           path={t.matched_file_path!}

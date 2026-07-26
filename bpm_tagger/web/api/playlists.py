@@ -265,6 +265,37 @@ def import_into_local(pid):
     return jsonify(ok=True, counts=counts, playlist=db.get_playlist(pid))
 
 
+@playlists_bp.route("/api/playlists/<int:pid>/reorder", methods=["POST"])
+@login_required
+def reorder_local_playlist(pid):
+    """Set a Local playlist's track order from a complete list of row ids.
+
+    One full-order endpoint rather than a per-row move: the client already knows
+    the whole list, and rewriting it in a single transaction can't leave a
+    half-applied order behind. Local-only — every other source takes its order
+    from its next sync, which would immediately undo this."""
+    _check_csrf()
+    db = state().db
+    pl = db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    if pl.get("source") != "local":
+        return jsonify(error="Only local playlists can be reordered — a synced "
+                             "playlist takes its order from its source."), 400
+    data = request.get_json(force=True, silent=True) or {}
+    order = data.get("order")
+    if not isinstance(order, list):
+        return jsonify(error="An 'order' list of track row ids is required."), 400
+    try:
+        ordered_ids = [int(v) for v in order]
+    except (TypeError, ValueError):
+        return jsonify(error="An 'order' list of track row ids is required."), 400
+    if not db.reorder_local_playlist(pid, ordered_ids):
+        return jsonify(error="This playlist changed while you were reordering it — "
+                             "refresh and try again."), 400
+    return jsonify(ok=True)
+
+
 @playlists_bp.route("/api/playlists/<int:pid>/tracks/<int:pt_id>", methods=["DELETE"])
 @login_required
 def remove_local_track(pid, pt_id):

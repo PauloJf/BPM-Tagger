@@ -21,7 +21,7 @@ vi.mock("react-router-dom", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: () => {} }),
+  useQueryClient: () => ({ invalidateQueries: () => {}, setQueryData: () => {} }),
   useQuery: () => ({ data: { playlist: h.playlist, tracks: h.tracks }, isLoading: false }),
   // Run the real mutationFn so tests can assert on the request the page makes
   // (api is mocked below, so nothing leaves the process).
@@ -32,7 +32,12 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
-  api: { get: vi.fn(), post: vi.fn(), del: vi.fn(), patch: vi.fn(() => Promise.resolve({})) },
+  api: {
+    get: vi.fn(), del: vi.fn(),
+    post: vi.fn(() => Promise.resolve({})),
+    patch: vi.fn(() => Promise.resolve({})),
+  },
+  apiUpload: vi.fn(() => Promise.resolve({})),
 }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h.grabber }) }));
@@ -78,6 +83,7 @@ beforeEach(() => {
   // Artwork defaults to shown; individual tests flip the stored preference.
   localStorage.clear();
   vi.mocked(api.patch).mockClear();
+  vi.mocked(api.post).mockClear();
   h.tracks = [];
   h.playlist = counts();
   h.grabber = { enabled: false, spotify: { connected: false } };
@@ -455,6 +461,73 @@ describe("PlaylistDetail — duplicate detection", () => {
     ];
     render(<PlaylistDetail />);
     expect(screen.getByText(/the source owns this playlist's membership/)).toBeTruthy();
+  });
+});
+
+describe("PlaylistDetail — reorder", () => {
+  const local3 = () => {
+    h.playlist = counts({ source: "local", have_count: 3, track_count: 3 });
+    h.tracks = [have(0, { title: "A" }), have(1, { title: "B" }), have(2, { title: "C" })];
+  };
+
+  it("posts the whole new order when a row moves up", () => {
+    local3();
+    render(<PlaylistDetail />);
+    fireEvent.click(btn(/Move B up/));
+    // Ids come from have(n) → id n; B and A swap, C stays put.
+    expect(api.post).toHaveBeenCalledWith("/api/playlists/1/reorder", { order: [1, 0, 2] });
+  });
+
+  it("posts the whole new order when a row moves down", () => {
+    local3();
+    render(<PlaylistDetail />);
+    fireEvent.click(btn(/Move A down/));
+    expect(api.post).toHaveBeenCalledWith("/api/playlists/1/reorder", { order: [1, 0, 2] });
+  });
+
+  it("cannot move the first row up or the last row down", () => {
+    local3();
+    render(<PlaylistDetail />);
+    expect(btn(/Move A up/).disabled).toBe(true);
+    expect(btn(/Move C down/).disabled).toBe(true);
+    expect(btn(/Move B up/).disabled).toBe(false);
+  });
+
+  it("is offered only on a local playlist, to an admin", () => {
+    local3();
+    h.playlist = counts({ source: "spotify", have_count: 3, track_count: 3 });
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
+
+    cleanup();
+    local3();
+    h.role = "player";
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
+  });
+
+  it("withdraws while the view is sorted, searched, or duplicates-only", () => {
+    // Dropping a row into a projection of the playlist has no single meaning,
+    // and the endpoint wants the complete order — which a filtered view isn't.
+    local3();
+    const { container } = render(<PlaylistDetail />);
+    expect(container.querySelector(".player-queue-grip")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Sort tracks"), { target: { value: "title" } });
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Sort tracks"), { target: { value: "position" } });
+    expect(screen.queryByRole("button", { name: /Move B up/ })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Search this playlist"), { target: { value: "A" } });
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
+  });
+
+  it("withdraws on a status tab — those rows are a subset of the playlist", () => {
+    local3();
+    render(<PlaylistDetail />);
+    fireEvent.click(screen.getByRole("button", { name: "Have" }));
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
   });
 });
 
