@@ -290,6 +290,9 @@ export interface Playlist {
   spotify_id: string | null;
   navidrome_id: string | null;
   name: string;
+  // User-authored and never touched by sync, so both persist on synced mirrors.
+  description: string;
+  pinned: number;
   snapshot_id: string | null;
   enabled: number;
   image_url: string | null;

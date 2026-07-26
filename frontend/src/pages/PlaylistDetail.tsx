@@ -45,6 +45,69 @@ function fmtDur(ms: number | null | undefined): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+const PencilIcon = ({ size = 12 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
+
+/** Click-to-edit text field: a pencil beside the read-only rendering swaps in an
+ *  input with Enter-to-save / Escape-to-cancel plus explicit buttons (the pencil
+ *  alone isn't discoverable enough on touch). The draft is seeded when the editor
+ *  opens, so a background refetch can't yank half-typed text away. */
+function InlineEdit({ value, noun, maxLength, multiline, saving, onSave, children }: {
+  value: string;
+  noun: string;
+  maxLength: number;
+  multiline?: boolean;
+  saving?: boolean;
+  onSave: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (!editing) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        {children}
+        <button
+          className="btn btn-bare btn-sm"
+          style={{ padding: "2px 4px", color: "var(--muted)", flexShrink: 0 }}
+          aria-label={`Edit ${noun}`}
+          title={`Edit ${noun}`}
+          onClick={() => { setDraft(value); setEditing(true); }}
+        >
+          <PencilIcon />
+        </button>
+      </span>
+    );
+  }
+
+  const commit = () => { onSave(draft.trim()); setEditing(false); };
+  const Field = multiline ? "textarea" : "input";
+  return (
+    <span style={{ display: "inline-flex", alignItems: multiline ? "flex-start" : "center", gap: 6, flexWrap: "wrap" }}>
+      <Field
+        autoFocus
+        value={draft}
+        maxLength={maxLength}
+        aria-label={`Playlist ${noun}`}
+        rows={multiline ? 2 : undefined}
+        style={{ fontSize: 13, minWidth: 220, ...(multiline ? { resize: "vertical" as const } : {}) }}
+        onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft(e.target.value)}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          // Enter saves a single-line field; a textarea keeps Enter for newlines.
+          if (e.key === "Enter" && !multiline) { e.preventDefault(); commit(); }
+          if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
+        }}
+      />
+      <button className="btn btn-primary btn-sm" disabled={saving} onClick={commit}>Save</button>
+      <button className="btn btn-bare btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+    </span>
+  );
+}
+
 function syncedLabel(iso: string | null): string {
   if (!iso) return "never synced";
   const d = new Date(iso);
@@ -84,6 +147,13 @@ export default function PlaylistDetail() {
     mutationFn: (ptId: number) => api.del(`/api/playlists/${id}/tracks/${ptId}`),
     onSuccess: invalidate,
   });
+  // Rename / description. Also invalidates the Run page's source picker, which
+  // lists playlists by name.
+  const patchMeta = useMutation({
+    mutationFn: (body: { name?: string; description?: string }) =>
+      api.patch(`/api/playlists/${id}`, body),
+    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ["run-playlists"] }); },
+  });
 
   const pl = tracksQ.data?.playlist;
   useTitle(pl?.name || "Playlist");
@@ -107,6 +177,11 @@ export default function PlaylistDetail() {
   // playlist's missing tracks are grabbed by metadata via the shared enqueue helper.
   // Gated on the grabber being enabled; Spotify additionally needs a live connection.
   const canQueueMissing = !isLocal && grabberEnabled && (pl?.missing_count ?? 0) > 0;
+  // Rename is Local-only (sync owns a mirror's name); the description is ours on
+  // any source. Both are admin-only, like the rest of playlist management.
+  const canRename = role === "admin" && isLocal && !!pl;
+  const canEditDescription = role === "admin" && !!pl;
+  const description = pl?.description || "";
 
   const tabs = [
     { key: "", label: "All" },
@@ -189,8 +264,41 @@ export default function PlaylistDetail() {
         {pl?.image_url ? (
           <img src={pl.image_url} alt="" className="pl-cover" style={{ width: 72, height: 72 }} referrerPolicy="no-referrer" />
         ) : null}
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 8 }}>{pl?.name || "…"}</h1>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 8 }}>
+            {/* Renaming is Local-only — a synced playlist's name is rewritten by
+                its next sync, so the API refuses it and the control stays hidden. */}
+            {canRename ? (
+              <InlineEdit
+                value={pl!.name}
+                noun="name"
+                maxLength={200}
+                saving={patchMeta.isPending}
+                onSave={(name) => { if (name) patchMeta.mutate({ name }); }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{pl!.name}</span>
+              </InlineEdit>
+            ) : (pl?.name || "…")}
+          </h1>
+          {/* Description works on every source (sync never touches the column). */}
+          {(canEditDescription || description) && (
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, maxWidth: 620, whiteSpace: "pre-wrap" }}>
+              {canEditDescription ? (
+                <InlineEdit
+                  value={description}
+                  noun="description"
+                  maxLength={1000}
+                  multiline
+                  saving={patchMeta.isPending}
+                  onSave={(d) => patchMeta.mutate({ description: d })}
+                >
+                  <span style={description ? undefined : { fontStyle: "italic", opacity: 0.7 }}>
+                    {description || "Add a description"}
+                  </span>
+                </InlineEdit>
+              ) : description}
+            </div>
+          )}
           {pl && (
             <div className="pl-chips">
               <span className="chip chip--have">✓ {pl.have_count} have</span>

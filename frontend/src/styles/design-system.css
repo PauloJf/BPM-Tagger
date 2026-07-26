@@ -1025,6 +1025,9 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
   .pl-card-actions { width: 100%; justify-content: flex-start; }
 }
 .pl-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* Pinned marker on a card's name line — the pin *toggle* lives in the actions
+   cluster; this is just the at-a-glance indicator for why the card sorts first. */
+.pl-pinned { font-size: 11px; line-height: 1; flex-shrink: 0; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
   border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid;

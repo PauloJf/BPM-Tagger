@@ -69,6 +69,30 @@ class PlaylistsMixin:
             conn.execute(f"UPDATE playlists SET {', '.join(sets)} WHERE id = ?", vals)
             conn.commit()
 
+    def update_playlist_meta(self, playlist_id: int, *, name: Optional[str] = None,
+                             description: Optional[str] = None,
+                             pinned: Optional[bool] = None) -> None:
+        """Update the user-authored playlist fields, skipping the ones left None.
+
+        Only `name` is owned by a synced source (mark_playlist_synced /
+        update_playlist_sync overwrite it on every sync), so policing *which*
+        sources may be renamed is the API's job — this method just writes what
+        it's given. `description` and `pinned` are never touched by sync, so they
+        persist on Spotify and Navidrome mirrors too."""
+        sets, vals = [], []
+        if name is not None:
+            sets.append("name = ?"); vals.append(name)
+        if description is not None:
+            sets.append("description = ?"); vals.append(description)
+        if pinned is not None:
+            sets.append("pinned = ?"); vals.append(int(pinned))
+        if not sets:
+            return
+        vals.append(playlist_id)
+        with self._connect() as conn:
+            conn.execute(f"UPDATE playlists SET {', '.join(sets)} WHERE id = ?", vals)
+            conn.commit()
+
     def _attach_counts(self, conn, p: dict, queued: set, queued_pt: set) -> None:
         """Fold a playlist's live rows into coverage counts (have / missing / queued /
         new / removed / indexed) on the dict in place. Tombstones (removed_at set) are
@@ -101,8 +125,11 @@ class PlaylistsMixin:
 
     def list_playlists(self) -> list[dict]:
         with self._connect() as conn:
+            # Pinned first, then alphabetical — the "custom ordering" of the
+            # playlist list. Everything reading this inherits it, including the
+            # Run page's source picker (/api/run/playlists).
             playlists = [dict(r) for r in conn.execute(
-                "SELECT * FROM playlists ORDER BY name COLLATE NOCASE"
+                "SELECT * FROM playlists ORDER BY pinned DESC, name COLLATE NOCASE"
             ).fetchall()]
             queued = self._queued_sids(conn)
             queued_pt = self._queued_pt_ids(conn)

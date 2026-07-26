@@ -253,6 +253,8 @@ class _DBBase:
                 spotify_id     TEXT UNIQUE,
                 navidrome_id   TEXT UNIQUE,
                 name           TEXT,
+                description    TEXT DEFAULT '',   -- user-authored, any source (sync never touches it)
+                pinned         INTEGER DEFAULT 0, -- sorts first in listings
                 snapshot_id    TEXT,
                 enabled        INTEGER DEFAULT 1,
                 image_url      TEXT,
@@ -261,6 +263,14 @@ class _DBBase:
                 created_at     TEXT
             )
         """)
+        # Additive migration for DBs created before description/pinned. Both are
+        # user-authored and survive sync (which only rewrites name/image/count),
+        # so they're safe on mirrors of Spotify and Navidrome playlists too.
+        pl_cols = {row[1] for row in conn.execute("PRAGMA table_info(playlists)")}
+        for col, coldef in (("description", "TEXT DEFAULT ''"),
+                            ("pinned", "INTEGER DEFAULT 0")):
+            if col not in pl_cols:
+                conn.execute(f"ALTER TABLE playlists ADD COLUMN {col} {coldef}")
         # Membership state (is_new / removed_at) is independent of local availability
         # (match_status). No UNIQUE(playlist_id, position) — positions are rewritten on
         # every sync; the diff keys on source_track_id in Python instead.

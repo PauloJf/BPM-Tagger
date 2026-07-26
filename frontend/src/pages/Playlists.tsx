@@ -90,6 +90,12 @@ export default function Playlists() {
     mutationFn: (v: { id: number; enabled: boolean }) => api.patch(`/api/playlists/${v.id}`, { enabled: v.enabled }),
     onSuccess: invalidate,
   });
+  // Pinning is the playlist list's "custom ordering": the server sorts pinned
+  // first, then alphabetically, so this only has to refetch.
+  const pin = useMutation({
+    mutationFn: (v: { id: number; pinned: boolean }) => api.patch(`/api/playlists/${v.id}`, { pinned: v.pinned }),
+    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ["run-playlists"] }); },
+  });
   const sync = useMutation({
     mutationFn: (id: number) => api.post(`/api/playlists/${id}/sync`),
     onSuccess: invalidate,
@@ -233,15 +239,32 @@ export default function Playlists() {
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    {!!p.pinned && <span className="pl-pinned" title="Pinned to the top" aria-hidden="true">📌</span>}
                     <span style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {p.name}
                     </span>
                     <SourceBadge source={p.source} />
                   </div>
+                  {p.description && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.description}
+                    </div>
+                  )}
                   <Chips p={p} />
                 </div>
               </Link>
               <div className="pl-card-actions">
+                <button
+                  className="btn btn-bare btn-sm"
+                  style={{ padding: "2px 6px", opacity: p.pinned ? 1 : 0.45 }}
+                  aria-pressed={!!p.pinned}
+                  aria-label={p.pinned ? `Unpin "${p.name}"` : `Pin "${p.name}"`}
+                  title={p.pinned ? "Unpin — sort with the rest" : "Pin to the top of the list"}
+                  disabled={pin.isPending}
+                  onClick={() => pin.mutate({ id: p.id, pinned: !p.pinned })}
+                >
+                  📌
+                </button>
                 {p.source === "spotify" && (
                   <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
                 )}

@@ -141,14 +141,44 @@ def navidrome_my_playlists():
 @playlists_bp.route("/api/playlists/<int:pid>", methods=["PATCH"])
 @login_required
 def patch_playlist(pid):
+    """Update a playlist's user-editable fields. Any subset of enabled / name /
+    description / pinned.
+
+    Renaming is Local-only: a synced source rewrites `name` on every sync, so a
+    renamed mirror would silently revert — better to refuse than to lie. The
+    description and pinned flag are never touched by sync, so they're editable on
+    any source."""
     _check_csrf()
     db = state().db
-    if not db.get_playlist(pid):
+    pl = db.get_playlist(pid)
+    if not pl:
         return jsonify(error="not_found"), 404
     data = request.get_json(force=True, silent=True) or {}
+
+    meta = {}
+    if "name" in data:
+        if pl.get("source") != "local":
+            return jsonify(error="Only local playlists can be renamed — a synced "
+                                 "playlist takes its name from its source."), 400
+        name = str(data["name"] or "").strip()
+        if not name:
+            return jsonify(error="A playlist name is required."), 400
+        if len(name) > 200:
+            return jsonify(error="That name is too long (200 characters max)."), 400
+        meta["name"] = name
+    if "description" in data:
+        description = str(data["description"] or "").strip()
+        if len(description) > 1000:
+            return jsonify(error="That description is too long (1000 characters max)."), 400
+        meta["description"] = description
+    if "pinned" in data:
+        meta["pinned"] = bool(data["pinned"])
+
     if "enabled" in data:
         db.set_playlist_enabled(pid, bool(data["enabled"]))
-    return jsonify(ok=True, playlist=db.get_playlist(pid))
+    if meta:
+        db.update_playlist_meta(pid, **meta)
+    return jsonify(ok=True, playlist=db.get_playlist(pid, with_counts=True))
 
 
 @playlists_bp.route("/api/playlists/<int:pid>", methods=["DELETE"])

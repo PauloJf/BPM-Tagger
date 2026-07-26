@@ -23,10 +23,17 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: () => {} }),
   useQuery: () => ({ data: { playlist: h.playlist, tracks: h.tracks }, isLoading: false }),
-  useMutation: () => ({ mutate: () => {}, isPending: false }),
+  // Run the real mutationFn so tests can assert on the request the page makes
+  // (api is mocked below, so nothing leaves the process).
+  useMutation: (opts: { mutationFn: (v: unknown) => unknown }) => ({
+    mutate: (v: unknown) => opts.mutationFn(v),
+    isPending: false,
+  }),
 }));
 
-vi.mock("../lib/api", () => ({ api: { get: vi.fn(), post: vi.fn(), del: vi.fn() } }));
+vi.mock("../lib/api", () => ({
+  api: { get: vi.fn(), post: vi.fn(), del: vi.fn(), patch: vi.fn(() => Promise.resolve({})) },
+}));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h.grabber }) }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
@@ -42,6 +49,7 @@ vi.mock("../lib/player", () => ({
 
 // Import after the mocks are registered.
 import PlaylistDetail from "./PlaylistDetail";
+import { api } from "../lib/api";
 
 function t(over: Partial<PlaylistTrack>): PlaylistTrack {
   return {
@@ -60,13 +68,14 @@ const have = (n: number, over: Partial<PlaylistTrack> = {}) =>
 const counts = (over: Record<string, unknown> = {}) => ({
   id: 1, name: "PL", source: "spotify", have_count: 1, missing_count: 0,
   queued_count: 0, removed_count: 0, track_count: 1, last_synced_at: null,
-  image_url: null, ...over,
+  image_url: null, description: "", pinned: 0, ...over,
 });
 
 const btn = (name: RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
 
 beforeEach(() => {
   cleanup();
+  vi.mocked(api.patch).mockClear();
   h.tracks = [];
   h.playlist = counts();
   h.grabber = { enabled: false, spotify: { connected: false } };
@@ -165,6 +174,69 @@ describe("PlaylistDetail — playback actions", () => {
     render(<PlaylistDetail />);
     expect(btn(/^Play$/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Play \(/ })).toBeNull();
+  });
+});
+
+describe("PlaylistDetail — rename and description", () => {
+  it("renames a local playlist through PATCH", () => {
+    h.playlist = counts({ source: "local", name: "Old" });
+    render(<PlaylistDetail />);
+
+    fireEvent.click(btn(/Edit name/));
+    const input = screen.getByLabelText("Playlist name") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "  Long Run  " } });
+    fireEvent.click(btn(/^Save$/));
+
+    // Trimmed client-side too, so the optimistic header text matches the server's.
+    expect(api.patch).toHaveBeenCalledWith("/api/playlists/1", { name: "Long Run" });
+  });
+
+  it("saves a rename on Enter and abandons it on Escape", () => {
+    h.playlist = counts({ source: "local", name: "Old" });
+    render(<PlaylistDetail />);
+
+    fireEvent.click(btn(/Edit name/));
+    fireEvent.keyDown(screen.getByLabelText("Playlist name"), { key: "Escape" });
+    expect(screen.queryByLabelText("Playlist name")).toBeNull();
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.click(btn(/Edit name/));
+    fireEvent.change(screen.getByLabelText("Playlist name"), { target: { value: "Via Enter" } });
+    fireEvent.keyDown(screen.getByLabelText("Playlist name"), { key: "Enter" });
+    expect(api.patch).toHaveBeenCalledWith("/api/playlists/1", { name: "Via Enter" });
+  });
+
+  it("never offers rename on a synced playlist — sync would overwrite it", () => {
+    h.playlist = counts({ source: "spotify", name: "From Spotify" });
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Edit name/ })).toBeNull();
+  });
+
+  it("hides both editors from a player", () => {
+    h.role = "player";
+    h.playlist = counts({ source: "local", name: "Mix" });
+    render(<PlaylistDetail />);
+    expect(screen.queryByRole("button", { name: /Edit name/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Edit description/ })).toBeNull();
+  });
+
+  it("edits the description on a synced playlist — sync never touches it", () => {
+    h.playlist = counts({ source: "spotify", description: "" });
+    render(<PlaylistDetail />);
+
+    fireEvent.click(btn(/Edit description/));
+    fireEvent.change(screen.getByLabelText("Playlist description"), { target: { value: "Tempo work" } });
+    fireEvent.click(btn(/^Save$/));
+
+    expect(api.patch).toHaveBeenCalledWith("/api/playlists/1", { description: "Tempo work" });
+  });
+
+  it("shows an existing description to a player, without an editor", () => {
+    h.role = "player";
+    h.playlist = counts({ description: "Threshold intervals" });
+    render(<PlaylistDetail />);
+    expect(screen.getByText("Threshold intervals")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Edit description/ })).toBeNull();
   });
 });
 
