@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.11.0 — 2026-07-26
+
+**Playlists grow up, and your library learns to answer "what can I run at 165?"**
+
+### Cadence-ready views
+
+- **New `/cadence` page** — every library track you could run at a target cadence, listed closest-first with its `native → folded ×rate` math. It uses the *exact* eligibility rule the run queue uses (octave fold + your **Max stretch** limit), so what it promises and what a run actually queues can't drift apart. **▶ Play** / **⇄ Shuffle** / **+ Add to queue** them at native speed, **save the whole view to a playlist**, or **Open in Run** to run *to* that cadence with the tempo lock engaged.
+- **A cadence strip on the Playlists page** — one card per run preset with a live count of how much of your library is runnable at it, linking into the matching cadence view.
+- **Per-preset badges on every playlist card** — a quiet `155:11 · 165:8` line showing how much of *that* playlist is runnable at each preset. Clicking one starts a run at that cadence with the playlist preselected as the source. Presets with nothing runnable are omitted, so the line never appears empty.
+- **`/run?bpm=` deep link** — the Run page accepts a target in the URL and adopts it, then strips the parameter so a later slider move survives a refresh.
+- Two new endpoints behind it: `GET /api/run/ready?bpm=` and `GET /api/run/readiness`. Both are outside the player allowlist (which is default-deny), so they're admin/guest only — players already have the Run page.
+
+### Playlist artwork
+
+- **Cover art in playlist rows** — the embedded art of your own file for tracks you have, the source's own image for ones you don't, and a ♪ placeholder otherwise so the column stays aligned. Follows the global **artwork toggle**, now available in the playlist header: switch it off and the layout is exactly as it was.
+- **Local playlists get covers.** Pick one from the built-in Spotify/Deezer image search, paste a URL, or upload a file. With none set, the server builds an automatic **2×2 collage** from the playlist's own tracks — first four distinct embedded covers in playlist order, deduped by album so one album can't fill the grid, degrading to a single cover when there are fewer than four (or when Pillow isn't present, as on the slim image).
+- Custom covers are **Local-only** and never touch `image_url`: that column stays the synced sources' CDN URL, so a Spotify or Navidrome mirror keeps its own art and a sync can't clobber a cover you chose.
+
+### Playlist management
+
+- **Rename, describe and pin.** Any playlist can take a **description** and be **pinned** to the top of the Playlists page and the Run source picker — sync never touches either column, so both stick to Spotify and Navidrome mirrors. **Renaming is Local-only**: a synced playlist takes its name from its source and would silently revert on the next sync, so the API refuses it rather than lying.
+- **Reorder a local playlist** — drag rows by their grip, or use the per-row **↑ / ↓** buttons on touch. The new order saves atomically (one endpoint takes the complete order, so a client that missed a concurrent change is rejected rather than dropping rows) and is what **▶ Play** follows. Offered only on the plain, unsorted, unfiltered view — reordering a projection of a playlist has no single meaning.
+- **Sort and search inside a playlist** — by playlist order, title, artist, BPM or length (unanalyzed tracks last), plus a search box over title/artist/album across both the source's metadata and your library's. Playback follows exactly what's on screen, extending the contract the status tabs already had.
+- **Duplicate detection** — rows pointing at the same library file, or sharing an ISRC, are flagged with a count, a ⧉ chip and a **duplicates-only** view. On a Local playlist the row's ✕ is the fix; on a synced one it's informational, since the source owns membership.
+- **Save a run as a playlist** — the Run page's queue panel gains a **Save…** action that writes the queue you just ran, in its exact order, into a local playlist you pick or create inline. `POST /api/playlists/<id>/tracks` now accepts `{paths: [...]}` alongside the existing `{path: "..."}` (whose response is unchanged), capped at 500 per request.
+
 ## v2.10.0 — 2026-07-26
 
 ### Breaking
