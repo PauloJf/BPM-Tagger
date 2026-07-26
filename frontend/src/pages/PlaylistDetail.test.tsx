@@ -314,6 +314,150 @@ describe("PlaylistDetail — local playlist cover", () => {
   });
 });
 
+describe("PlaylistDetail — sort and search", () => {
+  const rowTitles = (c: HTMLElement) =>
+    Array.from(c.querySelectorAll("[data-testid='pl-title']")).map((e) => e.textContent || "");
+
+  const sortBy = (key: string) =>
+    fireEvent.change(screen.getByLabelText("Sort tracks"), { target: { value: key } });
+
+  const typeSearch = (q: string) =>
+    fireEvent.change(screen.getByLabelText("Search this playlist"), { target: { value: q } });
+
+  it("sorts by BPM with unanalyzed tracks last, and plays the visible order", () => {
+    h.tracks = [
+      have(1, { title: "Fast", local_bpm: 175 }),
+      have(2, { title: "Unknown", local_bpm: null }),
+      have(3, { title: "Slow", local_bpm: 120 }),
+    ];
+    const { container } = render(<PlaylistDetail />);
+    sortBy("bpm");
+
+    expect(rowTitles(container).filter((t) => /Fast|Slow|Unknown/.test(t)))
+      .toEqual(["Slow", "Fast", "Unknown"]);
+    // Playback follows what's on screen — the existing tab contract, extended.
+    fireEvent.click(btn(/^Play/));
+    expect(h.played[0].tracks.map((t) => (t as { title: string }).title))
+      .toEqual(["Slow", "Fast", "Unknown"]);
+  });
+
+  it("sorts by title and by artist", () => {
+    h.tracks = [
+      have(1, { title: "Beta", local_artist: "Zed" }),
+      have(2, { title: "Alpha", local_artist: "Ann" }),
+    ];
+    const { container } = render(<PlaylistDetail />);
+
+    sortBy("title");
+    expect(rowTitles(container).filter((t) => /Alpha|Beta/.test(t))).toEqual(["Alpha", "Beta"]);
+    sortBy("artist");
+    expect(rowTitles(container).filter((t) => /Alpha|Beta/.test(t))).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("keeps the server's playlist order by default", () => {
+    h.tracks = [have(1, { title: "Zed" }), have(2, { title: "Ann" })];
+    const { container } = render(<PlaylistDetail />);
+    expect(rowTitles(container).filter((t) => /Zed|Ann/.test(t))).toEqual(["Zed", "Ann"]);
+  });
+
+  it("narrows rows by search, and the play count follows", () => {
+    h.tracks = [
+      have(1, { title: "Runaway", local_artist: "Kanye" }),
+      have(2, { title: "Sunrise", local_artist: "Norah" }),
+      have(3, { title: "Other", local_artist: "Someone" }),
+    ];
+    const { container } = render(<PlaylistDetail />);
+    typeSearch("run");
+
+    expect(container.querySelectorAll(".pl-track-row")).toHaveLength(1);
+    fireEvent.click(btn(/^Play/));
+    expect(h.played[0].tracks).toHaveLength(1);
+  });
+
+  it("searches the source metadata too, not just the library's", () => {
+    h.tracks = [t({ id: 9, title: "Ghost", artist: "SourceOnly",
+                    derived_status: "missing", match_status: "missing" })];
+    const { container } = render(<PlaylistDetail />);
+    typeSearch("sourceonly");
+    expect(container.querySelectorAll(".pl-track-row")).toHaveLength(1);
+  });
+
+  it("says the search hid everything, rather than claiming the playlist is empty", () => {
+    h.tracks = [have(1, { title: "Runaway" })];
+    render(<PlaylistDetail />);
+    typeSearch("zzzz");
+    expect(screen.getByText(/No tracks match your search/)).toBeTruthy();
+  });
+});
+
+describe("PlaylistDetail — duplicate detection", () => {
+  it("flags two rows pointing at the same library file", () => {
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/dup.mp3" }),
+      have(2, { title: "A again", matched_file_path: "/music/dup.mp3" }),
+      have(3, { title: "B", matched_file_path: "/music/other.mp3" }),
+    ];
+    const { container } = render(<PlaylistDetail />);
+
+    expect(screen.getByText(/⧉ 1 duplicate in this playlist/)).toBeTruthy();
+    expect(container.querySelectorAll(".chip")).toBeTruthy();
+    expect(screen.getAllByTitle(/same track/)).toHaveLength(2);   // one chip per clustered row
+  });
+
+  it("flags two rows sharing an ISRC", () => {
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/1.mp3", isrc: "US1234567890" }),
+      have(2, { title: "A alt", matched_file_path: "/music/2.mp3", isrc: "US1234567890" }),
+    ];
+    render(<PlaylistDetail />);
+    expect(screen.getByText(/⧉ 1 duplicate in this playlist/)).toBeTruthy();
+  });
+
+  it("toggles a duplicates-only view", () => {
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/dup.mp3" }),
+      have(2, { title: "A again", matched_file_path: "/music/dup.mp3" }),
+      have(3, { title: "B", matched_file_path: "/music/other.mp3" }),
+    ];
+    const { container } = render(<PlaylistDetail />);
+    expect(container.querySelectorAll(".pl-track-row")).toHaveLength(3);
+
+    fireEvent.click(btn(/Show duplicates only/));
+    expect(container.querySelectorAll(".pl-track-row")).toHaveLength(2);
+    fireEvent.click(btn(/Show all tracks/));
+    expect(container.querySelectorAll(".pl-track-row")).toHaveLength(3);
+  });
+
+  it("does not treat two empty ISRCs as a duplicate", () => {
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/1.mp3", isrc: null }),
+      have(2, { title: "B", matched_file_path: "/music/2.mp3", isrc: "" }),
+    ];
+    render(<PlaylistDetail />);
+    expect(screen.queryByText(/duplicate/)).toBeNull();
+  });
+
+  it("ignores tombstoned rows — a removed row isn't membership", () => {
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/dup.mp3" }),
+      t({ id: 2, position: 1, title: "A (gone)", matched_file_path: "/music/dup.mp3",
+          derived_status: "removed", removed_at: "2026-01-01" }),
+    ];
+    render(<PlaylistDetail />);
+    expect(screen.queryByText(/duplicate/)).toBeNull();
+  });
+
+  it("tells a synced playlist that its source owns membership", () => {
+    h.playlist = counts({ source: "spotify" });
+    h.tracks = [
+      have(1, { title: "A", matched_file_path: "/music/dup.mp3" }),
+      have(2, { title: "A again", matched_file_path: "/music/dup.mp3" }),
+    ];
+    render(<PlaylistDetail />);
+    expect(screen.getByText(/the source owns this playlist's membership/)).toBeTruthy();
+  });
+});
+
 describe("PlaylistDetail — the grabber action is named for what it does", () => {
   it('reads "Download missing", not "Enqueue missing"', () => {
     // Two unrelated meanings of "queue" would otherwise sit on one page: audio
