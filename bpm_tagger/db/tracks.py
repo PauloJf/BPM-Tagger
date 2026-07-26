@@ -179,6 +179,10 @@ class TracksMixin:
                 "no_isrc": "(isrc IS NULL OR isrc = '')",
                 "starred": "starred = 1",
                 "disliked": "disliked = 1",
+                "unplaylisted": (
+                    "NOT EXISTS (SELECT 1 FROM playlist_tracks pt "
+                    "WHERE pt.matched_file_path = tracks.file_path "
+                    "AND pt.removed_at IS NULL)"),
             }.get(filter, "")
             if fc:
                 clauses.append(fc)
@@ -677,7 +681,11 @@ class TracksMixin:
                     COUNT(CASE WHEN locked=1         THEN 1 END) AS locked,
                     COUNT(CASE WHEN (isrc IS NULL OR isrc='') AND status!='deleted' THEN 1 END) AS missing_isrc,
                     COUNT(CASE WHEN starred=1 AND status!='deleted' THEN 1 END) AS starred,
-                    COUNT(CASE WHEN disliked=1 AND status!='deleted' THEN 1 END) AS disliked
+                    COUNT(CASE WHEN disliked=1 AND status!='deleted' THEN 1 END) AS disliked,
+                    COUNT(CASE WHEN status!='deleted' AND NOT EXISTS (
+                        SELECT 1 FROM playlist_tracks pt
+                        WHERE pt.matched_file_path = tracks.file_path
+                        AND pt.removed_at IS NULL) THEN 1 END) AS unplaylisted
                 FROM tracks
             """).fetchone()
             return dict(row)

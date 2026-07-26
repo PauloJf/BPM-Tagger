@@ -1171,7 +1171,11 @@ body.has-player .container.container--run { padding-bottom: 24px; }
 .player-bar-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.player-bar-title { color: var(--text); text-decoration: none; display: block; }
 a.player-bar-title:hover { color: var(--accent-2); }
-.player-bar-artist { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* display:block so an inline <a>/<span> artist clips with an ellipsis inside the
+   fixed-width meta box — without it, a long artist string escapes the box and
+   overlaps the BPM readout and controls. Flex variants (offline/buffering) set
+   their own display via inline style and stay short. */
+.player-bar-artist { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-bar-time { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .player-bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; cursor: pointer; overflow: hidden; }
 .player-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 3px; }
@@ -1225,13 +1229,22 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-lyrics-line:hover { background: var(--row-hover); }
 .player-lyrics-line.current { color: var(--text); background: var(--accent-soft); font-weight: 550; }
 .player-lyrics-empty { padding: 8px; font-size: 12px; color: var(--muted); text-align: center; }
-/* Lyrics text-size stepper (S/M/L) */
-.lyrics-font-stepper { display: inline-flex; gap: 0; }
-.lyrics-font-stepper .btn { font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 0; }
-.lyrics-font-stepper .btn.active { color: var(--accent-2); }
+/* Shared drawer text-size stepper (S/M/L/XL) — queue + lyrics */
+.drawer-font-stepper { display: inline-flex; gap: 0; }
+.drawer-font-stepper .btn { font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 0; }
+.drawer-font-stepper .btn.active { color: var(--accent-2); }
 .player-lyrics-body.lyrics-font-s .player-lyrics-line { font-size: 11px; line-height: 1.55; }
 .player-lyrics-body.lyrics-font-m .player-lyrics-line { font-size: 13px; line-height: 1.65; }
 .player-lyrics-body.lyrics-font-l .player-lyrics-line { font-size: 16px; line-height: 1.75; }
+.player-lyrics-body.lyrics-font-xl .player-lyrics-line { font-size: 20px; line-height: 1.85; }
+/* Queue text-size (m = the pre-existing 12px default, so nothing changes until
+   the user picks another step). Row padding grows a touch at the larger sizes. */
+.player-queue-list.queue-font-s .player-queue-title { font-size: 11px; }
+.player-queue-list.queue-font-m .player-queue-title { font-size: 12px; }
+.player-queue-list.queue-font-l .player-queue-title { font-size: 14px; }
+.player-queue-list.queue-font-xl .player-queue-title { font-size: 17px; }
+.player-queue-list.queue-font-l .player-queue-row,
+.player-queue-list.queue-font-xl .player-queue-row { padding-top: 6px; padding-bottom: 6px; }
 
 /* ── Resizable / maximizable drawers (queue + lyrics) ────────────────────────
    Both drawers are anchored bottom-right above the player bar, so the grab

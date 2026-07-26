@@ -7,6 +7,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
+import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 
 function StatusChip({ s }: { s: string }) {
   if (s === "have") return <span className="chip chip--have">✓ have</span>;
@@ -102,6 +103,16 @@ export default function PlaylistDetail() {
             {enqueue.isPending ? "Enqueuing…" : `Enqueue missing (${pl?.missing_count})`}
           </button>
         )}
+        {role === "admin" && (pl?.have_count ?? 0) > 0 && (
+          <AddToPlaylistMenu
+            importFrom={Number(id)}
+            heading="Copy have-tracks to…"
+            label="Add all to playlist…"
+            title="Copy this playlist's library tracks into a local playlist"
+            className="btn btn-soft btn-sm"
+            iconSize={13}
+          />
+        )}
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
         )}
@@ -194,19 +205,31 @@ export default function PlaylistDetail() {
                       {dur}
                     </span>
                   ) : null}
-                  {isLocal && (
-                    <button
-                      className="btn btn-bare btn-sm"
-                      style={{ padding: "2px 4px", color: "var(--muted)" }}
-                      disabled={removeTrack.isPending}
-                      aria-label={`Remove ${label}`}
-                      title="Remove from playlist"
-                      onClick={() => { if (confirm(`Remove “${label}” from this playlist?`)) removeTrack.mutate(t.id); }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6 L6 18 M6 6 l12 12" />
-                      </svg>
-                    </button>
+                  {role === "admin" && (inLib || isLocal) && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      {inLib && (
+                        <AddToPlaylistMenu
+                          path={t.matched_file_path!}
+                          className="btn btn-bare btn-sm"
+                          style={{ padding: "2px 4px", color: "var(--muted)" }}
+                          iconSize={13}
+                        />
+                      )}
+                      {isLocal && (
+                        <button
+                          className="btn btn-bare btn-sm"
+                          style={{ padding: "2px 4px", color: "var(--muted)" }}
+                          disabled={removeTrack.isPending}
+                          aria-label={`Remove ${label}`}
+                          title="Remove from playlist"
+                          onClick={() => { if (confirm(`Remove “${label}” from this playlist?`)) removeTrack.mutate(t.id); }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6 L6 18 M6 6 l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

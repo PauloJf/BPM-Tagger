@@ -859,7 +859,8 @@ def api_tracks():
                    deleted_count=stats.get("deleted", 0),
                    no_isrc_count=stats.get("missing_isrc", 0),
                    starred_count=stats.get("starred", 0),
-                   disliked_count=stats.get("disliked", 0))
+                   disliked_count=stats.get("disliked", 0),
+                   unplaylisted_count=stats.get("unplaylisted", 0))
 
 
 @tracks_bp.route("/api/tracks/paths")

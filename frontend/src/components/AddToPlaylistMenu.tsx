@@ -4,20 +4,31 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { Playlist } from "../lib/types";
 
-/** Trigger + popover for adding a library track to a Local playlist.
+/** Trigger + popover for adding tracks to a Local playlist.
  *
- *  The menu lists the user's Local playlists and offers an inline "New playlist…"
- *  create. Adding a track posts to /api/playlists/<id>/tracks (which sets the row
- *  to 'have' directly). Playlist *management* is admin-only, so callers must not
- *  render this in the player role — the backend 403s it regardless.
+ *  Two modes, same UI (a list of the user's Local playlists + an inline
+ *  "New playlist…" create):
+ *   - default (`path`): add one library track — posts to
+ *     /api/playlists/<id>/tracks (sets the row to 'have' directly).
+ *   - bulk (`importFrom`): copy every library-backed track from another playlist —
+ *     posts to /api/playlists/<id>/import; the toast reports added / already-there /
+ *     not-in-library counts. The source playlist is filtered out of the target list
+ *     so it can't be imported into itself.
+ *
+ *  Playlist *management* is admin-only, so callers must not render this in the
+ *  player role — the backend 403s it regardless.
  *
  *  The popover is portaled to <body> and fixed-positioned from the trigger's rect
  *  so it never clips inside a table row or a `<Link>`, and it clamps to the
  *  viewport so it stays on-screen on narrow phones. */
 export default function AddToPlaylistMenu({
-  path, className, style, title = "Add to playlist", iconSize = 12,
+  path, importFrom, heading = "Add to playlist", label,
+  className, style, title = "Add to playlist", iconSize = 12,
 }: {
-  path: string;
+  path?: string;
+  importFrom?: number;
+  heading?: string;
+  label?: string;      // when set, the trigger shows this text beside the icon
   className?: string;
   style?: React.CSSProperties;
   title?: string;
@@ -37,7 +48,8 @@ export default function AddToPlaylistMenu({
     enabled: open,
     staleTime: 10_000,
   });
-  const locals = (playlistsQ.data?.playlists ?? []).filter((p) => p.source === "local");
+  const locals = (playlistsQ.data?.playlists ?? [])
+    .filter((p) => p.source === "local" && p.id !== importFrom);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["playlists"] });
@@ -45,24 +57,35 @@ export default function AddToPlaylistMenu({
     qc.invalidateQueries({ queryKey: ["playlist-tracks"] });
   };
 
+  // Apply the pick to one (existing or freshly-created) local playlist, returning
+  // the status message. Single-track add vs. bulk import diverge only here.
+  async function pick(id: number, name: string): Promise<{ ok: boolean; text: string }> {
+    if (importFrom != null) {
+      const res = await api.post<{ counts: { added: number; already_present: number; skipped_missing: number } }>(
+        `/api/playlists/${id}/import`, { from_playlist_id: importFrom });
+      const c = res.counts;
+      const parts = [`Added ${c.added}`];
+      if (c.already_present) parts.push(`${c.already_present} already there`);
+      if (c.skipped_missing) parts.push(`${c.skipped_missing} not in library`);
+      return { ok: true, text: `${name}: ${parts.join(" · ")}` };
+    }
+    const res = await api.post<{ added: boolean }>(`/api/playlists/${id}/tracks`, { path });
+    return { ok: true, text: res.added ? `Added to ${name}` : `Already in ${name}` };
+  }
+
   const addTo = useMutation({
-    mutationFn: (id: number) => api.post<{ added: boolean }>(`/api/playlists/${id}/tracks`, { path }),
-    onSuccess: (res, id) => {
-      const name = locals.find((p) => p.id === id)?.name ?? "playlist";
-      setStatus({ ok: true, text: res.added ? `Added to ${name}` : `Already in ${name}` });
-      invalidate();
-    },
+    mutationFn: (id: number) => pick(id, locals.find((p) => p.id === id)?.name ?? "playlist"),
+    onSuccess: (res) => { setStatus(res); invalidate(); },
     onError: (e) => setStatus({ ok: false, text: e instanceof ApiError ? e.message : "Failed to add" }),
   });
 
   const createAndAdd = useMutation({
     mutationFn: async (name: string) => {
       const r = await api.post<{ playlist: Playlist }>("/api/playlists", { source: "local", name });
-      await api.post(`/api/playlists/${r.playlist.id}/tracks`, { path });
-      return r.playlist;
+      return pick(r.playlist.id, r.playlist.name);
     },
-    onSuccess: (pl) => {
-      setStatus({ ok: true, text: `Added to ${pl.name}` });
+    onSuccess: (res) => {
+      setStatus(res);
       setCreating(false);
       setNewName("");
       invalidate();
@@ -116,7 +139,7 @@ export default function AddToPlaylistMenu({
         }}
       >
         <div style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", padding: "4px 8px" }}>
-          Add to playlist
+          {heading}
         </div>
 
         {playlistsQ.isLoading ? (
@@ -196,10 +219,11 @@ export default function AddToPlaylistMenu({
         title={title}
         onClick={toggle}
       >
-        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={label ? { marginRight: 5 } : undefined}>
           <path d="M3 6h11M3 12h8M3 18h8" />
           <path d="M18 9v9M13.5 13.5h9" />
         </svg>
+        {label}
       </button>
       {menu}
     </>

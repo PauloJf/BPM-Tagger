@@ -120,6 +120,7 @@ export interface TracksPage {
   no_isrc_count: number;
   starred_count: number;
   disliked_count: number;
+  unplaylisted_count: number;
 }
 
 export interface AudioQuality {

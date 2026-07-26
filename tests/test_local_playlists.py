@@ -280,3 +280,161 @@ def test_player_cannot_manage_local_playlists(base_config):
                        headers=csrf).status_code == 403
     assert client.post("/api/playlists/1/tracks", json={"path": "/x"},
                        headers=csrf).status_code == 403
+    assert client.post("/api/playlists/1/import", json={"from_playlist_id": 2},
+                       headers=csrf).status_code == 403
+
+
+# ── bulk import (copy a playlist's library tracks into a Local playlist) ───────
+
+def _src_spotify(db, tracks):
+    """Build a Spotify-source playlist with the given [(sid, title, match_status,
+    matched_file_path)] rows via the normal sync path."""
+    db.add_playlist("SRC", "Source")
+    sid = db.get_playlist_by_spotify_id("SRC")["id"]
+    db.sync_playlist_tracks(sid, [
+        {"source_track_id": s, "title": t, "match_status": ms, "matched_file_path": mp}
+        for (s, t, ms, mp) in tracks])
+    return sid
+
+
+def test_import_copies_only_have_rows(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    b = _seed_track(db, "/music/b.mp3", "B")
+    src = _src_spotify(db, [
+        ("t1", "A", "have", a),        # library-backed → copied
+        ("t2", "Ghost", "missing", None),  # no file → skipped
+        ("t3", "B", "have", b),        # library-backed → copied
+    ])
+    dest = db.add_local_playlist("Dest")
+
+    counts = db.import_playlist_tracks(dest, src)
+    assert counts == {"added": 2, "already_present": 0, "skipped_missing": 1}
+    assert set(_rows(db, dest)) == {"A", "B"}
+    # Copied rows are directly 'have' and carry the library file path.
+    row = _rows(db, dest)["A"]
+    assert row["derived_status"] == "have" and row["matched_file_path"] == a
+    assert db.get_playlist(dest)["track_count"] == 2
+
+
+def test_import_is_idempotent(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    src = _src_spotify(db, [("t1", "A", "have", a)])
+    dest = db.add_local_playlist("Dest")
+
+    assert db.import_playlist_tracks(dest, src)["added"] == 1
+    # Re-import: nothing new, the one row is already present.
+    assert db.import_playlist_tracks(dest, src) == {
+        "added": 0, "already_present": 1, "skipped_missing": 0}
+    assert len(db.get_playlist_track_rows(dest)) == 1
+
+
+def test_import_skips_row_matched_to_deleted_track(db):
+    gone = _seed_track(db, "/music/gone.mp3", "Gone", status="deleted")
+    src = _src_spotify(db, [("t1", "Gone", "have", gone)])
+    dest = db.add_local_playlist("Dest")
+    # match_status says 'have', but the library track is deleted → nothing to add.
+    assert db.import_playlist_tracks(dest, src) == {
+        "added": 0, "already_present": 0, "skipped_missing": 1}
+
+
+def test_import_ignores_tombstoned_source_rows(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    src = _src_spotify(db, [("t1", "A", "have", a)])
+    db.sync_playlist_tracks(src, [])          # t1 now absent → tombstoned
+    dest = db.add_local_playlist("Dest")
+    assert db.import_playlist_tracks(dest, src)["added"] == 0
+
+
+def test_import_local_into_local_merges(db):
+    a = _seed_track(db, "/music/a.mp3", "A")
+    b = _seed_track(db, "/music/b.mp3", "B")
+    src = db.add_local_playlist("Src")
+    db.add_track_to_local_playlist(src, a)
+    db.add_track_to_local_playlist(src, b)
+    dest = db.add_local_playlist("Dest")
+    db.add_track_to_local_playlist(dest, a)   # already has A
+
+    assert db.import_playlist_tracks(dest, src) == {
+        "added": 1, "already_present": 1, "skipped_missing": 0}
+    assert set(_rows(db, dest)) == {"A", "B"}
+
+
+def test_api_import_rejects_non_local_dest(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    from bpm_tagger.web.state import state
+    with app.app_context():
+        src = state().db.add_local_playlist("Src")
+        dest = state().db.add_playlist("SPX", "Spotify PL")  # non-local dest
+    r = client.post(f"/api/playlists/{dest}/import",
+                    json={"from_playlist_id": src}, headers=csrf)
+    assert r.status_code == 400
+
+
+def test_api_import_rejects_self(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+    r = client.post(f"/api/playlists/{pid}/import",
+                    json={"from_playlist_id": pid}, headers=csrf)
+    assert r.status_code == 400
+
+
+def test_api_import_missing_source(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    pid = client.post("/api/playlists", json={"source": "local", "name": "Mix"},
+                      headers=csrf).get_json()["playlist"]["id"]
+    r = client.post(f"/api/playlists/{pid}/import",
+                    json={"from_playlist_id": 9999}, headers=csrf)
+    assert r.status_code == 404
+
+
+def test_api_import_returns_counts(base_config):
+    app = _app(base_config)
+    client = app.test_client()
+    _, csrf = _login(client, "s3cret")
+    path = _seed_api_track(base_config)
+    from bpm_tagger.web.state import state
+    with app.app_context():
+        db = state().db
+        src = _src_spotify(db, [("t1", "song", "have", path),
+                                ("t2", "Ghost", "missing", None)])
+    dest = client.post("/api/playlists", json={"source": "local", "name": "Dest"},
+                       headers=csrf).get_json()["playlist"]["id"]
+    r = client.post(f"/api/playlists/{dest}/import",
+                    json={"from_playlist_id": src}, headers=csrf)
+    assert r.status_code == 200
+    assert r.get_json()["counts"] == {
+        "added": 1, "already_present": 0, "skipped_missing": 1}
+
+
+# ── library "not in a playlist" filter + stats count ──────────────────────────
+
+def test_unplaylisted_filter_and_count(db):
+    a = _seed_track(db, "/music/a.mp3", "A")   # will be in a Local playlist
+    b = _seed_track(db, "/music/b.mp3", "B")   # matched by a remote playlist
+    _seed_track(db, "/music/c.mp3", "C")       # in nothing → unplaylisted
+    _seed_track(db, "/music/x.mp3", "X", status="deleted")  # excluded (deleted)
+
+    local = db.add_local_playlist("PL")
+    db.add_track_to_local_playlist(local, a)
+    _src_spotify(db, [("t1", "B", "have", b)])
+
+    titles = {r["title"] for r in db.get_tracks_page("", 50, 0, filter="unplaylisted")[0]}
+    assert titles == {"C"}
+    assert db.get_stats()["unplaylisted"] == 1
+
+
+def test_unplaylisted_ignores_tombstoned_coverage(db):
+    d = _seed_track(db, "/music/d.mp3", "D")
+    src = _src_spotify(db, [("t1", "D", "have", d)])
+    db.sync_playlist_tracks(src, [])           # D's coverage row is tombstoned
+    # A tombstone is not live coverage → D counts as unplaylisted again.
+    titles = {r["title"] for r in db.get_tracks_page("", 50, 0, filter="unplaylisted")[0]}
+    assert "D" in titles
+    assert db.get_stats()["unplaylisted"] == 1

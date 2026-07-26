@@ -69,6 +69,36 @@ class PlaylistsMixin:
             conn.execute(f"UPDATE playlists SET {', '.join(sets)} WHERE id = ?", vals)
             conn.commit()
 
+    def _attach_counts(self, conn, p: dict, queued: set, queued_pt: set) -> None:
+        """Fold a playlist's live rows into coverage counts (have / missing / queued /
+        new / removed / indexed) on the dict in place. Tombstones (removed_at set) are
+        out of the coverage totals. `queued` / `queued_pt` are the in-flight-grab sets,
+        computed once by the caller so a bulk listing needn't recompute them per row."""
+        rows = conn.execute(
+            "SELECT id, spotify_track_id, match_status, is_new, removed_at "
+            "FROM playlist_tracks WHERE playlist_id = ?",
+            (p["id"],),
+        ).fetchall()
+        have = miss = q = new = removed = 0
+        for r in rows:
+            if r["removed_at"]:            # tombstone: out of coverage totals
+                removed += 1
+                continue
+            if r["is_new"]:
+                new += 1
+            if r["spotify_track_id"] in queued or r["id"] in queued_pt:
+                q += 1
+            elif r["match_status"] == "have":
+                have += 1
+            else:
+                miss += 1
+        p["have_count"] = have
+        p["missing_count"] = miss
+        p["queued_count"] = q
+        p["new_count"] = new
+        p["removed_count"] = removed
+        p["indexed_count"] = have + miss + q   # live tracks only
+
     def list_playlists(self) -> list[dict]:
         with self._connect() as conn:
             playlists = [dict(r) for r in conn.execute(
@@ -77,36 +107,21 @@ class PlaylistsMixin:
             queued = self._queued_sids(conn)
             queued_pt = self._queued_pt_ids(conn)
             for p in playlists:
-                rows = conn.execute(
-                    "SELECT id, spotify_track_id, match_status, is_new, removed_at "
-                    "FROM playlist_tracks WHERE playlist_id = ?",
-                    (p["id"],),
-                ).fetchall()
-                have = miss = q = new = removed = 0
-                for r in rows:
-                    if r["removed_at"]:            # tombstone: out of coverage totals
-                        removed += 1
-                        continue
-                    if r["is_new"]:
-                        new += 1
-                    if r["spotify_track_id"] in queued or r["id"] in queued_pt:
-                        q += 1
-                    elif r["match_status"] == "have":
-                        have += 1
-                    else:
-                        miss += 1
-                p["have_count"] = have
-                p["missing_count"] = miss
-                p["queued_count"] = q
-                p["new_count"] = new
-                p["removed_count"] = removed
-                p["indexed_count"] = have + miss + q   # live tracks only
+                self._attach_counts(conn, p, queued, queued_pt)
         return playlists
 
-    def get_playlist(self, playlist_id: int) -> Optional[dict]:
+    def get_playlist(self, playlist_id: int, with_counts: bool = False) -> Optional[dict]:
+        """One playlist row. With `with_counts`, also fold in the same coverage counts
+        list_playlists() attaches — the detail view needs them for its chips, tab
+        list, and the have-tracks-dependent header actions (Export / Add-all)."""
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
-        return dict(row) if row else None
+            if row is None:
+                return None
+            p = dict(row)
+            if with_counts:
+                self._attach_counts(conn, p, self._queued_sids(conn), self._queued_pt_ids(conn))
+        return p
 
     def get_playlist_by_spotify_id(self, spotify_id: str) -> Optional[dict]:
         with self._connect() as conn:
@@ -295,6 +310,64 @@ class PlaylistsMixin:
                 self._refresh_local_track_count(conn, playlist_id)
             conn.commit()
             return inserted
+
+    def import_playlist_tracks(self, dest_id: int, src_id: int) -> dict:
+        """Copy every library-backed ('have') track from one playlist into a Local
+        playlist, skipping duplicates. Any source (Spotify / Navidrome / Local) may
+        be the origin; only rows whose matched_file_path resolves to a live library
+        track can be copied — a Local playlist row *is* a library file, so a source
+        row that's merely 'missing'/'queued' has no file to add and is reported under
+        skipped_missing rather than inserted.
+
+        Runs in one transaction (unlike looping add_track_to_local_playlist, which
+        opens a connection per call). Returns
+        {added, already_present, skipped_missing}. The dest track_count is refreshed
+        once at the end."""
+        now = datetime.now(timezone.utc).isoformat()
+        added = already = skipped = 0
+        with self._connect() as conn:
+            src_rows = conn.execute(
+                "SELECT * FROM playlist_tracks WHERE playlist_id = ? AND removed_at IS NULL "
+                "ORDER BY position", (src_id,)).fetchall()
+            position = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS n FROM playlist_tracks "
+                "WHERE playlist_id = ?", (dest_id,)).fetchone()["n"]
+            for r in src_rows:
+                path = r["matched_file_path"]
+                if r["match_status"] != "have" or not path:
+                    skipped += 1
+                    continue
+                t = conn.execute(
+                    "SELECT * FROM tracks WHERE file_path = ? AND status != 'deleted'",
+                    (path,)).fetchone()
+                if t is None:
+                    skipped += 1
+                    continue
+                # Same idempotent INSERT the single add uses: source_track_id = the
+                # library file_path, so re-importing (or a track already added by hand)
+                # inserts nothing and counts as already_present.
+                cur = conn.execute("""
+                    INSERT INTO playlist_tracks
+                        (playlist_id, source_track_id, spotify_track_id, position, title, artist,
+                         album, album_artist, duration_ms, isrc, track_no, disc_no, year, cover_url,
+                         added_at, norm_title, norm_artist, match_status, matched_file_path,
+                         first_seen_at, is_new, removed_at)
+                    SELECT ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, 'have', ?, ?, 0, NULL
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM playlist_tracks WHERE playlist_id = ? AND source_track_id = ?)
+                """, (dest_id, path, position, t["title"], t["artist"], t["album"],
+                      t["album_artist"], t["duration_ms"], t["isrc"], t["track_no"], t["disc_no"],
+                      t["year"], now, t["norm_title"], t["norm_artist"], path, now,
+                      dest_id, path))
+                if cur.rowcount > 0:
+                    added += 1
+                    position += 1
+                else:
+                    already += 1
+            if added:
+                self._refresh_local_track_count(conn, dest_id)
+            conn.commit()
+        return {"added": added, "already_present": already, "skipped_missing": skipped}
 
     def remove_playlist_track(self, pt_id: int) -> None:
         """Hard-delete one playlist_tracks row (Local playlists: removal is an explicit

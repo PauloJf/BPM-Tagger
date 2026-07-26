@@ -163,8 +163,7 @@ def delete_playlist(pid):
 @login_required
 def playlist_tracks(pid):
     db = state().db
-    pl = db.get_playlist(pid)
-    if not pl:
+    if not db.get_playlist(pid):
         return jsonify(error="not_found"), 404
     status = request.args.get("status", "")
     if status not in ("", "have", "missing", "queued", "removed"):
@@ -173,7 +172,10 @@ def playlist_tracks(pid):
     if not status:
         # Full detail view acknowledges the "new" badges.
         db.mark_playlist_seen(pid)
-    return jsonify(playlist=pl, tracks=tracks)
+    # Enrich with coverage counts here (get_playlist alone omits them) so the detail
+    # page's chips, tab list, and have-dependent header actions render. Read after
+    # mark_playlist_seen so new_count reflects the just-cleared badges.
+    return jsonify(playlist=db.get_playlist(pid, with_counts=True), tracks=tracks)
 
 
 @playlists_bp.route("/api/playlists/<int:pid>/tracks", methods=["POST"])
@@ -199,6 +201,33 @@ def add_local_track(pid):
     except ValueError:
         return jsonify(error="track_not_found"), 404
     return jsonify(ok=True, added=added, playlist=db.get_playlist(pid))
+
+
+@playlists_bp.route("/api/playlists/<int:pid>/import", methods=["POST"])
+@login_required
+def import_into_local(pid):
+    """Bulk-copy every library-backed track from another playlist into this Local
+    playlist, skipping duplicates. The source may be any playlist (Spotify /
+    Navidrome / Local); the destination must be Local. Admin-only (not in
+    _PLAYER_ALLOWED). Returns per-track counts for the client toast."""
+    _check_csrf()
+    db = state().db
+    dest = db.get_playlist(pid)
+    if not dest:
+        return jsonify(error="not_found"), 404
+    if dest.get("source") != "local":
+        return jsonify(error="Only local playlists can be imported into."), 400
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        src_id = int(data.get("from_playlist_id"))
+    except (TypeError, ValueError):
+        return jsonify(error="A source playlist id is required."), 400
+    if src_id == pid:
+        return jsonify(error="Can't import a playlist into itself."), 400
+    if not db.get_playlist(src_id):
+        return jsonify(error="source_not_found"), 404
+    counts = db.import_playlist_tracks(pid, src_id)
+    return jsonify(ok=True, counts=counts, playlist=db.get_playlist(pid))
 
 
 @playlists_bp.route("/api/playlists/<int:pid>/tracks/<int:pt_id>", methods=["DELETE"])

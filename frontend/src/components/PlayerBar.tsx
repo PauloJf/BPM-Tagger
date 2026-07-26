@@ -10,7 +10,7 @@ import { BpmDisplay } from "./BpmDisplay";
 import { LyricsPanel } from "./LyricsPanel";
 import QueueSimilar from "./QueueSimilar";
 import { Cover } from "./Artwork";
-import { MaximizeButton, ResizeHandle } from "./DrawerControls";
+import { FontStepper, MaximizeButton, ResizeHandle, useDrawerFont } from "./DrawerControls";
 import { useResizableDrawer } from "../hooks/useResizableDrawer";
 
 export default function PlayerBar() {
@@ -24,6 +24,7 @@ export default function PlayerBar() {
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
   const queueDrawer = useResizableDrawer({ key: "bpm-queue-size" });
+  const [queueFont, setQueueFont] = useDrawerFont("bpm-queue-font");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
@@ -77,13 +78,14 @@ export default function PlayerBar() {
           {!queueDrawer.small && <ResizeHandle onPointerDown={queueDrawer.startResize} />}
           <div className="player-queue-head">
             <span>Queue · {orderedQueue.length}</span>
-            <span style={{ display: "flex", gap: 4 }}>
+            <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              <FontStepper font={queueFont} onChange={setQueueFont} label="Queue text size" />
               <MaximizeButton maximized={queueDrawer.maximized} onToggle={queueDrawer.toggleMaximized} />
               <button className="btn btn-bare btn-sm" onClick={() => { stop(); setQueueOpen(false); }} title="Clear the queue">Clear</button>
               <button className="btn btn-bare btn-sm" onClick={() => setQueueOpen(false)} aria-label="Close queue">✕</button>
             </span>
           </div>
-          <div className="player-queue-list">
+          <div className={"player-queue-list queue-font-" + queueFont}>
             {orderedQueue.map((t, i) => (
               <div
                 key={`${t.path}-${i}`}

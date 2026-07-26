@@ -292,6 +292,9 @@ class _DBBase:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_playlist ON playlist_tracks(playlist_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_sid ON playlist_tracks(spotify_track_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_src ON playlist_tracks(playlist_id, source_track_id)")
+        # Backs the library "not in a playlist" filter + stats count, which probe
+        # playlist_tracks by matched_file_path for every track row.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_matched ON playlist_tracks(matched_file_path)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS grab_queue (
                 id                 INTEGER PRIMARY KEY AUTOINCREMENT,

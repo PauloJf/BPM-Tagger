@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.8.0 — 2026-07-23
+
+- **Player queue drawer gets a text-size stepper, and both drawers gain an XL size.** The queue drawer now has the same **S / M / L** text-size stepper the lyrics drawer had — and both drawers get a new, larger **XL** step (so the S/M/L/XL scale is shared). Your choice is remembered per browser, per drawer.
+- **Long artist/album names no longer break the player bar.** A track credited to many artists (e.g. an orchestra + soloists) overflowed the fixed-width title/artist area and overlapped the BPM readout and controls, because the artist line — rendered as a link — wasn't clipping. It now truncates with an ellipsis inside its box, keeping the rest of the bar aligned (the full name is still on the artist link's tooltip and its artist page).
+- **Copy a whole playlist into a local one.** Any playlist's detail page — Spotify, Navidrome, or another Local — now has an **"Add all to playlist…"** action that copies every library-backed (**have**) track into a local playlist you pick or create inline. Duplicates are skipped and tracks you don't own yet have no file to copy, so the result is reported as *added / already there / not in library*; queue the missing ones separately with **Enqueue missing** when the grabber is on. Runs in one pass and is safe to repeat (re-copying adds nothing).
+- **Add a single track to a playlist straight from any playlist page.** The **"Add to playlist"** button that library and track pages already had now appears on each **have** row of a playlist's detail page too, so you can cherry-pick one track into a local playlist without leaving the page.
+- **"No playlist" library filter.** A new filter pill (with a live count) in the Library shows every track that isn't in *any* playlist — Spotify, Navidrome, or Local — making orphaned tracks easy to find and file. Removed (tombstoned) playlist rows don't count as coverage, and the filter also feeds **Play all** / **Shuffle**.
+- **Playlist detail chips fixed.** A playlist detail page's header now shows its **have / missing / queued / removed** counts (and the **Export .m3u** button and change-tab list that depend on them) — the detail endpoint had been omitting those counts, leaving the chips blank.
+
 ## v2.7.4 — 2026-07-22
 
 - **Player queue & lyrics drawers can be maximized and resized.** The queue and lyrics popovers above the player bar were a fixed size. Each now has a **maximize** button in its header that expands it to a near-fullscreen panel (the player bar stays put; **Esc** or the button restores), and a **drag handle** on the top-left corner to size it exactly how you like — your chosen size is remembered per browser. On phones the drag handle steps aside and maximize becomes a full-width bottom sheet. Both stay correct in light and dark themes.
