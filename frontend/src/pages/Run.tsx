@@ -345,7 +345,12 @@ export default function Run() {
   const stretchLimitPct = cfg?.run_stretch_limit_pct == null ? 15 : Number(cfg.run_stretch_limit_pct);
   const queueSize = cfg?.run_queue_size == null ? 20 : Number(cfg.run_queue_size);
 
+  // ?bpm= (the Cadence page's "Open in Run" deep link) wins over the remembered
+  // target for this arrival; the param is stripped straight afterwards so a
+  // refresh — or a later slider move followed by one — isn't clobbered by it.
   const [target, setTargetState] = useState(() => {
+    const deepLink = Number(new URLSearchParams(window.location.search).get("bpm"));
+    if (deepLink >= 30 && deepLink <= 300) return clampTarget(deepLink);
     const saved = Number(localStorage.getItem(TARGET_KEY));
     return saved >= 30 && saved <= 300 ? saved : 155;
   });
@@ -491,6 +496,17 @@ export default function Run() {
     // Same reasoning for the desktop Cover/Tap toggle: drop back to the cover.
     if ((running || playerMode) && desktopTapOpen) setDesktopTapOpen(false);
   }, [running, playerMode, mode, desktopTapOpen]);
+
+  // Consume the ?bpm= deep link: persist it as the remembered target (the
+  // initializer only seeded state) and drop the param from the URL.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("bpm")) return;
+    const n = Number(url.searchParams.get("bpm"));
+    if (n >= 30 && n <= 300) localStorage.setItem(TARGET_KEY, String(clampTarget(n)));
+    url.searchParams.delete("bpm");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, []);
 
   /** Change the target; a live tempo lock follows immediately (playbackRate is
    *  cheap to move), the queue itself only changes on the next Start. */
@@ -761,7 +777,7 @@ export default function Run() {
         TARGET BPM
       </div>
       <div style={{ position: "relative", display: "inline-block" }}>
-        <div style={{ fontFamily: "var(--mono)", fontSize: "min(88px, 12dvh)", fontWeight: 700, letterSpacing: "-0.05em", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
+        <div data-testid="run-target" style={{ fontFamily: "var(--mono)", fontSize: "min(88px, 12dvh)", fontWeight: 700, letterSpacing: "-0.05em", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
           {Math.round(target)}
         </div>
         {/* Mobile: the primary build control flanks the target number as a round

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { NavidromePlaylist, Playlist, PlaylistSource, SpotifyPlaylist } from "../lib/types";
@@ -33,6 +33,53 @@ function Chips({ p }: { p: Playlist }) {
   );
 }
 
+/** Per-preset runnable counts for the library and each playlist. One fetch
+ *  serves both the cadence strip and the per-card badges. */
+interface Readiness {
+  presets: Array<{ name: string; bpm: number }>;
+  stretch_limit_pct: number;
+  library: Record<string, number>;
+  playlists: Array<{ id: number; name: string; counts: Record<string, number> }>;
+}
+
+const RUN_SOURCE_KEY = "bpm.run.source";
+
+/** Quiet per-preset counts under a card's coverage chips: how much of this
+ *  playlist you could actually run at each cadence. Clicking one preselects the
+ *  playlist as the Run source (the Run page reads it from localStorage) and
+ *  deep-links the target. Renders nothing when no preset has a match, so the
+ *  card doesn't grow an empty row.
+ *
+ *  Buttons, not links: the whole card body is already an <a> to the playlist,
+ *  and an <a> inside an <a> is invalid HTML that browsers un-nest — so these
+ *  navigate programmatically instead. */
+function ReadinessBadges({ counts, presets, stretchPct, playlistId, name, onPick }: {
+  counts: Record<string, number>;
+  presets: Array<{ name: string; bpm: number }>;
+  stretchPct: number;
+  playlistId: number;
+  name: string;
+  onPick: (playlistId: number, bpm: number) => void;
+}) {
+  const hits = presets.filter((p) => (counts[String(p.bpm)] ?? 0) > 0);
+  if (hits.length === 0) return null;
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 5 }}>
+      {hits.map((p) => (
+        <button
+          key={p.bpm}
+          type="button"
+          className="pl-ready-badge"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPick(playlistId, p.bpm); }}
+          title={`${counts[String(p.bpm)]} tracks in “${name}” runnable at ${p.name} (${p.bpm} BPM) within ±${stretchPct.toFixed(1)}% — run this playlist at that cadence`}
+        >
+          {p.bpm}:{counts[String(p.bpm)]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type AddBody =
   | { url: string }
   | { id: string }
@@ -42,6 +89,7 @@ type AddBody =
 export default function Playlists() {
   useTitle("Playlists");
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const status = useGrabberStatus();
   const [url, setUrl] = useState("");
   const [localName, setLocalName] = useState("");
@@ -53,6 +101,17 @@ export default function Playlists() {
     queryFn: () => api.get<{ playlists: Playlist[] }>("/api/playlists"),
     refetchInterval: 10_000,
   });
+
+  // Cadence readiness — one fetch feeding both the strip above the grid and the
+  // per-card badges. Failure is silent: these are extras, not the page.
+  const readinessQ = useQuery({
+    queryKey: ["run-readiness"],
+    queryFn: () => api.get<Readiness>("/api/run/readiness"),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const readiness = readinessQ.data;
+  const readinessById = new Map((readiness?.playlists ?? []).map((p) => [p.id, p.counts]));
 
   const spotifyConnected = status.data?.spotify?.connected === true;
 
@@ -112,6 +171,13 @@ export default function Playlists() {
     navidromeQ.error.message === "navidrome_not_configured";
 
   const canSync = (p: Playlist) => p.source === "navidrome" || (p.source === "spotify" && spotifyConnected);
+
+  /** Run this playlist at that cadence: the Run page reads its source from
+   *  localStorage, so set it before navigating with the target deep-linked. */
+  const runPlaylistAt = (playlistId: number, bpm: number) => {
+    localStorage.setItem(RUN_SOURCE_KEY, `pl:${playlistId}`);
+    navigate(`/run?bpm=${bpm}`);
+  };
 
   return (
     <>
@@ -224,6 +290,22 @@ export default function Playlists() {
         )}
       </div>
 
+      {/* Cadence strip: one card per run preset with the library-wide runnable
+          count. Absent (not a placeholder) while loading, so the grid below
+          doesn't jump. */}
+      {readiness && (
+        <div className="cadence-strip">
+          {readiness.presets.map((p) => (
+            <Link key={p.bpm} to={`/cadence?bpm=${p.bpm}`} className="cadence-card"
+              title={`${readiness.library[String(p.bpm)] ?? 0} library tracks runnable at ${p.name} (${p.bpm} BPM) within ±${readiness.stretch_limit_pct.toFixed(1)}%`}>
+              <span className="cadence-card-name">{p.name}</span>
+              <span className="cadence-card-bpm">{p.bpm}</span>
+              <span className="cadence-card-count">{readiness.library[String(p.bpm)] ?? 0} ready</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
       <div className="pl-list">
         {playlists.length === 0 ? (
           <div className="tracks-row-empty" style={{ borderRadius: 14, border: "1px solid var(--border)" }}>
@@ -257,6 +339,16 @@ export default function Playlists() {
                     </div>
                   )}
                   <Chips p={p} />
+                  {readiness && readinessById.has(p.id) && (
+                    <ReadinessBadges
+                      counts={readinessById.get(p.id)!}
+                      presets={readiness.presets}
+                      stretchPct={readiness.stretch_limit_pct}
+                      playlistId={p.id}
+                      name={p.name}
+                      onPick={runPlaylistAt}
+                    />
+                  )}
                 </div>
               </Link>
               <div className="pl-card-actions">

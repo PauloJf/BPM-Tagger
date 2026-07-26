@@ -590,3 +590,31 @@ describe("Run — saving the queue as a playlist", () => {
     expect(screen.queryByTestId("save-queue")).toBeNull();
   });
 });
+
+describe("Run — ?bpm= deep link from the Cadence page", () => {
+  const withSearch = (search: string) => {
+    window.history.replaceState(null, "", `/run${search}`);
+  };
+
+  it("adopts the target from the URL over the remembered one", () => {
+    localStorage.setItem(TARGET_KEY, "120");
+    withSearch("?bpm=175");
+    render(<Run />);
+    expect(screen.getByTestId("run-target").textContent).toBe("175");
+  });
+
+  it("strips the param and persists the target, so a refresh keeps it", () => {
+    localStorage.setItem(TARGET_KEY, "120");
+    withSearch("?bpm=175");
+    render(<Run />);
+    expect(window.location.search).toBe("");
+    expect(localStorage.getItem(TARGET_KEY)).toBe("175");
+  });
+
+  it("ignores an out-of-range param and keeps the remembered target", () => {
+    localStorage.setItem(TARGET_KEY, "120");
+    withSearch("?bpm=9999");
+    render(<Run />);
+    expect(screen.getByTestId("run-target").textContent).toBe("120");
+  });
+});

@@ -992,6 +992,22 @@ a.lead-name:hover { color: var(--accent-2); }
 .login-footer { margin-top: 18px; font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.02em; text-align: center; }
 
 /* ── Playlists (grabber) ──────────────────────────────────────────────────── */
+/* Cadence strip above the playlist grid: one card per run preset with the
+   library-wide runnable count, linking into the /cadence view for that target. */
+.cadence-strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin-bottom: 18px;
+}
+.cadence-card {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  text-decoration: none; color: inherit; transition: border-color 0.15s, background 0.12s;
+}
+.cadence-card:hover { border-color: var(--border-strong); background: var(--row-hover); }
+.cadence-card-name { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.cadence-card-bpm { font-family: var(--mono); font-size: 20px; font-weight: 600; line-height: 1.1; }
+.cadence-card-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 .pl-list { display: flex; flex-direction: column; gap: 12px; }
 .pl-card {
   display: flex; align-items: center; gap: 14px;
@@ -1028,6 +1044,14 @@ a.pl-card:hover { border-color: var(--border-strong); background: var(--row-hove
 /* Pinned marker on a card's name line — the pin *toggle* lives in the actions
    cluster; this is just the at-a-glance indicator for why the card sorts first. */
 .pl-pinned { font-size: 11px; line-height: 1; flex-shrink: 0; }
+/* Per-preset runnable counts on a playlist card. Deliberately quiet — the
+   coverage chips above them stay the card's primary information. */
+.pl-ready-badge {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.pl-ready-badge:hover { color: var(--accent-2); }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
   border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid;

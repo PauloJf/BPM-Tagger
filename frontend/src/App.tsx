@@ -21,6 +21,7 @@ import Search from "./pages/Search";
 import Suggestions from "./pages/Suggestions";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
+import Cadence from "./pages/Cadence";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
@@ -121,6 +122,10 @@ export default function App() {
         <Route path="/suggestions" element={<Suggestions />} />
         <Route path="/review" element={<Review />} />
         <Route path="/run" element={<Run />} />
+        {/* Cadence is admin-side only: it lives outside the player Routes block
+            above (which bounces everything to /run), matching the default-deny
+            allowlist that blocks its endpoints server-side. */}
+        <Route path="/cadence" element={<Cadence />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/about" element={<About />} />

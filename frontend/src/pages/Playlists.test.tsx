@@ -7,19 +7,25 @@ import type { Playlist } from "../lib/types";
 const h = vi.hoisted(() => ({
   playlists: [] as unknown[],
   grabber: { enabled: false, spotify: { connected: false } } as Record<string, unknown>,
+  readiness: undefined as unknown,
+  navigated: [] as string[],
 }));
 
 vi.mock("react-router-dom", () => ({
   Link: ({ to, children, ...rest }: { to: unknown; children?: unknown }) =>
     <a href={typeof to === "string" ? to : "#"} {...rest}>{children as never}</a>,
+  useNavigate: () => (to: string) => { h.navigated.push(to); },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: () => {} }),
-  useQuery: ({ queryKey }: { queryKey: unknown[] }) =>
-    queryKey[0] === "playlists"
-      ? { data: { playlists: h.playlists }, isLoading: false, isError: false }
-      : { data: undefined, isLoading: false, isError: false },
+  useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === "playlists")
+      return { data: { playlists: h.playlists }, isLoading: false, isError: false };
+    if (queryKey[0] === "run-readiness")
+      return { data: h.readiness, isLoading: false, isError: false };
+    return { data: undefined, isLoading: false, isError: false };
+  },
   useMutation: (opts: { mutationFn: (v: unknown) => unknown }) => ({
     mutate: (v: unknown) => opts.mutationFn(v),
     isPending: false,
@@ -49,10 +55,20 @@ function pl(over: Partial<Playlist> = {}): Playlist {
 
 beforeEach(() => {
   cleanup();
+  localStorage.clear();
   vi.mocked(api.patch).mockClear();
   h.playlists = [];
   h.grabber = { enabled: false, spotify: { connected: false } };
+  h.readiness = undefined;
+  h.navigated = [];
 });
+
+const READINESS = {
+  presets: [{ name: "Easy", bpm: 155 }, { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
+  stretch_limit_pct: 15,
+  library: { "155": 78, "165": 34, "175": 0 },
+  playlists: [{ id: 7, name: "Long Runs", counts: { "155": 11, "165": 8, "175": 0 } }],
+};
 
 describe("Playlists — pinning", () => {
   it("pins an unpinned playlist through PATCH", () => {
@@ -115,5 +131,62 @@ describe("Playlists — card artwork", () => {
     h.playlists = [pl({ id: 4, source: "spotify", image_url: "https://i.scdn.co/image/pl" })];
     const { container } = render(<Playlists />);
     expect(srcs(container)).toEqual(["https://i.scdn.co/image/pl"]);
+  });
+});
+
+describe("Playlists — cadence strip", () => {
+  it("renders one card per preset with the library-wide count", () => {
+    h.readiness = READINESS;
+    const { container } = render(<Playlists />);
+
+    const cards = Array.from(container.querySelectorAll(".cadence-card"));
+    expect(cards).toHaveLength(3);
+    expect(cards[0].textContent).toContain("Easy");
+    expect(cards[0].textContent).toContain("155");
+    expect(cards[0].textContent).toContain("78 ready");
+    expect(cards[0].getAttribute("href")).toBe("/cadence?bpm=155");
+  });
+
+  it("renders nothing at all while readiness is loading — no layout jump", () => {
+    const { container } = render(<Playlists />);
+    expect(container.querySelector(".cadence-strip")).toBeNull();
+  });
+});
+
+describe("Playlists — per-preset readiness badges", () => {
+  it("shows a badge per preset the playlist has tracks for, and skips the zeroes", () => {
+    h.readiness = READINESS;
+    h.playlists = [pl({ id: 7, name: "Long Runs" })];
+    render(<Playlists />);
+
+    expect(screen.getByText("155:11")).toBeTruthy();
+    expect(screen.getByText("165:8")).toBeTruthy();
+    expect(screen.queryByText(/^175:/)).toBeNull();   // zero-count preset omitted
+  });
+
+  it("preselects the playlist as the run source and deep-links the target", () => {
+    h.readiness = READINESS;
+    h.playlists = [pl({ id: 7, name: "Long Runs" })];
+    render(<Playlists />);
+
+    fireEvent.click(screen.getByText("155:11"));
+    expect(localStorage.getItem("bpm.run.source")).toBe("pl:7");
+    expect(h.navigated).toEqual(["/run?bpm=155"]);
+  });
+
+  it("uses buttons, not links — the whole card is already an anchor", () => {
+    // An <a> inside an <a> is invalid HTML; browsers un-nest it and the inner
+    // link stops behaving like one.
+    h.readiness = READINESS;
+    h.playlists = [pl({ id: 7, name: "Long Runs" })];
+    render(<Playlists />);
+    expect(screen.getByText("155:11").tagName).toBe("BUTTON");
+  });
+
+  it("renders no badge row for a playlist with nothing runnable", () => {
+    h.readiness = { ...READINESS, playlists: [{ id: 7, name: "Long Runs", counts: { "155": 0, "165": 0, "175": 0 } }] };
+    h.playlists = [pl({ id: 7, name: "Long Runs" })];
+    render(<Playlists />);
+    expect(screen.queryByText(/^155:/)).toBeNull();
   });
 });
