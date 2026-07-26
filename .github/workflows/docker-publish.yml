@@ -54,18 +54,12 @@ jobs:
 
       # --- Docker Hub overview: synced from DOCKERHUB_README.md every publish. ---
 
-      # Docker Hub caps the overview at 25,000 bytes. Guard it as its own hard
-      # step so an oversize file still fails the run even when the sync below is
-      # best-effort.
-      - name: Check Docker Hub overview size (25KB cap)
-        run: |
-          bytes=$(wc -c < DOCKERHUB_README.md)
-          echo "DOCKERHUB_README.md is ${bytes} bytes (cap 25000)"
-          if [ "${bytes}" -gt 25000 ]; then
-            echo "::error::DOCKERHUB_README.md exceeds Docker Hub's 25,000-byte overview cap"
-            exit 1
-          fi
-
+      # The 25,000-byte overview cap is enforced in ci.yml (the "Docs (Docker Hub
+      # overview size)" job) rather than here, so an oversize file is caught on the
+      # push that introduces it instead of at publish time. This job always checks
+      # out `ref: main` above, and ci.yml gates every push to main, so the file
+      # reaching the sync below has already been size-checked.
+      #
       # The overview sync hits the Docker Hub *web API* (PATCH the repo), which is
       # a different auth surface than the image push above: the image-push token
       # can succeed while this 403s ("Forbidden") because updating the description

@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  # Docker Hub caps a repository's overview at 25,000 bytes, and the publish
+  # workflow syncs DOCKERHUB_README.md into it verbatim. Checked here, on every
+  # push and PR, rather than at publish time: the file grows with every release
+  # (CLAUDE.md requires updating it for user-facing changes), and finding out at
+  # publish is finding out too late. Its own job so it fails in seconds instead
+  # of behind the test suites, and needs no Python/Node toolchain.
+  #
+  # NOTE: this measures the file as checked out on Linux, i.e. LF line endings.
+  # A CRLF working copy reads ~1 byte per line larger, so a local `wc -c` on
+  # Windows overstates the size — compare against `git show :DOCKERHUB_README.md`.
+  docs:
+    name: Docs (Docker Hub overview size)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Docker Hub overview size (25KB cap)
+        run: |
+          bytes=$(wc -c < DOCKERHUB_README.md)
+          echo "DOCKERHUB_README.md is ${bytes} bytes (cap 25000)"
+          if [ "${bytes}" -gt 25000 ]; then
+            echo "::error::DOCKERHUB_README.md exceeds Docker Hub's 25,000-byte overview cap"
+            exit 1
+          fi
+
   backend:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
