@@ -505,6 +505,28 @@ def api_settings_run_password():
     return jsonify(ok=True, enabled=True)
 
 
+@settings_bp.route("/api/settings/listen-mode", methods=["POST"])
+@login_required
+def api_settings_listen_mode():
+    """Admin-only: what the kiosk (player role) gets besides Run mode.
+
+    off = Run-only kiosk (the original behaviour); on = a Listen tab appears
+    next to Run; default = Listen is also the kiosk's landing page; only = pure
+    jukebox, Listen replaces Run. Admin/guest sessions always have Listen —
+    this governs player-role sessions only. Takes effect on the kiosk's next
+    /api/me refresh (usually its next page load), no restart needed."""
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    mode = str(_json_body().get("player_listen_mode", "") or "").strip().lower()
+    if mode not in ("off", "on", "default", "only"):
+        return jsonify(ok=False, error="Mode must be off, on, default or only."), 400
+    st.config["player_listen_mode"] = mode
+    save_settings(st.settings_path, {"player_listen_mode": mode})
+    return jsonify(ok=True, player_listen_mode=mode)
+
+
 @settings_bp.route("/api/settings/run-session", methods=["POST"])
 @login_required
 def api_settings_run_session():

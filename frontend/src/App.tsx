@@ -21,6 +21,7 @@ import Search from "./pages/Search";
 import Suggestions from "./pages/Suggestions";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
+import Listen from "./pages/Listen";
 import Cadence from "./pages/Cadence";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -28,43 +29,56 @@ import About from "./pages/About";
 import PlayerAbout from "./pages/PlayerAbout";
 
 function Layout({ children }: { children: React.ReactNode }) {
-  // Run mode has its own full-screen transport — the global bar would duplicate
-  // it and steal vertical space on phones.
-  const runPage = useLocation().pathname === "/run";
+  // Run and Listen carry their own full-screen transport — the global bar
+  // would duplicate it and steal vertical space on phones.
+  const pathname = useLocation().pathname;
+  const runPage = pathname === "/run";
+  const ownTransport = runPage || pathname === "/listen";
   return (
     <>
       <Nav />
       <div className="app-main">
         <div className={"container page-enter" + (runPage ? " container--run" : "")}>{children}</div>
       </div>
-      {!runPage && <PlayerBar />}
+      {!ownTransport && <PlayerBar />}
       <InstallPingCard />
       <WhatsNew />
     </>
   );
 }
 
-// Locked-down shell for the run-only ("player") role: only the Run page and a
-// player-specific About are routable — the backend independently refuses any
-// endpoint those two pages don't need. A slim PlayerNav (Run + About) fills the
-// sidebar slot on desktop; below 1100px each page renders its own compact top
-// bar. The global player bar stays off (Run has its own transport).
+// Locked-down shell for the run-only ("player") role: only the kiosk pages are
+// routable — the backend independently refuses any endpoint those pages don't
+// need. Which pages, and where the kiosk lands, is the admin's listen-mode
+// setting (from /api/me):
+//   off     → Run + About (the original kiosk)
+//   on      → + Listen, landing stays /run
+//   default → + Listen, landing is /listen
+//   only    → Listen + About, /run itself redirects (pure jukebox)
+// A slim PlayerNav fills the sidebar slot on desktop; below 1100px each page
+// renders its own compact top bar. The global player bar stays off (Run and
+// Listen carry their own transport).
 function PlayerLayout() {
+  const { listenMode } = useAuth();
   const runPage = useLocation().pathname === "/run";
+  const hasListen = listenMode !== "off";
+  const hasRun = listenMode !== "only";
+  const home = listenMode === "default" || listenMode === "only" ? "/listen" : "/run";
   return (
     <>
       <PlayerNav />
       {/* Player kiosk top bar, lifted out of the pages so it's a single sticky
-          bar shared by Run + About — consistent offset (no shift when switching
-          pages) and it stays pinned while the page scrolls. Hidden ≥1101px,
-          where the PlayerNav sidebar takes over. */}
+          bar shared by the kiosk pages — consistent offset (no shift when
+          switching pages) and it stays pinned while the page scrolls. Hidden
+          ≥1101px, where the PlayerNav sidebar takes over. */}
       <PlayerMobileBar />
       <div className="app-main">
         <div className={"container page-enter" + (runPage ? " container--run" : "")}>
           <Routes>
-            <Route path="/run" element={<Run />} />
+            {hasRun && <Route path="/run" element={<Run />} />}
+            {hasListen && <Route path="/listen" element={<Listen />} />}
             <Route path="/about" element={<PlayerAbout />} />
-            <Route path="*" element={<Navigate to="/run" replace />} />
+            <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
         </div>
       </div>
@@ -122,6 +136,7 @@ export default function App() {
         <Route path="/suggestions" element={<Suggestions />} />
         <Route path="/review" element={<Review />} />
         <Route path="/run" element={<Run />} />
+        <Route path="/listen" element={<Listen />} />
         {/* Cadence is admin-side only: it lives outside the player Routes block
             above (which bounces everything to /run), matching the default-deny
             allowlist that blocks its endpoints server-side. */}

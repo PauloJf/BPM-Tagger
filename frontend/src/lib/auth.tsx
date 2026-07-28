@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "./api";
-import type { Me, Role } from "./types";
+import type { ListenMode, Me, Role } from "./types";
 import { applyAccentHue } from "./accent";
 
 interface AuthState {
@@ -17,6 +17,9 @@ interface AuthState {
   // to attenuate each track (see gainMultiplier in player.tsx).
   normalizePlayback: boolean;
   loudnessTargetLufs: number;
+  // Kiosk Listen mode (admin setting, from /api/me) — the player-role shell
+  // routes off this. Admin/guest always have the Listen page regardless.
+  listenMode: ListenMode;
   login: (password: string, username?: string, totp?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -35,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [installPingAsk, setInstallPingAsk] = useState(false);
   const [normalizePlayback, setNormalizePlayback] = useState(true);
   const [loudnessTargetLufs, setLoudnessTargetLufs] = useState(-14);
+  const [listenMode, setListenMode] = useState<ListenMode>("off");
 
   const applyMe = useCallback((me: Me) => {
     setCsrfToken(me.csrf_token);
@@ -49,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Absent (older API) → keep the defaults rather than silently disabling.
     if (me.normalize_playback != null) setNormalizePlayback(me.normalize_playback);
     if (me.loudness_target_lufs != null) setLoudnessTargetLufs(me.loudness_target_lufs);
+    // Absent (older API) → "off", the safe kiosk default.
+    setListenMode(me.listen_mode ?? "off");
     // Reconcile the per-account accent (set on another device) into this browser.
     // main.tsx already applied the localStorage value pre-mount to avoid a flash;
     // this overrides it once the server tells us the account's real preference.
@@ -110,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, login, logout, refresh }}
+      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, listenMode, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

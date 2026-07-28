@@ -21,6 +21,7 @@ from flask.sessions import SecureCookieSessionInterface
 from ..db import BPMDatabase
 from .api.auth import api_auth_bp
 from .api.images import images_bp
+from .api.listen import listen_bp
 from .api.loudness import loudness_bp
 from .api.lyrics import lyrics_bp
 from .api.media import media_bp
@@ -69,6 +70,10 @@ _PLAYER_ALLOWED = {
     "api_auth.api_accent",
     # Building and playing the run queue (+ the playlist sources it can draw from)
     "api_run.api_run_queue", "api_run.api_run_playlists",
+    # The Listen (regular player) queue — additionally gated inside the handler
+    # by the player_listen_mode setting, so listing it here only opens the door
+    # when the admin has turned the feature on.
+    "api_listen.api_listen_queue",
     "media.audio", "media.healthz", "media.api_scrobble",
     # Now-playing display + the two allowed track flags (star / dislike)
     "api_tracks.api_track", "api_tracks.api_track_cover_get",
@@ -188,7 +193,7 @@ def create_app(config: dict) -> Flask:
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
-               run_bp, suggestions_bp, players_bp, loudness_bp):
+               run_bp, suggestions_bp, players_bp, loudness_bp, listen_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

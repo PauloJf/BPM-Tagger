@@ -170,6 +170,12 @@ def api_me():
     # whether, and how far, to attenuate a track (see bpm/loudness.py).
     resp["normalize_playback"] = bool(st.config.get("normalize_playback", True))
     resp["loudness_target_lufs"] = float(st.config.get("loudness_target_lufs", -14))
+    # Kiosk Listen mode: the SPA's player shell routes off this (which tabs a
+    # player-role session gets, and where it lands). Admin/guest ignore it —
+    # their Listen page is always routable.
+    if authenticated:
+        from .listen import listen_mode
+        resp["listen_mode"] = listen_mode(st.config)
     # Library stats and the install-ping prompt are admin-only — a player session
     # is a locked-down kiosk and never sees them.
     if is_admin and st.db is not None:

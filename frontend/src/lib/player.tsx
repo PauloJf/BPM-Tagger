@@ -73,6 +73,8 @@ const FADE_MS = 250;
 // to avoid re-picking. Bounded rather than the whole run's history: only
 // near-term repeats matter, and it keeps the request small on a long run.
 const REFILL_EXCLUDE_WINDOW = 60;
+// How many tracks a Listen-mode radio refill appends at a time.
+const LISTEN_REFILL_COUNT = 20;
 
 // Adaptive rebuffer hold: seconds of buffered-ahead to require before resuming
 // after an underrun, growing with each successive stall on the same track.
@@ -147,6 +149,14 @@ interface PlayerState {
   // or null for the whole library.
   runSource: number | "mine" | null;
   setRunSource(id: number | "mine" | null): void;
+  // Listen mode's counterparts: the playlist scope the current queue was built
+  // from (set by the Listen page on Play), and the radio toggle — when both are
+  // set, the queue auto-refills from that source at native tempo when it nears
+  // its end, the non-cadence sibling of the run refill above.
+  listenSource: number | "mine" | null;
+  setListenSource(id: number | "mine" | null): void;
+  radio: boolean;
+  setRadio(on: boolean): void;
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
@@ -185,6 +195,8 @@ interface SavedPlayer {
   time?: number; playing?: boolean;
   tempoLock?: TempoLock | null;
   runSource?: number | "mine" | null;
+  listenSource?: number | "mine" | null;
+  radio?: boolean;
 }
 
 function loadSaved(): SavedPlayer | null {
@@ -289,6 +301,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     runSourceRef.current = id;
     setRunSourceState(id);
   }, []);
+  // Listen source scope (playlist id | "mine" | null) + the radio toggle, both
+  // restored with the queue. Ref-mirrored for the same reason as runSource.
+  const [listenSource, setListenSourceState] = useState<number | "mine" | null>(() => saved?.listenSource ?? null);
+  const listenSourceRef = useRef(listenSource);
+  const setListenSource = useCallback((id: number | "mine" | null) => {
+    listenSourceRef.current = id;
+    setListenSourceState(id);
+  }, []);
+  const [radio, setRadio] = useState(() => saved?.radio ?? false);
+  const radioRef = useRef(radio);
+  useEffect(() => { radioRef.current = radio; }, [radio]);
   const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
   const volumeRef = useRef(volume);
   const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
@@ -337,6 +360,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           queue: survivors, order: survivors.map((_, i) => i), pos: 0,
           shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
           tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
+          listenSource: listenSourceRef.current, radio: radioRef.current,
         }));
         return;
       }
@@ -350,10 +374,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         queue, order, pos, shuffle, repeat,
         volume: volumeRef.current, time, playing: isPlaying,
         tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
+        listenSource: listenSourceRef.current, radio: radioRef.current,
       }));
     } catch { /* ignore */ }
   }, []);
-  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, persist]);
+  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, listenSource, radio, persist]);
 
   // The state effect above can't see time ticking, so capture the exact
   // position when the page is hidden or unloaded (refresh, tab close, mobile
@@ -547,6 +572,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .finally(() => { extending.current = false; });
   }, [tempoLock, previewing, repeat, pos, order.length]);
 
+  // Listen-mode radio: the non-cadence sibling of the run refill above. When
+  // the radio toggle is on and the queue was started from a Listen source (a
+  // playlist or the pooled "mine"), reaching the last queued track fetches the
+  // source's playable tracks again and appends a shuffled batch of what hasn't
+  // been queued recently — so a playlist keeps playing instead of stopping.
+  // The exclusion/shuffle lives client-side (unlike the run refill's server
+  // sampling) because the source list is small and already ours to page.
+  const extendingListen = useRef(false);
+  useEffect(() => {
+    if (!radio || tempoLock || previewing || repeat !== "off") return;
+    if (listenSource == null) return;
+    if (order.length === 0 || pos !== order.length - 1) return;
+    if (extendingListen.current) return;
+    extendingListen.current = true;
+    const src = listenSource === "mine" ? "mine" : String(listenSource);
+    api.get<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
+      starred?: boolean; disliked?: boolean; loudness_lufs?: number | null }[] }>(
+      `/api/listen/queue?playlist=${src}`)
+      .then((resp) => {
+        const { queue, order, pos } = nav.current;
+        const cur = queue[order[pos]];
+        const recent = new Set(queue.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path));
+        if (cur) recent.add(cur.path);
+        const pool = resp.tracks.filter((t) => !t.disliked);
+        // Prefer what hasn't been queued recently; once a small source is
+        // exhausted, recycle the full pool rather than letting radio dry up
+        // (mirrors the run refill's `recycled` fallback).
+        let cands = pool.filter((t) => !recent.has(t.path));
+        if (!cands.length) cands = pool.filter((t) => t.path !== cur?.path);
+        if (!cands.length) return;
+        const batch: PlayerTrack[] = shuffled(cands.map((_, i) => i))
+          .slice(0, LISTEN_REFILL_COUNT)
+          .map((i) => cands[i])
+          .map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+            starred: t.starred, loudnessLufs: t.loudness_lufs }));
+        const base = queue.length;
+        setQueue([...queue, ...batch]);
+        setOrder([...order, ...batch.map((_, i) => base + i)]);
+      })
+      .catch(() => {})  // a failed refill just means playback ends at the queue end
+      .finally(() => { extendingListen.current = false; });
+  }, [radio, listenSource, tempoLock, previewing, repeat, pos, order.length]);
+
   const cancelRamp = () => {
     if (rampRef.current != null) { cancelAnimationFrame(rampRef.current); rampRef.current = null; }
     if (rampTimer.current != null) { clearTimeout(rampTimer.current); rampTimer.current = null; }
@@ -565,7 +633,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // (adding to a running queue shouldn't end the run), or from the auto-refill
   // (it appends via setQueue directly). See the note at Run.tsx's startRun:
   // starting a run calls playQueue and then re-sets both, in that order.
-  const endRunMode = () => { setTempoLock(null); setRunSource(null); };
+  // The Listen source scope is cleared for the same reason (the Listen page
+  // re-sets it after its own playQueue, mirroring Run); the radio *toggle*
+  // survives as a user preference — with no source it simply does nothing.
+  const endRunMode = () => { setTempoLock(null); setRunSource(null); setListenSource(null); };
 
   // Queue jumps swap the source and call play() synchronously on the element,
   // then sync React state. Deferring the swap to the load effect breaks iOS
@@ -1262,10 +1333,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       stop();
       setTempoLock(null);
       setRunSource(null);
+      setListenSource(null);
+      setRadio(false);
     };
     window.addEventListener("bpm:sign-out", onSignOut);
     return () => window.removeEventListener("bpm:sign-out", onSignOut);
-  }, [stop, setRunSource]);
+  }, [stop, setRunSource, setListenSource]);
 
   const jumpTo = useCallback((orderPos: number) => {
     clearPreview();
@@ -1397,7 +1470,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       current, playing, error, buffering, bufferedPct, bufferInfo, online, audioRef,
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
-      tempoLock, setTempoLock, runSource, setRunSource, updateTrackBpm, setTrackStarred,
+      tempoLock, setTempoLock, runSource, setRunSource,
+      listenSource, setListenSource, radio, setRadio, updateTrackBpm, setTrackStarred,
       play, playQueue, enqueue, enqueueMany, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent,

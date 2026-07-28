@@ -511,7 +511,13 @@ class PlaylistsMixin:
                 "SELECT pt.*, t.bpm AS local_bpm, t.duration_ms AS local_duration_ms, "
                 "t.detector AS local_detector, t.artist AS local_artist, "
                 "t.album AS local_album, t.album_artist AS local_album_artist, "
-                "t.loudness_lufs AS local_loudness_lufs "
+                "t.loudness_lufs AS local_loudness_lufs, "
+                # The joined file's identity + flags, for consumers that build a
+                # playback queue straight from this listing (the Listen player):
+                # local_file_path being non-NULL proves the join actually matched
+                # a live library row (matched_file_path alone can be stale).
+                "t.file_path AS local_file_path, t.starred AS local_starred, "
+                "t.disliked AS local_disliked "
                 "FROM playlist_tracks pt "
                 "LEFT JOIN tracks t ON t.file_path = pt.matched_file_path AND t.status != 'deleted' "
                 "WHERE pt.playlist_id = ? ORDER BY pt.position",

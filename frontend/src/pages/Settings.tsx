@@ -200,6 +200,7 @@ export default function Settings() {
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [runPw, setRunPw] = useState({ next: "", confirm: "" });
   const [runSessionDays, setRunSessionDays] = useState(30);
+  const [listenModeCfg, setListenModeCfg] = useState("off");
   const [grabber, setGrabber] = useState({
     enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
     outputFormat: "mp3-128", pathTemplate: "", providerOrder: "deezer,ytdlp",
@@ -289,6 +290,7 @@ export default function Settings() {
   const [runPwSaved, setRunPwSaved] = useState<Saved>("");
   const [runPwErr, setRunPwErr] = useState("");
   const [runSessSaved, setRunSessSaved] = useState<Saved>("");
+  const [listenModeSaved, setListenModeSaved] = useState<Saved>("");
   const [hashMsg, setHashMsg] = useState("");
   const [reindexMsg, setReindexMsg] = useState("");
   const [versionMsg, setVersionMsg] = useState<{ text: string; color: string } | null>(null);
@@ -311,6 +313,7 @@ export default function Settings() {
       measure: b("measure_loudness", true),
     });
     setRunSessionDays(n("run_session_days", 30));
+    setListenModeCfg(s("player_listen_mode", "off") || "off");
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
                             { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }];
     setRun({
@@ -1033,6 +1036,39 @@ export default function Settings() {
                     </div>
                   </form>
                 )}
+                {/* Kiosk Listen mode: what player-role logins get besides Run.
+                    Applies to the Guest login and every Player user alike; the
+                    backend gates /api/listen/queue on the same setting. */}
+                <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                  <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Music player (Listen)</h3>
+                  <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                    Give player logins a regular music player next to the tempo-locked Run page — their
+                    playlists, played at native speed. Your own login always has the Listen page.
+                  </p>
+                  <div className="settings-fields">
+                    <div className="field-row">
+                      {fieldLabel("Player logins get")}
+                      <select
+                        value={listenModeCfg}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setListenModeCfg(v);
+                          saveSection("/api/settings/listen-mode", { player_listen_mode: v }, setListenModeSaved);
+                        }}
+                        aria-label="Kiosk listen mode"
+                        style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 340 }}
+                      >
+                        <option value="off">Run only (no music player)</option>
+                        <option value="on">Run + Listen — lands on Run</option>
+                        <option value="default">Run + Listen — lands on Listen</option>
+                        <option value="only">Listen only (pure jukebox, no Run)</option>
+                      </select>
+                    </div>
+                    <div style={{ minHeight: 16, fontSize: 12, color: listenModeSaved === "err" ? "var(--err-fg)" : "var(--ok-fg)" }}>
+                      {listenModeSaved === "saving" ? "Saving…" : listenModeSaved === "ok" ? "Saved — applies on the kiosk's next page load." : listenModeSaved === "err" ? "Could not save." : ""}
+                    </div>
+                  </div>
+                </div>
                 <PlayerUsers />
               </div>
             );

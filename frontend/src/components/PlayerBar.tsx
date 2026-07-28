@@ -9,14 +9,14 @@ import { useWaveform } from "../hooks/useWaveform";
 import { BpmDisplay } from "./BpmDisplay";
 import { LyricsPanel } from "./LyricsPanel";
 import QueueSimilar from "./QueueSimilar";
-import { Cover } from "./Artwork";
+import QueueList from "./QueueList";
 import { FontStepper, MaximizeButton, ResizeHandle, useDrawerFont } from "./DrawerControls";
 import { useResizableDrawer } from "../hooks/useResizableDrawer";
 
 export default function PlayerBar() {
   const { current, playing, error, buffering, bufferedPct, online, audioRef, toggle, stop,
           orderedQueue, orderPos, hasQueue, shuffle, repeat, previewing, volume, setVolume,
-          next, prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat, tempoLock } = usePlayer();
+          next, prev, toggleShuffle, cycleRepeat, tempoLock } = usePlayer();
   const mini = useMiniPlayer();
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,8 +25,6 @@ export default function PlayerBar() {
   const [similarOpen, setSimilarOpen] = useState(false);
   const queueDrawer = useResizableDrawer({ key: "bpm-queue-size" });
   const [queueFont, setQueueFont] = useDrawerFont("bpm-queue-font");
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   // Keyboard shortcuts q/l toggle the drawers. The keypress is handled by the
   // global player handler (which owns the typing/modifier guard); it dispatches
@@ -85,36 +83,7 @@ export default function PlayerBar() {
               <button className="btn btn-bare btn-sm" onClick={() => setQueueOpen(false)} aria-label="Close queue">✕</button>
             </span>
           </div>
-          <div className={"player-queue-list queue-font-" + queueFont}>
-            {orderedQueue.map((t, i) => (
-              <div
-                key={`${t.path}-${i}`}
-                className={"player-queue-row"
-                  + (i === orderPos ? " current" : "")
-                  + (dragIdx === i ? " dragging" : "")
-                  + (dragOverIdx === i && dragIdx !== null && dragIdx !== i ? " drag-over" : "")}
-                draggable
-                onDragStart={(e) => { setDragIdx(i); e.dataTransfer.effectAllowed = "move"; }}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverIdx !== i) setDragOverIdx(i); }}
-                onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorderTo(dragIdx, i); setDragIdx(null); setDragOverIdx(null); }}
-                onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-              >
-                <span className="player-queue-grip" aria-hidden title="Drag to reorder">⠿</span>
-                {!t.ephemeral && <Cover path={t.path} size={30} />}
-                <button className="player-queue-title" title={t.title} onClick={() => jumpTo(i)}>
-                  {i === orderPos && <span style={{ color: "var(--accent-2)", marginRight: 6 }}>▶</span>}
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
-                  {t.artist && <span style={{ color: "var(--muted)" }}> · {t.artist}</span>}
-                </button>
-                {t.bpm != null && <span className="player-queue-bpm" title={`${Math.round(t.bpm)} BPM`}>{Math.round(t.bpm)}</span>}
-                <div className="player-queue-actions">
-                  <button className="btn btn-bare btn-sm" disabled={i === 0} onClick={() => moveAt(i, -1)} aria-label="Move up" title="Move up">↑</button>
-                  <button className="btn btn-bare btn-sm" disabled={i === orderedQueue.length - 1} onClick={() => moveAt(i, 1)} aria-label="Move down" title="Move down">↓</button>
-                  <button className="btn btn-bare btn-sm" onClick={() => removeAt(i)} aria-label="Remove" title="Remove from queue">✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <QueueList fontClass={"queue-font-" + queueFont} />
         </div>
       )}
       {hasQueue && (
@@ -292,6 +261,17 @@ export default function PlayerBar() {
           </svg>
         </button>
       )}
+      <Link
+        to="/listen"
+        className="player-bar-ctl player-bar-ctl--optional"
+        style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+        title="Open the full player"
+        aria-label="Open the full player (Listen)"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 14l5-5 5 5" /><path d="M4 20h16" />
+        </svg>
+      </Link>
       <span className="player-bar-volume player-bar-ctl--optional" title={`Volume ${Math.round(volume * 100)}%`}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--muted)", flexShrink: 0 }}>
           <path d="M3 9v6h4l5 5V4L7 9H3z" />{volume > 0.05 && <path d="M16 8a5 5 0 0 1 0 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}

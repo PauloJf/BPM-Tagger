@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+**Listen: the regular music player — and optionally a jukebox kiosk.**
+
+### Listen (`/listen`)
+
+- **A regular (non-cadence) player page** — full-screen now-playing over the same playback engine as everywhere else: cover art with the ambient glow, title/artist (linked on the admin view), the track's BPM pulsing on the beat, a seekable waveform, big play/prev/next flanked by **star** and **dislike**, shuffle/repeat/volume, a lyrics drawer (admin), and the same drag-to-reorder queue as the player bar's drawer (now a shared component). The global player bar hides here — the page is the transport — and offline/buffering states surface above the waveform, as on Run.
+- **Play a playlist** in playlist order or shuffled, at native speed. Unlike a run queue, **no BPM is required** — un-analyzed tracks play too. Backed by a new `GET /api/listen/queue?playlist=<id|mine>` endpoint (a playlist's playable tracks, i.e. rows matched to a live library file).
+- **Radio mode** — a toggle that keeps the queue topped up from the same playlist as it nears its end: recently queued tracks avoided, the pool recycled once a small playlist is exhausted, disliked tracks never picked. The non-cadence sibling of Run's auto-refill, and it survives a reload with the queue.
+- **Run-aware** — an active tempo lock shows a warning chip linking back to Run; starting playback from Listen ends the run cleanly (lock released, refill stopped), exactly like pressing Play anywhere else. The player bar gains an **expand** button that opens Listen as the full now-playing view.
+
+### Kiosk listen mode (`PLAYER_LISTEN_MODE` / Settings → Player access)
+
+- A new four-level admin setting decides what **player logins** (the Guest login and named player users alike) get besides Run mode: `off` — the original Run-only kiosk (default, nothing changes on upgrade); `on` — a **Listen** tab appears next to Run; `default` — Listen is also the kiosk's landing page; `only` — a **pure jukebox**: Listen replaces Run entirely.
+- Enforced server-side, not just hidden: `/api/listen/queue` sits in the default-deny player allowlist *and* re-checks the setting per request, so `off` really is off. Named player users see only their associated playlists (with the pooled **All my music** source once they have two or more); admin/guest sessions always have the Listen page regardless of the setting.
+- Changeable at runtime — applies on the kiosk's next page load, no restart.
+
 ## v2.11.0 — 2026-07-26
 
 **Playlists grow up, and your library learns to answer "what can I run at 165?"**

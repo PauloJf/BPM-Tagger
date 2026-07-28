@@ -21,6 +21,9 @@ const IconReview = () => (
 const IconRun = () => (
   <svg {...ic}><circle cx="12" cy="14" r="7" /><path d="M12 14v-4M9 2h6M12 2v3" /></svg>
 );
+const IconListen = () => (
+  <svg {...ic}><path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" /></svg>
+);
 const IconDuplicates = () => (
   <svg {...ic}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
 );
@@ -91,6 +94,7 @@ function buildSections(grabberEnabled: boolean): NavSection[] {
   const library: NavItem[] = [
     { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
     { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
+    { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
   ];
   if (grabberEnabled) library.push({ to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] });
 
@@ -256,25 +260,43 @@ function Logo({ to = "/tracks", sub = "for navidrome" }: { to?: string; sub?: st
   );
 }
 
-/* Player ("Run-only") chrome. The kiosk role reaches just two pages — Run and a
- * player-specific About — so it gets a stripped-down nav: no scan controls, no
- * grabber/tagging sections, no data-fetching hooks (the backend 403s those
- * endpoints for players anyway). Desktop shows a slim sidebar; below 1100px the
+/* Player ("Run-only") chrome. The kiosk role reaches only its own pages — Run,
+ * optionally Listen (the admin's listen-mode setting), and a player-specific
+ * About — so it gets a stripped-down nav: no scan controls, no grabber/tagging
+ * sections, no data-fetching hooks (the backend 403s those endpoints for
+ * players anyway). Desktop shows a slim sidebar; below 1100px the
  * PlayerMobileBar takes over (mirroring the admin sidebar/top-bar split). */
-const PLAYER_ITEMS: { to: string; label: string; icon: () => JSX.Element }[] = [
-  { to: "/run", label: "Run", icon: IconRun },
-  { to: "/about", label: "About", icon: IconAbout },
-];
+type PlayerItem = { to: string; label: string; icon: () => JSX.Element };
+
+/** The kiosk tabs for the configured listen mode — mirrors the routes
+ *  PlayerLayout mounts (App.tsx), so the nav never offers a dead link. An
+ *  unrecognized mode degrades to the original Run-only kiosk. */
+export function playerItems(listenMode: string): PlayerItem[] {
+  const mode = ["on", "default", "only"].includes(listenMode) ? listenMode : "off";
+  const items: PlayerItem[] = [];
+  if (mode !== "only") items.push({ to: "/run", label: "Run", icon: IconRun });
+  if (mode !== "off") items.push({ to: "/listen", label: "Listen", icon: IconListen });
+  items.push({ to: "/about", label: "About", icon: IconAbout });
+  return items;
+}
+
+/** Kiosk brand + logo target for the configured listen mode. */
+function playerBrand(listenMode: string): { home: string; sub: string } {
+  if (listenMode === "only") return { home: "/listen", sub: "player" };
+  if (listenMode === "default") return { home: "/listen", sub: "player" };
+  return { home: "/run", sub: "run mode" };
+}
 
 export function PlayerNav() {
-  const { logout } = useAuth();
+  const { logout, listenMode } = useAuth();
   const location = useLocation();
+  const brand = playerBrand(listenMode);
   return (
     <aside className="app-sidebar">
-      <Logo to="/run" sub="run mode" />
+      <Logo to={brand.home} sub={brand.sub} />
       <div className="sidebar-section">
         <div className="sidebar-section-label">Player</div>
-        {PLAYER_ITEMS.map((l) => (
+        {playerItems(listenMode).map((l) => (
           <NavLink
             key={l.to}
             to={l.to}
@@ -308,8 +330,9 @@ export function PlayerNav() {
  *  Brand on the left, Run/About tabs + sign-out on the right; a CSS rule keeps
  *  it out of the way on desktop, so both layouts stay in sync. */
 export function PlayerMobileBar() {
-  const { logout } = useAuth();
+  const { logout, listenMode } = useAuth();
   const location = useLocation();
+  const brand = playerBrand(listenMode);
   return (
     <div className="player-mobile-bar">
       <div className="nav-logo-tile" style={{ width: 30, height: 30 }}>
@@ -317,10 +340,10 @@ export function PlayerMobileBar() {
       </div>
       <div className="nav-logo-text">
         <span className="nav-logo-title">BPM Tagger</span>
-        <span className="nav-logo-sub">Run mode</span>
+        <span className="nav-logo-sub">{brand.sub === "player" ? "Player" : "Run mode"}</span>
       </div>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
-        {PLAYER_ITEMS.map((l) => (
+        {playerItems(listenMode).map((l) => (
           <NavLink
             key={l.to}
             to={l.to}

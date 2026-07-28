@@ -176,6 +176,30 @@ export interface Me {
   // Loudness levelling, server-configured and sent to every role's player.
   normalize_playback?: boolean;
   loudness_target_lufs?: number;
+  // Kiosk Listen mode (admin setting): which tabs a player-role session gets
+  // and where it lands. Admin/guest always have the Listen page regardless.
+  listen_mode?: ListenMode;
+}
+
+export type ListenMode = "off" | "on" | "default" | "only";
+
+// One playable playlist track from /api/listen/queue (regular, non-cadence
+// playback — a detected BPM is not required, unlike the run queue).
+export interface ListenTrack {
+  path: string;
+  title: string;
+  artist: string;
+  bpm: number | null;
+  starred: boolean;
+  disliked: boolean;
+  duration_ms: number | null;
+  loudness_lufs: number | null;
+}
+
+export interface ListenQueueResponse {
+  tracks: ListenTrack[];
+  playlist: number | "mine";
+  count: number;
 }
 
 // Player-user account, as returned by the admin /api/players endpoints.

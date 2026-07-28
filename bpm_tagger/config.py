@@ -291,6 +291,13 @@ def build_config() -> dict:
         # — each use extends it). It's a low-privilege kiosk opened repeatedly
         # for runs, so it defaults far longer than the admin session.
         "run_session_days":           int(os.environ.get("RUN_SESSION_DAYS", "30")),
+        # What the kiosk (player role) gets besides Run mode:
+        #   off     — Run + About only (the original kiosk)
+        #   on      — a Listen tab (regular playlist player) appears next to Run
+        #   default — Listen is also the kiosk's landing page
+        #   only    — pure jukebox: Listen replaces Run entirely
+        # Admin/guest sessions always have the Listen page regardless.
+        "player_listen_mode":         os.environ.get("PLAYER_LISTEN_MODE", "off"),
         # Number of reverse proxies in front of the UI (X-Forwarded-For depth).
         # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
         # so the login brute-force lockout keys on the real client IP.
