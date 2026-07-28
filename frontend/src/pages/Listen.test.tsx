@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 // Listen is a thin view over the player context; mock the context/hooks so the
-// page renders in isolation and tests drive role, listenMode, the current
-// track and the playlist list via this hoisted, mutable holder.
+// page renders in isolation and tests drive role, access, viewport, the
+// current track and the playlist list via this hoisted, mutable holder.
 const h = vi.hoisted(() => ({
   role: "admin" as string | null,
+  fullAccess: true,
   listenMode: "off" as string,
+  mobile: false,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; ephemeral?: boolean },
   orderedQueue: [] as Array<{ path: string; title: string }>,
   tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
@@ -14,7 +16,7 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   radio: false,
-  listenSource: null as number | "mine" | null,
+  listenSource: null as number | "mine" | "library" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   // Ordered log of the player mutations startPlayback makes — the
   // playQueue-then-setListenSource order is load-bearing (mirrors Run).
@@ -43,7 +45,7 @@ vi.mock("../lib/api", () => ({
   api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn(() => Promise.resolve({})) },
   audioUrl: (p: string) => `/audio?path=${p}`,
 }));
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, listenMode: h.listenMode }) }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess, listenMode: h.listenMode }) }));
 vi.mock("../lib/player", () => ({
   usePlayer: () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
@@ -64,10 +66,11 @@ vi.mock("../hooks/useWaveform", () => ({ useWaveform: () => ({ loading: false })
 vi.mock("../hooks/useAudioTime", () => ({ useAudioTime: () => ({ time: 0, dur: 0 }), fmtTime: () => "0:00" }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../hooks/useCoverGlow", () => ({ useCoverGlow: () => ({ background: "transparent", opacity: 0 }) }));
+vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => h.mobile }));
 vi.mock("../components/PageHeader", () => ({ default: () => null }));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/BpmDisplay", () => ({ BpmDisplay: () => null }));
-vi.mock("../components/Artwork", () => ({ Cover: () => <div data-testid="cover" /> }));
+vi.mock("../components/PlayerCover", () => ({ default: () => <div data-testid="cover" /> }));
 vi.mock("../components/QueueList", () => ({ default: () => <div data-testid="queue-list" /> }));
 
 // Import after the mocks are registered.
@@ -80,7 +83,9 @@ beforeEach(() => {
   cleanup();
   localStorage.clear();
   h.role = "admin";
+  h.fullAccess = true;
   h.listenMode = "off";
+  h.mobile = false;
   h.current = null;
   h.orderedQueue = [];
   h.tempoLock = null;
@@ -98,40 +103,48 @@ beforeEach(() => {
   vi.mocked(api.get).mockResolvedValue({});
 });
 
-describe("Listen — source picker", () => {
-  it("lists playlists and defaults to the first when nothing is remembered", () => {
+const sourceSelect = () => screen.getByLabelText("Source to play") as HTMLSelectElement;
+const options = () => Array.from(sourceSelect().options).map((o) => o.textContent);
+
+describe("Listen — source picker access rules (mirrors Run's)", () => {
+  it("full access defaults to the whole library, with playlists offered too", () => {
     render(<Listen />);
-    const select = screen.getByLabelText("Playlist to play") as HTMLSelectElement;
-    expect(select.value).toBe("pl:1");
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["Alpha (10)"]);
+    expect(sourceSelect().value).toBe("library");
+    expect(options()).toEqual(["Whole library", "Alpha (10)"]);
   });
 
-  it("offers 'All my music' to a player with 2+ playlists and defaults to it", () => {
+  it("a scoped player never sees 'Whole library'", () => {
     h.role = "player";
-    h.playlists = [
-      { id: 1, name: "Alpha", source: "local", available: 5, total: 10, image_url: null },
-      { id: 2, name: "Beta", source: "local", available: 3, total: 3, image_url: null },
-    ];
+    h.fullAccess = false;
     render(<Listen />);
-    const select = screen.getByLabelText("Playlist to play") as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).toContain("All my music");
-    expect(select.value).toBe("mine");
+    expect(options()).not.toContain("Whole library");
+    expect(sourceSelect().value).toBe("pl:1");
   });
 
-  it("never offers the pooled source to an admin", () => {
+  it("offers 'All my music' to a scoped player with 2+ playlists and defaults to it", () => {
+    h.role = "player";
+    h.fullAccess = false;
     h.playlists = [
       { id: 1, name: "Alpha", source: "local", available: 5, total: 10, image_url: null },
       { id: 2, name: "Beta", source: "local", available: 3, total: 3, image_url: null },
     ];
     render(<Listen />);
-    const select = screen.getByLabelText("Playlist to play") as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).not.toContain("All my music");
+    expect(options()).toContain("All my music");
+    expect(sourceSelect().value).toBe("mine");
+  });
+
+  it("the shared full-access Guest (player role) still gets the library", () => {
+    h.role = "player";
+    h.fullAccess = true;
+    render(<Listen />);
+    expect(options()).toContain("Whole library");
+    expect(sourceSelect().value).toBe("library");
   });
 
   it("falls back when the remembered playlist no longer exists", () => {
     localStorage.setItem(SOURCE_KEY, "pl:99");
     render(<Listen />);
-    expect((screen.getByLabelText("Playlist to play") as HTMLSelectElement).value).toBe("pl:1");
+    expect(sourceSelect().value).toBe("library");
   });
 });
 
@@ -144,14 +157,23 @@ describe("Listen — starting playback", () => {
     playlist: 1, count: 2,
   };
 
-  it("fetches the listen queue and plays it in order", async () => {
+  it("fetches the library source and scopes the radio refill to it", async () => {
+    vi.mocked(api.get).mockResolvedValue({ ...resp, playlist: "library" });
+    render(<Listen />);
+    fireEvent.click(screen.getByText("Play"));
+    await vi.waitFor(() => expect(h.calls).toContain("setListenSource"));
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith("/api/listen/queue?playlist=library");
+    expect(h.sourceSet).toBe("library");
+  });
+
+  it("fetches a playlist source in order — un-analyzed tracks included", async () => {
+    localStorage.setItem(SOURCE_KEY, "pl:1");
     vi.mocked(api.get).mockResolvedValue(resp);
     render(<Listen />);
     fireEvent.click(screen.getByText("Play"));
     await vi.waitFor(() => expect(h.calls).toContain("playQueue"));
     expect(vi.mocked(api.get)).toHaveBeenCalledWith("/api/listen/queue?playlist=1");
     expect(h.shuffleOpt).toBe(false);
-    // Un-analyzed tracks (bpm null) are queued too — this is the regular player.
     expect((h.queued as Array<{ path: string }>).map((t) => t.path)).toEqual(["/a.mp3", "/b.mp3"]);
   });
 
@@ -164,6 +186,7 @@ describe("Listen — starting playback", () => {
   });
 
   it("sets the listen source AFTER playQueue (which clears it) — order is load-bearing", async () => {
+    localStorage.setItem(SOURCE_KEY, "pl:1");
     vi.mocked(api.get).mockResolvedValue(resp);
     render(<Listen />);
     fireEvent.click(screen.getByText("Play"));
@@ -172,7 +195,8 @@ describe("Listen — starting playback", () => {
     expect(h.calls.lastIndexOf("setListenSource")).toBeGreaterThan(h.calls.lastIndexOf("playQueue"));
   });
 
-  it("surfaces an empty playlist instead of playing nothing", async () => {
+  it("surfaces an empty source instead of playing nothing", async () => {
+    localStorage.setItem(SOURCE_KEY, "pl:1");
     vi.mocked(api.get).mockResolvedValue({ tracks: [], playlist: 1, count: 0 });
     render(<Listen />);
     fireEvent.click(screen.getByText("Play"));
@@ -202,6 +226,7 @@ describe("Listen — tempo-lock awareness", () => {
 
   it("drops the Run link for a jukebox-only kiosk (no /run route exists)", () => {
     h.role = "player";
+    h.fullAccess = false;
     h.listenMode = "only";
     h.current = { path: "/a.mp3", title: "A", bpm: 120 };
     h.tempoLock = { target: 165, octave: true, stretchLimitPct: 15 };
@@ -219,6 +244,7 @@ describe("Listen — tempo-lock awareness", () => {
 describe("Listen — kiosk-safe links", () => {
   it("does not link the title/artist to admin pages for a player", () => {
     h.role = "player";
+    h.fullAccess = false;
     h.listenMode = "on";
     h.current = { path: "/a.mp3", title: "SongTitle", artist: "SomeArtist", bpm: 120 };
     render(<Listen />);
@@ -235,21 +261,16 @@ describe("Listen — kiosk-safe links", () => {
 });
 
 describe("Listen — empty state", () => {
-  it("tells a player with no playlists what's going on", () => {
+  it("tells a scoped player with no playlists what's going on", () => {
     h.role = "player";
+    h.fullAccess = false;
     h.playlists = [];
     render(<Listen />);
     expect(screen.getByText(/No playlists have been shared with this account/)).toBeTruthy();
   });
-
-  it("points the admin at the Playlists page", () => {
-    h.playlists = [];
-    render(<Listen />);
-    expect(screen.getByText(/create one on the Playlists page/)).toBeTruthy();
-  });
 });
 
-describe("Listen — queue panel", () => {
+describe("Listen — desktop queue panel", () => {
   it("renders the shared queue list once more than one track is queued", () => {
     h.current = { path: "/a.mp3", title: "A" };
     h.orderedQueue = [{ path: "/a.mp3", title: "A" }, { path: "/b.mp3", title: "B" }];
@@ -263,5 +284,76 @@ describe("Listen — queue panel", () => {
     h.orderedQueue = [{ path: "/a.mp3", title: "A" }];
     render(<Listen />);
     expect(screen.queryByTestId("queue-list")).toBeNull();
+  });
+});
+
+describe("Listen — mobile one-screen layout (bottom tabs)", () => {
+  beforeEach(() => { h.mobile = true; });
+
+  const track = () => {
+    h.current = { path: "/a.mp3", title: "A", artist: "Ar", bpm: 120 };
+    h.orderedQueue = [{ path: "/a.mp3", title: "A" }, { path: "/b.mp3", title: "B" }];
+  };
+
+  it("uses the fill column with the cover in the flexible slot", () => {
+    track();
+    const { container } = render(<Listen />);
+    expect(container.querySelector(".run-mobile-fill")).toBeTruthy();
+    expect(screen.getByTestId("cover-slot")).toBeTruthy();
+    // No page-growing queue card in the Playing view.
+    expect(screen.queryByTestId("queue-list")).toBeNull();
+  });
+
+  it("shows the bottom Playing/Queue switcher only once something is loaded", () => {
+    render(<Listen />);
+    expect(screen.queryByTestId("listen-tabs")).toBeNull();
+    cleanup();
+    track();
+    render(<Listen />);
+    expect(screen.getByTestId("listen-tabs")).toBeTruthy();
+  });
+
+  it("the Queue tab swaps the cover for the queue and hard-caps the column", () => {
+    track();
+    const { container } = render(<Listen />);
+    fireEvent.click(screen.getByText(/^Queue · 2$/));
+    expect(screen.getByTestId("queue-list")).toBeTruthy();
+    expect(screen.queryByTestId("cover-slot")).toBeNull();
+    // Hard height cap so the queue scrolls inside its card, not the page.
+    expect(container.querySelector(".run-mobile-fill")?.classList.contains("run-queue-open")).toBe(true);
+  });
+
+  it("hosts the source picker in the Queue tab mid-playback", () => {
+    track();
+    render(<Listen />);
+    // Playing view: no picker (it would steal cover height).
+    expect(screen.queryByLabelText("Source to play")).toBeNull();
+    fireEvent.click(screen.getByText(/^Queue · 2$/));
+    expect(screen.getByTestId("queue-source")).toBeTruthy();
+    expect(screen.getByLabelText("Source to play")).toBeTruthy();
+  });
+
+  it("keeps the transport reachable from the Queue tab", () => {
+    track();
+    render(<Listen />);
+    fireEvent.click(screen.getByText(/^Queue · 2$/));
+    expect(screen.getByLabelText("Play")).toBeTruthy();
+    expect(screen.getByLabelText("Next")).toBeTruthy();
+  });
+
+  it("drops the volume slider on mobile (hardware buttons own it)", () => {
+    track();
+    render(<Listen />);
+    expect(screen.queryByLabelText("Volume")).toBeNull();
+    h.mobile = false;
+    cleanup();
+    render(<Listen />);
+    expect(screen.getByLabelText("Volume")).toBeTruthy();
+  });
+
+  it("shows the picker inline pre-playback (no tabs yet)", () => {
+    render(<Listen />);
+    expect(screen.getByLabelText("Source to play")).toBeTruthy();
+    expect(screen.queryByTestId("listen-tabs")).toBeNull();
   });
 });

@@ -54,6 +54,9 @@ export function lockRate(trackBpm: number | null | undefined, lock: TempoLock | 
 }
 
 export type RepeatMode = "off" | "all" | "one";
+/** The Listen queue's source scope: a playlist id, the pooled "mine", the
+ *  whole "library", or null when the queue wasn't started from Listen. */
+export type ListenSource = number | "mine" | "library" | null;
 
 /** Live buffering diagnostics for the current track. Surfaced in the UI so a
  *  stall reads as the network (not the app), and so slow-link behaviour on a
@@ -149,12 +152,13 @@ interface PlayerState {
   // or null for the whole library.
   runSource: number | "mine" | null;
   setRunSource(id: number | "mine" | null): void;
-  // Listen mode's counterparts: the playlist scope the current queue was built
-  // from (set by the Listen page on Play), and the radio toggle — when both are
-  // set, the queue auto-refills from that source at native tempo when it nears
-  // its end, the non-cadence sibling of the run refill above.
-  listenSource: number | "mine" | null;
-  setListenSource(id: number | "mine" | null): void;
+  // Listen mode's counterparts: the source the current queue was built from
+  // (set by the Listen page on Play — a playlist id, the pooled "mine", or the
+  // whole "library"), and the radio toggle — when both are set, the queue
+  // auto-refills from that source at native tempo when it nears its end, the
+  // non-cadence sibling of the run refill above.
+  listenSource: ListenSource;
+  setListenSource(id: ListenSource): void;
   radio: boolean;
   setRadio(on: boolean): void;
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
@@ -195,7 +199,7 @@ interface SavedPlayer {
   time?: number; playing?: boolean;
   tempoLock?: TempoLock | null;
   runSource?: number | "mine" | null;
-  listenSource?: number | "mine" | null;
+  listenSource?: ListenSource;
   radio?: boolean;
 }
 
@@ -303,9 +307,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
   // Listen source scope (playlist id | "mine" | null) + the radio toggle, both
   // restored with the queue. Ref-mirrored for the same reason as runSource.
-  const [listenSource, setListenSourceState] = useState<number | "mine" | null>(() => saved?.listenSource ?? null);
+  const [listenSource, setListenSourceState] = useState<ListenSource>(() => saved?.listenSource ?? null);
   const listenSourceRef = useRef(listenSource);
-  const setListenSource = useCallback((id: number | "mine" | null) => {
+  const setListenSource = useCallback((id: ListenSource) => {
     listenSourceRef.current = id;
     setListenSourceState(id);
   }, []);
@@ -586,7 +590,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (order.length === 0 || pos !== order.length - 1) return;
     if (extendingListen.current) return;
     extendingListen.current = true;
-    const src = listenSource === "mine" ? "mine" : String(listenSource);
+    const src = String(listenSource);   // a playlist id, "mine", or "library"
     api.get<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
       starred?: boolean; disliked?: boolean; loudness_lufs?: number | null }[] }>(
       `/api/listen/queue?playlist=${src}`)

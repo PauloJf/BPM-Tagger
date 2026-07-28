@@ -432,6 +432,14 @@ body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--playe
     backdrop-filter: saturate(180%) blur(8px);
     -webkit-backdrop-filter: saturate(180%) blur(8px);
   }
+  /* Three tabs (Run · Listen · About) + sign-out can squeeze the brand on
+     narrow phones; without this the title wraps to two lines and the bar
+     outgrows the 52px budget the Run/Listen one-screen layouts subtract
+     (--player-bar-h), making every kiosk page scroll by the difference.
+     Shrink-with-ellipsis instead of wrapping. */
+  .player-mobile-bar .nav-logo-text { min-width: 0; }
+  .player-mobile-bar .nav-logo-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-mobile-bar .nav-logo-sub { white-space: nowrap; }
 }
 :root[data-theme="light"] .player-mobile-bar { background: oklch(0.985 0.004 285 / 0.85); }
 @media (max-width: 700px) {

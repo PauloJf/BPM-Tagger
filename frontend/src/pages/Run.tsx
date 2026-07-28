@@ -17,6 +17,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
+import PlayerCover from "../components/PlayerCover";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -135,83 +136,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
  *  next track's image has decoded — so a track change never blanks the cover,
  *  which previously collapsed the box and jumped the whole cockpit layout.
  *  Falls back to the ♪ placeholder when a cover 404s. */
-function RunCover({ path, coverSize, fillHeight, onClick, onMouseEnter, onMouseLeave, ariaLabel, ariaPressed, title, children }: {
-  path: string;
-  coverSize?: string;    // width-driven square (desktop cockpit)
-  fillHeight?: boolean;  // height-driven square — fills the flexible mobile cover slot
-  onClick?: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
-  ariaLabel?: string;
-  ariaPressed?: boolean;
-  title?: string;
-  children?: React.ReactNode;   // absolute overlays (pop-out hint, source chip)
-}) {
-  const src = (p: string) => `/api/track/cover?path=${encodeURIComponent(p)}`;
-  // `shown` is the path whose art is currently painted; it only advances to the
-  // new `path` after that image has finished loading (or errored).
-  const [shown, setShown] = useState(path);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (path === shown) return;
-    let cancelled = false;
-    const img = new Image();
-    img.onload = () => { if (!cancelled) { setShown(path); setFailed(false); } };
-    img.onerror = () => { if (!cancelled) { setShown(path); setFailed(true); } };
-    img.src = src(path);
-    return () => { cancelled = true; };
-  }, [path, shown]);
-
-  // A fixed-aspect square box with the image absolutely filling it. Two sizing
-  // modes:
-  // - width-driven (desktop): width:min(coverSize,100%), centered via
-  //   margin:auto. Resolves fine because the parent is a full-width flex/block,
-  //   not a shrink-to-fit inline box — so it never collapses (the 2.6.6 bug)
-  //   and the aspect-ratio always wins, while the click target and any overlays
-  //   share the exact cover footprint.
-  // - height-driven (mobile fill layout): height:100% of the flexible cover
-  //   slot, width derived by the aspect-ratio. The slot caps itself at 240px,
-  //   always below a phone column's width, so width never constrains (the
-  //   max-width is a guard for extreme landscape shapes, where it may crop).
-  const box: React.CSSProperties = fillHeight
-    ? {
-        // Absolutely fill the (position:relative) cover slot. top/bottom:0 gives a
-        // definite height that iOS Safari resolves reliably — a plain height:100%
-        // + aspect-ratio here collapses to zero width on iOS (the flex-basis:0
-        // slot's height is treated as indefinite for an in-flow percentage child),
-        // which blanked the cover on iPhone while Android rendered it fine. Width
-        // is derived from the square aspect-ratio and centred horizontally.
-        position: "absolute", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)",
-        width: "auto", maxWidth: "100%", aspectRatio: "1 / 1",
-        borderRadius: 20, overflow: "hidden",
-        boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
-        border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
-      }
-    : {
-        position: "relative", display: "block", width: `min(${coverSize}, 100%)`,
-        aspectRatio: "1 / 1", margin: "0 auto", borderRadius: 20, overflow: "hidden",
-        boxShadow: "0 18px 50px -18px rgba(0,0,0,0.6)", background: "var(--surface)",
-        border: "none", padding: 0, cursor: onClick ? "pointer" : "default",
-      };
-  const inner = (
-    <>
-      {failed ? (
-        <span className="art-thumb" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 48 }} aria-hidden>♪</span>
-      ) : (
-        <img src={src(shown)} alt="" onError={() => setFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-      )}
-      {children}
-    </>
-  );
-  return onClick ? (
-    <button type="button" style={box} onClick={onClick} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} aria-label={ariaLabel} aria-pressed={ariaPressed} title={title}>
-      {inner}
-    </button>
-  ) : (
-    <div style={box} title={title}>{inner}</div>
-  );
-}
+// The hold-then-swap, height-aware cover lives in components/PlayerCover.tsx
+// (shared with the Listen page); RunCover is its historical local name here.
+const RunCover = PlayerCover;
 
 /** Tap the beat to set + lock the *current track's* native BPM. Only usable at
  *  the track's true speed, so it's disabled while the tempo lock is stretching

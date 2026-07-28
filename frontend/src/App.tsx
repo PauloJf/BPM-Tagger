@@ -30,15 +30,16 @@ import PlayerAbout from "./pages/PlayerAbout";
 
 function Layout({ children }: { children: React.ReactNode }) {
   // Run and Listen carry their own full-screen transport — the global bar
-  // would duplicate it and steal vertical space on phones.
+  // would duplicate it and steal vertical space on phones. Both also take the
+  // container--run treatment (tight padding, no player-bar reserve) that their
+  // one-screen mobile layout is budgeted against.
   const pathname = useLocation().pathname;
-  const runPage = pathname === "/run";
-  const ownTransport = runPage || pathname === "/listen";
+  const ownTransport = pathname === "/run" || pathname === "/listen";
   return (
     <>
       <Nav />
       <div className="app-main">
-        <div className={"container page-enter" + (runPage ? " container--run" : "")}>{children}</div>
+        <div className={"container page-enter" + (ownTransport ? " container--run" : "")}>{children}</div>
       </div>
       {!ownTransport && <PlayerBar />}
       <InstallPingCard />
@@ -60,7 +61,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 // Listen carry their own transport).
 function PlayerLayout() {
   const { listenMode } = useAuth();
-  const runPage = useLocation().pathname === "/run";
+  const pathname = useLocation().pathname;
+  const ownTransport = pathname === "/run" || pathname === "/listen";
   const hasListen = listenMode !== "off";
   const hasRun = listenMode !== "only";
   const home = listenMode === "default" || listenMode === "only" ? "/listen" : "/run";
@@ -73,7 +75,7 @@ function PlayerLayout() {
           ≥1101px, where the PlayerNav sidebar takes over. */}
       <PlayerMobileBar />
       <div className="app-main">
-        <div className={"container page-enter" + (runPage ? " container--run" : "")}>
+        <div className={"container page-enter" + (ownTransport ? " container--run" : "")}>
           <Routes>
             {hasRun && <Route path="/run" element={<Run />} />}
             {hasListen && <Route path="/listen" element={<Listen />} />}

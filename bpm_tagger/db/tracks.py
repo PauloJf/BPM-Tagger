@@ -481,6 +481,22 @@ class TracksMixin:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_listen_library(self) -> list[dict]:
+        """Every playable library track for the Listen (regular, non-cadence)
+        player's whole-library source: non-deleted, BPM or not. Shelf order
+        (artist, album, disc, track) so "Play" reads like flipping through the
+        collection; the client owns shuffle. Disliked tracks are included but
+        flagged — playing the whole library is an explicit choice, unlike a
+        run's auto-pick — and the radio refill filters them client-side."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path, title, artist, bpm, starred, disliked, "
+                "duration_ms, loudness_lufs FROM tracks WHERE status != 'deleted' "
+                "ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, "
+                "disc_no, track_no, file_path"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def count_run_candidates(self, playlist_id: int) -> int:
         """How many of a playlist's tracks are actually runnable (matched + BPM)."""
         with self._connect() as conn:

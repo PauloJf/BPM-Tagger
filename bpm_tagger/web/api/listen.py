@@ -36,9 +36,10 @@ def listen_mode(cfg) -> str:
 @listen_bp.route("/api/listen/queue")
 @login_required
 def api_listen_queue():
-    """The playable tracks of ?playlist= (an id, or "mine" for every playlist the
-    session may play, unioned), in playlist order. "Playable" = the row matched a
-    live library file — a detected BPM is NOT required, unlike the run queue.
+    """The playable tracks of ?playlist= — an id, "mine" (every playlist the
+    session may play, unioned), or "library" (the whole library, full-access
+    sessions only) — in playlist/shelf order. "Playable" = a live library file;
+    a detected BPM is NOT required, unlike the run queue.
 
     The client owns ordering beyond this (its shuffle toggle) and the radio
     refill (it re-fetches this list and appends what it hasn't played recently),
@@ -49,13 +50,32 @@ def api_listen_queue():
 
     full, allowed = _run_scope()
     raw = request.args.get("playlist")
-    pooled = str(raw).lower() == "mine"
+    kind = str(raw).lower()
+
+    if kind == "library":
+        # Whole-library source: full-access sessions only, mirroring the Run
+        # source rule — a scoped player never reaches past its playlists.
+        if not full:
+            return jsonify(error="forbidden"), 403
+        tracks = [{
+            "path":    t["file_path"],
+            "title":   t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
+            "artist":  t["artist"] or "",
+            "bpm":     t["bpm"],
+            "starred": bool(t["starred"]),
+            "disliked": bool(t["disliked"]),
+            "duration_ms": t["duration_ms"],
+            "loudness_lufs": t["loudness_lufs"],
+        } for t in st.db.get_listen_library()]
+        return jsonify(tracks=tracks, playlist="library", count=len(tracks))
+
+    pooled = kind == "mine"
     playlist_id = None
     if not pooled:
         try:
             playlist_id = int(raw)
         except (ValueError, TypeError):
-            return jsonify(error="playlist must be a playlist id or \"mine\""), 400
+            return jsonify(error="playlist must be a playlist id, \"mine\" or \"library\""), 400
         if not st.db.get_playlist(playlist_id):
             return jsonify(error="playlist not found"), 404
         if not full and playlist_id not in allowed:

@@ -88,6 +88,50 @@ def test_listen_queue_param_validation(base_config):
     assert c.get("/api/listen/queue?playlist=9999").status_code == 404
 
 
+# ── the whole-library source ──────────────────────────────────────────────────
+
+def test_library_source_returns_everything_playable(base_config):
+    app = _app(base_config)
+    _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                   [("one", 150.0), ("two", None)])
+    # A library track on no playlist at all is still in the library source.
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("INSERT INTO tracks (file_path, title, artist, bpm, status) "
+                 "VALUES (?, 'loose', 'Artist', NULL, 'done')",
+                 (f"{base_config['music_dir']}/loose.mp3",))
+    conn.commit(); conn.close()
+    c, _, _ = _login(app, password="s3cret")
+    r = c.get("/api/listen/queue?playlist=library")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["playlist"] == "library"
+    assert body["count"] == 3
+    assert {t["title"] for t in body["tracks"]} == {"one", "two", "loose"}
+
+
+def test_library_source_forbidden_for_scoped_player(base_config):
+    app = _app(base_config, player_listen_mode="on")
+    mine = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mine-pl",
+                          [("one", 150.0)])
+    admin, _, csrf = _login(app, password="s3cret")
+    assert admin.post("/api/players",
+                      json={"username": "runner", "password": "runrunrun",
+                            "playlist_ids": [mine]},
+                      headers=csrf).status_code == 200
+    c, _, _ = _login(app, username="runner", password="runrunrun")
+    assert c.get("/api/listen/queue?playlist=library").status_code == 403
+
+
+def test_library_source_allowed_for_full_access_guest(base_config):
+    # The shared Guest login is full-access, like on the Run source picker.
+    app = _app(base_config, run_password="runner99", player_listen_mode="on")
+    _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                   [("one", 150.0)])
+    c, _, _ = _login(app, password="runner99")
+    r = c.get("/api/listen/queue?playlist=library")
+    assert r.status_code == 200 and r.get_json()["count"] == 1
+
+
 # ── the kiosk gate: player_listen_mode ────────────────────────────────────────
 
 def test_player_403_while_mode_off(base_config):

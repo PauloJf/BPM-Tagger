@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.11.2 — 2026-07-28
+
+**Listen fits one phone screen — and learns to play the whole library.**
+
+- **Whole-library source** — the Listen picker gains a **Whole library** option for full-access sessions (admin + the shared Guest), playing every track in shelf order (artist → album → disc → track) or shuffled; radio refills from the whole library too. Scoped player users keep seeing only their playlists — enforced server-side, like everything else on this endpoint.
+- **One-screen mobile layout** — below 900px, Listen now uses the same no-scroll machinery as Run: the cover absorbs exactly the leftover height, the waveform + transport pin low, and a **bottom Playing / Queue switcher** (bottom rather than Run's top tabs — thumb-reachable, and the two players read differently at a glance) swaps the cover for the queue. The source picker lives in the Queue view mid-playback, the volume row is desktop-only (phones have hardware volume), and the transport stays reachable from both tabs.
+- Fixed the kiosk top bar outgrowing its 52px budget when the brand text wrapped beside three tabs — every kiosk page (Run included) scrolled by the difference on narrow phones; the brand now shrinks with an ellipsis instead.
+- The hold-then-swap, height-aware cover is now a shared component (`PlayerCover`) used by both Run and Listen.
+
 ## v2.11.1 — 2026-07-28
 
 **Listen: the regular music player — and optionally a jukebox kiosk.**

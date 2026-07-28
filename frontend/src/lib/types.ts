@@ -198,7 +198,7 @@ export interface ListenTrack {
 
 export interface ListenQueueResponse {
   tracks: ListenTrack[];
-  playlist: number | "mine";
+  playlist: number | "mine" | "library";
   count: number;
 }
 
