@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.11.1 — 2026-07-28
 
 **Listen: the regular music player — and optionally a jukebox kiosk.**
 
