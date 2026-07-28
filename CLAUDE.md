@@ -211,6 +211,13 @@ the README header sat at v2.6.5 through nine releases):
 - the `**vX.Y.Z**` header near the top of `README.md`
 - the `| Version |` row in this file's Project Identity table
 
+**⚠ A pushed `VERSION` bump IS the Docker Hub release trigger.** Once CI goes green
+on `main`, `docker-publish.yml` sees the new `VERSION` has no matching Docker Hub tag
+and automatically builds & pushes both image variants (`:latest` and `:full`, plus the
+version tags). So: never bump `VERSION` on `main` unless the release should ship —
+and conversely, pushes *without* a version change never publish (the publish run
+still appears in Actions but exits as a no-op).
+
 ---
 
 ## Launch & Community
