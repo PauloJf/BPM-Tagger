@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
+import { audioUrl } from "../lib/api";
 import { usePlayer, type PlayerTrack } from "../lib/player";
 
 /** Primary display name: the tag title when present, else the file name. */
@@ -84,35 +85,47 @@ export const ArrowIcon = () => (
   </svg>
 );
 
-/** A 30-second Deezer preview toggle for any track row carrying a preview_url.
- *  Runs through the normal ducking player: starting one while music plays fades
- *  the queue down and auto-resumes when the clip ends. The clip is ephemeral —
- *  it never persists into the saved queue.
+/** A preview toggle for any track row. Runs through the normal ducking player:
+ *  starting one while music plays fades the queue down and auto-resumes when
+ *  the clip ends. The clip is ephemeral — it never persists into the saved
+ *  queue.
  *
- *  When the URL isn't known up front (the inbox resolves Deezer preview URLs
- *  lazily), pass `resolveUrl` instead of `preview_url`: the first click fetches
- *  the URL *and* starts playback (no click-twice). A resolved-but-empty result
- *  disables the button as "No preview available". */
-export function PreviewButton({ track, resolveUrl }: {
+ *  Source order:
+ *  - `libraryPath` — stream the user's own file through /audio (full track). Use
+ *    when the row is backed by a library file, so preview isn't limited to the
+ *    30-second Deezer clip when we already have the whole song.
+ *  - `preview_url` — a pre-known 30 s clip URL (Deezer).
+ *  - `resolveUrl()` — lazy path (the inbox resolves Deezer preview URLs on
+ *    demand): the first click fetches the URL *and* starts playback (no
+ *    click-twice). A resolved-but-empty result disables the button as "No
+ *    preview available". */
+export function PreviewButton({ track, resolveUrl, libraryPath }: {
   track: { dz_track_id: string; title: string; artist?: string; preview_url?: string };
   resolveUrl?: () => Promise<string>;   // lazy source, used when preview_url is absent
+  libraryPath?: string;                 // when set, plays the user's own file (full track)
 }) {
   const player = usePlayer();
   const [lazyUrl, setLazyUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const syntheticPath = `preview:dz:${track.dz_track_id}`;
+  // Full-library previews reuse the file's own path so pause/resume mirrors the
+  // main queue's identity, while Deezer previews stay synthetic and ephemeral.
+  const fullSrc = libraryPath ? audioUrl(libraryPath) : null;
+  const syntheticPath = libraryPath ?? `preview:dz:${track.dz_track_id}`;
   const isThis = player.isCurrent(syntheticPath);
   const playing = isThis && player.playing;
   // A live preview that's ducking a queue: the pause gesture ends it and fades
   // back to the queue track, rather than pausing the clip in place and stranding
   // the ducked queue with no obvious way back to it.
   const ducking = playing && player.previewing;
-  const effectiveUrl = track.preview_url || lazyUrl;   // "" once resolved-but-empty
-  const unavailable = lazyUrl === "";
+  const effectiveUrl = fullSrc || track.preview_url || lazyUrl;   // "" once resolved-but-empty
+  const unavailable = !fullSrc && lazyUrl === "";
   const pt: PlayerTrack = {
     path: syntheticPath, title: track.title, artist: track.artist,
     src: effectiveUrl || "", ephemeral: true,
   };
+  const fullLabel = playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview full track";
+  const clipLabel = playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview (30s clip)";
+  const label = unavailable ? "No preview available" : fullSrc ? fullLabel : clipLabel;
 
   const onClick = () => {
     if (loading || unavailable) return;
@@ -139,8 +152,8 @@ export function PreviewButton({ track, resolveUrl }: {
       className="btn btn-bare btn-sm"
       disabled={loading || unavailable}
       style={{ padding: "2px 6px", color: playing ? "var(--accent-2)" : "var(--muted)", opacity: loading ? 0.5 : undefined }}
-      title={unavailable ? "No preview available" : playing ? (ducking ? "Stop preview — resume the queue" : "Pause preview") : "Preview (30s clip)"}
-      aria-label={unavailable ? "No preview available" : playing ? (ducking ? "Stop preview" : "Pause preview") : "Preview"}
+      title={label}
+      aria-label={label}
       onClick={onClick}
     >
       {playing ? (

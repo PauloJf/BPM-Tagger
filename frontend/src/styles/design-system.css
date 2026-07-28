@@ -1246,6 +1246,10 @@ a.player-bar-title:hover { color: var(--accent-2); }
 .player-queue-row.current { background: var(--accent-soft); }
 .player-queue-title { flex: 1; min-width: 0; display: flex; align-items: center; background: none; border: none; color: var(--text); cursor: pointer; font-size: 12px; text-align: left; padding: 4px 2px; }
 .player-queue-actions { display: flex; gap: 2px; flex-shrink: 0; }
+/* Suggestion rows show a trailing action per row (Add / Grab / queued / not
+ * in library) whose label width varies. A fixed min-width on that slot keeps
+ * the preview icon column aligned regardless of which action lands there. */
+.sugg-action { flex-shrink: 0; min-width: 58px; text-align: center; display: inline-flex; align-items: center; justify-content: center; }
 .player-queue-grip { flex-shrink: 0; color: var(--muted); cursor: grab; font-size: 13px; line-height: 1; padding: 0 2px; user-select: none; }
 .player-queue-grip:active { cursor: grabbing; }
 .player-queue-bpm { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 1px 5px; border-radius: 6px; background: var(--chip-bg); }

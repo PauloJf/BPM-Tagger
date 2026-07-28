@@ -41,17 +41,22 @@ function TrackRow({ t, onAdd, adding, onDismiss }: {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {t.preview_url && <PreviewButton track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }} />}
+        {(t.preview_url || (t.in_library && t.file_path)) && (
+          <PreviewButton
+            track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }}
+            libraryPath={t.in_library && t.file_path ? t.file_path : undefined}
+          />
+        )}
         {t.in_library ? (
           t.file_path ? (
-            <Link className="chip chip--have" to={`/track?path=${encodeURIComponent(t.file_path)}`}>✓ in library</Link>
+            <Link className="chip chip--have sugg-action" to={`/track?path=${encodeURIComponent(t.file_path)}`}>✓ in library</Link>
           ) : (
-            <span className="chip chip--have">✓ in library</span>
+            <span className="chip chip--have sugg-action">✓ in library</span>
           )
         ) : t.queued ? (
-          <span className="chip chip--queued">↓ queued</span>
+          <span className="chip chip--queued sugg-action">↓ queued</span>
         ) : (
-          <button className="btn btn-soft btn-sm" disabled={adding} onClick={onAdd}>Add to queue</button>
+          <button className="btn btn-soft btn-sm sugg-action" disabled={adding} onClick={onAdd}>Add to queue</button>
         )}
       </div>
       <button className="btn btn-bare btn-sm" title="Dismiss" aria-label="Dismiss" style={{ color: "var(--muted)", padding: "2px 6px" }} onClick={onDismiss}>✕</button>

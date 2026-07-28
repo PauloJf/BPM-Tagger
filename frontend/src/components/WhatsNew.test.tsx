@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseChangelog, cmpVersion, sectionsSince } from "./Changelog";
+import { parseChangelog, cmpVersion, sectionsSince, parseBody } from "./Changelog";
 import { decideWhatsNew } from "./WhatsNew";
 
 const SAMPLE = `# Changelog
@@ -36,6 +36,38 @@ describe("changelog parsing", () => {
 
   it("returns all sections when `since` is unset", () => {
     expect(sectionsSince(parseChangelog(SAMPLE)).length).toBe(2);
+  });
+});
+
+describe("changelog body blocks", () => {
+  it("turns `###` lines into headings, not literal paragraphs", () => {
+    const b = parseBody("### Cadence-ready views\n\n- A thing\n");
+    expect(b[0]).toEqual({ kind: "heading", text: "Cadence-ready views" });
+    expect(JSON.stringify(b)).not.toContain("#");
+  });
+
+  it("keeps a lead-in line as a paragraph", () => {
+    expect(parseBody("**Playlists grow up**\n")[0]).toEqual({
+      kind: "para", text: "**Playlists grow up**",
+    });
+  });
+
+  it("groups consecutive bullets into one list and records indent depth", () => {
+    const b = parseBody("- top\n  - nested\n- top again\n");
+    expect(b.length).toBe(1);
+    expect(b[0]).toEqual({
+      kind: "list",
+      items: [
+        { text: "top", depth: 0 },
+        { text: "nested", depth: 1 },
+        { text: "top again", depth: 0 },
+      ],
+    });
+  });
+
+  it("starts a new list after a heading", () => {
+    const b = parseBody("- a\n\n### Next\n\n- b\n");
+    expect(b.map((x) => x.kind)).toEqual(["list", "heading", "list"]);
   });
 });
 

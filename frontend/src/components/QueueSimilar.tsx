@@ -107,25 +107,29 @@ export default function QueueSimilar({ artist, onClose }: { artist: string; onCl
                   </span>
                 </span>
                 <span className="player-queue-actions" style={{ alignItems: "center", gap: 6 }}>
-                  {t.preview_url && (
-                    <PreviewButton track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }} />
+                  {(t.preview_url || (t.in_library && t.file_path)) && (
+                    <PreviewButton
+                      track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }}
+                      libraryPath={t.in_library && t.file_path ? t.file_path : undefined}
+                    />
                   )}
                   {t.in_library ? (
                     inQueue ? (
-                      <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>✓ in queue</span>
+                      <span className="sugg-action" style={{ fontSize: 11, color: "var(--muted)" }}>✓ in queue</span>
                     ) : offCadence ? (
                       <span
-                        style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}
+                        className="sugg-action"
+                        style={{ fontSize: 11, color: "var(--muted)" }}
                         title={`Can't be stretched to ${lock!.target} BPM within ±${lock!.stretchLimitPct}%`}
                       >off cadence</span>
                     ) : (
-                      <button className="btn btn-soft btn-sm" onClick={() => enqueue(t)}>Queue</button>
+                      <button className="btn btn-soft btn-sm sugg-action" onClick={() => enqueue(t)}>Queue</button>
                     )
                   ) : t.queued ? (
-                    <span className="chip chip--queued" style={{ flexShrink: 0 }}>↓ queued</span>
+                    <span className="chip chip--queued sugg-action">↓ queued</span>
                   ) : grabberEnabled ? (
                     <button
-                      className="btn btn-soft btn-sm"
+                      className="btn btn-soft btn-sm sugg-action"
                       disabled={add.isPending && add.variables?.dz_track_id === t.dz_track_id}
                       onClick={() => add.mutate({
                         dz_track_id: t.dz_track_id, title: t.title, artist: t.artist,

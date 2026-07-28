@@ -45,23 +45,28 @@ const codeStyle: React.CSSProperties = {
   borderRadius: 5, background: "var(--chip-bg)", border: "1px solid var(--border)",
 };
 
-/** Render the CHANGELOG's inline subset — **bold**, `code`, [text](url) — into
- *  React nodes. Links are restricted to http(s) so no `javascript:` sneaks in. */
+/** Render the CHANGELOG's inline subset — **bold**, *italic*, `code`,
+ *  [text](url) — into React nodes. `**bold**` is matched before `*italic*`, so
+ *  a doubled marker never reads as an empty emphasis. Emphasis recurses, since
+ *  the changelog freely nests code and links inside bold; recursion terminates
+ *  because neither emphasis body can contain another `*`. Links are restricted
+ *  to http(s) so no `javascript:` sneaks in. */
 function renderInline(text: string, key: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const re = /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+  const re = /(\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
   let last = 0;
   let i = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
-    if (m[2] !== undefined) nodes.push(<strong key={`${key}-${i}`}>{m[2]}</strong>);
-    else if (m[3] !== undefined) nodes.push(<code key={`${key}-${i}`} style={codeStyle}>{m[3]}</code>);
-    else if (m[4] !== undefined) {
-      const safe = /^https?:\/\//i.test(m[5]) ? m[5] : "#";
+    if (m[2] !== undefined) nodes.push(<strong key={`${key}-${i}`}>{renderInline(m[2], `${key}-${i}b`)}</strong>);
+    else if (m[3] !== undefined) nodes.push(<em key={`${key}-${i}`}>{renderInline(m[3], `${key}-${i}e`)}</em>);
+    else if (m[4] !== undefined) nodes.push(<code key={`${key}-${i}`} style={codeStyle}>{m[4]}</code>);
+    else if (m[5] !== undefined) {
+      const safe = /^https?:\/\//i.test(m[6]) ? m[6] : "#";
       nodes.push(
         <a key={`${key}-${i}`} href={safe} target="_blank" rel="noopener noreferrer"
-           style={{ color: "var(--accent-2)" }}>{m[4]}</a>,
+           style={{ color: "var(--accent-2)" }}>{m[5]}</a>,
       );
     }
     last = re.lastIndex;
@@ -71,28 +76,79 @@ function renderInline(text: string, key: string): ReactNode[] {
   return nodes;
 }
 
-/** Render a version section body: `- ` lines become a bulleted list; other
- *  non-empty lines become paragraphs (sub-headings in older entries). */
-function renderBody(body: string, key: string): ReactNode {
-  const out: ReactNode[] = [];
-  let bullets: ReactNode[] = [];
-  const flush = () => {
-    if (bullets.length) {
-      out.push(<ul key={`${key}-ul-${out.length}`} style={{ margin: "4px 0", paddingLeft: 18 }}>{bullets}</ul>);
-      bullets = [];
+// ── Block parsing (pure, exported for tests) ────────────────────────────────
+export interface ListItem { text: string; depth: number }
+export type Block =
+  | { kind: "heading"; text: string }
+  | { kind: "para"; text: string }
+  | { kind: "list"; items: ListItem[] };
+
+/** Split a version section's body into blocks. `### Sub-heading` lines become
+ *  headings rather than paragraphs (they used to render with the `###` intact),
+ *  `- ` lines become list items keeping their indent depth, and anything else
+ *  non-empty is a paragraph. */
+export function parseBody(body: string): Block[] {
+  const out: Block[] = [];
+  for (const line of (body || "").split("\n")) {
+    const bullet = line.match(/^(\s*)-\s+(.*)$/);
+    if (bullet) {
+      const depth = Math.floor(bullet[1].replace(/\t/g, "  ").length / 2);
+      const last = out[out.length - 1];
+      if (last && last.kind === "list") last.items.push({ text: bullet[2], depth });
+      else out.push({ kind: "list", items: [{ text: bullet[2], depth }] });
+      continue;
     }
-  };
-  body.split("\n").forEach((line, idx) => {
     const t = line.trim();
-    if (t.startsWith("- ")) {
-      bullets.push(<li key={`${key}-li-${idx}`} style={{ marginBottom: 6, lineHeight: 1.5 }}>{renderInline(t.slice(2), `${key}-i${idx}`)}</li>);
-    } else if (t) {
-      flush();
-      out.push(<p key={`${key}-p-${idx}`} style={{ margin: "8px 0", lineHeight: 1.5 }}>{renderInline(t, `${key}-p${idx}`)}</p>);
-    }
-  });
-  flush();
+    if (!t) continue;
+    const heading = t.match(/^#{1,6}\s+(.*)$/);
+    if (heading) out.push({ kind: "heading", text: heading[1].trim() });
+    else out.push({ kind: "para", text: t });
+  }
   return out;
+}
+
+// ── Block rendering ─────────────────────────────────────────────────────────
+/** Render one run of list items, nesting anything indented deeper than the run's
+ *  own base depth inside the item it belongs to. */
+function renderItems(items: ListItem[], key: string): ReactNode {
+  const base = Math.min(...items.map((it) => it.depth));
+  const lis: ReactNode[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    let j = i + 1;
+    while (j < items.length && items[j].depth > base) j++;
+    const children = items.slice(i + 1, j);
+    lis.push(
+      <li key={`${key}-li-${i}`} style={{ marginBottom: 6, lineHeight: 1.5 }}>
+        {renderInline(item.text, `${key}-i${i}`)}
+        {children.length > 0 && renderItems(children, `${key}-n${i}`)}
+      </li>,
+    );
+    i = j;
+  }
+  return <ul key={`${key}-ul`} style={{ margin: "4px 0", paddingLeft: 18 }}>{lis}</ul>;
+}
+
+function renderBody(body: string, key: string): ReactNode {
+  return parseBody(body).map((b, idx) => {
+    if (b.kind === "heading") {
+      return (
+        <div key={`${key}-h-${idx}`} style={{
+          marginTop: 14, marginBottom: 2, fontSize: 11, fontWeight: 600,
+          letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--muted)",
+        }}>
+          {renderInline(b.text, `${key}-h${idx}`)}
+        </div>
+      );
+    }
+    if (b.kind === "list") return <div key={`${key}-l-${idx}`}>{renderItems(b.items, `${key}-l${idx}`)}</div>;
+    return (
+      <p key={`${key}-p-${idx}`} style={{ margin: "8px 0", lineHeight: 1.5 }}>
+        {renderInline(b.text, `${key}-p${idx}`)}
+      </p>
+    );
+  });
 }
 
 // ── Modal ───────────────────────────────────────────────────────────────────

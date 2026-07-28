@@ -16,6 +16,9 @@ data/
 PLAN.md
 
 # Demo / dev helpers (not part of the shipped codebase)
+node_modules/
+frontend_review/
+run-mockup.html
 demo_music/
 screenshots-data/
 seed_demo.py

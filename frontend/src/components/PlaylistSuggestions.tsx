@@ -119,23 +119,26 @@ export default function PlaylistSuggestions({ playlistId, tracks }: {
                   </span>
                 </span>
                 <span className="player-queue-actions" style={{ alignItems: "center", gap: 6 }}>
-                  {t.preview_url && (
-                    <PreviewButton track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }} />
+                  {(t.preview_url || (t.in_library && t.file_path)) && (
+                    <PreviewButton
+                      track={{ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, preview_url: t.preview_url }}
+                      libraryPath={t.in_library && t.file_path ? t.file_path : undefined}
+                    />
                   )}
                   {justAdded ? (
-                    <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>✓ added</span>
+                    <span className="sugg-action" style={{ fontSize: 11, color: "var(--muted)" }}>✓ added</span>
                   ) : t.in_library && t.file_path ? (
                     <button
-                      className="btn btn-soft btn-sm"
+                      className="btn btn-soft btn-sm sugg-action"
                       disabled={addLocal.isPending && addLocal.variables === t.file_path}
                       onClick={() => addLocal.mutate(t.file_path!)}
                       title="In your library — add to this playlist"
                     >Add</button>
                   ) : t.queued ? (
-                    <span className="chip chip--queued" style={{ flexShrink: 0 }}>↓ queued</span>
+                    <span className="chip chip--queued sugg-action">↓ queued</span>
                   ) : grabberEnabled ? (
                     <button
-                      className="btn btn-soft btn-sm"
+                      className="btn btn-soft btn-sm sugg-action"
                       disabled={grab.isPending && grab.variables?.dz_track_id === t.dz_track_id}
                       onClick={() => grab.mutate({
                         dz_track_id: t.dz_track_id, title: t.title, artist: t.artist,
@@ -144,7 +147,7 @@ export default function PlaylistSuggestions({ playlistId, tracks }: {
                       title="Not in your library — add to the download queue"
                     >Grab</button>
                   ) : (
-                    <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }} title="Enable the grabber to download missing tracks">not in library</span>
+                    <span className="sugg-action" style={{ fontSize: 11, color: "var(--muted)" }} title="Enable the grabber to download missing tracks">not in library</span>
                   )}
                 </span>
               </div>
