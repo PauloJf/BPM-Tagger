@@ -1,21 +1,69 @@
 name: Publish Docker image
 
 on:
+  # Manual run: always publishes, even if the version tag already exists on
+  # Docker Hub — the escape hatch for re-pushing an image or re-syncing the
+  # overview without a version bump.
   workflow_dispatch:
 
-jobs:
-  push:
-    runs-on: ubuntu-latest
+  # Automatic run: fires when CI finishes on main and publishes only if it
+  # succeeded AND the repo's VERSION isn't on Docker Hub yet. Gating on CI
+  # (rather than `on: push`) keeps a red main from shipping images, and the
+  # tag check makes ordinary merges no-ops — only the commit that bumps
+  # VERSION (the release commit) actually builds and pushes.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
+# One publish at a time; a second release lands after the first finishes.
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      publish: ${{ steps.decide.outputs.publish }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Read version
-        id: version
-        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          version=$(cat VERSION)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — publishing v${version} unconditionally."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          # Public-repo tag lookup, no auth needed: 200 = already published.
+          elif curl -fsS -o /dev/null \
+              "https://hub.docker.com/v2/repositories/${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger/tags/v${version}"; then
+            echo "v${version} already exists on Docker Hub — nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${version} not on Docker Hub yet — publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  push:
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,7 +85,7 @@ jobs:
           build-args: WITH_DEEPRHYTHM=false
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ needs.check.outputs.version }}
 
       # --- full image (PyTorch + deeprhythm CNN, ~1.8 GB) → :full / :vX.Y.Z-full ---
 
@@ -50,7 +98,7 @@ jobs:
           build-args: WITH_DEEPRHYTHM=true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:full
-            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ steps.version.outputs.version }}-full
+            ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ needs.check.outputs.version }}-full
 
       # --- Docker Hub overview: synced from DOCKERHUB_README.md every publish. ---
 

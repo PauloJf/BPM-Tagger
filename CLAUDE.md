@@ -52,7 +52,7 @@ Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify play
 | `Dockerfile` | Multi-stage build; `WITH_DEEPRHYTHM=true` for full image; builds the frontend bundle |
 | `docker-compose.yml` | Primary deployment path |
 | `.github/workflows/ci.yml` | CI on push/PR — backend (ruff + pytest) and frontend (tsc + build) |
-| `.github/workflows/docker-publish.yml` | Manual CI — builds & pushes both image variants |
+| `.github/workflows/docker-publish.yml` | Builds & pushes both image variants — auto after green CI on `main` when `VERSION` is new; manual dispatch force-publishes |
 | `VERSION` | Single source of version truth for CI |
 | `README.md` | Full user-facing documentation |
 | `DOCKERHUB_README.md` | Docker Hub short description |
@@ -193,7 +193,7 @@ cd frontend && npm test      # frontend suite (vitest) — required gate alongsi
 ### CI & publishing
 
 - **`ci.yml`** runs on every push to `main` / `feature/music-grabber` and on PRs: backend (ruff + pytest) and frontend (tsc + `npm run build`).
-- **`docker-publish.yml`** is manually triggered — builds & pushes both image variants from `main` using the `VERSION` file.
+- **`docker-publish.yml`** builds & pushes both image variants from `main` using the `VERSION` file. It fires automatically after CI succeeds on `main` and publishes only when the repo's `VERSION` has no matching tag on Docker Hub yet — so the release commit that bumps `VERSION` triggers the publish, and ordinary merges are no-ops. Manual `workflow_dispatch` still works and publishes unconditionally (re-push / overview re-sync).
 
 ---
 
