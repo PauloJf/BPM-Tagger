@@ -472,12 +472,12 @@ export default function Listen() {
   // Playing/Queue switcher. Tabs only exist once something is loaded; before
   // that the body is just the picker + empty state.
   const tabs = current && (
-    <div data-testid="listen-tabs" className="segmented" style={{ display: "flex", margin: "10px auto 0", width: "fit-content", flexShrink: 0 }}>
+    <div data-testid="listen-tabs" className="segmented" style={{ display: "flex", marginTop: 10, width: "100%", flexShrink: 0 }}>
       {(["playing", "queue"] as const).map((v) => (
         <button
           key={v}
           className={"segmented-btn " + (view === v ? "active" : "")}
-          style={{ minWidth: 92 }}
+          style={{ flex: 1, minHeight: 34 }}
           onClick={() => setView(v)}
           aria-pressed={view === v}
         >
@@ -488,7 +488,7 @@ export default function Listen() {
   );
 
   return (
-    <div className={"run-mobile-fill" + (view === "queue" && current ? " run-queue-open" : "")}>
+    <div className={"run-mobile-fill listen-fill" + (view === "queue" && current ? " run-queue-open" : "")}>
       {glowLayer}
       <div className="run-mobile-body">
         {!current && (

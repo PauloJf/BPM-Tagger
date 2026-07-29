@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.11.3 — 2026-07-29
+
+**Listen mobile polish: the cover takes the space, the switcher takes the width.**
+
+- The cover on the mobile Listen screen now absorbs **all** the leftover height instead of stopping at the 240px cap tuned for Run's denser cockpit — no more dead bands above the artwork and below the mode row. It stays a perfect square (capped by the screen width), and on the tallest phones any small remainder splits evenly around it.
+- The bottom **Playing / Queue** switcher now stretches to the full content width — two equal, thumb-sized halves inside the page's normal side padding — instead of a small centered pill pair.
+
 ## v2.11.2 — 2026-07-28
 
 **Listen fits one phone screen — and learns to play the whole library.**

@@ -1187,6 +1187,14 @@ body.has-player .container.container--run { padding-bottom: 24px; }
     display: flex; align-items: center; justify-content: center;
     margin-bottom: 10px;
   }
+  /* Listen: far fewer fixed rows than Run's cockpit, so the 240px cap tuned
+     for Run leaves dead space above the cover and below the mode row. Let the
+     cover absorb it instead — up to the square's width limit (container is
+     padded 14px per side, so a taller slot could no longer stay square), with
+     a hard cap for portrait tablets under the 900px breakpoint. */
+  .run-mobile-fill.listen-fill .run-mobile-body > .run-cover-slot {
+    max-height: min(430px, calc(100vw - 28px));
+  }
   /* Short screens (old/small phones, ~2016 Androids and SEs): the fixed rows
      alone need ~610px, so even the slot's 72px floor would push the transport
      off-screen. Drop the artwork like native players do — the title/artist
