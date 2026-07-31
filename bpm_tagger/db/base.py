@@ -194,6 +194,17 @@ class _DBBase:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pp_player ON player_playlists(player_id)")
+        # Cross-device player state: the SPA's queue snapshot, one row per account.
+        # `owner` is 'admin' (all admin sessions share one) or 'player:<id>'; the
+        # shared Guest login has no account row and stays browser-local. The
+        # snapshot is opaque JSON authored by the SPA (see api/player_state.py).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS player_state (
+                owner      TEXT PRIMARY KEY,
+                state      TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
 
     def _migrate_playlists_schema(self, conn, finish: bool = False):
         """Generalize the Spotify-only playlists / playlist_tracks tables to the

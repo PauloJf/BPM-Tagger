@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { api, audioUrl, notifyUnauthorized } from "./api";
 import { useAuthOptional } from "./auth";
+import { fetchServerState, lastSeenStamp, pushServerState, rememberStamp } from "./playerSync";
 
 export interface PlayerTrack {
   path: string;            // identity key; for previews a synthetic "preview:dz:<id>"
@@ -193,7 +194,12 @@ interface PlayerState {
 const Ctx = createContext<PlayerState | null>(null);
 
 const SAVE_KEY = "bpm.player";
-interface SavedPlayer {
+// How long a burst of queue edits coalesces into one server push, and how often
+// the advancing playhead is captured while playing (so another device can
+// resume near the right position).
+const PUSH_DEBOUNCE_MS = 2_000;
+const TIME_SYNC_MS = 15_000;
+export interface SavedPlayer {
   queue: PlayerTrack[]; order: number[]; pos: number;
   shuffle: boolean; repeat: RepeatMode; volume: number;
   time?: number; playing?: boolean;
@@ -347,55 +353,180 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const nav = useRef({ queue, order, pos, repeat, shuffle, tempoLock });
   useEffect(() => { nav.current = { queue, order, pos, repeat, shuffle, tempoLock }; }, [queue, order, pos, repeat, shuffle, tempoLock]);
 
-  // Persist the queue + position + play-state so a reload restores playback
-  // where it left off.
-  const persist = useCallback(() => {
-    try {
-      const { queue, order, pos, shuffle, repeat } = nav.current;
-      if (!queue.length) { localStorage.removeItem(SAVE_KEY); return; }
-      // Ephemeral tracks are one-off external preview clips whose URLs die on
-      // reload; they only ever reach the queue via the "preview with nothing
-      // playing" fallthrough (a single-item queue). Never persist them — filter
-      // them out, and if that leaves nothing, clear the saved queue entirely.
-      if (queue.some((t) => t.ephemeral)) {
-        const survivors = queue.filter((t) => !t.ephemeral);
-        if (!survivors.length) { localStorage.removeItem(SAVE_KEY); return; }
-        localStorage.setItem(SAVE_KEY, JSON.stringify({
-          queue: survivors, order: survivors.map((_, i) => i), pos: 0,
-          shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
-          tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
-          listenSource: listenSourceRef.current, radio: radioRef.current,
-        }));
-        return;
-      }
-      const a = audioRef.current;
-      const pv = previewSaved.current;
-      // While a preview is ducking the queue, save the queue track's saved
-      // position/state — not the preview's.
-      const time = pv ? pv.time : a?.currentTime || 0;
-      const isPlaying = pv ? pv.wasPlaying : !!a && !a.paused;
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        queue, order, pos, shuffle, repeat,
-        volume: volumeRef.current, time, playing: isPlaying,
+  // The saved snapshot: queue + position + play-state, so a reload (or another
+  // device — see the sync block below) restores playback where it left off.
+  // Null means "nothing worth saving" (empty queue, or only ephemeral clips).
+  const snapshot = useCallback((): SavedPlayer | null => {
+    const { queue, order, pos, shuffle, repeat } = nav.current;
+    if (!queue.length) return null;
+    // Ephemeral tracks are one-off external preview clips whose URLs die on
+    // reload; they only ever reach the queue via the "preview with nothing
+    // playing" fallthrough (a single-item queue). Never persist them — filter
+    // them out, and if that leaves nothing, save nothing.
+    if (queue.some((t) => t.ephemeral)) {
+      const survivors = queue.filter((t) => !t.ephemeral);
+      if (!survivors.length) return null;
+      return {
+        queue: survivors, order: survivors.map((_, i) => i), pos: 0,
+        shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
         tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
         listenSource: listenSourceRef.current, radio: radioRef.current,
-      }));
-    } catch { /* ignore */ }
+      };
+    }
+    const a = audioRef.current;
+    const pv = previewSaved.current;
+    // While a preview is ducking the queue, save the queue track's saved
+    // position/state — not the preview's.
+    const time = pv ? pv.time : a?.currentTime || 0;
+    const isPlaying = pv ? pv.wasPlaying : !!a && !a.paused;
+    return {
+      queue, order, pos, shuffle, repeat,
+      volume: volumeRef.current, time, playing: isPlaying,
+      tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
+      listenSource: listenSourceRef.current, radio: radioRef.current,
+    };
   }, []);
+
+  // ── Cross-device sync ─────────────────────────────────────────────────────
+  // The snapshot above is also mirrored to the server per account (admin, or a
+  // named player user), so opening the app on another device shows the same
+  // queue. Snapshot semantics, last writer wins: boot/foreground pulls the
+  // server copy and adopts it when another device wrote since this browser
+  // last looked (a stamp it hasn't seen) and nothing is playing here; every
+  // local change pushes back, debounced. Armed only once the server confirms
+  // the account syncs (the shared Guest login has no account row and stays
+  // browser-local), and disarmed on sign-out BEFORE the queue is dropped — a
+  // sign-out empties this device's queue, and that must never wipe the
+  // account's server copy out from under other devices.
+  const syncArmed = useRef(false);
+  const pushTimer = useRef<number | null>(null);
+  const authenticated = auth?.authenticated ?? false;
+
+  const pushNow = useCallback((keepalive = false) => {
+    if (!syncArmed.current) return;
+    if (pushTimer.current != null) { clearTimeout(pushTimer.current); pushTimer.current = null; }
+    void pushServerState(snapshot(), keepalive);
+  }, [snapshot]);
+
+  const schedulePush = useCallback(() => {
+    if (!syncArmed.current) return;
+    if (pushTimer.current != null) clearTimeout(pushTimer.current);
+    pushTimer.current = window.setTimeout(() => {
+      pushTimer.current = null;
+      void pushServerState(snapshot());
+    }, PUSH_DEBOUNCE_MS);
+  }, [snapshot]);
+
+  const persist = useCallback(() => {
+    try {
+      const s = snapshot();
+      if (s) localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+      else localStorage.removeItem(SAVE_KEY);
+    } catch { /* ignore */ }
+    schedulePush();
+  }, [snapshot, schedulePush]);
   useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, listenSource, radio, persist]);
+
+  // Take over another device's snapshot wholesale. Always lands paused — music
+  // must never start by itself because a different device wrote a queue — but
+  // positioned, so one tap resumes where the other device left off. Volume is
+  // deliberately NOT adopted (speakers differ per device).
+  const adoptSnapshot = useCallback((s: SavedPlayer) => {
+    if (!Array.isArray(s.queue) || !s.queue.length || !Array.isArray(s.order)) return;
+    const track = s.pos >= 0 ? (s.queue[s.order[s.pos]] ?? null) : null;
+    setQueue(s.queue);
+    setOrder(s.order);
+    setPos(s.pos);
+    setShuffle(!!s.shuffle);
+    setRepeat(s.repeat ?? "off");
+    setTempoLock(s.tempoLock ?? null);
+    setRunSource(s.runSource ?? null);
+    setListenSource(s.listenSource ?? null);
+    setRadio(s.radio ?? false);
+    setIntendedPlaying(false);
+    pendingPlay.current = false;
+    fadeIn.current = false;
+    const time = s.time && isFinite(s.time) ? s.time : null;
+    const a = audioRef.current;
+    if (track && track.path === currentRef.current?.path) {
+      // Same track this device already had loaded: the load effect won't re-run
+      // (it keys on the path), so seek the element directly.
+      if (a && time != null && !intendedPlayingRef.current) { try { a.currentTime = time; } catch { /* ignore */ } }
+    } else {
+      seekTarget.current = time;
+    }
+    setCurrent(track);
+  }, [setRunSource, setListenSource]);
+
+  // Pull the server snapshot and reconcile. Adopt only when (a) the account
+  // syncs, (b) the stamp is one this browser hasn't seen — i.e. another device
+  // wrote since we last looked — and (c) nothing is playing here: a device
+  // mid-playback is the freshest truth and pushes instead of adopting.
+  const syncFromServer = useCallback(() => {
+    void fetchServerState().then((resp) => {
+      if (!resp || !resp.sync) return;
+      syncArmed.current = true;
+      const stamp = resp.updated_at || "";
+      if (resp.state && stamp && stamp !== lastSeenStamp() && !intendedPlayingRef.current && !previewSaved.current) {
+        adoptSnapshot(resp.state);
+      }
+      // Either we adopted it or we deliberately kept local state (in which case
+      // the next local change overwrites the server — last writer wins). Both
+      // ways this stamp is now "seen".
+      if (stamp) rememberStamp(stamp);
+    });
+  }, [adoptSnapshot]);
+
+  // Boot (and login): learn whether this account syncs, and catch up.
+  useEffect(() => {
+    if (!authenticated) { syncArmed.current = false; return; }
+    syncFromServer();
+  }, [authenticated, syncFromServer]);
+
+  // Sign-out drops the queue on THIS device only (see the bpm:sign-out effect
+  // below). Disarm before React flushes that queue-wipe into persist(), so the
+  // account's server copy survives for other devices. Registered independently
+  // of the wipe handler: both fire synchronously on dispatch, while persist()
+  // only runs in the post-render effect — after both.
+  useEffect(() => {
+    const disarm = () => {
+      syncArmed.current = false;
+      if (pushTimer.current != null) { clearTimeout(pushTimer.current); pushTimer.current = null; }
+    };
+    window.addEventListener("bpm:sign-out", disarm);
+    return () => window.removeEventListener("bpm:sign-out", disarm);
+  }, []);
+
+  // While playing, capture the advancing playhead every ~15s — the state
+  // effect above only fires on structural changes, and another device should
+  // resume near the right position, not where the last queue edit happened.
+  useEffect(() => {
+    if (!playing) return;
+    const id = window.setInterval(persist, TIME_SYNC_MS);
+    return () => clearInterval(id);
+  }, [playing, persist]);
 
   // The state effect above can't see time ticking, so capture the exact
   // position when the page is hidden or unloaded (refresh, tab close, mobile
-  // app switch) — pagehide + visibilitychange cover desktop and mobile.
+  // app switch) — pagehide + visibilitychange cover desktop and mobile. The
+  // hide path also flushes the pending push immediately (keepalive, so it
+  // survives teardown); coming back to the foreground re-pulls the server, so
+  // a PWA that sat in the app switcher for days picks up queues built
+  // elsewhere in the meantime.
   useEffect(() => {
-    const onHide = () => { if (document.visibilityState === "hidden") persist(); };
-    window.addEventListener("pagehide", persist);
-    document.addEventListener("visibilitychange", onHide);
-    return () => {
-      window.removeEventListener("pagehide", persist);
-      document.removeEventListener("visibilitychange", onHide);
+    const onHide = () => { persist(); pushNow(true); };
+    const onPageHide = () => onHide();
+    const onVis = () => {
+      if (document.visibilityState === "hidden") onHide();
+      else syncFromServer();
     };
-  }, [persist]);
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [persist, pushNow, syncFromServer]);
 
   const setVolume = useCallback((v: number) => {
     const vol = Math.max(0, Math.min(1, v));

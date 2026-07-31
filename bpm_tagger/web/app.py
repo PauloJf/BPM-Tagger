@@ -27,6 +27,7 @@ from .api.lyrics import lyrics_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
 from .api.inbox import inbox_bp
+from .api.player_state import player_state_bp
 from .api.players import players_bp
 from .api.playlists import playlists_bp
 from .api.queue import queue_bp
@@ -68,6 +69,8 @@ _PLAYER_ALLOWED = {
     "api_auth.api_me", "api_auth.api_login", "api_auth.api_logout",
     # Per-user accent preference (a player user persists it; the shared Guest is a no-op)
     "api_auth.api_accent",
+    # Cross-device queue snapshot (a player user persists it; the shared Guest is a no-op)
+    "api_player_state.api_player_state_get", "api_player_state.api_player_state_put",
     # Building and playing the run queue (+ the playlist sources it can draw from)
     "api_run.api_run_queue", "api_run.api_run_playlists",
     # The Listen (regular player) queue — additionally gated inside the handler
@@ -193,7 +196,8 @@ def create_app(config: dict) -> Flask:
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
-               run_bp, suggestions_bp, players_bp, loudness_bp, listen_bp):
+               run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
+               listen_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

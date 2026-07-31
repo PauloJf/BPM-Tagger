@@ -93,6 +93,7 @@ class PlayersMixin:
     def delete_player(self, player_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM player_playlists WHERE player_id = ?", (player_id,))
+            conn.execute("DELETE FROM player_state WHERE owner = ?", (f"player:{player_id}",))
             conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
             conn.commit()
 
@@ -102,6 +103,36 @@ class PlayersMixin:
             conn.execute(
                 "INSERT OR IGNORE INTO player_playlists (player_id, playlist_id) VALUES (?, ?)",
                 (player_id, pid))
+
+    # ── Cross-device player state ────────────────────────────────────────────
+    # One queue snapshot per account (`owner` = 'admin' | 'player:<id>'), stored
+    # as the SPA's opaque JSON. `updated_at` is the server's write stamp — the
+    # SPA compares it against the last stamp it saw to detect writes from other
+    # devices (never wall-clock comparisons across machines).
+
+    def get_player_state(self, owner: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT state, updated_at FROM player_state WHERE owner = ?",
+                (owner,)).fetchone()
+        return dict(row) if row else None
+
+    def save_player_state(self, owner: str, state_json: str) -> str:
+        """Upsert an account's snapshot; returns the new updated_at stamp."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO player_state (owner, state, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(owner) DO UPDATE SET "
+                "state = excluded.state, updated_at = excluded.updated_at",
+                (owner, state_json, now))
+            conn.commit()
+        return now
+
+    def clear_player_state(self, owner: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM player_state WHERE owner = ?", (owner,))
+            conn.commit()
 
     def set_player_playlists(self, player_id: int, playlist_ids: list) -> None:
         with self._connect() as conn:

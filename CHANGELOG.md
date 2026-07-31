@@ -1,6 +1,13 @@
 # Changelog
 
-## v2.11.3 — 2026-07-29
+## v2.12.0 — 2026-07-31
+
+**The queue follows your account across devices.**
+
+- **Cross-device player state** — the player's saved snapshot (queue, position in the track, shuffle/repeat, tempo lock, run/listen source, radio) is now also stored **server-side per account**: signing in on another device shows the same queue, positioned where you left off and **paused** (music never starts by itself because another device wrote a queue — one tap resumes). Admin sessions share one snapshot; each **named player user** gets their own; the shared **Guest login** (no account row) keeps today's per-browser behaviour.
+- **Snapshot semantics, last writer wins** — every local change pushes (debounced ~2s; the playhead every ~15s while playing, plus a flush when the app is hidden/closed), and opening or foregrounding the app pulls. A device that is **actively playing never adopts** the server copy — it's the freshest truth and overwrites instead. No merging.
+- **Sign-out stays device-local** — signing out drops that device's queue (as before) but never wipes the account's server copy, so your other devices keep their queue. Deleting a player user deletes their stored state. **Volume stays per-device** (speakers differ).
+- New `GET`/`PUT /api/player/state` endpoint (login-gated, CSRF on writes, 512 KB cap, player-role allowlisted); new `player_state` table (additive migration).
 
 **Listen mobile polish: the cover takes the space, the switcher takes the width.**
 
