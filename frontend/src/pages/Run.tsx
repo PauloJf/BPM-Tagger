@@ -1360,10 +1360,15 @@ export default function Run() {
         {!current && mode !== "tap" && mode !== "queue" && sourcePicker}
         {mode !== "tap" && targetBlock}
         {modeToggle(playerMode ? ["presets", "steps", "queue"] : ["presets", "steps", "tap", "queue"], mode)}
+        {/* Prepare-offline chips only before playback starts (same rule as the
+            source picker above): preparing is a before-you-leave activity, and
+            mid-run every extra fixed row eats the cover slot — on short screens
+            (≤690px, cover already dropped) it would break the one-screen fit
+            outright. Desktop keeps the chips always; its column has room. */}
         {mode === "queue" ? renderQueuePanel(false)
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
-          : <>{presetsGrid}{prepareOffline}</>}
+          : <>{presetsGrid}{!current && prepareOffline}</>}
         {statusInline}
       </div>
       {transport}
