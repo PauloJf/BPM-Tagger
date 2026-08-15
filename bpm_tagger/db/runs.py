@@ -16,8 +16,10 @@ The owner key is the convention ``player_state`` already uses — ``'admin'`` |
 device into one bucket.
 
 **Run lifecycle (server-derived, no client-generated run id).** A run opens
-lazily when a run-stat event arrives carrying run context (source + target) and
-no open run for that owner applies. It closes when:
+lazily when an event arrives carrying run context (source + target) and no open
+run for that owner applies — either a run-stat flush or a scrobble, whichever
+lands first, through the one ``_open_or_continue_run`` implementation. It closes
+when:
 
 * the client reports the run ended (queue replaced by a non-run queue, tempo
   lock released, sign-out) — ``close_run()``;
@@ -83,18 +85,26 @@ def _norm_target(raw) -> Optional[float]:
 class RunsMixin:
 
     # ── Run journal ──────────────────────────────────────────────────────────
-    def _apply_run_event(self, conn, owner: str, values: dict, run: dict,
-                         now: Optional[datetime] = None) -> int:
-        """Fold one run-stat batch into the owner's run row, opening or rolling
-        over the run as the lifecycle rules above dictate. Returns the run id.
+    def _open_or_continue_run(self, conn, owner: str, run: dict, now_dt: datetime,
+                              wall: float = 0.0) -> int:
+        """The run lifecycle, in one place: return the id of the run this event
+        belongs to, opening one (or rolling over to a new one) as the rules at
+        the top of this module dictate.
 
-        Runs on the connection add_run_stats already opened — the journal write
-        rides the same transaction as the counter write, so the two can never
-        disagree about a batch."""
-        now_dt = now or _now()
+        Both recording paths come through here — the run-stat flush and the
+        halfway scrobble — because either can be the FIRST event of a run: a
+        short track's scrobble lands before the client's ~20s flush, and a play
+        that opened no run would be detached from it forever. Whichever arrives
+        first opens the run; the other continues it.
+
+        ``wall`` back-dates the start of a newly opened run by the time the event
+        already covers (a stat batch's wall_ms); an event that reports no elapsed
+        time (a scrobble) starts the run at ``now_dt``.
+
+        Runs on the caller's connection, so the journal write rides the same
+        transaction as whatever else that caller is writing."""
         source = _norm_source(run.get("source"))
         target = _norm_target(run.get("target"))
-        wall = min(max(float(values.get("wall_ms") or 0.0), 0.0), _MAX_EVENT_MS)
 
         row = conn.execute(
             "SELECT id, source, last_event_at FROM runs "
@@ -104,7 +114,10 @@ class RunsMixin:
         if row is not None:
             last = parse_stamp(row["last_event_at"])
             stale = last is None or (now_dt - last).total_seconds() > RUN_IDLE_SECONDS
-            if stale or (row["source"] or "") != (source or ""):
+            # An event that doesn't name a source has no opinion about which run
+            # it belongs to — only a DIFFERENT named source rolls over.
+            moved = source is not None and (row["source"] or "") != source
+            if stale or moved:
                 # Lazy close: the run ended at its last event, not now.
                 conn.execute("UPDATE runs SET ended_at = last_event_at WHERE id = ?",
                              (row["id"],))
@@ -120,6 +133,20 @@ class RunsMixin:
                 "VALUES (?, ?, ?, ?, ?)",
                 (owner, started.isoformat(), now_dt.isoformat(), source, target),
             ).lastrowid
+        return run_id
+
+    def _apply_run_event(self, conn, owner: str, values: dict, run: dict,
+                         now: Optional[datetime] = None) -> int:
+        """Fold one run-stat batch into the owner's run row, opening or rolling
+        over the run as the lifecycle rules above dictate. Returns the run id.
+
+        Runs on the connection add_run_stats already opened — the journal write
+        rides the same transaction as the counter write, so the two can never
+        disagree about a batch."""
+        now_dt = now or _now()
+        target = _norm_target(run.get("target"))
+        wall = min(max(float(values.get("wall_ms") or 0.0), 0.0), _MAX_EVENT_MS)
+        run_id = self._open_or_continue_run(conn, owner, run, now_dt, wall)
 
         def _ms(key: str) -> float:
             return min(max(float(values.get(key) or 0.0), 0.0), _MAX_EVENT_MS)
@@ -168,24 +195,22 @@ class RunsMixin:
                           duration_ms: Optional[int] = None,
                           cadence: Optional[float] = None,
                           stretched: bool = False,
-                          in_run: bool = False,
+                          run: Optional[dict] = None,
                           now: Optional[datetime] = None) -> Optional[int]:
-        """Attribute one play to an account (and to its open run when the client
-        reports the play happened under a tempo lock).
+        """Attribute one play to an account, and — when the client reports the
+        play happened under a tempo lock — to that account's run.
+
+        ``run`` is the client's run context (``{source, target}``, the same shape
+        the run-stat flush sends). It goes through the SAME open-or-continue
+        lifecycle, so a play reported before the run's first stat flush opens the
+        run rather than being detached from it.
 
         Additive to — never a replacement for — the library-global
         ``tracks.play_count`` the same request bumps."""
         now_dt = now or _now()
         with self._connect() as conn:
-            run_id = None
-            if in_run:
-                row = conn.execute(
-                    "SELECT id, last_event_at FROM runs WHERE owner = ? AND ended_at IS NULL "
-                    "ORDER BY id DESC LIMIT 1", (owner,)).fetchone()
-                if row is not None:
-                    last = parse_stamp(row["last_event_at"])
-                    if last is not None and (now_dt - last).total_seconds() <= RUN_IDLE_SECONDS:
-                        run_id = row["id"]
+            run_id = (self._open_or_continue_run(conn, owner, run, now_dt)
+                      if run is not None else None)
             return conn.execute(
                 "INSERT INTO play_events (owner, file_path, run_id, played_at, duration_ms, "
                 "cadence, stretched) VALUES (?, ?, ?, ?, ?, ?, ?)",

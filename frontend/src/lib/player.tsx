@@ -220,6 +220,16 @@ function shuffled(indices: number[]): number[] {
   return a;
 }
 
+/** The run's source as the server's key: 'library' | 'mine' | 'playlist:<id>'.
+ *
+ *  Both run reports — the stat flush and the halfway scrobble — name the source
+ *  with this, because either can be the first event the server sees of a run
+ *  (a short track scrobbles before the first flush) and the source is half of
+ *  what decides which run an event belongs to. */
+function runSourceKey(src: number | "mine" | null): string {
+  return src == null ? "library" : src === "mine" ? "mine" : `playlist:${src}`;
+}
+
 /** A fresh run-stat accumulator: the deltas since the last flush plus the run
  *  context (source + cadence) that groups them into a run server-side. */
 function emptyRunAcc() {
@@ -892,13 +902,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (a.currentTime / d >= 0.5 && scrobbledPath.current !== c.path) {
         scrobbledPath.current = c.path;
         // The run context rides along so the server can attribute the play to
-        // this account's run (cadence + whether it was tempo-shifted). Absent
-        // outside a run — a plain play is still attributed, just to no run.
+        // this account's run (source + cadence + whether it was tempo-shifted).
+        // Absent outside a run — a plain play is still attributed, just to no
+        // run. It carries the SOURCE as well as the target because this report
+        // can beat the first stat flush (a short track passes halfway inside
+        // 20s), in which case it is what opens the run.
         const lock = nav.current.tempoLock;
         api.post("/api/scrobble", {
           path: c.path,
           duration_ms: Math.round(d * 1000),
-          ...(lock ? { run: { target: lock.target,
+          ...(lock ? { run: { source: runSourceKey(runSourceRef.current),
+                              target: lock.target,
                               stretched: Math.abs((a.playbackRate || 1) - 1) > 0.01 } } : {}),
         }).catch(() => {});
       }
@@ -959,8 +973,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     acc.bands[key] = (acc.bands[key] || 0) + wall;
     // The run this batch belongs to: the source picked on the Run page and the
     // cadence it is locked to right now (both may move; the server keeps the last).
-    acc.source = runSourceRef.current == null ? "library"
-      : runSourceRef.current === "mine" ? "mine" : `playlist:${runSourceRef.current}`;
+    acc.source = runSourceKey(runSourceRef.current);
     acc.target = lock.target;
     runTrackWall.current += wall;
     if (runCountedPath.current !== c.path && runTrackWall.current >= RUN_COUNT_MS) {

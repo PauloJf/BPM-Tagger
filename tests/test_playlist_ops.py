@@ -54,6 +54,18 @@ def _db(base_config):
     return BPMDatabase(base_config["db_path"])
 
 
+def _client_with(base_config, **over):
+    """A logged-out client on the same DB, with config overrides (run presets)."""
+    from bpm_tagger.web.app import create_app
+
+    cfg = dict(base_config)
+    cfg.update(over)
+    os.makedirs(cfg["music_dir"], exist_ok=True)
+    app = create_app(cfg)
+    app.config["TESTING"] = True
+    return app.test_client()
+
+
 def _unmatched_row(db, pid, *, source_id, title, artist="Artist", isrc=None,
                    norm_title=None, norm_artist=None, position=90):
     """A 'missing' playlist row — a source track with no file on disk."""
@@ -306,6 +318,44 @@ def test_merge_into_an_existing_target_is_idempotent(client, base_config):
     assert len(db.get_playlist_tracks(dest)) == 1
 
 
+def test_a_big_merge_is_chunked_rather_than_refused(client, base_config, monkeypatch):
+    """A merge bigger than one bulk-add request must still go through — in
+    bounded transactions, so it never holds the write lock for the whole lot."""
+    csrf = _login(client)
+    db = _db(base_config)
+    total = 620
+    paths = []
+    conn = sqlite3.connect(base_config["db_path"])
+    for i in range(total):
+        path = os.path.join(base_config["music_dir"], f"big{i}.mp3")
+        conn.execute(
+            "INSERT INTO tracks (file_path, title, artist, bpm, status, analyzed_at) "
+            "VALUES (?, ?, 'Artist', 150.0, 'done', '2026-01-01')", (path, f"Big {i}"))
+        paths.append(path)
+    conn.commit()
+    conn.close()
+    a = db.add_local_playlist("Big")
+    db.add_tracks_to_local_playlist(a, paths)
+
+    sizes = []
+    real = BPMDatabase.add_tracks_to_local_playlist
+
+    def counted(self, playlist_id, file_paths):
+        sizes.append(len(file_paths))
+        return real(self, playlist_id, file_paths)
+
+    monkeypatch.setattr(BPMDatabase, "add_tracks_to_local_playlist", counted)
+    body = client.post("/api/playlists/merge",
+                       json={"source_ids": [a], "target": {"name": "Union"}},
+                       headers=csrf).get_json()
+
+    assert body["totals"] == {"added": total, "already_present": 0,
+                              "skipped_duplicate": 0, "not_in_library": 0}
+    assert body["sources"][0]["added"] == total
+    assert sum(sizes) == total and max(sizes) <= 500 and len(sizes) > 1
+    assert len(db.get_playlist_tracks(body["target"]["id"])) == total
+
+
 def test_merge_refuses_a_non_local_target(client, base_config):
     csrf = _login(client)
     db = _db(base_config)
@@ -461,8 +511,52 @@ def test_split_preview_reports_the_same_counts_as_the_stats_strip(client, runnab
     preview = client.get(f"/api/playlists/{pid}/split").get_json()
     stats = client.get(f"/api/playlists/{pid}/stats").get_json()
     assert preview["presets"] == stats["presets"]
-    assert preview["cadence"] == {p["name"]: stats["runnable"][str(p["bpm"])]
-                                  for p in stats["presets"]}
+    assert preview["cadence"] == [{"group": p["name"], "bpm": p["bpm"],
+                                   "count": stats["runnable"][str(p["bpm"])]}
+                                  for p in stats["presets"]]
+
+
+def test_two_presets_of_the_same_name_stay_two_groups(base_config):
+    """Nothing stops two run presets being called "Easy". Their groups, their
+    output playlists and their preview counts must still be two things — the BPM
+    is appended to tell them apart."""
+    client = _client_with(base_config, run_presets=[{"name": "Easy", "bpm": 150},
+                                                    {"name": "Easy", "bpm": 170}])
+    csrf = _login(client)
+    db = _db(base_config)
+    pid = db.add_local_playlist("Long Run")
+    db.add_track_to_local_playlist(pid, _seed(base_config, "a", bpm=150.0))
+    db.add_track_to_local_playlist(pid, _seed(base_config, "b", bpm=170.0))
+
+    preview = client.get(f"/api/playlists/{pid}/split").get_json()
+    assert [c["group"] for c in preview["cadence"]] == ["Easy 150", "Easy 170"]
+    assert [c["bpm"] for c in preview["cadence"]] == [150, 170]
+
+    body = client.post(f"/api/playlists/{pid}/split", json={"mode": "cadence"},
+                       headers=csrf).get_json()
+    groups = [p["group"] for p in body["playlists"]] + [s["group"] for s in body["skipped"]]
+    assert sorted(groups) == ["Easy 150", "Easy 170"]
+    names = [p["name"] for p in body["playlists"]]
+    assert names == [f"Long Run · {p['group']}" for p in body["playlists"]]
+    assert len(names) == len(set(names))
+    assert len({p["id"] for p in body["playlists"]}) == len(names)
+
+
+def test_a_unique_preset_name_is_left_alone(base_config):
+    """The BPM is appended only to disambiguate — a name that stands on its own
+    is what the user typed."""
+    client = _client_with(base_config, run_presets=[{"name": "Easy", "bpm": 150},
+                                                    {"name": "Tempo", "bpm": 170}])
+    csrf = _login(client)
+    db = _db(base_config)
+    pid = db.add_local_playlist("Long Run")
+    db.add_track_to_local_playlist(pid, _seed(base_config, "a", bpm=150.0))
+
+    preview = client.get(f"/api/playlists/{pid}/split").get_json()
+    assert [c["group"] for c in preview["cadence"]] == ["Easy", "Tempo"]
+    body = client.post(f"/api/playlists/{pid}/split", json={"mode": "cadence"},
+                       headers=csrf).get_json()
+    assert body["playlists"][0]["name"] == "Long Run · Easy"
 
 
 # ── split: artist ────────────────────────────────────────────────────────────

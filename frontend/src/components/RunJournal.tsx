@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 
 /** The run journal on the Stats page: one row per run, newest first.
@@ -60,15 +60,29 @@ export default function RunJournal({ owner = "all" }: { owner?: string }) {
   const scope = owner && owner !== "all" && !unattributed
     ? `&owner=${encodeURIComponent(owner)}` : "";
 
+  // Rows the server has handed us so far, repeats included — the paging offset.
+  // Not items.length: the list is newest-first, so a run started (or opened)
+  // between two pages slides the window and the next page repeats a row that is
+  // already on screen. Dropping the repeat keeps React's keys unique; counting
+  // it here keeps Show more moving forward instead of re-asking for the same
+  // window.
+  const fetched = useRef(0);
+
   const load = useCallback(async (offset: number) => {
     const r = await api.get<RunJournalPage>(`/api/stats/runs?offset=${offset}${scope}`);
-    setItems((prev) => (offset === 0 ? r.items : [...prev, ...r.items]));
+    fetched.current = offset + r.items.length;
+    setItems((prev) => {
+      if (offset === 0) return r.items;
+      const seen = new Set(prev.map((x) => x.id));
+      return [...prev, ...r.items.filter((x) => !seen.has(x.id))];
+    });
     setHasMore(r.has_more);
   }, [scope]);
 
   useEffect(() => {
     if (unattributed) { setItems([]); setHasMore(false); setLoading(false); return; }
     let alive = true;
+    fetched.current = 0;
     setLoading(true);
     setFailed(false);
     load(0).catch(() => { if (alive) setFailed(true); })
@@ -79,7 +93,7 @@ export default function RunJournal({ owner = "all" }: { owner?: string }) {
   async function more() {
     setLoading(true);
     try {
-      await load(items.length);
+      await load(fetched.current);
     } catch { /* keep the button so the user can retry */ } finally {
       setLoading(false);
     }

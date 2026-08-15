@@ -72,9 +72,13 @@ def api_scrobble():
 def _record_play_event(st, body: dict, path: str) -> None:
     """Per-account attribution for one scrobble (see db/runs.py).
 
-    Two writes at most (an INSERT, plus one indexed lookup of the account's open
-    run when the play happened mid-run) and never fatal: attribution must not be
-    able to fail a play report or the Navidrome forward that follows it."""
+    A handful of writes at most (an INSERT, plus the account's open-run lookup —
+    and the run's own INSERT when this play is the first event of a run, which a
+    short track's halfway report can be) and never fatal: attribution must not be
+    able to fail a play report or the Navidrome forward that follows it.
+
+    The run context (``{source, target, stretched}``) is passed through so the
+    run lifecycle sees it exactly as it sees a run-stat flush's."""
     ctx = body.get("run") if isinstance(body.get("run"), dict) else None
     cadence = None
     if ctx is not None:
@@ -90,7 +94,7 @@ def _record_play_event(st, body: dict, path: str) -> None:
         st.db.record_play_event(
             session_owner(), path, duration_ms=duration_ms, cadence=cadence,
             stretched=bool(ctx.get("stretched")) if ctx else False,
-            in_run=cadence is not None)
+            run=ctx if cadence is not None else None)
     except Exception as exc:  # pragma: no cover - best effort
         log.debug("play-event attribution failed: %s", exc)
 

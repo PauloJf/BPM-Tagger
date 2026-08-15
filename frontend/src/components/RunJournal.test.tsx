@@ -115,6 +115,37 @@ describe("RunJournal — paging", () => {
     expect(h.get.mock.calls[1][0]).toBe("/api/stats/runs?offset=1");
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
+
+  it("drops a row the next page repeats", async () => {
+    // The list is newest-first, so a run started (or opened) between the two
+    // requests slides the window down and page 2 hands back a row already on
+    // screen. Rendering it twice would collide on React's key.
+    h.get.mockResolvedValueOnce(page([row({ id: 1, owner_label: "One" }),
+                                      row({ id: 2, owner_label: "Two" })], true))
+         .mockResolvedValueOnce(page([row({ id: 2, owner_label: "Two" }),
+                                      row({ id: 3, owner_label: "Three" })], false));
+    const { container } = render(<RunJournal />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(screen.getByText("Three")).toBeTruthy());
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(screen.getAllByText("Two")).toHaveLength(1);
+  });
+
+  it("pages on rows received, so a page of pure repeats still moves on", async () => {
+    h.get.mockResolvedValueOnce(page([row({ id: 1 }), row({ id: 2 })], true))
+         .mockResolvedValueOnce(page([row({ id: 1 }), row({ id: 2 })], true))
+         .mockResolvedValueOnce(page([row({ id: 3, owner_label: "Three" })], false));
+    render(<RunJournal />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(h.get).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(screen.getByText("Three")).toBeTruthy());
+    // Offsets follow what the server handed over, not what survived the dedupe.
+    expect(h.get.mock.calls.map((c) => c[0])).toEqual([
+      "/api/stats/runs?offset=0", "/api/stats/runs?offset=2", "/api/stats/runs?offset=4"]);
+  });
 });
 
 describe("RunJournal — owner scope", () => {

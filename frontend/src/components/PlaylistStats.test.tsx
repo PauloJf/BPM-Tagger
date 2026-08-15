@@ -109,9 +109,13 @@ describe("PlaylistStats — the strip", () => {
     expect(screen.getByText("no cadence match")).toBeTruthy();
   });
 
-  it("renders the shared BPM histogram, one bar per bucket", () => {
+  it("renders the shared BPM histogram across the playlist's own BPM range", () => {
     const { container } = render(<PlaylistStats playlistId="1" />);
-    expect(container.querySelectorAll(".hist-bar")).toHaveLength(2);
+    // 120 and 155, with the empty 5-BPM steps between them filled in, so the two
+    // bars sit where their BPM says rather than side by side.
+    const bars = container.querySelectorAll(".hist-bar");
+    expect(bars).toHaveLength(8);
+    expect([...bars].filter((b) => (b as HTMLElement).style.height !== "0%")).toHaveLength(2);
     expect(screen.getByText("2 of 3 analyzed")).toBeTruthy();
   });
 

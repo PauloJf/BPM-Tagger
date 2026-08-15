@@ -410,14 +410,19 @@ function RunModeCard({ all, owners, owner, setOwner }: {
 }) {
   const [scoped, setScoped] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(false);
+  // A failed load is NOT an account with nothing recorded — saying "nothing yet"
+  // about a request that never landed would invent an answer (and disagree with
+  // the journal below, which reports its own failure).
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (owner === "all") { setScoped(null); return; }
+    if (owner === "all") { setScoped(null); setFailed(false); return; }
     let alive = true;
     setLoading(true);
+    setFailed(false);
     api.get<{ run: Record<string, number> }>(`/api/stats/run?owner=${encodeURIComponent(owner)}`)
       .then((r) => { if (alive) setScoped(r.run || {}); })
-      .catch(() => { if (alive) setScoped({}); })
+      .catch(() => { if (alive) { setScoped({}); setFailed(true); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [owner]);
@@ -459,7 +464,11 @@ function RunModeCard({ all, owners, owner, setOwner }: {
           {picker}
         </span>
       </div>
-      {empty ? (
+      {failed ? (
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
+          Failed to load this account's run stats.
+        </p>
+      ) : empty ? (
         <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
           {loading ? "Loading…" : "Nothing recorded for this account yet."}
         </p>

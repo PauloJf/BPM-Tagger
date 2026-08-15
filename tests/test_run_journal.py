@@ -445,7 +445,35 @@ def test_scrobble_attributes_the_play_to_the_account_and_run(base_config):
     assert db.list_play_events(50, owner="guest") == [by_owner["guest"]]
 
 
+def test_a_scrobble_can_be_the_first_event_of_a_run(base_config):
+    """A short track passes halfway well inside the client's ~20s flush window,
+    so the scrobble can arrive before any run-stat batch. It opens the run —
+    otherwise that play would be detached from its run forever — and the flush
+    that follows CONTINUES it rather than forking a second one."""
+    app = _app(base_config)
+    db = app.extensions["state"].db
+    path = _seed_track(base_config)
+    client = app.test_client()
+    csrf = _login(client, password="s3cret")
+
+    r = client.post("/api/scrobble",
+                    json={"path": path, "duration_ms": 100_000,
+                          "run": {"source": "library", "target": 160, "stretched": True}},
+                    headers=csrf)
+    assert r.status_code == 200
+    runs = db.list_runs(50)
+    assert len(runs) == 1 and runs[0]["source"] == "library"
+    assert db.list_play_events(10)[0]["run_id"] == runs[0]["id"]
+
+    assert _stat(client, csrf, BATCH, LIB)["run_id"] == runs[0]["id"]
+    after = db.list_runs(50)
+    assert len(after) == 1                        # continued, not duplicated
+    assert after[0]["played_ms"] == 60_000        # only the flush reports time
+
+
 def test_play_event_does_not_join_a_closed_or_stale_run(base_config):
+    """The lifecycle is the same one the stat path uses: a stale or closed run is
+    never revived — the play opens a fresh run instead."""
     app = _app(base_config)
     db = app.extensions["state"].db
     path = _seed_track(base_config)
@@ -455,11 +483,14 @@ def test_play_event_does_not_join_a_closed_or_stale_run(base_config):
     run_id = _stat(client, csrf, BATCH, LIB)["run_id"]
     _age_run(db, run_id, RUN_IDLE_SECONDS + 60)
     client.post("/api/scrobble", json={"path": path, "run": {"target": 160}}, headers=csrf)
-    assert db.list_play_events(10)[0]["run_id"] is None
+    revived = db.list_play_events(10)[0]["run_id"]
+    assert revived is not None and revived != run_id
+    stale = [r for r in db.list_runs(50) if r["id"] == run_id][0]
+    assert stale["ended_at"] == stale["last_event_at"]   # closed at its last event
 
     _stat(client, csrf, {}, end=True)
     client.post("/api/scrobble", json={"path": path, "run": {"target": 160}}, headers=csrf)
-    assert db.list_play_events(10)[0]["run_id"] is None
+    assert db.list_play_events(10)[0]["run_id"] not in (None, run_id, revived)
 
 
 def test_scrobble_survives_a_broken_attribution(base_config, monkeypatch):

@@ -40,10 +40,17 @@ from .run import _eligible, _presets, _run_settings
 
 playlist_ops_bp = Blueprint("api_playlist_ops", __name__)
 
-# Ceilings. Neither is a limit anyone reaches by hand; they exist so one request
-# can't be turned into an unbounded amount of writing.
+# Ceilings on the SHAPE of one request: how many playlists it may read from, and
+# how many it may write to. Neither is a limit anyone reaches by hand.
+#
+# The number of TRACKS is deliberately not capped — a merge of big playlists is a
+# thing people do, and refusing it would be worse than doing it. It is bounded in
+# time instead: the writes go out in _WRITE_CHUNK-sized transactions (the same
+# 500 the bulk-add endpoint caps a single request at), so no one operation holds
+# the SQLite write lock for tens of thousands of row inserts at a stretch.
 _MAX_MERGE_SOURCES = 25
 _MAX_SPLIT_GROUPS = 50
+_WRITE_CHUNK = 500
 
 # An artist needs at least this many tracks in the playlist to be worth its own
 # playlist — below it you get a shelf of one-track playlists instead of a split.
@@ -54,6 +61,23 @@ _MIN_ARTIST_GROUP = 3
 # enforces).
 _SPLIT_SEP = " · "
 _MAX_NAME = 200
+
+
+def _add_tracks(db, playlist_id: int, paths: list[str]) -> dict:
+    """``add_tracks_to_local_playlist`` in bounded batches, reported as one.
+
+    Each call is one transaction holding the write lock for a per-path SELECT and
+    INSERT, so handing it an unbounded list (a merge of 25 big playlists) would
+    block every other writer for the whole of it. Splitting it costs nothing —
+    the adds are idempotent and order-preserving, and each batch appends after
+    the last — and the summed report is the same three numbers the single call
+    returns."""
+    totals = {"added": 0, "already_present": 0, "skipped_missing": 0}
+    for i in range(0, len(paths), _WRITE_CHUNK):
+        counts = db.add_tracks_to_local_playlist(playlist_id, paths[i:i + _WRITE_CHUNK])
+        for k in totals:
+            totals[k] += counts[k]
+    return totals
 
 
 def _split_name(source_name: str, group: str) -> str:
@@ -393,8 +417,7 @@ def playlist_merge():
                 continue
             seen.update(keys)
             paths.append(path)
-        counts = (db.add_tracks_to_local_playlist(target["id"], paths) if paths else
-                  {"added": 0, "already_present": 0, "skipped_missing": 0})
+        counts = _add_tracks(db, target["id"], paths)
         entry = {
             "id": pl["id"], "name": pl["name"],
             "added": counts["added"],
@@ -414,6 +437,22 @@ def playlist_merge():
 
 # ── Split ─────────────────────────────────────────────────────────────────────
 
+def _preset_labels(presets: list[dict]) -> list[str]:
+    """One label per preset, unique across the set.
+
+    Presets are free-form and nothing stops two of them being called "Easy". The
+    label is the group name, and the group name is what the output playlist is
+    named after — so two "Easy" presets at 150 and 170 would write both cadences
+    into one playlist and report one count for the pair. Colliding names get the
+    BPM appended ("Easy 150" / "Easy 170"); a name that is already unique is left
+    exactly as the user wrote it."""
+    seen: dict[str, int] = {}
+    for p in presets:
+        seen[p["name"]] = seen.get(p["name"], 0) + 1
+    return [f"{p['name']} {p['bpm']}" if seen[p["name"]] > 1 else p["name"]
+            for p in presets]
+
+
 def _cadence_groups(st, playlist_id: int) -> tuple[list[tuple[str, list[str]]], list[dict]]:
     """(groups, skipped) for a split by run cadence.
 
@@ -427,29 +466,39 @@ def _cadence_groups(st, playlist_id: int) -> tuple[list[tuple[str, list[str]]], 
 
     A track can legitimately land in several groups: at ±15% a 158 BPM song is
     runnable at both 155 and 165, and pretending otherwise would make one of the
-    two playlists lie about what you could run."""
+    two playlists lie about what you could run.
+
+    Group labels come from ``_preset_labels``, so two presets sharing a name
+    still produce two distinct groups."""
     octave, limit = _run_settings(st.config)
     candidates = st.db.get_run_candidates(playlist_id)
+    presets = _presets(st.config)
     groups, skipped = [], []
-    for preset in _presets(st.config):
+    for preset, label in zip(presets, _preset_labels(presets)):
         found = _eligible(candidates, float(preset["bpm"]), octave, limit)
         found.sort(key=lambda x: x[2])            # closest to the cadence first
         paths = [t["file_path"] for (t, _folded, _dev) in found]
         if paths:
-            groups.append((preset["name"], paths))
+            groups.append((label, paths))
         else:
-            skipped.append({"group": preset["name"], "count": 0, "reason": "empty"})
+            skipped.append({"group": label, "count": 0, "reason": "empty"})
     return groups, skipped
 
 
-def _cadence_preview(st, playlist_id: int) -> dict:
+def _cadence_preview(st, playlist_id: int) -> list[dict]:
     """Per-preset eligible counts without writing anything — the same numbers the
     stats strip's ``runnable`` field reports, since both fold the same candidate
-    pool with the same rule."""
+    pool with the same rule.
+
+    A list rather than a {name: count} map, in preset order: two presets may
+    share a name, and a map would silently drop one of their counts the same way
+    it would collapse their two output playlists into one."""
     groups, skipped = _cadence_groups(st, playlist_id)
-    counts = {name: len(paths) for name, paths in groups}
+    counts = {label: len(paths) for label, paths in groups}
     counts.update({s["group"]: 0 for s in skipped})
-    return counts
+    presets = _presets(st.config)
+    return [{"group": label, "bpm": p["bpm"], "count": counts.get(label, 0)}
+            for p, label in zip(presets, _preset_labels(presets))]
 
 
 def _artist_groups(st, playlist_id: int) -> tuple[list[tuple[str, list[str]]], list[dict]]:
@@ -513,7 +562,7 @@ def playlist_split(pid):
         name = _split_name(pl["name"], label)
         existing = st.db.find_local_playlist_by_name(name)
         target_id = existing["id"] if existing else st.db.add_local_playlist(name)
-        counts = st.db.add_tracks_to_local_playlist(target_id, paths)
+        counts = _add_tracks(st.db, target_id, paths)
         created.append({
             "id": target_id, "name": name, "group": label,
             "created": existing is None, "eligible": len(paths),

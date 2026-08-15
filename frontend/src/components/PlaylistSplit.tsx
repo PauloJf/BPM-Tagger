@@ -28,8 +28,11 @@ type SplitMode = "cadence" | "artist";
 interface SplitPreview {
   source: { id: number; name: string };
   presets: Array<{ name: string; bpm: number }>;
-  /** Preset name → how many of this playlist's tracks are runnable there. */
-  cadence: Record<string, number>;
+  /** One entry per run preset, in preset order: the group it would create (the
+   *  preset's name, with the BPM appended when two presets share a name) and how
+   *  many of this playlist's tracks are runnable there. A list, not a map keyed
+   *  by name — two presets may be called the same thing. */
+  cadence: Array<{ group: string; bpm: number; count: number }>;
   artist: {
     groups: Array<{ group: string; count: number }>;
     skipped: Array<{ group: string; count: number; reason: string }>;
@@ -95,13 +98,13 @@ export default function PlaylistSplit({ playlistId, playlistName }: {
   // number the list above it doesn't show.
   const groups: Array<{ label: string; count: number }> = !p ? [] :
     mode === "cadence"
-      ? p.presets.map((pr) => ({ label: `${pr.name} (${pr.bpm})`, count: p.cadence[pr.name] ?? 0 }))
-                 .filter((g) => g.count > 0)
+      ? p.cadence.filter((c) => c.count > 0)
+                 .map((c) => ({ label: `${c.group} (${c.bpm})`, count: c.count }))
       : p.artist.groups.map((g) => ({ label: g.group, count: g.count }));
   const skipped = !p ? [] :
     mode === "cadence"
-      ? p.presets.filter((pr) => (p.cadence[pr.name] ?? 0) === 0)
-                 .map((pr) => ({ group: `${pr.name} (${pr.bpm})`, count: 0, reason: "empty" }))
+      ? p.cadence.filter((c) => c.count === 0)
+                 .map((c) => ({ group: `${c.group} (${c.bpm})`, count: 0, reason: "empty" }))
       : p.artist.skipped;
 
   return (
