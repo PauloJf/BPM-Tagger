@@ -369,11 +369,11 @@ class TracksMixin:
             and all(c.islower() or c.isdigit() or c == "_" for c in key)
         )
 
-    def add_run_stats(self, deltas: dict) -> None:
-        """Increment cumulative run-mode counters by the client-reported deltas
-        (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played, and
-        per-cadence-bin cad_<bpm> buckets). Invalid keys and non-finite / negative
-        values are dropped rather than rejecting the whole batch."""
+    def _clean_run_deltas(self, deltas: dict) -> list[tuple[str, float]]:
+        """The reportable (key, value) pairs of a client batch. Invalid keys and
+        non-finite / negative values are dropped rather than rejecting the whole
+        batch; a single batch's delta is capped so one bad report can't balloon
+        a total (24 h of ms is a generous per-flush ceiling)."""
         import math
         clean: list[tuple[str, float]] = []
         for key, raw in (deltas or {}).items():
@@ -383,19 +383,45 @@ class TracksMixin:
                 val = float(raw)
             except (TypeError, ValueError):
                 continue
-            # Non-negative + finite; cap a single batch's delta so one bad report
-            # can't balloon a total (24h of ms is a generous per-flush ceiling).
             if not math.isfinite(val) or val < 0:
                 continue
             clean.append((key, min(val, 86_400_000.0)))
+        return clean
+
+    def add_run_stats(self, deltas: dict, owner: str | None = None,
+                      run: dict | None = None) -> int | None:
+        """Increment cumulative run-mode counters by the client-reported deltas
+        (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played, and
+        per-cadence-bin cad_<bpm> buckets).
+
+        The global ``run_stats`` totals behave exactly as they always have — they
+        stay all-time and account-blind, so the Stats page's numbers never shift
+        under an upgrade. When ``owner`` is given the same batch is ALSO mirrored
+        into ``run_stats_owner`` (per-account totals), and when ``run`` context
+        (``{source, target}``) rides along it is folded into that owner's run
+        journal row (see db/runs.py) — one transaction, one code path, so the
+        three views can never disagree about a batch.
+
+        Returns the journal run id when the batch was attributed to a run."""
+        clean = self._clean_run_deltas(deltas)
         if not clean:
-            return
+            return None
         with self._connect() as conn:
             conn.executemany(
                 "INSERT INTO run_stats (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = value + excluded.value",
                 clean,
             )
+            if not owner:
+                return None
+            conn.executemany(
+                "INSERT INTO run_stats_owner (owner, key, value) VALUES (?, ?, ?) "
+                "ON CONFLICT(owner, key) DO UPDATE SET value = value + excluded.value",
+                [(owner, k, v) for k, v in clean],
+            )
+            if run is None:
+                return None
+            return self._apply_run_event(conn, owner, dict(clean), run)
 
     def get_run_stats(self) -> dict:
         """All cumulative run-mode counters as a {key: value} dict (empty before

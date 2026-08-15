@@ -74,6 +74,13 @@ _PLAYER_ALLOWED = {
     "api_player_state.api_player_state_get", "api_player_state.api_player_state_put",
     # Building and playing the run queue (+ the playlist sources it can draw from)
     "api_run.api_run_queue", "api_run.api_run_playlists",
+    # Reporting run-mode usage: the write-only counter/journal path, the exact
+    # sibling of media.api_scrobble below. Without it a kiosk's runs were the
+    # only ones the Stats page never saw — and per-account attribution would
+    # have no Guest or player-user data to attribute. Write-only: the numbers it
+    # feeds are readable on the admin-only /api/stats* endpoints, which stay off
+    # this list.
+    "api_run.api_run_stat",
     # The Listen (regular player) queue — additionally gated inside the handler
     # by the player_listen_mode setting, so listing it here only opens the door
     # when the admin has turned the feature on.

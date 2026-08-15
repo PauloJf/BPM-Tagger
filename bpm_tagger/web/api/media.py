@@ -8,7 +8,7 @@ import urllib.request
 
 from flask import Blueprint, abort, jsonify, request, send_file, session
 
-from ..auth import _check_csrf, login_required
+from ..auth import _check_csrf, login_required, session_owner
 from ..state import _assert_in_music_dir, state
 
 log = logging.getLogger(__name__)
@@ -30,12 +30,17 @@ def api_scrobble():
     double-counted and a local play is never lost. Forwarding is best-effort: an
     unmatched track or a rejected scrobble does not undo the local count, so the
     response is always ok=True (with `forwarded` telling whether it reached
-    Navidrome). The client can fire and forget."""
+    Navidrome). The client can fire and forget.
+
+    The same report is ALSO attributed to the session's account as a play event
+    (with the run's cadence when the player was tempo-locked) — additive to, and
+    never a substitute for, the library-global play count above."""
     _check_csrf()
     st = state()
     cfg = st.config
 
-    path = str((request.get_json(silent=True) or {}).get("path", ""))
+    body = request.get_json(silent=True) or {}
+    path = str(body.get("path", ""))
     _assert_in_music_dir(path)
     track = st.db.get_track(path)
     if not track:
@@ -43,6 +48,7 @@ def api_scrobble():
 
     # Local tally first — independent of Navidrome.
     st.db.bump_play_count(path)
+    _record_play_event(st, body, path)
 
     url = str(cfg.get("navidrome_url", "")).rstrip("/")
     user = str(cfg.get("navidrome_user", ""))
@@ -61,6 +67,32 @@ def api_scrobble():
     if not scrobble(url, user, pwd, sid):
         return jsonify(ok=True, forwarded=False, forward_error="Navidrome rejected the scrobble")
     return jsonify(ok=True, forwarded=True)
+
+
+def _record_play_event(st, body: dict, path: str) -> None:
+    """Per-account attribution for one scrobble (see db/runs.py).
+
+    Two writes at most (an INSERT, plus one indexed lookup of the account's open
+    run when the play happened mid-run) and never fatal: attribution must not be
+    able to fail a play report or the Navidrome forward that follows it."""
+    ctx = body.get("run") if isinstance(body.get("run"), dict) else None
+    cadence = None
+    if ctx is not None:
+        try:
+            cadence = float(ctx.get("target"))
+        except (TypeError, ValueError):
+            cadence = None
+    try:
+        duration_ms = int(body["duration_ms"]) if body.get("duration_ms") is not None else None
+    except (TypeError, ValueError):
+        duration_ms = None
+    try:
+        st.db.record_play_event(
+            session_owner(), path, duration_ms=duration_ms, cadence=cadence,
+            stretched=bool(ctx.get("stretched")) if ctx else False,
+            in_run=cadence is not None)
+    except Exception as exc:  # pragma: no cover - best effort
+        log.debug("play-event attribution failed: %s", exc)
 
 
 @media_bp.route("/api/progress")

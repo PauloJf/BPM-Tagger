@@ -15,9 +15,9 @@ and otherwise pushes its own state. No merging, no per-field diffs.
 import json
 import logging
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 
-from ..auth import _check_csrf, login_required
+from ..auth import _check_csrf, login_required, session_owner
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -32,13 +32,13 @@ _MAX_STATE_BYTES = 512 * 1024
 
 def _owner():
     """The account key this session's state lives under, or None for the shared
-    Guest login (role player, no player_id), which has no account row."""
-    role = session.get("role")
-    if role == "admin":
-        return "admin"
-    if role == "player" and session.get("player_id") is not None:
-        return f"player:{session['player_id']}"
-    return None
+    Guest login (role player, no player_id), which has no account row.
+
+    Same owner-key convention as attribution (``auth.session_owner``); the Guest
+    bucket that attribution keeps has nowhere to store a queue snapshot, so it
+    maps to None here."""
+    owner = session_owner()
+    return None if owner == "guest" else owner
 
 
 @player_state_bp.route("/api/player/state", methods=["GET"])

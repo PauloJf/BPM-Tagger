@@ -134,6 +134,21 @@ def login_required(f):
     return wrapper
 
 
+def session_owner() -> str:
+    """The account key this session's plays and runs are attributed to.
+
+    The convention player_state already stores under — ``'admin'`` (every admin
+    session shares one) or ``'player:<id>'`` for a named player user — extended
+    with ``'guest'`` for the shared Guest login (RUN_PASSWORD), which has no
+    account row and therefore pools every Guest device into one bucket.
+    Callers that need a *storable account* (player_state, accent) treat
+    ``'guest'`` as "no account"; attribution deliberately keeps it."""
+    if session.get("role") == "player":
+        pid = session.get("player_id")
+        return f"player:{pid}" if pid is not None else "guest"
+    return "admin"
+
+
 def is_player() -> bool:
     """True when the current session authenticated with the run-only password."""
     return session.get("role") == "player"

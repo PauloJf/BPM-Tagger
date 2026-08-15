@@ -137,6 +137,14 @@ class PlaylistsMixin:
                 self._attach_counts(conn, p, queued, queued_pt)
         return playlists
 
+    def playlist_names(self) -> dict:
+        """{id: name} — the cheap lookup for labelling a reference to a playlist
+        (e.g. a run journal row's source) without paying for list_playlists()'
+        per-playlist coverage counts."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT id, name FROM playlists").fetchall()
+        return {r["id"]: r["name"] for r in rows}
+
     def get_playlist(self, playlist_id: int, with_counts: bool = False) -> Optional[dict]:
         """One playlist row. With `with_counts`, also fold in the same coverage counts
         list_playlists() attaches — the detail view needs them for its chips, tab

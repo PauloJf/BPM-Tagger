@@ -152,6 +152,7 @@ class _DBBase:
         self._create_grabber_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)
         self._create_player_tables(conn)
+        self._create_run_tables(conn)
 
         # Orphan sweep: DBs created before FK enforcement have no ON DELETE
         # CASCADE (added to the CREATE statements above, so only fresh DBs get
@@ -207,6 +208,62 @@ class _DBBase:
                 owner      TEXT PRIMARY KEY,
                 state      TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+        """)
+
+    def _create_run_tables(self, conn):
+        """Per-account play attribution + the run journal. Brand-new tables →
+        purely additive, safe on existing DBs, and deliberately NOT backfilled:
+        attributed history starts at the upgrade (see db/runs.py).
+
+        `owner` follows the player_state convention — 'admin' | 'player:<id>' —
+        plus 'guest' for the shared RUN_PASSWORD login, which has no account row
+        and therefore pools every Guest device into one bucket."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS runs (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner               TEXT NOT NULL,
+                started_at          TEXT NOT NULL,   -- back-dated by the first event's wall time
+                last_event_at       TEXT NOT NULL,
+                ended_at            TEXT,            -- NULL = still open
+                source              TEXT,            -- library | mine | playlist:<id>
+                target_bpm          REAL,            -- LAST reported target (it can move mid-run)
+                tracks_played       INTEGER NOT NULL DEFAULT 0,
+                played_ms           REAL NOT NULL DEFAULT 0,   -- wall time on feet
+                stretched_ms        REAL NOT NULL DEFAULT 0,   -- of which tempo-shifted
+                native_ms           REAL NOT NULL DEFAULT 0,   -- source audio covered
+                cadence_ms_weighted REAL NOT NULL DEFAULT 0    -- Σ target×ms → avg cadence
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_open ON runs(owner, ended_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at)")
+        # One row per played track (the halfway scrobble), attributed to an
+        # account and — mid-run — to a run. Independent of tracks.play_count,
+        # which stays library-global and Navidrome-merged.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS play_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner       TEXT NOT NULL,
+                file_path   TEXT NOT NULL,
+                run_id      INTEGER,          -- NULL outside a run
+                played_at   TEXT NOT NULL,
+                duration_ms INTEGER,          -- track length as the player saw it
+                cadence     REAL,             -- run target BPM (NULL outside a run)
+                stretched   INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pe_owner ON play_events(owner, played_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pe_run ON play_events(run_id)")
+        # The cumulative run_stats counters mirrored per account, written from the
+        # same code path in the same transaction. The global table above keeps
+        # its exact meaning (all-time, every account, plus pre-attribution
+        # history), so the Stats page's "All" numbers never change.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS run_stats_owner (
+                owner TEXT NOT NULL,
+                key   TEXT NOT NULL,
+                value REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner, key)
             )
         """)
 

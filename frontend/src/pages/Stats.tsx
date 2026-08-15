@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
 import PageHeader from "../components/PageHeader";
 import BpmHistogram, { type BpmBucket } from "../components/BpmHistogram";
+import RunJournal from "../components/RunJournal";
 
 interface TopTrack { file_path: string; title: string | null; artist: string | null; album: string | null; album_artist: string | null; bpm: number | null; play_count: number }
 interface TopArtist { name: string; plays: number; tracks: number }
@@ -28,6 +29,10 @@ interface StatsResponse {
   // (wall_ms, shifted_ms, native_ms, cadence_weighted, tracks_played) plus
   // dynamic per-cadence-bin buckets keyed cad_<bpm> (10-BPM wide).
   run?: Record<string, number>;
+  // Accounts with attributed run data (owner filter choices), plus an
+  // "unattributed" entry when the all-time totals hold listening recorded
+  // before per-account attribution existed.
+  run_owners?: { key: string; label: string }[];
   // Most-played leaderboards: local + Navidrome-merged plays; the first page
   // (15) with a has-more flag each — /api/stats/most_played serves the rest.
   top_tracks: TopTrack[];
@@ -120,6 +125,9 @@ export default function Stats() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: () => api.get<StatsResponse>("/api/stats") });
+  // Owner scope shared by the Run mode card and the journal below it, so the
+  // two always describe the same account.
+  const [runOwner, setRunOwner] = useState("all");
 
   const retryErrors = useMutation({
     mutationFn: () => api.post<{ ok: boolean }>("/api/scan/retry_errors", {}),
@@ -270,74 +278,15 @@ export default function Stats() {
       )}
 
       {(() => {
-        const run = statsQ.data.run || {};
-        const wall = run.wall_ms || 0;
-        const tracks = run.tracks_played || 0;
-        if (!wall && !tracks) return null;   // nothing recorded yet → hide the card
-        const shifted = run.shifted_ms || 0;
-        const unshifted = Math.max(0, wall - shifted);
-        const nativeMs = run.native_ms || 0;
-        const avgCad = wall > 0 ? (run.cadence_weighted || 0) / wall : null;
-        const shiftedPct = wall > 0 ? Math.round((shifted / wall) * 100) : 0;
-        const bins = Object.entries(run)
-          .filter(([k]) => k.startsWith("cad_"))
-          .map(([k, v]) => ({ bpm: Number(k.slice(4)), ms: v }))
-          .filter((b) => Number.isFinite(b.bpm) && b.ms > 0)
-          .sort((a, b) => a.bpm - b.bpm);
-        const maxBin = bins.length ? Math.max(...bins.map((b) => b.ms)) : 1;
+        const all = statsQ.data.run || {};
+        const owners = statsQ.data.run_owners || [];
+        // Nothing recorded yet, by anyone → hide the card (unchanged behaviour).
+        if (!(all.wall_ms || all.tracks_played) && owners.length === 0) return null;
         return (
-          <div className="card" style={{ marginTop: 18 }}>
-            <div className="section-label">
-              <span>Run mode</span>
-              <span className="section-hint">tempo-locked listening, all-time</span>
-            </div>
-            <div className="desc-grid">
-              <div>
-                <div className="stat-label">Tracks played</div>
-                <div style={{ ...bigNum, color: "var(--accent-2)" }}>{num(tracks)}</div>
-              </div>
-              <div>
-                <div className="stat-label">Time on feet</div>
-                <div style={bigNum}>{fmtDur(wall)}</div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(nativeMs)} of music covered</div>
-              </div>
-              <div>
-                <div className="stat-label">Tempo-shifted</div>
-                <div style={bigNum}>{shiftedPct}%</div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(unshifted)} at native speed</div>
-              </div>
-              <div>
-                <div className="stat-label">Avg cadence</div>
-                <div style={bigNum}>
-                  {avgCad != null ? Math.round(avgCad) : "—"}
-                  <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 4 }}>BPM</span>
-                </div>
-              </div>
-            </div>
-            {bins.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                  Time per cadence
-                </div>
-                {bins.map((b) => {
-                  const pct = (b.ms / maxBin) * 100;
-                  return (
-                    <div className="det-row" key={b.bpm}>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", whiteSpace: "nowrap" }}>
-                        {b.bpm}–{b.bpm + 9}
-                      </span>
-                      <div className="det-bar-track">
-                        <div className="det-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: "linear-gradient(90deg,var(--accent),var(--accent-2))" }} />
-                      </div>
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                        {fmtDur(b.ms)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <>
+            <RunModeCard all={all} owners={owners} owner={runOwner} setOwner={setRunOwner} />
+            <RunJournal owner={runOwner} />
+          </>
         );
       })()}
 
@@ -442,5 +391,128 @@ export default function Stats() {
         );
       })()}
     </>
+  );
+}
+
+/** The cumulative Run-mode counters, with an owner filter.
+ *
+ *  "All" is the untouched all-time total the card has always shown — the same
+ *  account-blind numbers, straight off /api/stats. Picking an account re-reads
+ *  the per-account slice from the server, which only covers runs recorded since
+ *  attribution shipped; whatever pre-dates it stays visible under All and, when
+ *  it's material, as its own "(unattributed)" bucket. Nothing is ever silently
+ *  reassigned to an account. */
+function RunModeCard({ all, owners, owner, setOwner }: {
+  all: Record<string, number>;
+  owners: { key: string; label: string }[];
+  owner: string;
+  setOwner: (o: string) => void;
+}) {
+  const [scoped, setScoped] = useState<Record<string, number> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (owner === "all") { setScoped(null); return; }
+    let alive = true;
+    setLoading(true);
+    api.get<{ run: Record<string, number> }>(`/api/stats/run?owner=${encodeURIComponent(owner)}`)
+      .then((r) => { if (alive) setScoped(r.run || {}); })
+      .catch(() => { if (alive) setScoped({}); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [owner]);
+
+  const picker = (
+    <select aria-label="Filter run stats by account" value={owner}
+            onChange={(e) => setOwner(e.target.value)} style={{ fontSize: 12 }}>
+      <option value="all">All accounts</option>
+      {owners.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+    </select>
+  );
+
+  const run = owner === "all" ? all : (scoped || {});
+  const wall = run.wall_ms || 0;
+  const tracks = run.tracks_played || 0;
+  const shifted = run.shifted_ms || 0;
+  const unshifted = Math.max(0, wall - shifted);
+  const nativeMs = run.native_ms || 0;
+  const avgCad = wall > 0 ? (run.cadence_weighted || 0) / wall : null;
+  const shiftedPct = wall > 0 ? Math.round((shifted / wall) * 100) : 0;
+  const bins = Object.entries(run)
+    .filter(([k]) => k.startsWith("cad_"))
+    .map(([k, v]) => ({ bpm: Number(k.slice(4)), ms: v }))
+    .filter((b) => Number.isFinite(b.bpm) && b.ms > 0)
+    .sort((a, b) => a.bpm - b.bpm);
+  const maxBin = bins.length ? Math.max(...bins.map((b) => b.ms)) : 1;
+  const empty = !wall && !tracks;
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <div className="section-label">
+        <span>Run mode</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="section-hint">
+            {owner === "all" ? "tempo-locked listening, all-time"
+              : owner === "unattributed" ? "recorded before per-account attribution"
+              : "this account, since per-account attribution"}
+          </span>
+          {picker}
+        </span>
+      </div>
+      {empty ? (
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
+          {loading ? "Loading…" : "Nothing recorded for this account yet."}
+        </p>
+      ) : (
+        <>
+          <div className="desc-grid">
+            <div>
+              <div className="stat-label">Tracks played</div>
+              <div style={{ ...bigNum, color: "var(--accent-2)" }}>{num(tracks)}</div>
+            </div>
+            <div>
+              <div className="stat-label">Time on feet</div>
+              <div style={bigNum}>{fmtDur(wall)}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(nativeMs)} of music covered</div>
+            </div>
+            <div>
+              <div className="stat-label">Tempo-shifted</div>
+              <div style={bigNum}>{shiftedPct}%</div>
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDur(unshifted)} at native speed</div>
+            </div>
+            <div>
+              <div className="stat-label">Avg cadence</div>
+              <div style={bigNum}>
+                {avgCad != null ? Math.round(avgCad) : "—"}
+                <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 4 }}>BPM</span>
+              </div>
+            </div>
+          </div>
+          {bins.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                Time per cadence
+              </div>
+              {bins.map((b) => {
+                const pct = (b.ms / maxBin) * 100;
+                return (
+                  <div className="det-row" key={b.bpm}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", whiteSpace: "nowrap" }}>
+                      {b.bpm}–{b.bpm + 9}
+                    </span>
+                    <div className="det-bar-track">
+                      <div className="det-bar-fill" style={{ width: `${pct.toFixed(1)}%`, background: "linear-gradient(90deg,var(--accent),var(--accent-2))" }} />
+                    </div>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {fmtDur(b.ms)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

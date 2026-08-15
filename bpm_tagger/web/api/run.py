@@ -21,7 +21,7 @@ import random
 from flask import Blueprint, g, jsonify, request
 
 from ...config import RUN_PRESET_DEFAULTS
-from ..auth import _check_csrf, login_required
+from ..auth import _check_csrf, login_required, session_owner
 from ..state import state
 
 run_bp = Blueprint("api_run", __name__)
@@ -337,15 +337,30 @@ def api_run_stat():
 
     The client batches deltas since its last flush (roughly every 20s while a
     tempo-locked run plays, and on pause / track change / page hide) and posts
-    them here; the server just adds them to the cumulative totals shown on the
-    Stats page. Fire-and-forget from the client's view — always returns ok."""
+    them here; the server adds them to the cumulative totals shown on the Stats
+    page. Fire-and-forget from the client's view — always returns ok.
+
+    The same batch also carries the run's context (``run: {source, target}``),
+    which attributes it to this session's account and to a server-derived run
+    row — the journal. No client-generated run id: the server decides which run
+    an event belongs to (same owner, same source, within the idle window), so a
+    reloaded tab or a second device can't fork one run into two. ``end: true``
+    (the client's queue was replaced by a non-run queue, the tempo lock was
+    released, or it signed out) closes that run at its last event; a run whose
+    close never arrives is closed lazily by the idle window instead."""
     _check_csrf()
     body = request.get_json(silent=True) or {}
     deltas = body.get("deltas")
     if not isinstance(deltas, dict):
         return jsonify(error="deltas must be an object"), 400
-    state().db.add_run_stats(deltas)
-    return jsonify(ok=True)
+    owner = session_owner()
+    ctx = body.get("run")
+    run_id = state().db.add_run_stats(
+        deltas, owner=owner, run=ctx if isinstance(ctx, dict) else None)
+    if body.get("end"):
+        state().db.close_run(owner)
+        run_id = None
+    return jsonify(ok=True, run_id=run_id)
 
 
 @run_bp.route("/api/run/playlists")

@@ -220,6 +220,14 @@ function shuffled(indices: number[]): number[] {
   return a;
 }
 
+/** A fresh run-stat accumulator: the deltas since the last flush plus the run
+ *  context (source + cadence) that groups them into a run server-side. */
+function emptyRunAcc() {
+  return { wall: 0, shifted: 0, native: 0, cadence: 0, tracks: 0,
+           bands: {} as Record<string, number>,
+           source: null as string | null, target: null as number | null };
+}
+
 /** One <audio> element for the whole app, so playback survives route changes. */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -883,7 +891,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (a.currentTime < 5 && scrobbledPath.current === c.path) scrobbledPath.current = null;
       if (a.currentTime / d >= 0.5 && scrobbledPath.current !== c.path) {
         scrobbledPath.current = c.path;
-        api.post("/api/scrobble", { path: c.path }).catch(() => {});
+        // The run context rides along so the server can attribute the play to
+        // this account's run (cadence + whether it was tempo-shifted). Absent
+        // outside a run — a plain play is still attributed, just to no run.
+        const lock = nav.current.tempoLock;
+        api.post("/api/scrobble", {
+          path: c.path,
+          duration_ms: Math.round(d * 1000),
+          ...(lock ? { run: { target: lock.target,
+                              stretched: Math.abs((a.playbackRate || 1) - 1) > 0.01 } } : {}),
+        }).catch(() => {});
       }
     };
     a.addEventListener("timeupdate", onTime);
@@ -902,9 +919,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // (locked phone, backgrounded PWA — the primary run case), so a big gap
   // between samples is still counted. Samples with a negative delta (seek back)
   // or an implausibly large one (seek forward / re-baseline) are skipped.
+  //
+  // Each flush also carries the run's CONTEXT (source + target) captured at
+  // sample time, which is what lets the server group events into runs for the
+  // journal and attribute them to the signed-in account. Captured in the
+  // accumulator rather than read at flush time because a run often ends (lock
+  // released, queue replaced) before its last batch goes out.
   const RUN_COUNT_MS = 30_000;      // a track counts once it holds ~30s of run play
   const RUN_FLUSH_MS = 20_000;
-  const runAcc = useRef({ wall: 0, shifted: 0, native: 0, cadence: 0, tracks: 0, bands: {} as Record<string, number> });
+  const runAcc = useRef(emptyRunAcc());
+  // Whether the server currently holds an open run for us — so the end report
+  // is sent once, and only when there is a run to close.
+  const runOpen = useRef(false);
   const runPrevTime = useRef<number | null>(null);   // last sampled currentTime (s)
   const runTrackWall = useRef(0);                     // wall ms held by the current track
   const runCountedPath = useRef<string | null>(null); // path already counted in `tracks`
@@ -931,6 +957,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const bin = Math.floor(lock.target / 10) * 10;      // 10-BPM cadence bucket
     const key = `cad_${bin}`;
     acc.bands[key] = (acc.bands[key] || 0) + wall;
+    // The run this batch belongs to: the source picked on the Run page and the
+    // cadence it is locked to right now (both may move; the server keeps the last).
+    acc.source = runSourceRef.current == null ? "library"
+      : runSourceRef.current === "mine" ? "mine" : `playlist:${runSourceRef.current}`;
+    acc.target = lock.target;
     runTrackWall.current += wall;
     if (runCountedPath.current !== c.path && runTrackWall.current >= RUN_COUNT_MS) {
       runCountedPath.current = c.path;
@@ -938,7 +969,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const flushRun = useCallback(() => {
+  /** Post the accumulated deltas (with the run's context). `end` additionally
+   *  tells the server this run is over — sent when the tempo lock is released,
+   *  whether by the user or by a new queue taking over. */
+  const flushRun = useCallback((end = false) => {
     const acc = runAcc.current;
     const deltas: Record<string, number> = {};
     if (acc.wall) deltas.wall_ms = Math.round(acc.wall);
@@ -947,9 +981,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (acc.cadence) deltas.cadence_weighted = Math.round(acc.cadence);
     if (acc.tracks) deltas.tracks_played = acc.tracks;
     for (const k in acc.bands) { const v = Math.round(acc.bands[k]); if (v) deltas[k] = v; }
-    if (Object.keys(deltas).length === 0) return;
-    runAcc.current = { wall: 0, shifted: 0, native: 0, cadence: 0, tracks: 0, bands: {} };
-    api.post("/api/run/stat", { deltas }).catch(() => {});
+    const hasDeltas = Object.keys(deltas).length > 0;
+    if (!hasDeltas && !(end && runOpen.current)) return;
+    const run = acc.target != null ? { source: acc.source ?? "library", target: acc.target } : null;
+    runAcc.current = emptyRunAcc();
+    runOpen.current = end ? false : (runOpen.current || run != null);
+    api.post("/api/run/stat", { deltas, ...(run ? { run } : {}), ...(end ? { end: true } : {}) })
+      .catch(() => {});
   }, []);
 
   // Re-baseline per track so a track boundary never counts as one big delta.
@@ -961,20 +999,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!a) return;
     const onTime = () => sampleRun();
     const onHide = () => { if (document.visibilityState === "hidden") { sampleRun(); flushRun(); } };
+    // Wrapped, never passed directly: flushRun's first argument is the "this run
+    // ended" flag, and an Event object would read as true.
+    const onFlush = () => flushRun();
     a.addEventListener("timeupdate", onTime);
-    const flushId = window.setInterval(flushRun, RUN_FLUSH_MS);
+    const flushId = window.setInterval(onFlush, RUN_FLUSH_MS);
     document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", flushRun);
+    window.addEventListener("pagehide", onFlush);
     return () => {
       a.removeEventListener("timeupdate", onTime);
       clearInterval(flushId);
       document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", flushRun);
+      window.removeEventListener("pagehide", onFlush);
     };
   }, [sampleRun, flushRun]);
 
   // On pause / stop / queue end, capture the last delta and flush.
   useEffect(() => { if (!playing) { sampleRun(); flushRun(); } }, [playing, sampleRun, flushRun]);
+
+  // The tempo lock going away IS the end of the run — whichever path released
+  // it: a new queue taking over (endRunMode), the MiniPlayer's lock toggle, or
+  // signing out. Flush what's left and tell the server to close the run row, so
+  // the journal shows a finished run rather than waiting out the idle window.
+  const hadLock = useRef(!!tempoLock);
+  useEffect(() => {
+    if (hadLock.current && !tempoLock) flushRun(true);
+    hadLock.current = !!tempoLock;
+  }, [tempoLock, flushRun]);
 
   // Audio element event wiring (attached once).
   useEffect(() => {
