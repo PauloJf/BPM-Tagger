@@ -152,6 +152,7 @@ def api_me():
     # Per-user accent hue (server-side, follows the account across devices). None
     # means "no preference" → the SPA keeps its per-browser localStorage value.
     resp["accent_hue"] = None
+    prow = None
     if role == "player":
         pid = session.get("player_id")
         if pid is not None and st.db is not None:
@@ -176,10 +177,12 @@ def api_me():
     resp["preload_cache_mb"] = int(st.config.get("preload_cache_mb", 500))
     # Kiosk Listen mode: the SPA's player shell routes off this (which tabs a
     # player-role session gets, and where it lands). Admin/guest ignore it —
-    # their Listen page is always routable.
+    # their Listen page is always routable. This is the EFFECTIVE mode — a named
+    # player user's own override wins over the global setting — so the SPA needs
+    # no knowledge of where the value came from.
     if authenticated:
-        from .listen import listen_mode
-        resp["listen_mode"] = listen_mode(st.config)
+        from .listen import effective_listen_mode
+        resp["listen_mode"] = effective_listen_mode(st, player=prow)
     # Library stats and the install-ping prompt are admin-only — a player session
     # is a locked-down kiosk and never sees them.
     if is_admin and st.db is not None:

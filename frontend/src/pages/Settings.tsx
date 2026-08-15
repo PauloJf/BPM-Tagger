@@ -1049,13 +1049,15 @@ export default function Settings() {
                   </form>
                 )}
                 {/* Kiosk Listen mode: what player-role logins get besides Run.
-                    Applies to the Guest login and every Player user alike; the
-                    backend gates /api/listen/queue on the same setting. */}
+                    This is the default for the Guest login and every Player user;
+                    a Player user can override it on its own row below. The backend
+                    gates /api/listen/queue on the same resolved value. */}
                 <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
                   <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Music player (Listen)</h3>
                   <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
                     Give player logins a regular music player next to the tempo-locked Run page — their
-                    playlists, played at native speed. Your own login always has the Listen page.
+                    playlists, played at native speed. Your own login always has the Listen page. This is
+                    the default for every player login; each Player user below can override it.
                   </p>
                   <div className="settings-fields">
                     <div className="field-row">
@@ -1081,7 +1083,7 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
-                <PlayerUsers />
+                <PlayerUsers globalListenMode={listenModeCfg} />
               </div>
             );
           })()}

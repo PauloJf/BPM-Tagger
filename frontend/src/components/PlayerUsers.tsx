@@ -1,14 +1,31 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import type { PlayerUser, Playlist } from "../lib/types";
+import type { ListenMode, PlayerUser, Playlist } from "../lib/types";
 import { Toggle } from "./Toggle";
+
+/** Human labels for the four kiosk Listen modes, matching the wording of the
+ *  global picker just above this section. */
+const LISTEN_MODE_LABELS: Record<ListenMode, string> = {
+  off: "Run only (no music player)",
+  on: "Run + Listen — lands on Run",
+  default: "Run + Listen — lands on Listen",
+  only: "Listen only (pure jukebox, no Run)",
+};
+
+function isListenMode(v: string): v is ListenMode {
+  return v === "off" || v === "on" || v === "default" || v === "only";
+}
 
 /** Settings → Player Access → Player users (Phase 5). Admin-only CRUD for the local
  *  player accounts that log into Run mode: create/delete, reset password, enable/disable,
- *  and per-user playlist scoping. Player users are always scoped to their assigned
- *  playlists — the shared Guest login above is the only full-library non-admin login. */
-export default function PlayerUsers() {
+ *  per-user playlist scoping, and a per-user Listen-mode override. Player users are
+ *  always scoped to their assigned playlists — the shared Guest login above is the only
+ *  full-library non-admin login.
+ *
+ *  `globalListenMode` is the section's live global setting, shown as the "inherit"
+ *  option's current value so an admin can see what a user without an override gets. */
+export default function PlayerUsers({ globalListenMode = "off" }: { globalListenMode?: string }) {
   const qc = useQueryClient();
   const usersQ = useQuery({ queryKey: ["players"], queryFn: () => api.get<{ players: PlayerUser[] }>("/api/players") });
   const playlistsQ = useQuery({ queryKey: ["playlists"], queryFn: () => api.get<{ playlists: Playlist[] }>("/api/playlists") });
@@ -51,7 +68,7 @@ export default function PlayerUsers() {
       {users.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {users.map((u) => (
-            <UserRow key={u.id} user={u} playlists={playlists} onChanged={invalidate} />
+            <UserRow key={u.id} user={u} playlists={playlists} globalListenMode={globalListenMode} onChanged={invalidate} />
           ))}
         </div>
       )}
@@ -86,8 +103,8 @@ export default function PlayerUsers() {
   );
 }
 
-function UserRow({ user, playlists, onChanged }: {
-  user: PlayerUser; playlists: Playlist[]; onChanged: () => void;
+function UserRow({ user, playlists, globalListenMode, onChanged }: {
+  user: PlayerUser; playlists: Playlist[]; globalListenMode: string; onChanged: () => void;
 }) {
   const [expand, setExpand] = useState(false);
   const [resetPw, setResetPw] = useState("");
@@ -117,6 +134,14 @@ function UserRow({ user, playlists, onChanged }: {
         >
           {`${user.playlist_ids.length} playlist${user.playlist_ids.length === 1 ? "" : "s"}`}
         </span>
+        {user.listen_mode && (
+          <span
+            className="badge"
+            style={{ fontSize: 10, padding: "1px 7px", background: "var(--bg)", color: "var(--muted)" }}
+          >
+            {`Listen: ${user.listen_mode}`}
+          </span>
+        )}
         {!user.enabled && <span className="badge" style={{ fontSize: 10, padding: "1px 7px", color: "var(--err-fg)" }}>disabled</span>}
         <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button className="btn btn-bare btn-sm" style={{ fontSize: 12, color: "var(--accent-2)" }} onClick={() => setExpand((x) => !x)}>
@@ -144,6 +169,28 @@ function UserRow({ user, playlists, onChanged }: {
                 : [...user.playlist_ids, id],
             })}
           />
+          {/* Per-user Listen mode. Unset (inherit) is the default — the global
+              picker above then decides what this user gets. */}
+          <div className="field-row">
+            <span style={{ fontSize: 13 }}>Music player (Listen)</span>
+            <select
+              value={user.listen_mode ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                patch.mutate({ listen_mode: isListenMode(v) ? v : null });
+              }}
+              aria-label={`Listen mode for ${user.username}`}
+              style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 340 }}
+            >
+              <option value="">
+                {`Inherit global (currently: ${isListenMode(globalListenMode) ? LISTEN_MODE_LABELS[globalListenMode] : LISTEN_MODE_LABELS.off})`}
+              </option>
+              <option value="off">{LISTEN_MODE_LABELS.off}</option>
+              <option value="on">{LISTEN_MODE_LABELS.on}</option>
+              <option value="default">{LISTEN_MODE_LABELS.default}</option>
+              <option value="only">{LISTEN_MODE_LABELS.only}</option>
+            </select>
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
             <input
               type="password" value={resetPw} onChange={(e) => setResetPw(e.target.value)}

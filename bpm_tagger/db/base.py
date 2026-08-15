@@ -180,12 +180,16 @@ class _DBBase:
                 enabled       INTEGER NOT NULL DEFAULT 1,  -- 0 = disabled (also invalidates sessions)
                 created_at    TEXT,
                 last_login_at TEXT,
-                accent_hue    INTEGER                      -- per-user OKLCH accent hue (NULL = default/inherit)
+                accent_hue    INTEGER,                     -- per-user OKLCH accent hue (NULL = default/inherit)
+                listen_mode   TEXT                         -- per-user Listen mode override (NULL = inherit the global setting)
             )
         """)
-        # Additive migration for DBs created before the per-user accent column.
-        if "accent_hue" not in {row[1] for row in conn.execute("PRAGMA table_info(players)")}:
+        # Additive migrations for DBs created before these per-user columns.
+        _player_cols = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
+        if "accent_hue" not in _player_cols:
             conn.execute("ALTER TABLE players ADD COLUMN accent_hue INTEGER")
+        if "listen_mode" not in _player_cols:
+            conn.execute("ALTER TABLE players ADD COLUMN listen_mode TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS player_playlists (
                 player_id   INTEGER NOT NULL,

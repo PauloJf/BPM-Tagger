@@ -188,6 +188,120 @@ def test_named_player_scoped_to_own_playlists(base_config):
     assert [t["title"] for t in pooled["tracks"]] == ["one"]
 
 
+# ── per-user Listen mode overrides ────────────────────────────────────────────
+#
+# A named player user may carry its own listen_mode (players.listen_mode); NULL
+# means "inherit the global player_listen_mode". Everything reads that through
+# the one resolver (effective_listen_mode), so the API gate and /api/me agree.
+
+def _mk_player(admin, csrf, username, playlist_ids, **extra):
+    r = admin.post("/api/players",
+                   json={"username": username, "password": "runrunrun",
+                         "playlist_ids": playlist_ids, **extra},
+                   headers=csrf)
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()["player"]
+
+
+def test_user_override_off_while_global_on(base_config):
+    """Override off beats a global on — for that user only."""
+    app = _app(base_config, player_listen_mode="on")
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("one", 150.0)])
+    admin, _, csrf = _login(app, password="s3cret")
+    quiet = _mk_player(admin, csrf, "quiet", [pid], listen_mode="off")
+    assert quiet["listen_mode"] == "off"
+    _mk_player(admin, csrf, "normal", [pid])          # no override → inherits "on"
+
+    c, _, _ = _login(app, username="quiet", password="runrunrun")
+    assert c.get(f"/api/listen/queue?playlist={pid}").status_code == 403
+    assert c.get("/api/me").get_json()["listen_mode"] == "off"
+
+    o, _, _ = _login(app, username="normal", password="runrunrun")
+    assert o.get(f"/api/listen/queue?playlist={pid}").status_code == 200
+    assert o.get("/api/me").get_json()["listen_mode"] == "on"
+
+
+def test_user_override_on_while_global_off(base_config):
+    """Override on beats a global off, and /api/me reports the effective mode."""
+    app = _app(base_config)                            # global defaults to off
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("one", 150.0)])
+    admin, _, csrf = _login(app, password="s3cret")
+    _mk_player(admin, csrf, "loud", [pid], listen_mode="default")
+    _mk_player(admin, csrf, "normal", [pid])
+
+    c, _, _ = _login(app, username="loud", password="runrunrun")
+    assert c.get(f"/api/listen/queue?playlist={pid}").status_code == 200
+    assert c.get("/api/me").get_json()["listen_mode"] == "default"
+
+    o, _, _ = _login(app, username="normal", password="runrunrun")
+    assert o.get(f"/api/listen/queue?playlist={pid}").status_code == 403
+    assert o.get("/api/me").get_json()["listen_mode"] == "off"
+
+
+def test_guest_session_follows_global_not_user_overrides(base_config):
+    """The shared Guest login has no account row, so per-user overrides can't
+    reach it — it keeps following the global setting."""
+    app = _app(base_config, run_password="runner99")   # global off
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("one", 150.0)])
+    admin, _, csrf = _login(app, password="s3cret")
+    _mk_player(admin, csrf, "loud", [pid], listen_mode="only")
+
+    g, _, _ = _login(app, password="runner99")
+    assert g.get(f"/api/listen/queue?playlist={pid}").status_code == 403
+    assert g.get("/api/me").get_json()["listen_mode"] == "off"
+
+    admin.post("/api/settings/listen-mode", json={"player_listen_mode": "on"},
+               headers=csrf)
+    g2, _, _ = _login(app, password="runner99")
+    assert g2.get(f"/api/listen/queue?playlist={pid}").status_code == 200
+    assert g2.get("/api/me").get_json()["listen_mode"] == "on"
+
+
+def test_patch_sets_and_clears_the_override(base_config):
+    app = _app(base_config, player_listen_mode="on")
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("one", 150.0)])
+    admin, _, csrf = _login(app, password="s3cret")
+    user = _mk_player(admin, csrf, "runner", [pid])
+    assert user["listen_mode"] is None
+
+    r = admin.patch(f"/api/players/{user['id']}", json={"listen_mode": "off"},
+                    headers=csrf)
+    assert r.status_code == 200 and r.get_json()["player"]["listen_mode"] == "off"
+    c, _, _ = _login(app, username="runner", password="runrunrun")
+    assert c.get(f"/api/listen/queue?playlist={pid}").status_code == 403
+
+    # An untouched PATCH leaves the override alone...
+    r = admin.patch(f"/api/players/{user['id']}", json={"enabled": True}, headers=csrf)
+    assert r.get_json()["player"]["listen_mode"] == "off"
+    # ...and an explicit null clears it, back to inheriting the global "on".
+    r = admin.patch(f"/api/players/{user['id']}", json={"listen_mode": None},
+                    headers=csrf)
+    assert r.status_code == 200 and r.get_json()["player"]["listen_mode"] is None
+    c2, _, _ = _login(app, username="runner", password="runrunrun")
+    assert c2.get(f"/api/listen/queue?playlist={pid}").status_code == 200
+
+
+def test_invalid_user_listen_mode_rejected(base_config):
+    app = _app(base_config, player_listen_mode="on")
+    admin, _, csrf = _login(app, password="s3cret")
+    r = admin.post("/api/players",
+                   json={"username": "bad", "password": "runrunrun",
+                         "playlist_ids": [], "listen_mode": "sideways"},
+                   headers=csrf)
+    assert r.status_code == 400
+    # ...and the user was not created.
+    assert [p["username"] for p in admin.get("/api/players").get_json()["players"]] == []
+
+    user = _mk_player(admin, csrf, "runner", [])
+    assert admin.patch(f"/api/players/{user['id']}", json={"listen_mode": "sideways"},
+                       headers=csrf).status_code == 400
+    assert admin.get("/api/players").get_json()["players"][0]["listen_mode"] is None
+
+
 # ── the admin setting endpoint ────────────────────────────────────────────────
 
 def test_admin_sets_listen_mode(base_config):

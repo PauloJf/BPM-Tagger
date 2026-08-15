@@ -214,6 +214,10 @@ export interface PlayerUser {
   enabled: boolean;
   playlist_ids: number[];
   last_login_at: string | null;
+  // Per-user Listen-mode override; null = inherit the global player_listen_mode
+  // setting. /api/me already reports the resolved (effective) mode, so nothing
+  // but this admin editor needs to know the difference.
+  listen_mode: ListenMode | null;
 }
 
 export interface Waveform {

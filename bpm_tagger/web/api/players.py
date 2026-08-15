@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, request, session
 
 from ..auth import _check_csrf, login_required, verify_ui_password
 from ..state import state
+from .listen import _LISTEN_MODES
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,21 @@ def _validate_password(pw: str):
     if verify_ui_password(pw):
         return jsonify(error="Password must differ from the admin password."), 400
     return None
+
+
+def _clean_listen_mode(raw):
+    """(value, error) for a per-user Listen-mode override.
+
+    None / "" / "inherit" all mean "no override — follow the global
+    player_listen_mode setting"; anything else must be one of the four modes."""
+    if raw is None:
+        return None, None
+    mode = str(raw).strip().lower()
+    if mode in ("", "inherit"):
+        return None, None
+    if mode not in _LISTEN_MODES:
+        return None, (jsonify(error="listen_mode must be off, on, default, only or null."), 400)
+    return mode, None
 
 
 def _clean_ids(raw) -> list:
@@ -87,12 +103,15 @@ def create_player():
     bad = _validate_password(password)
     if bad:
         return bad
+    mode, bad = _clean_listen_mode(data.get("listen_mode"))
+    if bad:
+        return bad
     db = state().db
     try:
         # Player users are always playlist-scoped; a full-library non-admin login
         # is the shared Guest login (RUN_PASSWORD) only.
         pid = db.add_player(username, _hash(password), False,
-                            _clean_ids(data.get("playlist_ids")))
+                            _clean_ids(data.get("playlist_ids")), mode)
     except sqlite3.IntegrityError:
         return jsonify(error="That username is already taken."), 409
     user = db.get_player(pid)
@@ -118,6 +137,13 @@ def patch_player(pid):
         kwargs["enabled"] = bool(data["enabled"])
     if "playlist_ids" in data:
         kwargs["playlist_ids"] = _clean_ids(data["playlist_ids"])
+    if "listen_mode" in data:
+        # Present-but-null clears the override (back to inheriting the global
+        # setting); absent leaves it untouched (see update_player's sentinel).
+        mode, bad = _clean_listen_mode(data["listen_mode"])
+        if bad:
+            return bad
+        kwargs["listen_mode"] = mode
     db.update_player(pid, **kwargs)
     user = db.get_player(pid)
     user["playlist_ids"] = sorted(db.playlist_ids_for_player(pid))

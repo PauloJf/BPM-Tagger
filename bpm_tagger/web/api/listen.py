@@ -7,16 +7,22 @@ non-cadence counterpart: every playable track of one playlist (or the pooled
 playlist top to bottom and its radio mode can keep drawing from the same pool.
 
 Availability for the kiosk (player role) is governed by the admin's
-``player_listen_mode`` setting (off | on | default | only). The endpoint sits in
-the app factory's default-deny ``_PLAYER_ALLOWED`` list, and additionally 403s
-player sessions itself while the mode is ``off`` — so turning the feature off
-actually turns it off, not just hides the tab. Admin and guest-with-full-access
-sessions are never gated (the page is always routable for them).
+``player_listen_mode`` setting (off | on | default | only), which a NAMED player
+user may override on its own account (``players.listen_mode``; NULL = inherit).
+``effective_listen_mode`` is the single resolver for that — every gate and
+``/api/me`` read through it, so a per-user override can never be honored in one
+place and ignored in another. The endpoint sits in the app factory's
+default-deny ``_PLAYER_ALLOWED`` list, and additionally 403s player sessions
+itself while the effective mode is ``off`` — so turning the feature off actually
+turns it off, not just hides the tab. Admin and guest-with-full-access sessions
+are never gated (the page is always routable for them).
 """
 
 import os
 
-from flask import Blueprint, jsonify, request, session
+from typing import Optional
+
+from flask import Blueprint, g, jsonify, request, session
 
 from ..auth import login_required
 from ..state import state
@@ -28,9 +34,42 @@ _LISTEN_MODES = ("off", "on", "default", "only")
 
 
 def listen_mode(cfg) -> str:
-    """The configured kiosk listen mode, normalized to a known value."""
+    """The configured GLOBAL kiosk listen mode, normalized to a known value."""
     mode = str(cfg.get("player_listen_mode", "off") or "off").strip().lower()
     return mode if mode in _LISTEN_MODES else "off"
+
+
+def normalize_listen_mode(raw) -> Optional[str]:
+    """A per-user override normalized to one of the four modes, or None when the
+    value is unset/blank/unrecognised (= inherit the global setting)."""
+    mode = str(raw or "").strip().lower()
+    return mode if mode in _LISTEN_MODES else None
+
+
+def effective_listen_mode(st=None, player: Optional[dict] = None) -> str:
+    """The listen mode in force for the CURRENT session.
+
+    A named player user's own ``listen_mode`` wins when set; anything else — a
+    named user that inherits, the shared Guest login (RUN_PASSWORD, no account
+    row) and the admin — follows the global ``player_listen_mode`` setting.
+    (The admin's Listen page is always routable regardless; the value is only
+    reported so the SPA can show what the kiosk would get.)
+
+    ``player`` is the caller's already-loaded players row, if it has one; else
+    ``g.player`` (set by login_required for named users) or a fresh lookup."""
+    st = st or state()
+    if session.get("role") == "player":
+        pid = session.get("player_id")
+        if pid is not None:
+            row = player
+            if row is None:
+                row = getattr(g, "player", None)
+            if row is None and st.db is not None:
+                row = st.db.get_player(pid)
+            override = normalize_listen_mode(row.get("listen_mode")) if row else None
+            if override:
+                return override
+    return listen_mode(st.config)
 
 
 @listen_bp.route("/api/listen/queue")
@@ -45,7 +84,7 @@ def api_listen_queue():
     refill (it re-fetches this list and appends what it hasn't played recently),
     so this stays a plain listing rather than a sampler."""
     st = state()
-    if session.get("role") == "player" and listen_mode(st.config) == "off":
+    if session.get("role") == "player" and effective_listen_mode(st) == "off":
         return jsonify(error="forbidden"), 403
 
     full, allowed = _run_scope()

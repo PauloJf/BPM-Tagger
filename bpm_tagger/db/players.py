@@ -3,6 +3,10 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+# Sentinel for update_player: distinguishes "leave this column alone" from an
+# explicit None (which is a meaningful value for listen_mode — inherit global).
+_UNSET = object()
+
 
 class PlayersMixin:
 
@@ -12,6 +16,9 @@ class PlayersMixin:
         d["full_access"] = bool(d.get("full_access"))
         d["enabled"] = bool(d.get("enabled"))
         # accent_hue is an int or None (never coerced to bool).
+        # listen_mode is one of off/on/default/only, or None = inherit the global
+        # player_listen_mode setting.
+        d["listen_mode"] = d.get("listen_mode") or None
         return d
 
     def list_players(self) -> list[dict]:
@@ -39,15 +46,18 @@ class PlayersMixin:
         return self._player_row(row) if row else None
 
     def add_player(self, username: str, password_hash: str, full_access: bool = False,
-                   playlist_ids: Optional[list] = None) -> int:
+                   playlist_ids: Optional[list] = None,
+                   listen_mode: Optional[str] = None) -> int:
         """Create a player user. Raises sqlite3.IntegrityError on a duplicate username
-        (usernames are stored lowercased). Associates the given playlist ids."""
+        (usernames are stored lowercased). Associates the given playlist ids.
+        ``listen_mode`` None = inherit the global player_listen_mode setting."""
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO players (username, password_hash, full_access, enabled, created_at) "
-                "VALUES (?, ?, ?, 1, ?)",
-                (str(username).strip().lower(), password_hash, int(bool(full_access)), now))
+                "INSERT INTO players (username, password_hash, full_access, enabled, created_at, "
+                "listen_mode) VALUES (?, ?, ?, 1, ?, ?)",
+                (str(username).strip().lower(), password_hash, int(bool(full_access)), now,
+                 listen_mode or None))
             pid = cur.lastrowid
             self._set_player_playlists(conn, pid, playlist_ids or [])
             conn.commit()
@@ -55,13 +65,19 @@ class PlayersMixin:
 
     def update_player(self, player_id: int, *, full_access: Optional[bool] = None,
                       enabled: Optional[bool] = None,
-                      playlist_ids: Optional[list] = None) -> None:
+                      playlist_ids: Optional[list] = None,
+                      listen_mode=_UNSET) -> None:
+        """Patch a player user. Every keyword is "leave alone" when omitted; note
+        that ``listen_mode`` uses a sentinel rather than None for that, since None
+        is itself a value there (inherit the global setting)."""
         with self._connect() as conn:
             sets, vals = [], []
             if full_access is not None:
                 sets.append("full_access = ?"); vals.append(int(bool(full_access)))
             if enabled is not None:
                 sets.append("enabled = ?"); vals.append(int(bool(enabled)))
+            if listen_mode is not _UNSET:
+                sets.append("listen_mode = ?"); vals.append(listen_mode or None)
             if sets:
                 vals.append(player_id)
                 conn.execute(f"UPDATE players SET {', '.join(sets)} WHERE id = ?", vals)
