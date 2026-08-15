@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.14.0 — 2026-08-15
 
 **Playlists learn set operations, and Run mode gets a memory.**
 
