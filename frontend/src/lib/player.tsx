@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { api, audioUrl, notifyUnauthorized } from "./api";
 import { useAuthOptional } from "./auth";
+import { setLookahead, touchCached } from "./offline";
 import { fetchServerState, lastSeenStamp, pushServerState, rememberStamp } from "./playerSync";
 
 export interface PlayerTrack {
@@ -86,17 +87,9 @@ const HOLD_STEPS = [4, 12, 25, 45];
 export function rebufferHoldSeconds(stalls: number): number {
   return HOLD_STEPS[Math.min(Math.max(0, stalls), HOLD_STEPS.length - 1)];
 }
-// How many upcoming tracks the run-mode look-ahead fully prefetches.
-const PRELOAD_AHEAD = 2;
-// Full-track blob preload for gapless playback on slow links. DISABLED: playing
-// the current track from a blob: URL breaks track-advance whenever a tempo lock
-// is on — the boundary buffers then stalls on real devices (iOS and Android),
-// while streaming the same file over the network plays fine everywhere (that's
-// why a Rebuild, whose first track is never preloaded, always works). The
-// prefetch is only ever active under a tempo lock, so the whole feature is
-// gated off here rather than deleted, so it can be revisited if the blob-decode
-// path is ever made reliable.
-const PRELOAD_BLOBS = false;
+// Fallback look-ahead depth when /api/me hasn't supplied preload_ahead (older
+// API, or the player mounted without an AuthProvider — its tests do).
+const PRELOAD_AHEAD_DEFAULT = 5;
 // Boundary-error recovery: a track transition on a slow/backgrounded link can
 // fire `error` on the element before the next track's data is ready. Rather than
 // declaring the file broken and stopping the run, retry the load a few times
@@ -256,16 +249,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [bufferedPct, setBufferedPct] = useState(0);
   const [bufferInfo, setBufferInfo] = useState<BufferInfo>(IDLE_BUFFER_INFO);
   const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
-  // Run-mode look-ahead: fully download the next tracks into blobs (path → object
-  // URL) so they play from local memory — no boundary stalls on a slow link.
-  const blobCache = useRef<Map<string, string>>(new Map());
-  const prefetching = useRef<Map<string, AbortController>>(new Map());
-  // Some engines (seen on Android WebViews) won't decode a preloaded blob: URL,
-  // so the boundary errors while a fresh Rebuild (which streams over the network)
-  // plays fine. On the first such failure, give up on blobs for the rest of the
-  // session and stream instead — correctness over gaplessness. A new session
-  // re-enables it, so devices where blobs work are unaffected.
-  const blobPlaybackBroken = useRef(false);
   // Adaptive rebuffer hold: on an underrun, pause and wait for a growing amount
   // of buffered-ahead before resuming (foreground only — see beginHold).
   const rebufferHold = useRef(false);
@@ -599,10 +582,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [resumePlay]);
 
-  // The element source for a track: its own external URL, else the preloaded
-  // blob (unless blob playback proved broken on this engine), else stream it.
-  const pickSrc = useCallback((t: PlayerTrack) =>
-    t.src ?? (PRELOAD_BLOBS && !blobPlaybackBroken.current ? blobCache.current.get(t.path) : undefined) ?? audioUrl(t.path), []);
+  // The element source for a track: its own external URL, else the /audio
+  // stream URL. Always the same URL either way — when the track was preloaded,
+  // the service worker serves those bytes from the offline cache transparently
+  // (see lib/offline.ts), so there is no blob-vs-stream source switching here.
+  const pickSrc = useCallback((t: PlayerTrack) => t.src ?? audioUrl(t.path), []);
 
   // Load the source whenever the current track changes; seek + fade-in + auto-play as requested.
   useEffect(() => {
@@ -1022,22 +1006,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // through to the banner once recovery is exhausted.
       const c = currentRef.current;
       if (c && !c.ephemeral && intendedPlayingRef.current) {
-        // A preloaded blob the engine can't decode (seen on Android WebViews):
-        // the boundary errors while a network stream plays fine. Give up on
-        // blobs for the session and immediately re-point this track at the
-        // network — no retry storm, no "connecting"/"stalled" blinks.
-        if (!blobPlaybackBroken.current && (a.currentSrc || a.src).startsWith("blob:")) {
-          blobPlaybackBroken.current = true;
-          for (const ctrl of prefetching.current.values()) ctrl.abort();
-          prefetching.current.clear();
-          for (const url of blobCache.current.values()) URL.revokeObjectURL(url);
-          blobCache.current.clear();
-          setError(null);
-          a.src = audioUrl(c.path);   // stream instead of the bad blob
-          a.load();
-          a.play().catch(() => {});
-          return;
-        }
         if (document.visibilityState !== "visible") {
           // Backgrounded (locked phone): the OS paused the fetch. Resume the
           // moment the app is foregrounded — the browser reloads then.
@@ -1260,63 +1228,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Run-mode look-ahead: while a tempo-locked run is playing (a predictable,
-  // long queue), download the next tracks *entirely* into blobs so, when the
-  // queue reaches them, they play from local memory with no network — no
-  // boundary stalls on a slow link. Bounded to a small window (current + the
-  // next PRELOAD_AHEAD) and evicted as the run advances; fetched at low priority
-  // so it yields to the currently-playing stream. Gated to run mode so we never
-  // spend a tab's bandwidth prefetching outside it.
+  // Look-ahead: while a queue is playing (Run or Listen alike), download the
+  // next tracks *entirely* into the offline cache so, when the queue reaches
+  // them, the service worker serves them locally — no boundary stalls on a slow
+  // link, and the queue keeps playing through a network dead zone. Bounded to a
+  // small window ahead of the playhead and fetched at low priority so it yields
+  // to the currently-playing stream; downloads that fall out of the window are
+  // aborted (a manual "Prepare offline" download is never aborted — see
+  // lib/offline.ts). Unlike its blob-based predecessor, nothing is evicted as
+  // the run advances: played tracks stay cached until the size cap pushes the
+  // least-recently-touched ones out.
   //
   // Gated on *intended* playback, not the element's literal `playing` state:
   // `playing` flips false during every buffering stall (and the pause inside an
   // adaptive rebuffer hold), and momentarily at every track boundary (`ended`
-  // fires before the next track's `play`). Keying the gate on it made this
-  // effect abort in-flight prefetches and revoke finished blobs exactly when
-  // the look-ahead mattered most — so the next track streamed from the network
-  // again at the boundary, and a backgrounded iOS WebView (suspended once audio
-  // stops) never got the data: the queue simply stopped advancing mid-run.
+  // fires before the next track's `play`). Keying the gate on it would abort
+  // in-flight prefetches exactly when the look-ahead matters most.
   // `intendedPlaying` holds true through stalls and boundaries, and still turns
   // the look-ahead off on a real pause / stop / queue end.
+  const preloadAhead = auth?.preloadAhead ?? PRELOAD_AHEAD_DEFAULT;
   useEffect(() => {
-    // Skip the look-ahead when preload is disabled (see PRELOAD_BLOBS) or once
-    // blob playback proved broken on this engine — we stream instead.
-    const active = PRELOAD_BLOBS && tempoLock != null && intendedPlaying && order.length > 1 && !blobPlaybackBroken.current;
-    const wants = active ? upcomingPaths(order, pos, queue, repeat, PRELOAD_AHEAD) : [];
-    const keep = new Set<string>(wants);
-    if (current?.path) keep.add(current.path);   // keep the blob we may be playing from
-    // Evict anything outside the window (abort in-flight fetches, revoke blobs).
-    for (const [path, ctrl] of prefetching.current) {
-      if (!keep.has(path)) { ctrl.abort(); prefetching.current.delete(path); }
-    }
-    for (const [path, url] of blobCache.current) {
-      if (!keep.has(path)) { URL.revokeObjectURL(url); blobCache.current.delete(path); }
-    }
-    // Start any missing look-ahead downloads.
-    for (const path of wants) {
-      if (blobCache.current.has(path) || prefetching.current.has(path)) continue;
-      const ctrl = new AbortController();
-      prefetching.current.set(path, ctrl);
-      const init = { credentials: "same-origin", signal: ctrl.signal } as RequestInit & { priority?: string };
-      init.priority = "low";   // yield bandwidth to the playing stream (ignored where unsupported)
-      fetch(audioUrl(path), init)
-        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-        .then((blob) => {
-          prefetching.current.delete(path);
-          if (ctrl.signal.aborted) return;
-          blobCache.current.set(path, URL.createObjectURL(blob));
-        })
-        .catch(() => { prefetching.current.delete(path); });
-    }
-  }, [current?.path, intendedPlaying, order, pos, repeat, tempoLock, queue]);
+    const active = preloadAhead > 0 && intendedPlaying && order.length > 1;
+    const wants = active ? upcomingPaths(order, pos, queue, repeat, preloadAhead) : [];
+    setLookahead(wants, current?.path && !current.ephemeral && !current.src ? current.path : null);
+  }, [current?.path, current?.ephemeral, current?.src, intendedPlaying, order, pos, repeat, queue, preloadAhead]);
 
-  // Release every prefetched blob on unmount.
-  useEffect(() => () => {
-    for (const ctrl of prefetching.current.values()) ctrl.abort();
-    for (const url of blobCache.current.values()) URL.revokeObjectURL(url);
-    prefetching.current.clear();
-    blobCache.current.clear();
-  }, []);
+  // Mark the playing track as freshly used so cap eviction spares it (and a
+  // recently played run survives longer than tracks cached weeks ago).
+  useEffect(() => {
+    if (current?.path && !current.ephemeral && !current.src) touchCached(current.path);
+  }, [current?.path, current?.ephemeral, current?.src]);
 
   // Media Session: lock-screen / headset / notification controls (key for the
   // PWA running use case — the phone is locked mid-run). Metadata mirrors the

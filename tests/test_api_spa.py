@@ -411,6 +411,50 @@ def test_settings_playback_clamps(auth_client):
     assert _state(auth_client).config["playback_buffer"] == 30.0
 
 
+def test_settings_playback_preload_round_trip_and_clamps(auth_client):
+    st = _state(auth_client)
+    auth_client.post("/api/settings/playback",
+                     json={"preload_ahead": 8, "preload_cache_mb": 750},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["preload_ahead"] == 8
+    assert st.config["preload_cache_mb"] == 750
+    # Out-of-range values clamp; 0 look-ahead (off) is allowed.
+    auth_client.post("/api/settings/playback",
+                     json={"preload_ahead": 99, "preload_cache_mb": 1},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["preload_ahead"] == 20
+    assert st.config["preload_cache_mb"] == 50
+    auth_client.post("/api/settings/playback",
+                     json={"preload_ahead": 0},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["preload_ahead"] == 0
+    # Garbage falls back to the defaults rather than erroring.
+    auth_client.post("/api/settings/playback",
+                     json={"preload_ahead": "lots", "preload_cache_mb": None},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["preload_ahead"] == 5
+    assert st.config["preload_cache_mb"] == 500
+
+
+def test_settings_run_preload_tracks_round_trip(auth_client):
+    st = _state(auth_client)
+    auth_client.post("/api/settings/run", json={"run_preload_tracks": 25},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["run_preload_tracks"] == 25
+    auth_client.post("/api/settings/run", json={"run_preload_tracks": 999},
+                     headers={"X-CSRF-Token": auth_client._csrf})
+    assert st.config["run_preload_tracks"] == 50   # clamped
+
+
+def test_me_reports_preload_settings(auth_client):
+    st = _state(auth_client)
+    st.config["preload_ahead"] = 7
+    st.config["preload_cache_mb"] = 300
+    me = auth_client.get("/api/me").get_json()
+    assert me["preload_ahead"] == 7
+    assert me["preload_cache_mb"] == 300
+
+
 def test_settings_navidrome_keeps_password_when_masked(auth_client):
     st = _state(auth_client)
     st.config["navidrome_pass"] = "secret-pw"

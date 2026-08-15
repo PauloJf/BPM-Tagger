@@ -150,6 +150,9 @@ def test_player_settings_is_filtered_to_run_keys(base_config):
     _login(client, "runner99")
     settings = client.get("/api/settings").get_json()["settings"]
     assert "run_octave_fold" in settings          # run keys present
+    assert "run_preload_tracks" in settings        # kiosks prepare offline too
+    assert "preload_ahead" in settings
+    assert "preload_cache_mb" in settings
     assert "navidrome_url" not in settings         # full config not leaked
     assert "ui_password" not in settings
     assert "run_password" not in settings

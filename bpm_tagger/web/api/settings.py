@@ -26,10 +26,12 @@ _SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
                 "monochrome_api_key", "deezer_arl"}
 
 # Keys a player-role session is allowed to read from /api/settings — just what
-# the Run page needs to render (presets, tolerances, playback buffer).
+# the Run page needs to render (presets, tolerances, playback buffer, offline
+# preloading).
 def _player_settings_keys(cfg: dict) -> list:
     return [k for k in cfg if k.startswith("run_") and k != "run_password"
-            and k != "run_password_hash"] + ["playback_buffer"]
+            and k != "run_password_hash"] + [
+        "playback_buffer", "preload_ahead", "preload_cache_mb"]
 
 
 def _json_body() -> dict:
@@ -189,11 +191,22 @@ def api_settings_playback():
         target = max(-30.0, min(-5.0, float(data.get("loudness_target_lufs", -14) or -14)))
     except (ValueError, TypeError):
         target = -14.0
+    try:
+        # 0 turns the automatic look-ahead off entirely.
+        preload_ahead = max(0, min(20, int(data.get("preload_ahead", 5))))
+    except (ValueError, TypeError):
+        preload_ahead = 5
+    try:
+        preload_cache_mb = max(50, min(5000, int(data.get("preload_cache_mb", 500))))
+    except (ValueError, TypeError):
+        preload_cache_mb = 500
     updates = {
         "playback_buffer":      buf,
         "normalize_playback":   bool(data.get("normalize_playback", True)),
         "loudness_target_lufs": target,
         "measure_loudness":     bool(data.get("measure_loudness", True)),
+        "preload_ahead":        preload_ahead,
+        "preload_cache_mb":     preload_cache_mb,
     }
     st.config.update(updates)
     # The scanner holds its own config copy, so a live scan picks up a
@@ -238,6 +251,7 @@ def api_settings_run():
         "run_prefer_familiar":   bool(data.get("run_prefer_familiar", False)),
         "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
         "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
+        "run_preload_tracks":    int(_num(data.get("run_preload_tracks"), 1, 50, 10)),
     }
     st.config.update(updates)
     save_settings(st.settings_path, updates)

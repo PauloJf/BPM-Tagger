@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, lockRate, type BufferInfo } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
@@ -18,6 +18,8 @@ import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
 import PlayerCover from "../components/PlayerCover";
+import PrepareOffline from "../components/PrepareOffline";
+import { pinnedRunQueue } from "../lib/offline";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -271,6 +273,7 @@ export default function Run() {
   const octave = cfg?.run_octave_fold == null ? true : Boolean(cfg.run_octave_fold);
   const stretchLimitPct = cfg?.run_stretch_limit_pct == null ? 15 : Number(cfg.run_stretch_limit_pct);
   const queueSize = cfg?.run_queue_size == null ? 20 : Number(cfg.run_queue_size);
+  const preloadTracks = cfg?.run_preload_tracks == null ? 10 : Number(cfg.run_preload_tracks);
 
   // ?bpm= (the Cadence page's "Open in Run" deep link) wins over the remembered
   // target for this arrival; the param is stripped straight afterwards so a
@@ -302,6 +305,8 @@ export default function Run() {
   const [queueInfo, setQueueInfo] = useState<RunQueueResponse | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState("");
+  // The last Start fell back to a pinned Prepare-offline queue (server down).
+  const [usedPinned, setUsedPinned] = useState(false);
   // Run source: the whole library (default) or a specific playlist ("pl:<id>").
   const [source, setSourceState] = useState<string>(() => localStorage.getItem(SOURCE_KEY) || "library");
   const setSource = (s: string) => { setSourceState(s); localStorage.setItem(SOURCE_KEY, s); };
@@ -450,11 +455,35 @@ export default function Run() {
     player.setTempoLock(on && (running || queueInfo || current) ? liveLock : null);
   }
 
+  // The &playlist=… scope suffix for queue builds — shared by startRun and the
+  // per-preset Prepare-offline downloads so both draw from the same source.
+  const scope = pooled ? "&playlist=mine" : selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
+
+  /** Hand a freshly built (or pinned) queue to the player, locked and scoped.
+   *  ⚠ ORDER IS LOAD-BEARING — do not reorder these three calls.
+   *  playQueue() exits run mode (clears the tempo lock and the run source) so
+   *  that hitting Play elsewhere can't hijack a run. Starting a run therefore
+   *  has to clear-then-re-set: all three writes land in the same batch, so the
+   *  last write per key wins and the run starts locked and scoped. Setting the
+   *  lock/source *before* playQueue would have them wiped instead — the run
+   *  would play native and the auto-refill would drift to the whole library.
+   *  Guarded by a regression test in Run.test.tsx. */
+  function launchQueue(resp: RunQueueResponse) {
+    player.playQueue(
+      resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+        starred: t.starred, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),
+      0, { shuffle: false },
+    );
+    // Pin the run's source so the mid-run auto-refill stays scoped to it.
+    player.setRunSource(pooled ? "mine" : selectedPlaylistId);
+    player.setTempoLock(lockOn ? liveLock : null);
+  }
+
   async function startRun() {
     setBuilding(true);
     setBuildErr("");
+    setUsedPinned(false);
     try {
-      const scope = pooled ? "&playlist=mine" : selectedPlaylistId != null ? `&playlist=${selectedPlaylistId}` : "";
       const resp = await api.get<RunQueueResponse>(`/api/run/queue?bpm=${target}${scope}`);
       setQueueInfo(resp);
       if (!resp.tracks.length) {
@@ -465,24 +494,22 @@ export default function Run() {
           : "No tracks can reach this BPM — raise Max stretch in Settings or pick another target.");
         return;
       }
-      // ⚠ ORDER IS LOAD-BEARING — do not reorder these three calls.
-      // playQueue() exits run mode (clears the tempo lock and the run source) so
-      // that hitting Play elsewhere can't hijack a run. Starting a run therefore
-      // has to clear-then-re-set: all three writes land in the same batch, so the
-      // last write per key wins and the run starts locked and scoped. Setting the
-      // lock/source *before* playQueue would have them wiped instead — the run
-      // would play native and the auto-refill would drift to the whole library.
-      // Guarded by a regression test in Run.test.tsx.
-      player.playQueue(
-        resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
-          starred: t.starred, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),
-        0, { shuffle: false },
-      );
-      // Pin the run's source so the mid-run auto-refill stays scoped to it.
-      player.setRunSource(pooled ? "mine" : selectedPlaylistId);
-      player.setTempoLock(lockOn ? liveLock : null);
+      launchQueue(resp);
     } catch (e) {
-      setBuildErr(e instanceof Error ? e.message : "Failed to build the queue");
+      // Server unreachable (offline, or a gateway with the app down behind it):
+      // fall back to the queue a "Prepare offline" download pinned for this
+      // exact target — its tracks are in the offline cache, so the run works
+      // with no network at all. A real server *answer* (4xx — bad scope,
+      // expired session) is surfaced instead: an old queue must not mask it.
+      const unreachable = !(e instanceof ApiError) || e.status >= 502;
+      const pinned = unreachable ? pinnedRunQueue<RunQueueResponse>(target) : null;
+      if (pinned?.data?.tracks?.length) {
+        setQueueInfo(pinned.data);
+        launchQueue(pinned.data);
+        setUsedPinned(true);
+      } else {
+        setBuildErr(e instanceof Error ? e.message : "Failed to build the queue");
+      }
     } finally {
       setBuilding(false);
     }
@@ -830,6 +857,12 @@ export default function Run() {
     </div>
   );
 
+  // Per-preset offline downloads, directly under the presets they belong to.
+  // Renders nothing when the Cache API is unavailable (plain-http origins).
+  const prepareOffline = (
+    <PrepareOffline presets={presets} scope={scope} count={preloadTracks} />
+  );
+
   // One status note at a time, highest priority first: the connection/stream
   // state of the playing track (offline > hard error > buffering — with the
   // global player bar hidden on this page they'd otherwise be invisible, and a
@@ -855,6 +888,8 @@ export default function Run() {
         }
       : buildErr
       ? { tone: "err", body: buildErr }
+      : usedPinned
+      ? { tone: "info", body: "Server unreachable — running the queue prepared for offline." }
       : staleQueue
       ? { tone: "warn", body: `Queue was built for ${queueInfo!.target} BPM — tracks stretch to follow ${target}, hit Rebuild for a fresh match.` }
       : staleSource
@@ -1288,6 +1323,7 @@ export default function Run() {
                 {sourcePicker}
                 {targetBlock}
                 {presetsGrid}
+                {prepareOffline}
                 {stepsRow}
                 {statusInline}
               </div>
@@ -1327,7 +1363,7 @@ export default function Run() {
         {mode === "queue" ? renderQueuePanel(false)
           : mode === "tap" ? tapControl
           : mode === "steps" ? stepsRow
-          : presetsGrid}
+          : <>{presetsGrid}{prepareOffline}</>}
         {statusInline}
       </div>
       {transport}

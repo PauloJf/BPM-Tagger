@@ -170,6 +170,10 @@ def api_me():
     # whether, and how far, to attenuate a track (see bpm/loudness.py).
     resp["normalize_playback"] = bool(st.config.get("normalize_playback", True))
     resp["loudness_target_lufs"] = float(st.config.get("loudness_target_lufs", -14))
+    # Offline preloading — every role's player needs these on boot: the
+    # look-ahead depth (0 = off) and the audio-cache cap it evicts against.
+    resp["preload_ahead"] = int(st.config.get("preload_ahead", 5))
+    resp["preload_cache_mb"] = int(st.config.get("preload_cache_mb", 500))
     # Kiosk Listen mode: the SPA's player shell routes off this (which tabs a
     # player-role session gets, and where it lands). Admin/guest ignore it —
     # their Listen page is always routable.

@@ -176,6 +176,10 @@ export interface Me {
   // Loudness levelling, server-configured and sent to every role's player.
   normalize_playback?: boolean;
   loudness_target_lufs?: number;
+  // Offline preloading, likewise sent to every role's player: how many upcoming
+  // queue tracks the look-ahead caches (0 = off) and the cache cap in MB.
+  preload_ahead?: number;
+  preload_cache_mb?: number;
   // Kiosk Listen mode (admin setting): which tabs a player-role session gets
   // and where it lands. Admin/guest always have the Listen page regardless.
   listen_mode?: ListenMode;

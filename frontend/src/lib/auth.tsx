@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "./api";
 import type { ListenMode, Me, Role } from "./types";
 import { applyAccentHue } from "./accent";
+import { setCacheCapMb } from "./offline";
 
 interface AuthState {
   ready: boolean; // initial /api/me resolved
@@ -17,6 +18,9 @@ interface AuthState {
   // to attenuate each track (see gainMultiplier in player.tsx).
   normalizePlayback: boolean;
   loudnessTargetLufs: number;
+  // Offline preloading, from /api/me — how many upcoming queue tracks the
+  // player's look-ahead caches for offline playback (0 = off).
+  preloadAhead: number;
   // Kiosk Listen mode (admin setting, from /api/me) — the player-role shell
   // routes off this. Admin/guest always have the Listen page regardless.
   listenMode: ListenMode;
@@ -38,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [installPingAsk, setInstallPingAsk] = useState(false);
   const [normalizePlayback, setNormalizePlayback] = useState(true);
   const [loudnessTargetLufs, setLoudnessTargetLufs] = useState(-14);
+  const [preloadAhead, setPreloadAhead] = useState(5);
   const [listenMode, setListenMode] = useState<ListenMode>("off");
 
   const applyMe = useCallback((me: Me) => {
@@ -53,6 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Absent (older API) → keep the defaults rather than silently disabling.
     if (me.normalize_playback != null) setNormalizePlayback(me.normalize_playback);
     if (me.loudness_target_lufs != null) setLoudnessTargetLufs(me.loudness_target_lufs);
+    if (me.preload_ahead != null) setPreloadAhead(me.preload_ahead);
+    // The offline cache cap lives in the preload module (eviction runs there),
+    // not in React state — nothing re-renders when it changes.
+    if (me.preload_cache_mb != null) setCacheCapMb(me.preload_cache_mb);
     // Absent (older API) → "off", the safe kiosk default.
     setListenMode(me.listen_mode ?? "off");
     // Reconcile the per-account accent (set on another device) into this browser.
@@ -116,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, listenMode, login, logout, refresh }}
+      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, preloadAhead, listenMode, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

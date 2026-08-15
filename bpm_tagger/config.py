@@ -242,6 +242,12 @@ def build_config() -> dict:
         # first opt-in and once more after each update.
         "install_ping_version":       "",
         "playback_buffer":            float(os.environ.get("PLAYBACK_BUFFER", "3")),
+        # ── Offline preloading (service-worker audio cache) ───────────────────
+        # How many upcoming queue tracks the player fully downloads ahead of the
+        # playhead (0 disables the automatic look-ahead), and the cache cap in
+        # MB (least-recently-used tracks are evicted past it).
+        "preload_ahead":              int(os.environ.get("PRELOAD_AHEAD", "5")),
+        "preload_cache_mb":           int(os.environ.get("PRELOAD_CACHE_MB", "500")),
         # ── Run mode (tempo-locked playback) — normally edited from the UI ────
         "run_presets":                _parse_run_presets(os.environ.get(
             "RUN_PRESETS", "Warmup:120,Easy:155,Steady:165,Tempo:175")),
@@ -256,6 +262,8 @@ def build_config() -> dict:
         # track that can't reach the target within it isn't queued) and again at
         # playback (the client clamps to the same bound).
         "run_stretch_limit_pct":      float(os.environ.get("RUN_STRETCH_LIMIT_PCT", "15")),
+        # How many tracks a per-preset "Prepare offline" download grabs.
+        "run_preload_tracks":         int(os.environ.get("RUN_PRELOAD_TRACKS", "10")),
         "fetch_artist_images":        os.environ.get("FETCH_ARTIST_IMAGES", "false").lower() == "true",
         # Save fetched/picked artist images as artist.jpg in the artist's own
         # folder (Navidrome convention) instead of only the app cache. Only

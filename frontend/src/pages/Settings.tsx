@@ -10,6 +10,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
 import { ACCENT_PRESETS, DEFAULT_ACCENT_HUE, accentSwatch, applyAccentHue, initialAccentHue } from "../lib/accent";
+import { cacheStats, clearOffline, offlineSupported, reconcileIndex } from "../lib/offline";
 
 type Saved = "" | "saving" | "ok" | "err";
 
@@ -187,11 +188,20 @@ export default function Settings() {
   const [playPulling, setPlayPulling] = useState(false);
   const [playback, setPlayback] = useState(3);
   const [loud, setLoud] = useState({ normalize: true, target: -14, measure: true });
+  const [preload, setPreload] = useState({ ahead: 5, cacheMb: 500 });
+  // This browser's offline audio cache (Cache API is per-device — this row
+  // reports and clears only the device you're on).
+  const [offlineUse, setOfflineUse] = useState(() => cacheStats());
+  // Heal the size index against what the browser actually still stores (it may
+  // have evicted under pressure) so the readout never overreports.
+  useEffect(() => {
+    if (offlineSupported()) void reconcileIndex().then(() => setOfflineUse(cacheStats()));
+  }, []);
   const [run, setRun] = useState({
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
     octave: true, preferStarred: true, preferFamiliar: false,
-    queueSize: 20, stretchLimit: 15,
+    queueSize: 20, stretchLimit: 15, preloadTracks: 10,
   });
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
@@ -312,6 +322,7 @@ export default function Settings() {
       target: n("loudness_target_lufs", -14),
       measure: b("measure_loudness", true),
     });
+    setPreload({ ahead: n("preload_ahead", 5), cacheMb: n("preload_cache_mb", 500) });
     setRunSessionDays(n("run_session_days", 30));
     setListenModeCfg(s("player_listen_mode", "off") || "off");
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -332,6 +343,7 @@ export default function Settings() {
       preferFamiliar: b("run_prefer_familiar", false),
       queueSize: n("run_queue_size", 20),
       stretchLimit: n("run_stretch_limit_pct", 15),
+      preloadTracks: n("run_preload_tracks", 10),
     });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
@@ -1295,7 +1307,7 @@ export default function Settings() {
               <h2>Playback</h2>
               <p>Audio buffering and volume levelling for the built-in player.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback, normalize_playback: loud.normalize, loudness_target_lufs: loud.target, measure_loudness: loud.measure }, setPlaySaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback, normalize_playback: loud.normalize, loudness_target_lufs: loud.target, measure_loudness: loud.measure, preload_ahead: preload.ahead, preload_cache_mb: preload.cacheMb }, setPlaySaved); }}>
               <div className="field-row">
                 {fieldLabel("Buffer before play", "Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).")}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1323,6 +1335,39 @@ export default function Settings() {
                 {fieldLabel("Measure during scans", "Measure each track's loudness while it's being analyzed for BPM. Files that already carry a ReplayGain tag are read instead of measured, so most tagged libraries cost nothing extra.")}
                 <Toggle on={loud.measure} onChange={(v) => setLoud({ ...loud, measure: v })} label="Measure loudness" />
               </div>
+              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                {fieldLabel("Preload ahead", "How many upcoming queue tracks the player downloads in full while playing, so short network drops don't stop the music. 0 turns the look-ahead off. Preloading needs HTTPS (or localhost) — over plain HTTP the player just streams.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0} max={20} step={1} value={preload.ahead}
+                         onChange={(e) => setPreload({ ...preload, ahead: Math.max(0, Math.min(20, Math.round(+e.target.value))) })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>tracks</span>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Offline cache cap", "How much audio each device may keep for offline playback (look-ahead plus the Run page's Prepare-offline downloads). Past the cap, the tracks untouched longest are dropped first.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={50} max={5000} step={50} value={preload.cacheMb}
+                         onChange={(e) => setPreload({ ...preload, cacheMb: Math.max(50, Math.min(5000, Math.round(+e.target.value))) })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>MB</span>
+                </div>
+              </div>
+              {offlineSupported() && (
+                <div className="field-row">
+                  {fieldLabel("This device's cache", "What's currently stored on this device. The cache is per-device — clearing it here doesn't touch your other devices.")}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                      {offlineUse.tracks} track{offlineUse.tracks === 1 ? "" : "s"} · {fmtBytes(offlineUse.bytes)}
+                    </span>
+                    <button className="btn btn-ghost btn-sm" type="button"
+                            disabled={offlineUse.tracks === 0}
+                            onClick={() => { void clearOffline().then(() => setOfflineUse(cacheStats())); }}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
               <div style={{ marginTop: 14 }}>
                 <SaveButton state={playSaved} label="Save Playback Settings" />
               </div>
@@ -1375,6 +1420,7 @@ export default function Settings() {
                 run_prefer_familiar: run.preferFamiliar,
                 run_queue_size: run.queueSize,
                 run_stretch_limit_pct: run.stretchLimit,
+                run_preload_tracks: run.preloadTracks,
               }, setRunSaved);
             }}>
               <div className="field-row">
@@ -1408,6 +1454,12 @@ export default function Settings() {
                 {fieldLabel("Queue size", "How many tracks a run queue preloads.")}
                 <input type="number" min={1} max={200} step={1} value={run.queueSize}
                        onChange={(e) => setRun({ ...run, queueSize: +e.target.value })}
+                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Prepare offline size", "How many tracks a per-preset Prepare-offline download grabs on the Run page — enough cadence-matched music to cross the places where the network dies.")}
+                <input type="number" min={1} max={50} step={1} value={run.preloadTracks}
+                       onChange={(e) => setRun({ ...run, preloadTracks: +e.target.value })}
                        style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
               </div>
               <div className="field-row">
