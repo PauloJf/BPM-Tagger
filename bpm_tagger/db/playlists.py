@@ -477,6 +477,54 @@ class PlaylistsMixin:
             self._refresh_local_track_count(conn, row["playlist_id"])
             conn.commit()
 
+    # ── Matched-track rollup (the detail page's stats strip) ──────────────────
+    #
+    # "Matched" = live (non-tombstone) rows whose match_status is 'have' and whose
+    # matched_file_path still resolves to a non-deleted library row. Deduped by
+    # file_path with the same GROUP BY the run-candidate query uses, so two source
+    # rows pointing at one file count once. Unlike _PLAYLIST_RUN_JOIN (tracks.py)
+    # this keeps un-analyzed and disliked tracks: the strip answers "what of this
+    # playlist is on disk", not "what's runnable" — the per-preset counts do that.
+    _PLAYLIST_MATCHED_JOIN = (
+        "FROM playlist_tracks pt JOIN tracks t ON t.file_path = pt.matched_file_path "
+        "WHERE pt.playlist_id = ? AND pt.removed_at IS NULL AND pt.match_status = 'have' "
+        "AND t.status != 'deleted'"
+    )
+
+    def get_playlist_matched_rows(self, playlist_id: int) -> list[dict]:
+        """One row per distinct matched library file, carrying just the fields the
+        stats strip rolls up (runtime, BPM buckets, plays).
+
+        Duration falls back to the source row's when the library row has none, so
+        a library indexed before duration tagging still totals something sane;
+        MAX() picks it deterministically across the collapsed duplicate rows."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT t.file_path, t.title, t.artist, t.bpm, "
+                "COALESCE(t.duration_ms, MAX(pt.duration_ms)) AS duration_ms, "
+                "COALESCE(t.play_count, 0) AS play_count "
+                + self._PLAYLIST_MATCHED_JOIN + " GROUP BY t.file_path",
+                (playlist_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_playlist_last_change(self, playlist_id: int) -> Optional[str]:
+        """When this playlist's membership last changed, from the timestamps the
+        schema already carries — no new column.
+
+        `first_seen_at` marks a row appearing (written by both the sync diff and a
+        Local add) and `removed_at` marks a sync tombstone; the later of the two
+        is the last observable change. A Local removal hard-deletes rather than
+        tombstoning, so it leaves no mark — callers show this beside
+        `last_synced_at` rather than treating it as a complete audit trail.
+        Returns None for a playlist whose rows predate both stamps."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(first_seen_at) AS added, MAX(removed_at) AS removed "
+                "FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,)).fetchone()
+        stamps = [s for s in (row["added"], row["removed"]) if s]
+        return max(stamps) if stamps else None
+
     def _queued_sids(self, conn) -> set:
         return {r["spotify_track_id"] for r in conn.execute(
             f"SELECT DISTINCT spotify_track_id FROM grab_queue "
@@ -517,7 +565,10 @@ class PlaylistsMixin:
                 # local_file_path being non-NULL proves the join actually matched
                 # a live library row (matched_file_path alone can be stale).
                 "t.file_path AS local_file_path, t.starred AS local_starred, "
-                "t.disliked AS local_disliked "
+                "t.disliked AS local_disliked, "
+                # Local play count (Navidrome-merged), so a matched row can show
+                # how often it's been played next to its BPM and length.
+                "t.play_count AS local_play_count "
                 "FROM playlist_tracks pt "
                 "LEFT JOIN tracks t ON t.file_path = pt.matched_file_path AND t.status != 'deleted' "
                 "WHERE pt.playlist_id = ? ORDER BY pt.position",

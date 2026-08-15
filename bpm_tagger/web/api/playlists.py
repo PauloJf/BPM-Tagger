@@ -15,6 +15,7 @@ from ...grabber.tagging import read_cover
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 from .images import _image_from_request
+from .run import _presets, _run_settings, preset_counts
 
 
 def _versions() -> dict:
@@ -33,6 +34,11 @@ playlists_bp = Blueprint("api_playlists", __name__)
 # Ceiling on a single bulk add. Comfortably above any run queue, low enough that
 # one request can't be turned into an unbounded write.
 _MAX_BULK_PATHS = 500
+
+# Stats strip: BPM bucket width (matches the Stats page's library-wide histogram,
+# BPMDatabase.get_bpm_distribution) and how many most-played tracks to name.
+_BPM_BUCKET = 5
+_TOP_PLAYED = 3
 
 
 def _grabber():
@@ -215,6 +221,77 @@ def playlist_tracks(pid):
     # page's chips, tab list, and have-dependent header actions render. Read after
     # mark_playlist_seen so new_count reflects the just-cleared badges.
     return jsonify(playlist=db.get_playlist(pid, with_counts=True), tracks=tracks)
+
+
+def _matched_rollup(rows: list[dict]) -> dict:
+    """Roll a playlist's matched rows up into the stats strip's numbers.
+
+    BPM is bucketed the same 5-wide way BPMDatabase.get_bpm_distribution() does,
+    so the playlist's mini histogram and the Stats page's library-wide one read on
+    one scale. Only tracks that actually have a BPM are bucketed, and `analyzed`
+    reports how many that was — a half-analyzed playlist can't pass its histogram
+    off as the whole thing."""
+    runtime_ms = plays_total = analyzed = 0
+    buckets: dict[int, int] = {}
+    for r in rows:
+        runtime_ms += int(r.get("duration_ms") or 0)
+        plays_total += int(r.get("play_count") or 0)
+        bpm = r.get("bpm")
+        if bpm:
+            analyzed += 1
+            b = int(float(bpm) / _BPM_BUCKET) * _BPM_BUCKET
+            buckets[b] = buckets.get(b, 0) + 1
+    # Deterministic ties (count, then title, then path) so the same three tracks
+    # are named on every poll rather than shuffling under the reader.
+    top = sorted((r for r in rows if int(r.get("play_count") or 0) > 0),
+                 key=lambda r: (-int(r["play_count"]), str(r.get("title") or ""),
+                                r["file_path"]))[:_TOP_PLAYED]
+    return {
+        "count": len(rows),
+        "runtime_ms": runtime_ms,
+        "analyzed": analyzed,
+        "bpm_distribution": [{"bpm": b, "count": buckets[b]} for b in sorted(buckets)],
+        "plays_total": plays_total,
+        "top_played": [{"path": r["file_path"], "title": r.get("title"),
+                        "artist": r.get("artist"), "play_count": int(r["play_count"])}
+                       for r in top],
+    }
+
+
+@playlists_bp.route("/api/playlists/<int:pid>/stats")
+@login_required
+def playlist_stats(pid):
+    """Rollup over this playlist's MATCHED (library-backed) tracks: runtime, a
+    5-BPM histogram, plays, per-preset runnable counts, and when it last changed.
+
+    Its own endpoint rather than more fields on /tracks. That payload is the
+    page's hot path — the whole unpaginated track list, refetched on every tab
+    switch (the tab is in its query key) — while these numbers are identical on
+    every tab and cost an extra run-candidate pass folded against each preset.
+    Split, the strip fetches once per playlist and tab switching stays as cheap as
+    it is today.
+
+    Runnable counts come from the shared preset_counts() helper, so they're the
+    same numbers the playlist cards' badges show — the cadence rule lives in
+    api/run.py and is not restated here.
+
+    Admin/guest only: deliberately absent from _PLAYER_ALLOWED (default-deny)."""
+    st = state()
+    pl = st.db.get_playlist(pid)
+    if not pl:
+        return jsonify(error="not_found"), 404
+    octave, limit = _run_settings(st.config)
+    presets = _presets(st.config)
+    return jsonify(
+        matched=_matched_rollup(st.db.get_playlist_matched_rows(pid)),
+        presets=presets,
+        runnable=preset_counts(st.db.get_run_candidates(pid), presets, octave, limit),
+        stretch_limit_pct=limit * 100,
+        octave_fold=octave,
+        source=pl.get("source") or "spotify",
+        last_synced_at=pl.get("last_synced_at"),
+        last_change_at=st.db.get_playlist_last_change(pid),
+    )
 
 
 @playlists_bp.route("/api/playlists/<int:pid>/tracks", methods=["POST"])

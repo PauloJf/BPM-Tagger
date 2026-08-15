@@ -116,6 +116,9 @@ export interface TracksPage {
   pages: number;
   per_page: number;
   filter: string;
+  // The listing order actually applied — "" (newest analyzed), "plays" or
+  // "plays_asc". Normalized server-side, so an unknown ?sort= comes back as "".
+  sort: string;
   all_count: number;
   review_count: number;
   locked_count: number;
@@ -473,4 +476,6 @@ export interface PlaylistTrack {
   // Feeds PlayerTrack.loudnessLufs so playlist playback gets the same volume
   // levelling as album/library playback (null = never measured → no attenuation).
   local_loudness_lufs?: number | null;
+  // Local play count (Navidrome-merged), shown on matched rows. null = never played.
+  local_play_count?: number | null;
 }

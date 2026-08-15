@@ -70,6 +70,17 @@ def _eligible(cands, target: float, octave: bool, limit: float) -> list:
     return found
 
 
+def preset_counts(cands, presets: list[dict], octave: bool, limit: float) -> dict:
+    """How many of `cands` are runnable at each configured preset.
+
+    The one place the cadence rule is folded against the presets, so the playlist
+    cards' quiet badges (via /api/run/readiness) and the playlist detail page's
+    stats strip can never disagree about "11 tracks at 155". Preset BPMs are JSON
+    object keys, so they're strings."""
+    return {str(p["bpm"]): len(_eligible(cands, float(p["bpm"]), octave, limit))
+            for p in presets}
+
+
 def _run_settings(cfg) -> tuple[bool, float]:
     """(octave_fold, stretch limit as a fraction) — the two knobs eligibility
     depends on, read the same way everywhere."""
@@ -298,11 +309,10 @@ def api_run_readiness():
     and for every playlist — the numbers behind the cadence cards and the
     per-playlist badges.
 
-    One candidate pass per scope, folded against each preset in Python: the pool
-    is already in memory and the fold is a handful of floats per track, whereas
-    expressing octave folding in SQL would mean four queries and a rule that
-    could drift from _eligible. Preset BPMs are the JSON object keys, so they're
-    strings.
+    One candidate pass per scope, folded against each preset in Python by the
+    shared preset_counts() helper: the pool is already in memory and the fold is a
+    handful of floats per track, whereas expressing octave folding in SQL would
+    mean four queries and a rule that could drift from _eligible.
 
     Admin/guest only via the default-deny player allowlist, like /api/run/ready."""
     st = state()
@@ -310,8 +320,7 @@ def api_run_readiness():
     presets = _presets(st.config)
 
     def counts(cands) -> dict:
-        return {str(p["bpm"]): len(_eligible(cands, float(p["bpm"]), octave, limit))
-                for p in presets}
+        return preset_counts(cands, presets, octave, limit)
 
     library = counts(st.db.get_run_candidates(None))
     playlists = [{"id": p["id"], "name": p["name"],

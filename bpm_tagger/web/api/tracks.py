@@ -15,6 +15,7 @@ from flask import Blueprint, Response, abort, jsonify, request, send_file
 
 from ...bpm.tags import get_file_hash, read_audio_quality, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
+from ...db import TRACK_SORTS
 from ...grabber.matching import normalize_artist, normalize_title
 from ...grabber.path_template import render, unique_path
 from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
@@ -43,6 +44,16 @@ def _isrc_error(code: str):
     if code and not _ISRC_RE.match(code):
         return "Invalid ISRC — expected 12 chars: 2-letter country, 3 alphanumeric, 2-digit year, 5-digit code."
     return None
+
+
+def _parse_sort(args) -> str:
+    """The listing sort key from request args, normalized to one the DB knows.
+
+    Anything unrecognized (a stale client, a hand-edited URL) collapses to "" —
+    the long-standing newest-analyzed-first default — and the normalized value is
+    echoed back so the client can tell which order it actually got."""
+    sort = args.get("sort", "").strip()
+    return sort if sort in TRACK_SORTS else ""
 
 
 def _parse_bpm_filter(args) -> tuple:
@@ -844,15 +855,17 @@ def api_tracks():
     except (ValueError, TypeError):
         per_page = 50
     filter_by = request.args.get("filter", "")
+    sort = _parse_sort(request.args)
     bpm_target, bpm_tol = _parse_bpm_filter(request.args)
     cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
     rows, total = st.db.get_tracks_page(q, per_page, (page - 1) * per_page,
                                         filter=filter_by,
-                                        bpm_target=bpm_target, bpm_tol=bpm_tol, bpm_cadence=cadence)
+                                        bpm_target=bpm_target, bpm_tol=bpm_tol,
+                                        bpm_cadence=cadence, sort=sort)
     pages = max(1, (total + per_page - 1) // per_page)
     stats = st.db.get_stats()
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,
-                   filter=filter_by,
+                   filter=filter_by, sort=sort,
                    all_count=stats.get("total", 0),
                    review_count=stats.get("needs_review", 0),
                    locked_count=stats.get("locked", 0),
@@ -873,5 +886,6 @@ def api_track_paths():
     filter_by = request.args.get("filter", "")
     bpm_target, bpm_tol = _parse_bpm_filter(request.args)
     cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
-    rows = st.db.get_track_paths(q, filter=filter_by, bpm_target=bpm_target, bpm_tol=bpm_tol, bpm_cadence=cadence)
+    rows = st.db.get_track_paths(q, filter=filter_by, bpm_target=bpm_target, bpm_tol=bpm_tol,
+                                 bpm_cadence=cadence, sort=_parse_sort(request.args))
     return jsonify(tracks=rows, count=len(rows))

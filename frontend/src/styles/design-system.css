@@ -573,15 +573,24 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 }
 .tracks-header {
   display: grid;
-  grid-template-columns: 1fr 130px 90px 130px 110px 70px;
+  grid-template-columns: 1fr 130px 90px 130px 70px 110px 70px;
   padding: 11px 18px; gap: 14px;
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
+/* A sortable column head. Reads as the plain header label until hovered or
+   sorted, so the table doesn't sprout a row of buttons. */
+.tracks-sort-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+  color: inherit; text-align: right;
+}
+.tracks-sort-btn:hover { color: var(--text); }
+.tracks-sort-btn[aria-pressed="true"] { color: var(--accent-2); }
 .tracks-row {
   display: grid;
-  grid-template-columns: 1fr 130px 90px 130px 110px 70px;
+  grid-template-columns: 1fr 130px 90px 130px 70px 110px 70px;
   padding: 12px 18px; gap: 14px; align-items: center;
   border-bottom: 1px solid var(--border);
   cursor: pointer; text-decoration: none; color: inherit;
@@ -594,10 +603,10 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .tracks-row-empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
 .track-folder { display: flex; align-items: center; gap: 6px; }
 
-/* Mobile: collapse the fixed 6-column grid (which overflows a phone viewport)
-   down to Track | BPM | Status. Drop the header, the confidence/detector/arrow
-   columns, the secondary queue buttons, and the artist/folder sub-lines so the
-   track name is never squeezed off-screen. */
+/* Mobile: collapse the fixed 7-column grid (which overflows a phone viewport)
+   down to Track | BPM | Status. Drop the header, the confidence/detector/plays/
+   arrow columns, the secondary queue buttons, and the artist/folder sub-lines so
+   the track name is never squeezed off-screen. */
 @media (max-width: 700px) {
   .tracks-header { display: none; }
   .tracks-row {
@@ -605,6 +614,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
     gap: 10px; padding: 12px 14px;
   }
   .tracks-row .col-conf,
+  .tracks-row .col-plays,
   .tracks-row .col-detector,
   .tracks-row .col-arrow,
   .tracks-row .row-extra-btn,

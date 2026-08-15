@@ -43,6 +43,13 @@ vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h.grabber }) }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../components/PlaylistSuggestions", () => ({ default: () => null }));
+// The stats strip owns its own fetch (this file's useQuery mock answers every
+// query with the track listing), so it's stubbed to a marker the role tests can
+// look for. Its own behaviour is covered in PlaylistStats.test.tsx.
+vi.mock("../components/PlaylistStats", () => ({
+  default: ({ playlistId }: { playlistId: string }) =>
+    <div data-testid="stats-strip">{playlistId}</div>,
+}));
 vi.mock("../components/AddToPlaylistMenu", () => ({ default: () => null }));
 vi.mock("../lib/player", () => ({
   usePlayer: () => ({
@@ -528,6 +535,46 @@ describe("PlaylistDetail — reorder", () => {
     render(<PlaylistDetail />);
     fireEvent.click(screen.getByRole("button", { name: "Have" }));
     expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
+  });
+});
+
+describe("PlaylistDetail — stats strip and per-row plays", () => {
+  it("renders the stats strip for an admin and withholds it from a player", () => {
+    h.tracks = [have(1)];
+    render(<PlaylistDetail />);
+    expect(screen.getByTestId("stats-strip").textContent).toBe("1");
+
+    cleanup();
+    // The endpoint is outside _PLAYER_ALLOWED, so asking would only earn a 403.
+    h.role = "player";
+    render(<PlaylistDetail />);
+    expect(screen.queryByTestId("stats-strip")).toBeNull();
+  });
+
+  it("shows a matched row's play count beside its BPM and length", () => {
+    h.tracks = [have(1, { local_bpm: 150, local_duration_ms: 185_000, local_play_count: 12 })];
+    render(<PlaylistDetail />);
+    expect(screen.getByText("150 BPM · 3:05 · 12 plays")).toBeTruthy();
+  });
+
+  it("singularizes one play, and stays silent at zero", () => {
+    h.tracks = [have(1, { local_bpm: 150, local_play_count: 1 })];
+    render(<PlaylistDetail />);
+    expect(screen.getByText("150 BPM · 1 play")).toBeTruthy();
+
+    cleanup();
+    // An unplayed library must not grow a column of "0 plays".
+    h.tracks = [have(2, { local_bpm: 150, local_play_count: 0 })];
+    render(<PlaylistDetail />);
+    expect(screen.getByText("150 BPM")).toBeTruthy();
+    expect(screen.queryByText(/play/)).toBeNull();
+  });
+
+  it("never claims plays for an unmatched row — the count is the library file's", () => {
+    h.tracks = [t({ id: 3, title: "Missing", derived_status: "missing",
+                    match_status: "missing", local_play_count: 9 })];
+    render(<PlaylistDetail />);
+    expect(screen.queryByText(/play/)).toBeNull();
   });
 });
 

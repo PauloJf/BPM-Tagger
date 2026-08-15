@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ..bpm.tags import get_file_hash
+from .constants import TRACK_SORTS
 
 def _dupe_signature(paths) -> str:
     """Stable signature for a duplicate group (its sorted, unique file paths)."""
@@ -239,32 +240,43 @@ class TracksMixin:
                 params.extend([lo, hi])
         return "WHERE " + " AND ".join(clauses), params
 
+    @staticmethod
+    def _tracks_order(sort: str) -> str:
+        """The ORDER BY for a listing sort key, falling back to the default for
+        anything unknown — the listing views take ?sort= straight from the URL."""
+        return TRACK_SORTS.get(sort or "", TRACK_SORTS[""])
+
     def get_tracks_page(self, q: str, limit: int, offset: int,
                         filter: str = "",
                         bpm_target: Optional[float] = None,
-                        bpm_tol: float = 5.0, bpm_cadence: bool = False) -> tuple[list[dict], int]:
+                        bpm_tol: float = 5.0, bpm_cadence: bool = False,
+                        sort: str = "") -> tuple[list[dict], int]:
         where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
+        order = self._tracks_order(sort)
         with self._connect() as conn:
             total = conn.execute(
                 f"SELECT COUNT(*) FROM tracks {where}", params
             ).fetchone()[0]
             rows = conn.execute(
-                f"SELECT * FROM tracks {where} ORDER BY analyzed_at DESC LIMIT ? OFFSET ?",
+                f"SELECT * FROM tracks {where} ORDER BY {order} LIMIT ? OFFSET ?",
                 params + [limit, offset]
             ).fetchall()
         return [dict(r) for r in rows], total
 
     def get_track_paths(self, q: str = "", filter: str = "",
                         bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
-                        bpm_cadence: bool = False, limit: int = 5000) -> list[dict]:
+                        bpm_cadence: bool = False, limit: int = 5000,
+                        sort: str = "") -> list[dict]:
         """Ordered (file_path, title, artist) for every track matching the current
         filter — feeds the player's Play All / Shuffle. Same ordering as the
-        table; capped so a huge library can't build a pathological queue."""
+        table (hence the shared `sort`); capped so a huge library can't build a
+        pathological queue."""
         where, params = self._tracks_filter(q, filter, bpm_target, bpm_tol, bpm_cadence)
+        order = self._tracks_order(sort)
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT file_path, title, artist, loudness_lufs FROM tracks {where} "
-                "ORDER BY analyzed_at DESC LIMIT ?",
+                f"ORDER BY {order} LIMIT ?",
                 params + [limit]
             ).fetchall()
         return [dict(r) for r in rows]

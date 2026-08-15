@@ -75,6 +75,8 @@ export default function Tracks() {
   const cadence = params.get("bpm_cadence") === "1";
   const page = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
   const perPage = params.get("per_page") || "50";
+  // "" (the unchanged default: newest analyzed first) → "plays" → "plays_asc" → "".
+  const sort = params.get("sort") || "";
 
   // Local input state (debounced into the URL).
   const [searchText, setSearchText] = useState(q);
@@ -139,6 +141,20 @@ export default function Tracks() {
     });
   }
 
+  /** Cycle the Plays column: most played → least played → back to the default
+   *  order. Three states rather than two so the default is always one more click
+   *  away, instead of being lost the moment you sort. */
+  function toggleSort() {
+    const next = sort === "plays" ? "plays_asc" : sort === "plays_asc" ? "" : "plays";
+    setParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next) p.set("sort", next);
+      else p.delete("sort");
+      p.set("page", "1");
+      return p;
+    });
+  }
+
   function setFilter(f: string) {
     setParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -157,6 +173,8 @@ export default function Tracks() {
       if (q) sp.set("q", q);
       if (filter) sp.set("filter", filter);
       if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
+      // Same sort the table is showing — Play all must queue what you see.
+      if (sort) sp.set("sort", sort);
       const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null;
         loudness_lufs: number | null }[] }>(
         `/api/tracks/paths?${sp.toString()}`);
@@ -400,6 +418,18 @@ export default function Tracks() {
           <span style={{ textAlign: "right" }}>BPM</span>
           <span>Conf.</span>
           <span>Detector</span>
+          <button
+            type="button"
+            className="tracks-sort-btn"
+            aria-label="Sort by plays"
+            aria-pressed={!!sort}
+            title={sort === "plays" ? "Most played first — click for least played"
+              : sort === "plays_asc" ? "Least played first — click to clear the sort"
+              : "Sort by play count (most played first)"}
+            onClick={toggleSort}
+          >
+            Plays{sort === "plays" ? " ↓" : sort === "plays_asc" ? " ↑" : ""}
+          </button>
           <span>Status</span>
           <span />
         </div>
@@ -523,6 +553,9 @@ export default function Tracks() {
                   </div>
                   <div className="col-detector" style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {t.detector || "—"}
+                  </div>
+                  <div className="col-plays" style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 13, color: t.play_count ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                    {t.play_count ?? 0}
                   </div>
                   <div className="col-status">
                     <StatusBadge track={t} />

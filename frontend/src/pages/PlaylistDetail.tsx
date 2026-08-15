@@ -9,6 +9,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
+import PlaylistStats from "../components/PlaylistStats";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import { ArtPlaceholder, ArtToggle, Cover, PlaylistCover, RemoteCover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
@@ -489,6 +490,11 @@ export default function PlaylistDetail() {
         </div>
       </div>
 
+      {/* Library-side rollup of the matched tracks. Skipped for a player session:
+          the endpoint is outside _PLAYER_ALLOWED (default-deny), so asking would
+          only earn a 403. */}
+      {role !== "player" && <PlaylistStats playlistId={id} />}
+
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div className="filter-pills" style={{ width: "fit-content" }}>
           {tabs.map((t) => (
@@ -555,6 +561,12 @@ export default function PlaylistDetail() {
             const album = trackAlbum(t);
             const albumArtist = t.local_album_artist || album || artist;
             const dur = fmtDur(trackDuration(t));
+            const plays = inLib ? (t.local_play_count ?? 0) : 0;
+            const meta = [
+              inLib && t.local_bpm != null ? `${Math.round(t.local_bpm)} BPM` : "",
+              dur,
+              plays > 0 ? `${plays} play${plays === 1 ? "" : "s"}` : "",
+            ].filter(Boolean);
             return (
               <div
                 key={t.id}
@@ -608,13 +620,15 @@ export default function PlaylistDetail() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                   <StatusChip s={t.derived_status} />
-                  {(inLib && t.local_bpm != null) || dur ? (
+                  {/* BPM · length · plays, in the row's existing quiet metadata
+                      line. Plays only on a matched row (the count is the library
+                      track's) and only once it's non-zero, so an unplayed library
+                      doesn't grow a column of "0 plays". */}
+                  {meta.length > 0 && (
                     <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                      {inLib && t.local_bpm != null ? `${Math.round(t.local_bpm)} BPM` : ""}
-                      {inLib && t.local_bpm != null && dur ? " · " : ""}
-                      {dur}
+                      {meta.join(" · ")}
                     </span>
-                  ) : null}
+                  )}
                   {role === "admin" && (inLib || isLocal) && (
                     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                       {/* Touch and keyboard equivalent of the drag handle — HTML5
