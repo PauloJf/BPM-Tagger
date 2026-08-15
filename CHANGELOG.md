@@ -1,6 +1,33 @@
 # Changelog
 
-## v2.13.0 — 2026-08-15
+## Unreleased
+
+**Playlists learn set operations, and Run mode gets a memory.**
+
+### Playlist compare, merge & split (local-first)
+
+- **Compare** — diff any two playlists into *both / only in A / only in B*. Tracks are matched by library file, then ISRC, then normalized artist+title (the same identity clustering the Duplicates page uses), so the same song in two different files still counts as *both*. Each bucket can be saved into a Local playlist with the familiar *added / already there / not in library* report.
+- **Merge** — combine up to 25 playlists into a Local playlist (existing or created inline), deduped by the same identity chain, with per-source reporting. Large merges are written in chunks so a huge union never holds the database lock.
+- **Split** — turn one playlist into Local playlists **by cadence** (one per run preset, using the *exact* run-queue eligibility rule — octave fold + your max-stretch limit; the dialog previews per-preset counts first) or **by artist** (groups of 3+). Outputs are named `<playlist> · <preset/artist>` and re-running tops them up idempotently.
+- All three are admin-only and local-first: they never write back to Spotify or Navidrome.
+
+### Playlist stats & play counts
+
+- Every playlist detail page opens with a **stats strip**: matched runtime, a mini BPM histogram, total plays with the top played tracks, per-preset runnable counts (the same numbers as the playlist cards, computed by the same code), and when the playlist last changed.
+- The library Tracks table gains a sortable **Plays** column (most → least → default), playlist rows show per-track play counts, and **Play all** queues exactly the sort on screen.
+- The BPM histogram (Stats page and the new strip) now draws its x-axis from the data's actual range instead of a fixed 60–200 scale.
+
+### Run journal & per-account stats
+
+- Every tempo run is recorded as a **journal entry** — date, duration, source (library or playlist), tracks played, average cadence, % of time tempo-shifted — attributed to the account that ran it: admin, the shared Guest login, or a named player user. New additive tables (`runs`, `play_events`, per-account counters); no backfill, so history starts at this upgrade and older listening stays in the all-time totals (an *(unattributed)* bucket appears where material).
+- The Stats page gains a **Run journal** card (15 at a time, live runs marked) and an **account filter** on the cumulative Run-mode card.
+- Kiosk and player-user runs now count toward run stats at all — previously their stat reports were silently rejected by the player-role allowlist.
+
+### Per-user Listen mode
+
+- The four-level `player_listen_mode` (off / on / default / only) can now be **overridden per named player user** (Settings → Player access → Player users; unset = inherit the global setting). Enforced server-side against the effective mode; the shared Guest login keeps following the global setting.
+
+
 
 **Music keeps playing where the network doesn't — and the app reopens where you left it.**
 

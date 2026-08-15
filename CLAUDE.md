@@ -37,7 +37,7 @@ Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify play
 | `bpm_tagger/` | Backend package — `python -m bpm_tagger` (see sub-modules below) |
 | `bpm_tagger/main.py` | Entry point: build config → dispatch on `MODE` |
 | `bpm_tagger/config.py` | env → config table, `settings.json` overrides, version discovery |
-| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py`, `playlists.py`, `suggestions.py`, composed in `database.py`; `constants.py` holds `GRAB_*`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
+| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py`, `playlists.py`, `suggestions.py`, `players.py`, `runs.py` (run journal + per-account play attribution), composed in `database.py`; `constants.py` holds `GRAB_*` and `TRACK_SORTS`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
 | `bpm_tagger/bpm/` | Detection: `detectors.py`, `pipeline.py` (reconcile/normalize + `ScanProgress`), `tags.py`, `waveform.py` |
 | `bpm_tagger/scan/` | `scanner.py` (`BPMTagger`), `watcher.py` (filesystem watch mode) |
 | `bpm_tagger/grabber/` | Spotify sync + downloader: `sync_engine.py`, `worker.py`, `spotify.py`, `matching.py`, `path_template.py`, `transcode.py`, `tagging.py`, `providers/` |
@@ -112,7 +112,7 @@ Grabber tables: `playlists`, `playlist_tracks`, `grab_queue`, `grab_candidates` 
 ### Web UI (`bpm_tagger/web/`, React SPA + Flask JSON API)
 
 - **Frontend** is a React SPA (`frontend/`, Vite + TypeScript + Tailwind) built to `frontend/dist`. Flask serves the hashed bundle, static shell, and an `index.html` catch-all for client routes; `web_ui.py` is a back-compat shim.
-- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `spotify`, `playlists`, `queue`, `inbox`, `lyrics`, `images`, `run`, `listen`.
+- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `spotify`, `playlists`, `playlist_ops` (diff/merge/split), `queue`, `inbox`, `lyrics`, `loudness`, `images`, `run`, `listen`, `player_state`, `players`, `suggestions`.
 - Shared request state lives in `web/state.py` (`AppState`, on `app.extensions["state"]`) — holds `db`, `progress`, `tagger`, config, `settings_path`.
 - All state-changing routes require a per-session CSRF token (`web/auth.py`; SPA fetches it from `/api/me`). File paths are validated against `MUSIC_DIR`.
 - Security: `SameSite=Lax` + `HttpOnly` cookies (`Secure` when `UI_PUBLIC_URL` is https), CSP restricting to same-origin (Spotify image CDNs allowed for cover art), standard hardening headers.
