@@ -29,6 +29,7 @@ from .api.scan import scan_bp
 from .api.inbox import inbox_bp
 from .api.player_state import player_state_bp
 from .api.players import players_bp
+from .api.playlist_ops import playlist_ops_bp
 from .api.playlists import playlists_bp
 from .api.queue import queue_bp
 from .api.run import run_bp
@@ -197,7 +198,7 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
                run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp):
+               listen_bp, playlist_ops_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

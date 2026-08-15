@@ -51,6 +51,12 @@ vi.mock("../components/PlaylistStats", () => ({
     <div data-testid="stats-strip">{playlistId}</div>,
 }));
 vi.mock("../components/AddToPlaylistMenu", () => ({ default: () => null }));
+// Same again for the split dialog: it owns a preview fetch this file's useQuery
+// mock can't answer, and its own behaviour isn't this page's business.
+vi.mock("../components/PlaylistSplit", () => ({
+  default: ({ playlistName }: { playlistName: string }) =>
+    <div data-testid="split-action">{playlistName}</div>,
+}));
 vi.mock("../lib/player", () => ({
   usePlayer: () => ({
     playQueue: (tracks: unknown[], _i: number, opts?: { shuffle?: boolean }) =>
@@ -324,6 +330,23 @@ describe("PlaylistDetail — local playlist cover", () => {
     h.playlist = counts({ source: "spotify" });
     render(<PlaylistDetail />);
     expect(screen.queryByRole("button", { name: /Set cover/ })).toBeNull();
+  });
+
+  it("offers Split… to an admin on any source, but only once something is matched", () => {
+    h.playlist = counts({ source: "spotify", have_count: 4 });
+    render(<PlaylistDetail />);
+    expect(screen.getByTestId("split-action")).toBeTruthy();
+
+    cleanup();
+    h.playlist = counts({ source: "spotify", have_count: 0 });
+    render(<PlaylistDetail />);
+    expect(screen.queryByTestId("split-action")).toBeNull();
+
+    cleanup();
+    h.role = "player";
+    h.playlist = counts({ source: "spotify", have_count: 4 });
+    render(<PlaylistDetail />);
+    expect(screen.queryByTestId("split-action")).toBeNull();
   });
 });
 

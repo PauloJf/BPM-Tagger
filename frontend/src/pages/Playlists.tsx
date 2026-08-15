@@ -86,6 +86,143 @@ type AddBody =
   | { source: "navidrome"; navidrome_id: string; name: string }
   | { source: "local"; name: string };
 
+// ── Playlist operations (compare / merge) ───────────────────────────────────
+//
+// Both are local-first: compare only reads, and merge only ever writes a Local
+// playlist. They share one collapsible card under the header rather than a menu
+// per card, because both take *several* playlists as input — picking them from
+// the grid one card at a time is the interaction this avoids.
+
+interface MergeSourceReport {
+  id: number;
+  name: string;
+  added: number;
+  already_present: number;
+  skipped_duplicate: number;
+  not_in_library: number;
+}
+
+export interface MergeReport {
+  target: Playlist;
+  sources: MergeSourceReport[];
+  totals: Omit<MergeSourceReport, "id" | "name">;
+}
+
+/** "Added 12 · 3 already there · 2 duplicates · 1 not in library" — the same
+ *  reporting shape (and vocabulary) the Add-all-to-playlist toast uses, with the
+ *  cross-source duplicate skip merge adds. Zero counts are dropped so a clean
+ *  merge reads as one number, not four. Exported for the component test. */
+export function mergeSummary(c: Omit<MergeSourceReport, "id" | "name">): string {
+  const parts = [`Added ${c.added}`];
+  if (c.already_present) parts.push(`${c.already_present} already there`);
+  if (c.skipped_duplicate) parts.push(`${c.skipped_duplicate} duplicate${c.skipped_duplicate === 1 ? "" : "s"}`);
+  if (c.not_in_library) parts.push(`${c.not_in_library} not in library`);
+  return parts.join(" · ");
+}
+
+function ComparePanel({ playlists }: { playlists: Playlist[] }) {
+  const navigate = useNavigate();
+  const [a, setA] = useState<number | "">("");
+  const [b, setB] = useState<number | "">("");
+  const ready = a !== "" && b !== "" && a !== b;
+  const options = (skip: number | "") =>
+    playlists.filter((p) => p.id !== skip).map((p) => <option key={p.id} value={p.id}>{p.name}</option>);
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <select aria-label="First playlist" value={a} style={{ fontSize: 13, minWidth: 180 }}
+        onChange={(e) => setA(e.target.value ? Number(e.target.value) : "")}>
+        <option value="">Choose a playlist…</option>
+        {options(b)}
+      </select>
+      <span style={{ fontSize: 12, color: "var(--muted)" }}>vs</span>
+      <select aria-label="Second playlist" value={b} style={{ fontSize: 13, minWidth: 180 }}
+        onChange={(e) => setB(e.target.value ? Number(e.target.value) : "")}>
+        <option value="">Choose a playlist…</option>
+        {options(a)}
+      </select>
+      <button className="btn btn-primary btn-md" disabled={!ready}
+        onClick={() => navigate(`/playlist-diff?a=${a}&b=${b}`)}>
+        Compare
+      </button>
+      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+        Read-only — shows what they share and what only one of them has.
+      </span>
+    </div>
+  );
+}
+
+function MergePanel({ playlists, onDone }: { playlists: Playlist[]; onDone: () => void }) {
+  const [picked, setPicked] = useState<number[]>([]);
+  const [targetId, setTargetId] = useState<number | "new">("new");
+  const [newName, setNewName] = useState("");
+  const [report, setReport] = useState<MergeReport | null>(null);
+  const [err, setErr] = useState("");
+  const locals = playlists.filter((p) => p.source === "local");
+
+  const merge = useMutation({
+    mutationFn: (body: { source_ids: number[]; target: { id: number } | { name: string } }) =>
+      api.post<MergeReport>("/api/playlists/merge", body),
+    onSuccess: (r) => { setReport(r); setErr(""); onDone(); },
+    onError: (e) => { setReport(null); setErr(e instanceof ApiError ? e.message : "Merge failed"); },
+  });
+
+  const target = targetId === "new" ? { name: newName.trim() } : { id: targetId };
+  const ready = picked.length >= 2 && (targetId !== "new" || !!newName.trim());
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+        Pick two or more playlists; their library tracks are copied into one local
+        playlist, deduplicated by file, ISRC, then artist + title. The sources are
+        never touched.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+        {playlists.map((p) => {
+          const on = picked.includes(p.id);
+          return (
+            <label key={p.id} className={"chip " + (on ? "chip--have" : "chip--neutral")}
+              style={{ cursor: "pointer", textTransform: "none", gap: 6, display: "inline-flex", alignItems: "center" }}>
+              <input type="checkbox" checked={on} style={{ margin: 0 }}
+                onChange={() => setPicked((v) => on ? v.filter((x) => x !== p.id) : [...v, p.id])} />
+              {p.name}
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <select aria-label="Merge into" value={targetId} style={{ fontSize: 13, minWidth: 180 }}
+          onChange={(e) => setTargetId(e.target.value === "new" ? "new" : Number(e.target.value))}>
+          <option value="new">New local playlist…</option>
+          {locals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        {targetId === "new" && (
+          <input type="text" value={newName} placeholder="New playlist name" maxLength={120}
+            aria-label="New playlist name" style={{ fontSize: 13, minWidth: 200 }}
+            onChange={(e) => setNewName(e.target.value)} />
+        )}
+        <button className="btn btn-primary btn-md" disabled={!ready || merge.isPending}
+          onClick={() => merge.mutate({ source_ids: picked, target })}>
+          {merge.isPending ? "Merging…" : `Merge ${picked.length || ""}`.trim()}
+        </button>
+      </div>
+      {err && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{err}</div>}
+      {report && (
+        <div style={{ fontSize: 12, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+          <div style={{ marginBottom: 4 }}>
+            <Link to={`/playlist?id=${report.target.id}`} style={{ color: "var(--accent-2)" }}>
+              {report.target.name}
+            </Link>
+            {" — "}{mergeSummary(report.totals)}
+          </div>
+          {report.sources.map((s) => (
+            <div key={s.id} style={{ color: "var(--muted)" }}>{s.name}: {mergeSummary(s)}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Playlists() {
   useTitle("Playlists");
   const qc = useQueryClient();
@@ -95,6 +232,7 @@ export default function Playlists() {
   const [localName, setLocalName] = useState("");
   const [addErr, setAddErr] = useState("");
   const [browsing, setBrowsing] = useState<null | "spotify" | "navidrome">(null);
+  const [op, setOp] = useState<null | "compare" | "merge">(null);
 
   const playlistsQ = useQuery({
     queryKey: ["playlists"],
@@ -188,7 +326,31 @@ export default function Playlists() {
             ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{playlists.length}</span> playlist{playlists.length === 1 ? "" : "s"} compared against your library</>
             : "Spotify and Navidrome playlists compared against your library."
         }
+        actions={playlists.length >= 2 ? (
+          <>
+            <button className="btn btn-ghost btn-sm" aria-pressed={op === "compare"}
+              onClick={() => setOp((o) => o === "compare" ? null : "compare")}>
+              Compare…
+            </button>
+            <button className="btn btn-ghost btn-sm" aria-pressed={op === "merge"}
+              onClick={() => setOp((o) => o === "merge" ? null : "merge")}>
+              Merge…
+            </button>
+          </>
+        ) : undefined}
       />
+
+      {op && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="section-label">
+            <span>{op === "compare" ? "Compare two playlists" : "Merge playlists"}</span>
+            <span className="section-hint">local-first — the sources are never modified</span>
+          </div>
+          {op === "compare"
+            ? <ComparePanel playlists={playlists} />
+            : <MergePanel playlists={playlists} onDone={invalidate} />}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="section-label"><span>Add a playlist</span></div>

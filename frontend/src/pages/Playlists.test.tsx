@@ -41,7 +41,7 @@ vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../components/PageHeader", () => ({ default: () => null }));
 
-import Playlists from "./Playlists";
+import Playlists, { mergeSummary } from "./Playlists";
 import { api } from "../lib/api";
 
 function pl(over: Partial<Playlist> = {}): Playlist {
@@ -188,5 +188,24 @@ describe("Playlists — per-preset readiness badges", () => {
     h.playlists = [pl({ id: 7, name: "Long Runs" })];
     render(<Playlists />);
     expect(screen.queryByText(/^155:/)).toBeNull();
+  });
+});
+
+describe("Playlists — merge reporting", () => {
+  const c = (over: Partial<Parameters<typeof mergeSummary>[0]> = {}) => ({
+    added: 0, already_present: 0, skipped_duplicate: 0, not_in_library: 0, ...over,
+  });
+
+  it("reads as one number when the merge was clean", () => {
+    expect(mergeSummary(c({ added: 12 }))).toBe("Added 12");
+  });
+
+  it("names each way a track failed to be added, in the same words as the copy flow", () => {
+    expect(mergeSummary(c({ added: 3, already_present: 2, skipped_duplicate: 1, not_in_library: 4 })))
+      .toBe("Added 3 · 2 already there · 1 duplicate · 4 not in library");
+  });
+
+  it("pluralizes the cross-source duplicate skip", () => {
+    expect(mergeSummary(c({ skipped_duplicate: 2 }))).toBe("Added 0 · 2 duplicates");
   });
 });

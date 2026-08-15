@@ -17,6 +17,7 @@ import Album from "./pages/Album";
 import Albums from "./pages/Albums";
 import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
+import PlaylistDiff from "./pages/PlaylistDiff";
 import Queue from "./pages/Queue";
 import Inbox from "./pages/Inbox";
 import Search from "./pages/Search";
@@ -161,6 +162,9 @@ export default function App() {
         <Route path="/album" element={<Album />} />
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/playlist" element={<PlaylistDetail />} />
+        {/* Playlist operations are admin-side (the API is outside the
+            default-deny player allowlist), so this lives here only. */}
+        <Route path="/playlist-diff" element={<PlaylistDiff />} />
         <Route path="/queue" element={<Queue />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/inbox/:id" element={<Inbox />} />

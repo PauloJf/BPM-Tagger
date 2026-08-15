@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import PlaylistStats from "../components/PlaylistStats";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
+import PlaylistSplit from "../components/PlaylistSplit";
 import { ArtPlaceholder, ArtToggle, Cover, PlaylistCover, RemoteCover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
 import { apiUpload } from "../lib/api";
@@ -415,6 +416,12 @@ export default function PlaylistDetail() {
             className="btn btn-soft btn-sm"
             iconSize={13}
           />
+        )}
+        {/* Fan this playlist out into local playlists (by cadence or by artist).
+            Admin-only and read-only against this playlist — every output is a
+            new/topped-up Local playlist, never a write back to the source. */}
+        {role === "admin" && (pl?.have_count ?? 0) > 0 && (
+          <PlaylistSplit playlistId={id} playlistName={pl?.name || "this playlist"} />
         )}
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>

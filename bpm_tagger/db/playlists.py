@@ -493,20 +493,45 @@ class PlaylistsMixin:
 
     def get_playlist_matched_rows(self, playlist_id: int) -> list[dict]:
         """One row per distinct matched library file, carrying just the fields the
-        stats strip rolls up (runtime, BPM buckets, plays).
+        stats strip rolls up (runtime, BPM buckets, plays) plus the identity
+        columns the playlist operations match on.
 
         Duration falls back to the source row's when the library row has none, so
         a library indexed before duration tagging still totals something sane;
-        MAX() picks it deterministically across the collapsed duplicate rows."""
+        MAX() picks it deterministically across the collapsed duplicate rows.
+
+        `album_artist` / `isrc` / `norm_artist` / `norm_title` are the library
+        track's own, not the source row's — they exist so diff/merge/split can
+        run the identity chain (file → ISRC → normalized artist+title) and group
+        by album artist off this one canonical membership query. Every column is
+        from `tracks`, so grouping by file_path collapses duplicate source rows
+        without picking between differing values."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT t.file_path, t.title, t.artist, t.bpm, "
+                "SELECT t.file_path, t.title, t.artist, t.album_artist, t.bpm, "
+                "t.isrc, t.norm_artist, t.norm_title, "
                 "COALESCE(t.duration_ms, MAX(pt.duration_ms)) AS duration_ms, "
                 "COALESCE(t.play_count, 0) AS play_count "
                 + self._PLAYLIST_MATCHED_JOIN + " GROUP BY t.file_path",
                 (playlist_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def find_local_playlist_by_name(self, name: str) -> Optional[dict]:
+        """The Local playlist with this exact name (case-insensitively), or None.
+
+        Split writes into `<playlist> · <group>` playlists and must be re-runnable
+        without piling up near-duplicates, so it looks the name up first and tops
+        the existing one up instead of creating a second. Local-only: a synced
+        mirror's name belongs to its source and could be rewritten out from under
+        us on the next sync. Lowest id wins if a user has hand-made two."""
+        if not name:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM playlists WHERE source = 'local' AND name = ? COLLATE NOCASE "
+                "ORDER BY id LIMIT 1", (name,)).fetchone()
+        return dict(row) if row else None
 
     def get_playlist_last_change(self, playlist_id: int) -> Optional[str]:
         """When this playlist's membership last changed, from the timestamps the
