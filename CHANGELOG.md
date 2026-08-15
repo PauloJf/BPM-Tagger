@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.13.0 — 2026-08-15
+
+**Music keeps playing where the network doesn't — and the app reopens where you left it.**
+
+### Offline preloading
+
+- **A service-worker audio cache** — the player's `<audio>` element always streams the same `/audio` URL; the service worker now serves those URLs from a **per-device Cache API store** whenever the track was preloaded (Range-aware 206s, as Safari demands), falling through to the network otherwise. Playback is byte-for-byte identical either way — which is the whole design: the previous preload attempt died on blob-vs-stream source switching, and that switching no longer exists. The app shell and API stay uncached, as before.
+- **Automatic look-ahead** — while a queue is playing (Run *and* Listen), the next few tracks (default 5, `PRELOAD_AHEAD` / Settings → Playback, `0` = off) download in full at low priority, so track boundaries and short dead zones stop mattering. Downloads that fall out of the window are aborted; played tracks stay cached until the cap evicts them.
+- **Prepare offline** (Run page) — per-preset chips under the BPM presets: one tap builds a queue for that preset's cadence and source and shows the download size (`Steady · 82 MB?`), a second tap downloads it (default 10 tracks, `RUN_PRELOAD_TRACKS` / Settings → Run Mode). The exact queue is **pinned** with the download — queue builds are randomized, so the cached audio is only guaranteed to match a saved queue — and **Start run falls back to the pinned queue when the server is unreachable**, playing entirely from the cache. On phones the chips show before playback starts (the one-screen mid-run layout stays intact); desktop shows them always.
+- **Housekeeping** — the cache is capped (default 500 MB, `PRELOAD_CACHE_MB` / Settings → Playback) with the least-recently-touched tracks evicted first; Settings → Playback shows this device's usage with a **Clear** button. Preloading needs **HTTPS** (or localhost) — the Cache API doesn't exist on plain-HTTP origins, where the player simply streams as before. All roles get it, kiosk player users included.
+- The old blob-URL run-mode prefetch (`PRELOAD_BLOBS`, disabled since it broke track advance under a tempo lock on real devices) is removed, replaced by the above.
+
+### Reopen the last-used page
+
+- A plain reload always stayed put, but three entries lost your place — all restored now: the **installed PWA** (always launches at `/run`) reopens the page you last had open; the **bare origin** `/` does the same instead of hardcoding the library; and **signing back in after a session expiry** returns to the page you were bounced from instead of `/tracks`.
+- Deep links and typed URLs always win — only launcher entries are redirected (`/run?bpm=` links, browser tabs on `/run`, and everything else stay exactly where they point). The kiosk shell restores only within its own routable pages, per the admin's listen-mode setting.
+
 ## v2.12.0 — 2026-07-31
 
 **The queue follows your account across devices.**
