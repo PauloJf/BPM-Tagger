@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ApiError } from "../lib/api";
 import BpmMark from "../components/BpmMark";
@@ -35,6 +35,11 @@ const WarnIcon = ({ size = 11 }: { size?: number }) => (
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // The page a signed-out visit was bounced from (App passes it in state) — a
+  // session expiry mid-anything returns there instead of dumping on /tracks.
+  // The player shell collapses any admin path to its own home, so this is safe
+  // for every role; /tracks stays the fallback for a direct login-page visit.
+  const from = (useLocation().state as { from?: string } | null)?.from;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -55,7 +60,7 @@ export default function Login() {
     setCodeError(false);
     try {
       await login(password, username, totpStep ? totp : undefined);
-      navigate("/tracks", { replace: true });
+      navigate(from && from !== "/login" ? from : "/tracks", { replace: true });
     } catch (err) {
       const code = err instanceof ApiError ? err.message : "";
       if (err instanceof ApiError && err.status === 429) {

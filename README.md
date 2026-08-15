@@ -394,7 +394,7 @@ Enable the web UI by setting `ENABLE_UI: "true"` and a strong `UI_PASSWORD` in `
 
 ### Install as an app (PWA)
 
-The UI is an installable web app: open it on your phone and add it to the home screen (**Android/Chrome**: ⋮ menu → *Install app*; **iOS/Safari**: Share → *Add to Home Screen*). It launches standalone with its own icon **straight onto the Run page** (the browser version still lands on the library), and the player exposes **lock-screen / headset controls** (play, pause, next, previous, with title/artist/cover art) via the Media Session API — handy for controlling playback mid-run without unlocking the phone.
+The UI is an installable web app: open it on your phone and add it to the home screen (**Android/Chrome**: ⋮ menu → *Install app*; **iOS/Safari**: Share → *Add to Home Screen*). It launches standalone with its own icon and **reopens the last page you had open** (first launch: the Run page; the browser version's bare address does the same, first landing on the library) — deep links and typed URLs always win, and signing back in after a session expiry returns you to the page you were on, not the library. The player exposes **lock-screen / headset controls** (play, pause, next, previous, with title/artist/cover art) via the Media Session API — handy for controlling playback mid-run without unlocking the phone.
 
 Two things to know:
 

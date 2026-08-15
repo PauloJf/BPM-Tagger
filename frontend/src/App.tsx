@@ -1,5 +1,7 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./lib/auth";
+import { consumeBootRestore, lastPage, rememberPage } from "./lib/lastPage";
 import Nav, { PlayerNav, PlayerMobileBar } from "./components/Nav";
 import PlayerBar from "./components/PlayerBar";
 import InstallPingCard from "./components/InstallPingCard";
@@ -27,6 +29,21 @@ import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
 import PlayerAbout from "./pages/PlayerAbout";
+
+// The installed PWA always launches at its start_url (/run) — bounce that one
+// entry to the last page the user had open (see lib/lastPage.ts; browser tabs
+// and deep links are never redirected). Mounted inside each authenticated
+// shell; `allow` lets the player shell keep the restore within its routable
+// pages. One-shot per app load.
+function BootRestore({ allow }: { allow?: (path: string) => boolean }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const target = consumeBootRestore(window.location.pathname + window.location.search);
+    if (target && (!allow || allow(target.split("?")[0]))) navigate(target, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
 
 function Layout({ children }: { children: React.ReactNode }) {
   // Run and Listen carry their own full-screen transport — the global bar
@@ -68,6 +85,7 @@ function PlayerLayout() {
   const home = listenMode === "default" || listenMode === "only" ? "/listen" : "/run";
   return (
     <>
+      <BootRestore allow={(p) => p === "/about" || (p === "/run" && hasRun) || (p === "/listen" && hasListen)} />
       <PlayerNav />
       {/* Player kiosk top bar, lifted out of the pages so it's a single sticky
           bar shared by the kiosk pages — consistent offset (no shift when
@@ -102,12 +120,21 @@ export default function App() {
   const { ready, authenticated, role } = useAuth();
   const location = useLocation();
 
+  // Remember the page being viewed so the next launch can reopen it (the "/"
+  // index redirect and the PWA BootRestore read it back). Recorded for every
+  // role — the player shell's routes are a subset, and its restore filters.
+  useEffect(() => {
+    if (authenticated && location.pathname !== "/login" && location.pathname !== "/") {
+      rememberPage(location.pathname + location.search);
+    }
+  }, [authenticated, location]);
+
   if (!ready) return <FullScreenLoader />;
 
   if (!authenticated) {
     // Any route while logged out → Login (preserve intended path via state).
     if (location.pathname === "/login") return <Login />;
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
 
   // Run-only role: every route collapses to the player shell. The client router
@@ -119,8 +146,11 @@ export default function App() {
 
   return (
     <Layout>
+      <BootRestore />
       <Routes>
-        <Route path="/" element={<Navigate to="/tracks" replace />} />
+        {/* Bare-origin entry: reopen the last page this browser had open (a
+            bogus saved value just falls through the catch-all to /tracks). */}
+        <Route path="/" element={<Navigate to={lastPage() ?? "/tracks"} replace />} />
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
         <Route path="/compare" element={<TrackCompare />} />
