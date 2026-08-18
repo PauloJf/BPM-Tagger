@@ -1,6 +1,7 @@
 // The offline preload manager, run against an in-memory CacheStorage: what
 // gets cached, what the index reports, what the cap evicts, and what a moving
 // look-ahead window aborts.
+import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cacheStats, cachedPaths, clearOffline, fmtBytes, offlineSupported,
@@ -47,6 +48,16 @@ function stubFetch(sizes: Record<string, number>, opts?: { failPaths?: Set<strin
 beforeEach(() => {
   localStorage.clear();
   fakeCache = new FakeCache();
+  // Same-realm Blob for the fetch/Response pipeline. In this jsdom + Node
+  // combo, `Response` is undici's but the global `Blob` is jsdom's, whose
+  // instances carry no stream()/arrayBuffer()/text(). undici's Response.blob()
+  // builds its result with the *global* Blob, so offline.ts's re-wrap
+  // (`new Response(await resp.blob())`) hands undici a Blob it doesn't
+  // recognize as blob-like and the body gets stringified to "[object Blob]"
+  // (13 bytes) instead of the track's bytes. Node's buffer.Blob has the full
+  // read surface and undici accepts it, on every Node version — real browsers
+  // are single-realm and never hit this. Restored by unstubAllGlobals below.
+  vi.stubGlobal("Blob", NodeBlob);
   // Recency ordering must be deterministic — real Date.now can hand two
   // writes the same millisecond, making eviction order flip per run.
   let now = 1_000_000_000;
