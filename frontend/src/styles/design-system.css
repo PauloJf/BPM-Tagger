@@ -1449,3 +1449,18 @@ a.player-bar-title:hover { color: var(--accent-2); }
 @container playercol (max-width: 520px) {
   .run-cockpit { grid-template-columns: 1fr; gap: 18px; }
 }
+
+/* Listen shares Run's desktop shell (.run-desktop-body / .run-player-col /
+   .run-queue-col) but its player column is one centered stack — cover + title
+   over the transport and mode row, no target controls. The cockpit soaks up
+   the column's leftover height (the grid row is set by this column alone; the
+   queue card is absolute) and centers the cover + title in it, which parks the
+   transport at the bottom, level with the queue panel's lower edge. */
+.listen-cockpit {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}

@@ -270,19 +270,36 @@ describe("Listen — empty state", () => {
   });
 });
 
-describe("Listen — desktop queue panel", () => {
-  it("renders the shared queue list once more than one track is queued", () => {
+describe("Listen — desktop two-column layout", () => {
+  it("puts the player and the queue side by side once something is playing", () => {
     h.current = { path: "/a.mp3", title: "A" };
     h.orderedQueue = [{ path: "/a.mp3", title: "A" }, { path: "/b.mp3", title: "B" }];
-    render(<Listen />);
+    const { container } = render(<Listen />);
+    expect(container.querySelector(".run-desktop-body")).toBeTruthy();
     expect(screen.getByTestId("queue-list")).toBeTruthy();
     expect(screen.getByText("Queue · 2")).toBeTruthy();
   });
 
-  it("hides it for a single-track queue", () => {
+  it("keeps the queue column even for a single-track queue", () => {
     h.current = { path: "/a.mp3", title: "A" };
     h.orderedQueue = [{ path: "/a.mp3", title: "A" }];
     render(<Listen />);
+    expect(screen.getByTestId("queue-list")).toBeTruthy();
+    expect(screen.getByText("Queue · 1")).toBeTruthy();
+  });
+
+  it("hosts the source picker in the queue panel mid-playback", () => {
+    h.current = { path: "/a.mp3", title: "A" };
+    h.orderedQueue = [{ path: "/a.mp3", title: "A" }];
+    render(<Listen />);
+    expect(screen.getByTestId("queue-source")).toBeTruthy();
+    expect(screen.getByLabelText("Source to play")).toBeTruthy();
+  });
+
+  it("shows the picker inline pre-playback (no queue column yet)", () => {
+    const { container } = render(<Listen />);
+    expect(container.querySelector(".run-desktop-body")).toBeNull();
+    expect(screen.getByLabelText("Source to play")).toBeTruthy();
     expect(screen.queryByTestId("queue-list")).toBeNull();
   });
 });

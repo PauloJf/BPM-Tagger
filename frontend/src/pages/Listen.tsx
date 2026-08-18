@@ -29,6 +29,14 @@ const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
  * its first way to play music without a tempo lock — gated by the admin's
  * player_listen_mode setting (see App.tsx's PlayerLayout).
  *
+ * Desktop (≥900px) uses Run's two-column shell (.run-desktop-body): the player
+ * owns the left column — a height-aware cover with the title centered in the
+ * leftover space, transport and mode row at the bottom — and the queue lives
+ * permanently in a full-height panel on the right, ending level with the
+ * transport. The source picker rides in the queue panel (as on mobile's Queue
+ * tab), so switching sources never covers the artwork; pre-playback it shows
+ * inline with the empty state instead.
+ *
  * Mobile (<900px) reuses Run's one-screen machinery (.run-mobile-fill): the
  * cover absorbs the leftover height, the transport pins low, and a bottom
  * Playing/Queue switcher — bottom rather than Run's top tabs, both for thumb
@@ -409,13 +417,16 @@ export default function Listen() {
     </div>
   );
 
-  // The queue card. `fill` (mobile Queue view) hosts the source picker and
-  // shrinks to the column's leftover height so the list scrolls internally;
-  // desktop caps it instead and keeps the picker in the page header area.
-  const queuePanel = (fill: boolean) => (
-    <div className="card" style={fill
+  // The queue card. Both hosts feed it a bounded box and the list scrolls
+  // internally: "fill" (mobile Queue tab) shrinks to the fixed column's
+  // leftover height; "column" (desktop) absolutely fills the side column —
+  // like Run's, so the queue never drives the row height and its bottom always
+  // lines up with the transport. The source picker lives in the panel in both,
+  // reachable mid-playback without covering the artwork.
+  const queuePanel = (variant: "fill" | "column") => (
+    <div className="card" style={variant === "fill"
       ? { padding: 0, display: "flex", flexDirection: "column", minHeight: 0, flexShrink: 1, marginBottom: 10 }
-      : { padding: 0, marginTop: 22, display: "flex", flexDirection: "column", maxHeight: 420 }}>
+      : { padding: 0, margin: 0, position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
         <span style={{ fontWeight: 600, fontSize: 13 }}>Queue · {player.orderedQueue.length}</span>
         {radio && listenSource != null && (
@@ -423,12 +434,14 @@ export default function Listen() {
         )}
         <button className="btn btn-bare btn-sm" style={{ marginLeft: "auto" }} onClick={player.stop} title="Stop and clear the queue">Clear</button>
       </div>
-      {fill && sourcePicker && (
+      {sourcePicker && (
         <div data-testid="queue-source" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           {sourcePicker}
         </div>
       )}
-      <div style={{ minHeight: 0, overflowY: "auto" }}>
+      <div style={variant === "column"
+        ? { flex: 1, minHeight: 0, overflowY: "auto" }
+        : { minHeight: 0, overflowY: "auto" }}>
         <QueueList />
       </div>
     </div>
@@ -441,28 +454,46 @@ export default function Listen() {
   );
 
   if (!mobile) {
+    // Desktop cover: height-aware, like Run's — the viewport height minus the
+    // column's fixed chrome (page header + title + transport + mode row), so it
+    // grows into tall screens instead of idling at 300px and shrinks on short
+    // ones instead of pushing the transport under the fold. Width is separately
+    // capped to the column by PlayerCover (min(coverSize, 100%)). Listen's
+    // column has far less chrome than Run's cockpit (no target block/presets),
+    // hence the smaller subtraction and the higher cap.
+    const desktopCoverSize = "clamp(160px, calc(100dvh - 470px - var(--run-topbar, 0px)), 460px)";
     return (
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      <div className="run-desktop">
         {glowLayer}
         <PageHeader
           title="Listen"
           subtitle="Regular player — your music at native tempo, no cadence lock."
         />
-        <div style={{ marginBottom: 18 }}>{sourcePicker}</div>
-        {current && (
-          <div style={{ textAlign: "center" }}>
-            {!isPreview && (
-              <div style={{ marginBottom: 16 }}>
-                <PlayerCover path={current.path} coverSize="min(72vw, 300px)" />
-              </div>
-            )}
-            {titleBlock}
-            {transportBlock}
-            {modeRow}
+        {!current && (
+          // Pre-playback there's no queue worth a column — keep the picker and
+          // empty state as a compact centered block until something starts.
+          <div style={{ maxWidth: 640, margin: "0 auto" }}>
+            <div style={{ marginBottom: 18 }}>{sourcePicker}</div>
+            {emptyState}
           </div>
         )}
-        {emptyState}
-        {player.orderedQueue.length > 1 && queuePanel(false)}
+        {current && (
+          <div className="run-desktop-body">
+            <div className="run-player-col">
+              <div className="listen-cockpit">
+                {!isPreview && (
+                  <div style={{ marginBottom: 18 }}>
+                    <PlayerCover path={current.path} coverSize={desktopCoverSize} />
+                  </div>
+                )}
+                {titleBlock}
+              </div>
+              {transportBlock}
+              {modeRow}
+            </div>
+            <aside className="run-queue-col">{queuePanel("column")}</aside>
+          </div>
+        )}
         {lyricsDrawer}
       </div>
     );
@@ -508,7 +539,7 @@ export default function Listen() {
             {modeRow}
           </>
         )}
-        {current && view === "queue" && queuePanel(true)}
+        {current && view === "queue" && queuePanel("fill")}
       </div>
       {transportBlock}
       {tabs}
