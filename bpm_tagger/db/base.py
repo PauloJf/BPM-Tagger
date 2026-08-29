@@ -154,6 +154,7 @@ class _DBBase:
         self._create_player_tables(conn)
         self._create_run_tables(conn)
         self._create_track_artists_table(conn)
+        self._fix_normalize_artist_word_boundary_bug(conn)
 
         # Orphan sweep: DBs created before FK enforcement have no ON DELETE
         # CASCADE (added to the CREATE statements above, so only fresh DBs get
@@ -306,6 +307,29 @@ class _DBBase:
                         conn.execute(
                             "INSERT OR IGNORE INTO track_artists (track_id, name, norm_name) "
                             "VALUES (?, ?, ?)", (row["id"], name, key))
+
+    def _fix_normalize_artist_word_boundary_bug(self, conn):
+        """One-time recompute of stored norm_artist values: normalize_artist()
+        used to split on bare 'x'/'and'/'ft'/'with'/'feat' wherever they
+        appeared, even mid-word, mangling names like "Axwell" (-> "a" + "well")
+        or "Andrew" (-> "" + "rew"). Fixed in normalize_artist() itself; this
+        repairs already-stored keys so grabber matching and duplicate
+        detection don't compare a fresh key against a stale mangled one."""
+        marker = "norm_artist_word_boundary_fix"
+        if conn.execute(
+                "SELECT 1 FROM app_counters WHERE key = ?", (marker,)).fetchone():
+            return
+        from ..grabber.matching import normalize_artist
+        for table in ("tracks", "playlist_tracks"):
+            rows = conn.execute(
+                f"SELECT id, artist FROM {table} WHERE artist IS NOT NULL AND artist != ''"
+            ).fetchall()
+            for row in rows:
+                conn.execute(
+                    f"UPDATE {table} SET norm_artist = ? WHERE id = ?",
+                    (normalize_artist(row["artist"]), row["id"]))
+        conn.execute(
+            "INSERT INTO app_counters (key, value) VALUES (?, 1)", (marker,))
 
     def _migrate_playlists_schema(self, conn, finish: bool = False):
         """Generalize the Spotify-only playlists / playlist_tracks tables to the

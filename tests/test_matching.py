@@ -35,6 +35,27 @@ def test_normalize_artist_includes_feat_sorted():
     assert m.normalize_artist("Calvin Harris feat. Rihanna") == m.normalize_artist("Rihanna, Calvin Harris")
 
 
+@pytest.mark.parametrize("name", [
+    "Axwell",      # contains "x" mid-word
+    "Andrew",      # contains "and" as a prefix
+    "Left",        # contains "ft"
+    "Gift",        # contains "ft"
+    "Withheld",    # contains "with" as a prefix
+])
+def test_normalize_artist_does_not_split_names_containing_separator_substrings(name):
+    """Regression: normalize_artist() used to split on bare 'x'/'and'/'ft'/
+    'with' wherever they appeared, even mid-word — e.g. real library data
+    "Supermode, Axwell, Steve Angello" produced the mangled token bag
+    "a steve angello supermode well" (Axwell cut into "A" + "well")."""
+    assert m.normalize_artist(name) == m._base_normalize(name)
+
+
+def test_normalize_artist_still_splits_real_separators():
+    assert m.normalize_artist("Supermode, Axwell, Steve Angello") == "axwell steve angello supermode"
+    assert m.normalize_artist("Artist1 x Artist2") == "artist1 artist2"
+    assert m.normalize_artist("Chase & Status") == "chase status"
+
+
 # ── Duration tiers (assert discrete tiers, not raw floats) ────────────────────
 
 @pytest.mark.parametrize("a,b,tier", [

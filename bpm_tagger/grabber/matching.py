@@ -26,6 +26,19 @@ _FEAT = re.compile(r"\b(feat\.?|ft\.?|featuring|with)\b", re.I)
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
 _WS = re.compile(r"\s+")
 
+# Splits a list of names on real separators only. Punctuation tokens (,&/)
+# can't land mid-word, but the word tokens ('and'/'x') MUST be \b-bounded —
+# unguarded, they also match as substrings ("x" inside "Axwell", "and" inside
+# "Andrew"), silently cutting the name in half. Found via real library data:
+# normalize_artist("Supermode, Axwell, Steve Angello") produced the token bag
+# "a steve angello supermode well" — "Axwell" split into "A" + "well".
+_NAME_LIST_SPLIT = re.compile(r"\s*(?:,|&|/|\band\b|\bx\b)\s*", re.I)
+
+# Same fix, for normalize_artist()'s full split below: adds ';' and the
+# feat/ft/featuring/with separators (already \b-bounded, matching _FEAT).
+_ARTIST_SPLIT = re.compile(
+    r"\s*(?:,|&|/|;|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b|\band\b|\bx\b)\s*", re.I)
+
 # Tokens that mark a different recording; penalized if present on one side only.
 _VARIANT_TOKENS = ("live", "remix", "cover", "acoustic", "instrumental",
                    "karaoke", "sped up", "spedup", "slowed", "reverb", "demo")
@@ -55,12 +68,12 @@ def extract_feat(text: Optional[str]) -> tuple[str, list[str]]:
     feats: list[str] = []
     bracket = re.search(r"[\(\[]\s*(?:feat\.?|ft\.?|featuring|with)\s+([^)\]]+)[\)\]]", text, re.I)
     if bracket:
-        feats += re.split(r"\s*(?:,|&|and|/|x)\s*", bracket.group(1).strip(), flags=re.I)
+        feats += _NAME_LIST_SPLIT.split(bracket.group(1).strip())
         text = text[: bracket.start()] + text[bracket.end():]
     # Then an inline feat clause: "Artist feat. X, Y"
     m = _FEAT.search(text)
     if m:
-        feats += re.split(r"\s*(?:,|&|and|/|x)\s*", text[m.end():].strip(), flags=re.I)
+        feats += _NAME_LIST_SPLIT.split(text[m.end():].strip())
         text = text[: m.start()]
     feats = [f.strip() for f in feats if f and f.strip()]
     return text.strip(), feats
@@ -97,7 +110,7 @@ def normalize_artist_name(name: Optional[str]) -> str:
 def normalize_artist(artist: Optional[str]) -> str:
     """Normalize an artist string into a canonical token bag incl. featured names."""
     base, feats = extract_feat(artist)
-    parts = re.split(r"\s*(?:,|&|and|/|;|feat\.?|ft\.?|featuring|with|x)\s*", base, flags=re.I)
+    parts = _ARTIST_SPLIT.split(base)
     parts = [p for p in parts if p]
     tokens = sorted({_base_normalize(p) for p in (parts + feats) if _base_normalize(p)})
     return " ".join(tokens)
