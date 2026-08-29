@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.15.0 — 2026-08-29
+
+**Multi-artist credits now link to every artist involved, and the queue actually feels like a queue.**
+
+### Multi-artist track & artist linking
+
+- A track credited to more than one artist (e.g. `Argy, SOLANCE`) used to only match whichever name matched the raw tag exactly, so a featured or collaborating artist never had a page listing it. Individual credits are now split (on `,`/`;`/`/` — real act names like `Chase & Status` are left intact) into a `track_artists` index, kept in sync on every scan, tag edit, and grab; every credited artist gets a real, working artist page, and existing libraries are backfilled once on upgrade.
+- Fixed a related bug in the grabber's `normalize_artist()` matching key: it used to split on bare `x`/`and`/`ft`/`with` wherever they appeared, even mid-word — `Axwell` normalized to `A` + `well`, `Andrew` lost its `and`. Could cause real match misses in Spotify sync and duplicate detection; existing stored keys are recomputed once on upgrade.
+
+### Queue actions everywhere
+
+- Artist, Album, and Tracks pages only had **Play** / **Shuffle** (both replace the queue) — no way to add to what's already playing. All three, plus Playlist detail and Cadence, now share one **Play / Shuffle / Add to queue** control.
+- Each row's own add-to-queue button now reflects whether the track is actually queued — a checkmark once it's in, click again to remove it — instead of looking the same before and after the click.
+
 ## v2.14.0 — 2026-08-15
 
 **Playlists learn set operations, and Run mode gets a memory.**
