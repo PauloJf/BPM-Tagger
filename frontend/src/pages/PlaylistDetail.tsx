@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Playlist, PlaylistTrack } from "../lib/types";
 import { basename } from "../lib/paths";
-import { usePlayer, type PlayerTrack } from "../lib/player";
+import type { PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import { ArtistLinks } from "../components/ArtistLinks";
+import { QueueActions } from "../components/QueueActions";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import PlaylistStats from "../components/PlaylistStats";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
@@ -16,10 +17,6 @@ import PlaylistSplit from "../components/PlaylistSplit";
 import { ArtPlaceholder, ArtToggle, Cover, PlaylistCover, RemoteCover, useArtwork } from "../components/Artwork";
 import { ImagePicker } from "../components/ImagePicker";
 import { apiUpload } from "../lib/api";
-
-const PlayIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>;
-const ShuffleIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>;
-const AddIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ marginRight: 4 }}><path d="M12 5v14M5 12h14" /></svg>;
 
 /** The rows of a playlist that can actually be played: matched to a local file.
  *  Everything a PlayerTrack needs already rides along on a 'have' row — including
@@ -217,7 +214,6 @@ export default function PlaylistDetail() {
   const qc = useQueryClient();
   const status = useGrabberStatus();
   const { role } = useAuth();
-  const player = usePlayer();
   const [tab, setTab] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("position");
   const [search, setSearch] = useState("");
@@ -371,33 +367,7 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
-        <button
-          className="btn btn-primary btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? "Play this playlist's library tracks" : noPlayReason}
-          onClick={() => player.playQueue(playable, 0, { shuffle: false })}
-        >
-          <PlayIcon />
-          Play{playLabel}
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? "Play this playlist's library tracks in a random order" : noPlayReason}
-          onClick={() => player.playQueue(playable, 0, { shuffle: true })}
-        >
-          <ShuffleIcon />
-          Shuffle{playLabel}
-        </button>
-        <button
-          className="btn btn-bare btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? "Append this playlist's library tracks to the current queue" : noPlayReason}
-          onClick={() => player.enqueueMany(playable)}
-        >
-          <AddIcon />
-          Add to queue
-        </button>
+        <QueueActions tracks={playable} label={playLabel} disabledTitle={noPlayReason} />
         {canQueueMissing && (
           <button
             className="btn btn-soft btn-sm"

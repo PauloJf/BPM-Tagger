@@ -17,6 +17,43 @@ export function trackSubtitle(t: Track): string {
   return artist || album || "";
 }
 
+/** Add-to-queue row button that reflects the track's actual queue membership
+ *  — a bare "+" that always looked the same whether or not the click landed.
+ *  Queued shows a checkmark; clicking again removes that track from the
+ *  queue (the same toggle language as the star/dislike buttons next to it). */
+export function QueueButton({ track, extraBtn = false }: { track: PlayerTrack; extraBtn?: boolean }) {
+  const player = usePlayer();
+  const queued = player.isQueued(track.path);
+
+  function onClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (queued) {
+      const pos = player.orderedQueue.findIndex((t) => t.path === track.path);
+      if (pos >= 0) player.removeAt(pos);
+    } else {
+      player.enqueue(track);
+    }
+  }
+
+  return (
+    <button
+      className={"row-play" + (extraBtn && !queued ? " row-extra-btn" : "")}
+      style={queued ? { color: "var(--ok-fg)", borderColor: "var(--ok-bd)" } : undefined}
+      aria-label={queued ? "Remove from queue" : "Add to queue"}
+      aria-pressed={queued}
+      title={queued ? "In the queue — click to remove" : "Add to queue"}
+      onClick={onClick}
+    >
+      {queued ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+      )}
+    </button>
+  );
+}
+
 export function confColor(v: number): string {
   return v >= 0.7 ? "var(--ok-fg)" : v >= 0.4 ? "var(--accent-2)" : "var(--warn-fg)";
 }

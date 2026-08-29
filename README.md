@@ -544,6 +544,8 @@ A **Tracks | Artists | Albums** switcher at the top of the Library picks the vie
 
 **Artists** and **Albums** are browsable indexes — filterable card grids with track counts, years, and average BPM per entry, linking into the per-artist and per-album pages. A multi-artist credit (e.g. `Argy, SOLANCE`) is split so **every credited artist** — including a feature on someone else's track — gets their own page listing it, not just the primary one.
 
+Every browse page (Tracks, an Artist, an Album) carries the same **▶ Play** / **⇄ Shuffle** / **+ Add to queue** trio — Play and Shuffle replace the current queue, Add to queue appends without disturbing what's already playing. Each row's own add-to-queue button reflects the track's real queue membership — a checkmark once it's queued, click again to remove it — instead of looking the same whether or not the click landed.
+
 **Artwork** — embedded cover art shows as thumbnails on library rows and browse cards, an artist image and per-album covers on the artist page, and a cover header on the album and track detail pages. A **show/hide artwork** toggle next to the search box (remembered per browser) turns all of it off for slow libraries; covers are served with long-lived cache headers.
 
 #### Related, suggestions & previews

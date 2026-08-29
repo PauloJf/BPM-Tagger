@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { api, audioUrl, notifyUnauthorized } from "./api";
 import { useAuthOptional } from "./auth";
 import { setLookahead, touchCached } from "./offline";
@@ -182,6 +182,7 @@ interface PlayerState {
   toggle(): void;
   stop(): void;
   isCurrent(path: string): boolean;
+  isQueued(path: string): boolean;   // is this track anywhere in the queue (playing or not)
 }
 
 const Ctx = createContext<PlayerState | null>(null);
@@ -1564,6 +1565,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const isCurrent = useCallback((p: string) => current?.path === p, [current]);
 
+  // Membership check for "is this already queued" indicators (e.g. the
+  // library row add-to-queue button). Built from `order` (the actual playback
+  // sequence), not the raw `queue` array — `queue` is an append-only backing
+  // store that removeAt() never trims, so a removed track's entry lingers
+  // there and would otherwise show as queued forever.
+  const queuedPaths = useMemo(
+    () => new Set(order.map((i) => queue[i]).filter(Boolean).map((t) => t.path)),
+    [order, queue],
+  );
+  const isQueued = useCallback((p: string) => queuedPaths.has(p), [queuedPaths]);
+
   // New object, same path: the load effect keys on current.path so playback
   // doesn't restart, but the tempo-lock effect re-runs with the fresh BPM.
   const updateTrackBpm = useCallback((path: string, bpm: number | null) => {
@@ -1614,7 +1626,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       listenSource, setListenSource, radio, setRadio, updateTrackBpm, setTrackStarred,
       play, playQueue, enqueue, enqueueMany, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
-      toggle, stop, isCurrent,
+      toggle, stop, isCurrent, isQueued,
     }}>
       {children}
       <audio ref={audioRef} preload="auto" />

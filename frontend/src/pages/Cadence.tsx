@@ -3,17 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { SettingsMap } from "../lib/types";
 import { basename } from "../lib/paths";
-import { usePlayer, type PlayerTrack } from "../lib/player";
+import type { PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { useAuth } from "../lib/auth";
 import PageHeader from "../components/PageHeader";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import { ArtistLinks } from "../components/ArtistLinks";
+import { QueueActions } from "../components/QueueActions";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
-
-const PlayIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>;
-const ShuffleIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>;
-const AddIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ marginRight: 4 }}><path d="M12 5v14M5 12h14" /></svg>;
 
 const PRESET_DEFAULTS = [
   { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -76,7 +73,6 @@ export function toPlayerTracks(tracks: ReadyTrack[]): PlayerTrack[] {
  *  until you save it to one. */
 export default function Cadence() {
   const [params, setParams] = useSearchParams();
-  const player = usePlayer();
   const { role } = useAuth();
   const [showArt, toggleArt] = useArtwork();
 
@@ -135,30 +131,7 @@ export default function Cadence() {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        <button
-          className="btn btn-primary btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? `Play everything runnable at ${target} BPM` : noneReason}
-          onClick={() => player.playQueue(queue, 0, { shuffle: false })}
-        >
-          <PlayIcon />Play
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? "Play these in a random order" : noneReason}
-          onClick={() => player.playQueue(queue, 0, { shuffle: true })}
-        >
-          <ShuffleIcon />Shuffle
-        </button>
-        <button
-          className="btn btn-bare btn-sm"
-          disabled={!canPlay}
-          title={canPlay ? "Append these to the current queue" : noneReason}
-          onClick={() => player.enqueueMany(queue)}
-        >
-          <AddIcon />Add to queue
-        </button>
+        <QueueActions tracks={queue} disabledTitle={noneReason} />
         {role === "admin" && canPlay && (
           <AddToPlaylistMenu
             paths={tracks.map((t) => t.path)}

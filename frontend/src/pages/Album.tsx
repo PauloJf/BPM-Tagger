@@ -9,6 +9,8 @@ import { useTitle } from "../hooks/useTitle";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { ImagePicker } from "../components/ImagePicker";
+import { QueueActions } from "../components/QueueActions";
+import { QueueButton } from "../components/trackBits";
 import RelatedPanel from "../components/RelatedPanel";
 
 interface AlbumResp {
@@ -18,7 +20,6 @@ interface AlbumResp {
   stats: { tracks: number; avg_bpm: number | null; year: number | null };
 }
 
-const AddIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>;
 const NextIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>;
 
 export default function Album() {
@@ -40,7 +41,6 @@ export default function Album() {
   const aa = q.data?.album_artist || albumArtist;
   const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path),
     artist: t.artist || "", bpm: t.bpm, loudnessLufs: t.loudness_lufs });
-  const playAll = (shuffle: boolean) => { if (tracks.length) player.playQueue(tracks.map(toPT), 0, { shuffle }); };
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imgV, setImgV] = useState(0);
@@ -82,14 +82,7 @@ export default function Album() {
             </svg>
             Cover
           </button>
-          <button className="btn btn-primary btn-sm" disabled={!tracks.length} onClick={() => playAll(false)}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
-            Play all
-          </button>
-          <button className="btn btn-ghost btn-sm" disabled={!tracks.length} onClick={() => playAll(true)}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
-            Shuffle
-          </button>
+          <QueueActions tracks={tracks.map(toPT)} label=" all" disabledTitle="No tracks on this album" />
         </div>
       </div>
 
@@ -105,7 +98,7 @@ export default function Album() {
               <button className="row-play" aria-label="Play" onClick={() => player.play(toPT(t))}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
               </button>
-              <button className="row-play" aria-label="Add to queue" title="Add to queue" onClick={() => player.enqueue(toPT(t))}><AddIcon /></button>
+              <QueueButton track={toPT(t)} />
               <button className="row-play" aria-label="Play next" title="Play next" onClick={() => player.playNext(toPT(t))}><NextIcon /></button>
               <Link
                 to={`/track?path=${encodeURIComponent(t.file_path)}&back=album&back_album=${encodeURIComponent(album)}&back_artist=${encodeURIComponent(aa)}`}

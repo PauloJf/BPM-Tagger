@@ -4,13 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
-import { ArrowIcon, ConfBar, FolderIcon, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import { ArrowIcon, ConfBar, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import LibraryTabs from "../components/LibraryTabs";
+import { QueueActions } from "../components/QueueActions";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 import { useTitle } from "../hooks/useTitle";
 import PageHeader from "../components/PageHeader";
-import { usePlayer } from "../lib/player";
+import { usePlayer, type PlayerTrack } from "../lib/player";
 
 const STEPS = ["deeprhythm", "essentia", "librosa"];
 
@@ -165,27 +166,21 @@ export default function Tracks() {
     });
   }
 
-  const [queuing, setQueuing] = useState(false);
-  async function playAll(shuffleMode: boolean) {
-    setQueuing(true);
-    try {
-      const sp = new URLSearchParams();
-      if (q) sp.set("q", q);
-      if (filter) sp.set("filter", filter);
-      if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
-      // Same sort the table is showing — Play all must queue what you see.
-      if (sort) sp.set("sort", sort);
-      const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null;
-        loudness_lufs: number | null }[] }>(
-        `/api/tracks/paths?${sp.toString()}`);
-      const tracks = res.tracks.map((t) => ({
-        path: t.file_path, title: t.title?.trim() || basename(t.file_path), artist: t.artist || "",
-        loudnessLufs: t.loudness_lufs,
-      }));
-      if (tracks.length) player.playQueue(tracks, 0, { shuffle: shuffleMode });
-    } finally {
-      setQueuing(false);
-    }
+  // Same filters/sort the table is showing — every queue action (Play,
+  // Shuffle, Add to queue) must act on what you see, not just the loaded page.
+  async function fetchFilteredTracks(): Promise<PlayerTrack[]> {
+    const sp = new URLSearchParams();
+    if (q) sp.set("q", q);
+    if (filter) sp.set("filter", filter);
+    if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
+    if (sort) sp.set("sort", sort);
+    const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null;
+      loudness_lufs: number | null }[] }>(
+      `/api/tracks/paths?${sp.toString()}`);
+    return res.tracks.map((t) => ({
+      path: t.file_path, title: t.title?.trim() || basename(t.file_path), artist: t.artist || "",
+      loudnessLufs: t.loudness_lufs,
+    }));
   }
 
   const search = params.toString();
@@ -289,26 +284,14 @@ export default function Tracks() {
         title="Library"
         subtitle={<><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{data?.total ?? 0}</span> tracks</>}
         tabs={<LibraryTabs />}
-        actions={<>
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={queuing || !data?.total}
-            onClick={() => playAll(false)}
-            title="Play every track in this view"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
-            Play all
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={queuing || !data?.total}
-            onClick={() => playAll(true)}
-            title="Shuffle every track in this view"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
-            Shuffle
-          </button>
-        </>}
+        actions={
+          <QueueActions
+            getTracks={fetchFilteredTracks}
+            empty={!data?.total}
+            label=" all"
+            disabledTitle="No tracks in this view"
+          />
+        }
       />
 
       <div className="lib-toolbar">
@@ -458,18 +441,7 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
                     </button>
-                    <button
-                      className="row-play row-extra-btn"
-                      aria-label="Add to queue"
-                      title="Add to queue"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        player.enqueue(meta);
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                    </button>
+                    <QueueButton track={meta} extraBtn />
                     <button
                       className="row-play row-extra-btn"
                       aria-label="Play next"
