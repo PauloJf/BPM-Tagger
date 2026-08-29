@@ -542,7 +542,7 @@ A **persistent player bar** at the bottom keeps a track playing as you move betw
 #### Library (`/tracks`, `/artists`, `/albums`)
 A **Tracks | Artists | Albums** switcher at the top of the Library picks the view. **Tracks** is a paginated table of every analyzed track, sorted by most-recently analyzed. Columns show filename, parent folder (artist/album), BPM, confidence bar, detector used, and status badge. A per-page dropdown lets you show 10, 50, or 100 rows (default 50). Filter pills at the top let you view **All**, **Starred**, **Disliked**, **Review** (needs human check), **Locked**, **No ISRC**, **No playlist** (not in any playlist), or **Deleted** tracks; live counts update automatically during a scan.
 
-**Artists** and **Albums** are browsable indexes — filterable card grids with track counts, years, and average BPM per entry, linking into the per-artist and per-album pages. Artists are grouped by album artist, so compilation guests don't clutter the list.
+**Artists** and **Albums** are browsable indexes — filterable card grids with track counts, years, and average BPM per entry, linking into the per-artist and per-album pages. A multi-artist credit (e.g. `Argy, SOLANCE`) is split so **every credited artist** — including a feature on someone else's track — gets their own page listing it, not just the primary one.
 
 **Artwork** — embedded cover art shows as thumbnails on library rows and browse cards, an artist image and per-album covers on the artist page, and a cover header on the album and track detail pages. A **show/hide artwork** toggle next to the search box (remembered per browser) turns all of it off for slow libraries; covers are served with long-lived cache headers.
 

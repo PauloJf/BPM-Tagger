@@ -8,6 +8,7 @@ import { usePlayer, type PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
+import { ArtistLinks } from "../components/ArtistLinks";
 import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import PlaylistStats from "../components/PlaylistStats";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
@@ -617,7 +618,7 @@ export default function PlaylistDetail() {
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {inLib ? (
                       <>
-                        <Link to={`/artist?name=${encodeURIComponent(artist)}`} style={{ color: "inherit", textDecoration: "none" }}>{artist}</Link>
+                        <ArtistLinks artist={artist} linkStyle={{ color: "inherit", textDecoration: "none" }} />
                         {album && <> · <Link to={`/album?album=${encodeURIComponent(album)}&album_artist=${encodeURIComponent(albumArtist)}`} style={{ color: "inherit", textDecoration: "none" }}>{album}</Link></>}
                       </>
                     ) : (

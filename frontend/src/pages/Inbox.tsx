@@ -1,5 +1,4 @@
 import { Fragment, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { GrabCandidate, InboxItem } from "../lib/types";
@@ -8,6 +7,7 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
 import GrabberGate from "../components/GrabberGate";
 import EmptyState from "../components/EmptyState";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { PreviewButton } from "../components/trackBits";
 
 function durationDelta(itemMs: number | null, candMs: number | null): string {
@@ -164,17 +164,13 @@ function InboxCard({ item, expanded, onToggle, onChoose, onSearch, onResearch, o
           )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded ? 14 : 0 }}>
-          {item.artist ? (
-            // stopPropagation: navigate without toggling the card open/closed.
-            <Link
-              to={`/artist?name=${encodeURIComponent(item.artist)}`}
-              style={{ color: "inherit", textDecoration: "none" }}
-              title={`View ${item.artist}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {item.artist}
-            </Link>
-          ) : null}
+          {/* stopPropagation: navigate without toggling the card open/closed. */}
+          <ArtistLinks
+            artist={item.artist}
+            linkStyle={{ color: "inherit", textDecoration: "none" }}
+            title={item.artist ? `View ${item.artist}` : undefined}
+            onLinkClick={(e) => e.stopPropagation()}
+          />
           {item.album ? ` · ${item.album}` : ""}
         </div>
       </div>

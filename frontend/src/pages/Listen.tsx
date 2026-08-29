@@ -11,6 +11,7 @@ import { useWaveform } from "../hooks/useWaveform";
 import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { LyricsPanel } from "../components/LyricsPanel";
 import { BpmDisplay } from "../components/BpmDisplay";
 import PlayerCover from "../components/PlayerCover";
@@ -256,9 +257,12 @@ export default function Listen() {
           <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.artist}</div>
         ) : (
           <div style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            <Link to={`/artist?name=${encodeURIComponent(current.artist)}`} style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }} title={`View ${current.artist}`}>
-              {current.artist}
-            </Link>
+            <ArtistLinks
+              artist={current.artist}
+              style={{ fontSize: 13, color: "var(--muted)" }}
+              linkStyle={{ color: "inherit", textDecoration: "none" }}
+              title={`View ${current.artist}`}
+            />
           </div>
         )
       )}

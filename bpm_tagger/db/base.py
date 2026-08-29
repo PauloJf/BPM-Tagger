@@ -153,6 +153,7 @@ class _DBBase:
         self._migrate_playlists_schema(conn, finish=True)
         self._create_player_tables(conn)
         self._create_run_tables(conn)
+        self._create_track_artists_table(conn)
 
         # Orphan sweep: DBs created before FK enforcement have no ON DELETE
         # CASCADE (added to the CREATE statements above, so only fresh DBs get
@@ -266,6 +267,45 @@ class _DBBase:
                 PRIMARY KEY (owner, key)
             )
         """)
+
+    def _create_track_artists_table(self, conn):
+        """Per-credited-artist links, split out of tracks.artist/album_artist
+        (e.g. "Argy, SOLANCE" -> two rows) so every credited artist — not just
+        an exact string match on the full combo — gets a browsable page that
+        lists all their tracks. Brand-new table -> purely additive; backfilled
+        once from existing rows below."""
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        is_new = "track_artists" not in tables
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS track_artists (
+                track_id  INTEGER NOT NULL,
+                name      TEXT NOT NULL,
+                norm_name TEXT NOT NULL,
+                PRIMARY KEY (track_id, norm_name),
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_track_artists_norm "
+                     "ON track_artists(norm_name)")
+        if is_new:
+            self._backfill_track_artists(conn)
+
+    def _backfill_track_artists(self, conn):
+        from ..grabber.matching import normalize_artist_name, split_artist_credits
+        rows = conn.execute(
+            "SELECT id, artist, album_artist FROM tracks WHERE status != 'deleted'"
+        ).fetchall()
+        for row in rows:
+            seen = set()
+            for raw in (row["artist"], row["album_artist"]):
+                for name in split_artist_credits(raw):
+                    key = normalize_artist_name(name)
+                    if key and key not in seen:
+                        seen.add(key)
+                        conn.execute(
+                            "INSERT OR IGNORE INTO track_artists (track_id, name, norm_name) "
+                            "VALUES (?, ?, ?)", (row["id"], name, key))
 
     def _migrate_playlists_schema(self, conn, finish: bool = False):
         """Generalize the Spotify-only playlists / playlist_tracks tables to the

@@ -71,6 +71,29 @@ def normalize_title(title: Optional[str]) -> str:
     return _base_normalize(base)
 
 
+# Conservative on purpose, unlike normalize_artist()'s aggressive fuzzy-match
+# splitting below: only ','/';'/'/' reliably mark separate artist credits.
+# '&'/'x'/'and' routinely appear inside real act names ("Chase & Status",
+# "Dimitri Vegas & Like Mike"), so splitting on them would break those apart.
+_CREDIT_SPLIT = re.compile(r"\s*[,;/]\s*")
+
+
+def split_artist_credits(artist: Optional[str]) -> list[str]:
+    """Split a multi-artist credit string ("Argy, SOLANCE") into individual
+    artist names, for library browsing/linking (each credited artist gets
+    their own page). Not for fuzzy matching — see normalize_artist()."""
+    if not artist:
+        return []
+    return [p for p in (s.strip() for s in _CREDIT_SPLIT.split(artist)) if p]
+
+
+def normalize_artist_name(name: Optional[str]) -> str:
+    """Casing/diacritics-insensitive key for a single (already-split) artist
+    name, used to group split credits for browsing. Unlike normalize_artist(),
+    this never splits further — the caller has already isolated one artist."""
+    return _base_normalize(name)
+
+
 def normalize_artist(artist: Optional[str]) -> str:
     """Normalize an artist string into a canonical token bag incl. featured names."""
     base, feats = extract_feat(artist)

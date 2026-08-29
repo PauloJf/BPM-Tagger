@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ..bpm.tags import get_file_hash
+from ..grabber.matching import normalize_artist_name, split_artist_credits
 from .constants import TRACK_SORTS
 
 def _dupe_signature(paths) -> str:
@@ -445,17 +446,34 @@ class TracksMixin:
         return [dict(r) for r in rows]
 
     def get_top_artists(self, limit: int = 10, offset: int = 0) -> list[dict]:
-        """Most-played artists by summed play count. Groups on the album-artist
-        (falling back to the track artist), matching the artist index so the
-        `name` links straight to the artist page."""
+        """Most-played artists by summed play count. Groups via track_artists
+        (each credited artist gets credit for the track's plays), matching the
+        artist index so the `name` links straight to the artist page."""
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT COALESCE(NULLIF(album_artist, ''), artist) AS name, "
-                "SUM(COALESCE(play_count, 0)) AS plays, COUNT(*) AS tracks "
-                "FROM tracks WHERE status != 'deleted' AND COALESCE(play_count, 0) > 0 "
-                "AND COALESCE(NULLIF(album_artist, ''), artist, '') != '' "
-                "GROUP BY name ORDER BY plays DESC, name COLLATE NOCASE LIMIT ? OFFSET ?",
-                (limit, offset)).fetchall()
+            rows = conn.execute("""
+                WITH live AS (
+                    SELECT ta.norm_name, ta.name, t.play_count
+                    FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+                    WHERE t.status != 'deleted'
+                ),
+                display AS (
+                    SELECT norm_name, name FROM (
+                        SELECT norm_name, name,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY norm_name
+                                   ORDER BY COUNT(*) DESC, name COLLATE NOCASE
+                               ) AS rn
+                        FROM live GROUP BY norm_name, name
+                    ) WHERE rn = 1
+                )
+                SELECT d.name AS name,
+                       SUM(COALESCE(l.play_count, 0)) AS plays,
+                       COUNT(*) AS tracks
+                FROM live l JOIN display d ON d.norm_name = l.norm_name
+                WHERE COALESCE(l.play_count, 0) > 0
+                GROUP BY l.norm_name
+                ORDER BY plays DESC, name COLLATE NOCASE LIMIT ? OFFSET ?
+            """, (limit, offset)).fetchall()
         return [dict(r) for r in rows]
 
     def get_total_plays(self) -> int:
@@ -545,13 +563,15 @@ class TracksMixin:
         return int(row["n"] or 0)
 
     def get_artist_tracks(self, name: str) -> list[dict]:
-        """Every non-deleted track by an artist (matched on artist or album
-        artist), ordered for an album-grouped artist page."""
+        """Every non-deleted track crediting this artist — via track_artists,
+        so a featured/collab credit (e.g. "Argy, SOLANCE") links back to both
+        artists, not just an exact match on the full combo string."""
+        norm = normalize_artist_name(name)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM tracks WHERE status != 'deleted' "
-                "AND (artist = ? OR album_artist = ?) "
-                "ORDER BY album, disc_no, track_no, file_path", (name, name)
+                "SELECT t.* FROM tracks t JOIN track_artists ta ON ta.track_id = t.id "
+                "WHERE t.status != 'deleted' AND ta.norm_name = ? "
+                "ORDER BY t.album, t.disc_no, t.track_no, t.file_path", (norm,)
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -582,19 +602,34 @@ class TracksMixin:
         return [dict(r) for r in rows]
 
     def list_artists(self) -> list[dict]:
-        """Artist index: one row per album artist (falling back to the track
-        artist, so compilation guests don't become top-level entries)."""
+        """Artist index: one row per individually credited artist (via
+        track_artists), so a featured/collab credit like "Argy, SOLANCE" gives
+        both artists their own browsable entry rather than one combined one."""
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT COALESCE(NULLIF(album_artist, ''), artist) AS name, "
-                "COUNT(*) AS tracks, "
-                "COUNT(DISTINCT NULLIF(album, '')) AS albums, "
-                "ROUND(AVG(NULLIF(bpm, 0)), 1) AS avg_bpm, "
-                "MIN(file_path) AS sample_path "
-                "FROM tracks WHERE status != 'deleted' "
-                "AND COALESCE(NULLIF(album_artist, ''), artist, '') != '' "
-                "GROUP BY name ORDER BY name COLLATE NOCASE"
-            ).fetchall()
+            rows = conn.execute("""
+                WITH live AS (
+                    SELECT ta.norm_name, ta.name, t.album, t.bpm, t.file_path
+                    FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+                    WHERE t.status != 'deleted'
+                ),
+                display AS (
+                    SELECT norm_name, name FROM (
+                        SELECT norm_name, name,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY norm_name
+                                   ORDER BY COUNT(*) DESC, name COLLATE NOCASE
+                               ) AS rn
+                        FROM live GROUP BY norm_name, name
+                    ) WHERE rn = 1
+                )
+                SELECT d.name AS name,
+                       COUNT(*) AS tracks,
+                       COUNT(DISTINCT NULLIF(l.album, '')) AS albums,
+                       ROUND(AVG(NULLIF(l.bpm, 0)), 1) AS avg_bpm,
+                       MIN(l.file_path) AS sample_path
+                FROM live l JOIN display d ON d.norm_name = l.norm_name
+                GROUP BY l.norm_name ORDER BY name COLLATE NOCASE
+            """).fetchall()
         return [dict(r) for r in rows]
 
     def list_albums(self) -> list[dict]:
@@ -861,6 +896,27 @@ class TracksMixin:
             """).fetchall()
         return [dict(r) for r in rows]
 
+    def _sync_track_artists(self, conn, file_path: str, artist: Optional[str],
+                            album_artist: Optional[str]) -> None:
+        """Rebuild this track's track_artists rows from its current artist/
+        album_artist tags, so every credited artist (not just an exact match
+        on the full multi-artist string) links back to the track."""
+        row = conn.execute(
+            "SELECT id FROM tracks WHERE file_path = ?", (file_path,)).fetchone()
+        if not row:
+            return
+        track_id = row["id"]
+        conn.execute("DELETE FROM track_artists WHERE track_id = ?", (track_id,))
+        seen = set()
+        for raw in (artist, album_artist):
+            for name in split_artist_credits(raw):
+                key = normalize_artist_name(name)
+                if key and key not in seen:
+                    seen.add(key)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO track_artists (track_id, name, norm_name) "
+                        "VALUES (?, ?, ?)", (track_id, name, key))
+
     def update_track_metadata(self, old_path: str, new_path: str, tags: dict,
                               file_hash: str) -> None:
         """Rewrite a track's descriptive tags and (if it moved) its file_path,
@@ -876,6 +932,7 @@ class TracksMixin:
                   tags.get("album"), tags.get("album_artist"), tags.get("track_no"),
                   tags.get("disc_no"), tags.get("year"), tags.get("isrc"),
                   tags.get("norm_title"), tags.get("norm_artist"), old_path))
+            self._sync_track_artists(conn, new_path, tags.get("artist"), tags.get("album_artist"))
             conn.commit()
 
     def refresh_track_hash(self, file_path: str, file_hash: str) -> None:
@@ -987,6 +1044,7 @@ class TracksMixin:
                   tags.get("album_artist"), tags.get("track_no"), tags.get("disc_no"),
                   tags.get("year"), tags.get("isrc"), tags.get("duration_ms"),
                   tags.get("norm_title"), tags.get("norm_artist"), file_hash, file_path))
+            self._sync_track_artists(conn, file_path, tags.get("artist"), tags.get("album_artist"))
             conn.commit()
 
     # ── Library matching support ──────────────────────────────────────────────

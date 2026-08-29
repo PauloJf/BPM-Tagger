@@ -7,6 +7,7 @@ import { basename } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { ImagePicker } from "../components/ImagePicker";
 import RelatedPanel from "../components/RelatedPanel";
 
@@ -68,7 +69,7 @@ export default function Album() {
           <Link to="/albums" className="btn btn-bare btn-sm" style={{ paddingLeft: 0 }}>← Albums</Link>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", margin: "6px 0 4px" }}>{album || "Album"}</h1>
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            {aa && <Link to={`/artist?name=${encodeURIComponent(aa)}`} style={{ color: "var(--accent-2)" }}>{aa}</Link>}
+            <ArtistLinks artist={aa} linkStyle={{ color: "var(--accent-2)" }} />
             {stats ? `${aa ? " · " : ""}${stats.tracks} tracks${stats.year ? ` · ${stats.year}` : ""}${stats.avg_bpm != null ? ` · avg ${stats.avg_bpm} BPM` : ""}` : ""}
             {coverMsg && <span style={{ color: "var(--ok-fg)" }}> · {coverMsg}</span>}
           </p>

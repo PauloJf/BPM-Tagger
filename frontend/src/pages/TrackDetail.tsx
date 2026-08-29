@@ -5,6 +5,7 @@ import { api, apiUpload } from "../lib/api";
 import { basename, dirname } from "../lib/paths";
 import { usePlayer } from "../lib/player";
 import type { LyricsResponse, MetadataCandidate, TrackDetailResponse } from "../lib/types";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { ImagePicker } from "../components/ImagePicker";
 import { BpmDisplay } from "../components/BpmDisplay";
 import { DetectorBar } from "../components/DetectorBar";
@@ -506,9 +507,7 @@ export default function TrackDetail() {
         <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 4, wordBreak: "break-word" }}>{fname}</h1>
         {(track.artist || track.album) && (
           <div style={{ fontSize: 13, marginBottom: 4 }}>
-            {track.artist && (
-              <>by <Link to={`/artist?name=${encodeURIComponent(track.artist)}`} style={{ color: "var(--accent-2)" }}>{track.artist}</Link></>
-            )}
+            <ArtistLinks artist={track.artist} prefix="by " linkStyle={{ color: "var(--accent-2)" }} />
             {/* The album tag was shown nowhere on this page — link it like the
                 artist so every track page reaches its album page too. */}
             {track.album && (

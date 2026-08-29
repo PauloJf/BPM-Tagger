@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
+import { ArtistLinks } from "../components/ArtistLinks";
 import PageHeader from "../components/PageHeader";
 import BpmHistogram, { type BpmBucket } from "../components/BpmHistogram";
 import RunJournal from "../components/RunJournal";
@@ -261,7 +262,13 @@ export default function Stats() {
                           // Shrinkable + ellipsized (was flexShrink 0): a long
                           // artist name must never force the row wider than the
                           // phone screen. The title keeps at least 40% of the row.
-                          <Link to={`/artist?name=${encodeURIComponent(t.artist)}`} style={{ color: "var(--muted)", textDecoration: "none", minWidth: 0, maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`View ${t.artist}`}>· {t.artist}</Link>
+                          <ArtistLinks
+                            artist={t.artist}
+                            prefix="· "
+                            style={{ minWidth: 0, maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                            linkStyle={{ color: "var(--muted)", textDecoration: "none" }}
+                            title={`View ${t.artist}`}
+                          />
                         )}
                       </span>
                       <span className="lead-count">{num(t.play_count)}</span>

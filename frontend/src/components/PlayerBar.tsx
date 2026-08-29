@@ -6,6 +6,7 @@ import { usePlayer } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 import { useWaveform } from "../hooks/useWaveform";
+import { ArtistLinks } from "./ArtistLinks";
 import { BpmDisplay } from "./BpmDisplay";
 import { LyricsPanel } from "./LyricsPanel";
 import QueueSimilar from "./QueueSimilar";
@@ -135,9 +136,12 @@ export default function PlayerBar() {
           isPreview ? (
             <span className="player-bar-artist">{current.artist}</span>
           ) : (
-            <Link to={`/artist?name=${encodeURIComponent(current.artist)}`} className="player-bar-artist" style={{ color: "inherit", textDecoration: "none" }} title={`View ${current.artist}`}>
-              {current.artist}
-            </Link>
+            <ArtistLinks
+              artist={current.artist}
+              className="player-bar-artist"
+              linkStyle={{ color: "inherit", textDecoration: "none" }}
+              title={`View ${current.artist}`}
+            />
           )
         ) : null}
       </div>

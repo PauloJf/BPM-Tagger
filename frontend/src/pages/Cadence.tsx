@@ -8,6 +8,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useAuth } from "../lib/auth";
 import PageHeader from "../components/PageHeader";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { ArtToggle, Cover, useArtwork } from "../components/Artwork";
 
 const PlayIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>;
@@ -195,9 +196,7 @@ export default function Cadence() {
                   </Link>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {t.artist && (
-                    <Link to={`/artist?name=${encodeURIComponent(t.artist)}`} style={{ color: "inherit", textDecoration: "none" }}>{t.artist}</Link>
-                  )}
+                  <ArtistLinks artist={t.artist} linkStyle={{ color: "inherit", textDecoration: "none" }} />
                 </div>
               </div>
               {/* The run math, straight from the endpoint: what the track is,

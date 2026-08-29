@@ -2,6 +2,8 @@
 
 import sqlite3
 
+from bpm_tagger.grabber.matching import normalize_artist_name, split_artist_credits
+
 
 def _login(client):
     resp = client.post("/api/login", json={"password": "s3cret"})
@@ -21,11 +23,21 @@ def _seed(db_path: str) -> None:
         ("/m/none/untagged.mp3", None, None, None, None, None, "done"),
     ]
     for fp, artist, aa, album, year, bpm, status in tracks:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO tracks (file_path, artist, album_artist, album, year, bpm, status) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (fp, artist, aa, album, year, bpm, status),
         )
+        track_id = cur.lastrowid
+        seen = set()
+        for raw in (artist, aa):
+            for name in split_artist_credits(raw):
+                key = normalize_artist_name(name)
+                if key and key not in seen:
+                    seen.add(key)
+                    conn.execute(
+                        "INSERT INTO track_artists (track_id, name, norm_name) VALUES (?, ?, ?)",
+                        (track_id, name, key))
     conn.commit()
     conn.close()
 
@@ -42,12 +54,17 @@ def test_artists_index(client, base_config):
     artists = client.get("/api/artists").get_json()["artists"]
     by_name = {a["name"]: a for a in artists}
 
-    # Grouped by album artist: compilation guests fold into "Various Artists";
+    # One card per individually-credited artist (via track_artists) — compilation
+    # guests get their own entry alongside the "Various Artists" credit itself;
     # deleted and fully untagged tracks are excluded.
-    assert sorted(by_name) == ["ABBA", "Solo Act", "Various Artists"]
+    assert sorted(by_name) == ["ABBA", "Guest Star", "Other Guest", "Solo Act", "Various Artists"]
     assert by_name["Various Artists"]["tracks"] == 2
     assert by_name["Various Artists"]["albums"] == 1
     assert by_name["Various Artists"]["avg_bpm"] == 130.0
+    assert by_name["Guest Star"] == {"name": "Guest Star", "tracks": 1, "albums": 1,
+                                     "avg_bpm": 120.0, "sample_path": "/m/va/guest.mp3"}
+    assert by_name["Other Guest"] == {"name": "Other Guest", "tracks": 1, "albums": 1,
+                                      "avg_bpm": 140.0, "sample_path": "/m/va/guest2.mp3"}
     # bpm=0 rows don't drag the average down.
     assert by_name["ABBA"] == {"name": "ABBA", "tracks": 2, "albums": 2, "avg_bpm": 100.0,
                                "sample_path": "/m/abba/one.mp3"}

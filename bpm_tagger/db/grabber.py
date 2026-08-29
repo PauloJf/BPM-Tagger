@@ -365,4 +365,5 @@ class GrabberMixin:
                   meta.get("year"), meta.get("isrc"), meta.get("duration_ms"),
                   meta.get("norm_title"), meta.get("norm_artist"), file_hash,
                   loudness_lufs, loudness_source))
+            self._sync_track_artists(conn, file_path, meta.get("artist"), meta.get("album_artist"))
             conn.commit()

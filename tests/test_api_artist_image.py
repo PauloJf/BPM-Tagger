@@ -13,9 +13,12 @@ def _login(client):
 
 def _insert_track(db_path: str, file_path: str, artist: str) -> None:
     conn = sqlite3.connect(db_path)
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO tracks (file_path, artist, album_artist, status) VALUES (?, ?, ?, 'done')",
         (file_path, artist, artist))
+    conn.execute(
+        "INSERT INTO track_artists (track_id, name, norm_name) VALUES (?, ?, ?)",
+        (cur.lastrowid, artist, artist.lower()))
     conn.commit()
     conn.close()
 

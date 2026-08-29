@@ -582,9 +582,10 @@ def test_artist_split_only_makes_playlists_above_the_threshold(client, by_artist
     assert body["skipped"] == [{"group": "Small Act", "count": 2, "reason": "too_small"}]
 
 
-def test_artist_split_groups_by_album_artist_like_the_artists_browse(client, base_config):
+def test_artist_split_groups_by_album_artist(client, base_config):
     """Two tracks credited to different guests but one album artist stay together
-    — the same COALESCE(album_artist, artist) key list_artists() groups on."""
+    — playlist split groups by COALESCE(album_artist, artist), independent of
+    the Artists browse index (which links every individually credited artist)."""
     csrf = _login(client)
     db = _db(base_config)
     pid = db.add_local_playlist("Comp")

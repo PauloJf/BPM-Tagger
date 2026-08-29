@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { QueueItem } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
+import { ArtistLinks } from "../components/ArtistLinks";
 import PageHeader from "../components/PageHeader";
 import GrabberGate from "../components/GrabberGate";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
@@ -41,11 +42,7 @@ function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: 
           )}
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {item.artist ? (
-            <Link to={`/artist?name=${encodeURIComponent(item.artist)}`} style={inheritLink} title={`View ${item.artist}`}>{item.artist}</Link>
-          ) : (
-            item.artist
-          )}
+          <ArtistLinks artist={item.artist} linkStyle={inheritLink} title={item.artist ? `View ${item.artist}` : undefined} />
           {inLibrary && item.album && (
             <> · <Link to={`/album?album=${encodeURIComponent(item.album)}&album_artist=${encodeURIComponent(item.album_artist || item.artist || "")}`} style={inheritLink} title={`View ${item.album}`}>{item.album}</Link></>
           )}
