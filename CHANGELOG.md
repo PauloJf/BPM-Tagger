@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.16.1 — 2026-09-01
+
+- **Password managers can fill the two-factor code again.** The 2FA step used to *replace* the sign-in form with a lone code field. A password manager only fills a one-time-code input as part of filling a login form, so with no username or password field beside it — and the field appearing only after the manager had already run its fill — Bitwarden and friends never populated it. The code field now sits in the same form as the username and password, which stay mounted, so a fill on the second step works.
+
 ## v2.16.0 — 2026-09-01
 
 **The admin account can have a name, so password managers stop complaining.**

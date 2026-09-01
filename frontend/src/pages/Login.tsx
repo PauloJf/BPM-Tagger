@@ -122,57 +122,21 @@ export default function Login() {
                 Wait and try again.
               </div>
             </div>
-          ) : totpStep ? (
-            <>
-              <div className="login-card-title">Two-factor</div>
-              <div className="login-card-sub">Enter the 6-digit code from your authenticator app.</div>
-              <form onSubmit={submit}>
-                <div className="login-field">
-                  <label className="login-label" htmlFor="login-totp">
-                    Authentication code
-                  </label>
-                  <div className="login-input-wrap">
-                    <input
-                      id="login-totp"
-                      className={"login-input" + (codeError ? " error" : "")}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      value={totp}
-                      onChange={(e) => setTotp(e.target.value.replace(/[^0-9a-zA-Z-]/g, ""))}
-                      autoFocus
-                      placeholder="123 456"
-                      maxLength={14}
-                      disabled={busy}
-                    />
-                  </div>
-                  {codeError && (
-                    <div className="login-error">
-                      <WarnIcon />
-                      Invalid code
-                    </div>
-                  )}
-                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
-                    Lost your device? Enter a <strong>recovery code</strong> instead.
-                  </div>
-                </div>
-                <button className="login-submit" type="submit" disabled={busy}>
-                  {busy ? "Verifying…" : "Verify"}
-                </button>
-                <button
-                  type="button"
-                  onClick={backToPassword}
-                  disabled={busy}
-                  style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer" }}
-                >
-                  ← Back
-                </button>
-              </form>
-            </>
           ) : (
             <>
-              <div className="login-card-title">Sign in</div>
-              <div className="login-card-sub">Sign in with your username and password — or password only, if you haven't set an admin username.</div>
+              <div className="login-card-title">{totpStep ? "Two-factor" : "Sign in"}</div>
+              <div className="login-card-sub">
+                {totpStep
+                  ? "Enter the 6-digit code from your authenticator app."
+                  : "Sign in with your username and password — or password only, if you haven't set an admin username."}
+              </div>
+              {/* One form for both steps. The code step deliberately KEEPS the
+                  username + password fields mounted instead of swapping them
+                  out: a password manager fills a one-time-code field only as
+                  part of filling a login form, so a lone code input (in a form
+                  with no credentials, mounted after the manager already ran its
+                  fill) never gets autofilled. Keeping all three together lets a
+                  manual fill on the second step populate the code. */}
               <form onSubmit={submit}>
                 <div className="login-field">
                   <label className="login-label" htmlFor="login-user">
@@ -181,6 +145,7 @@ export default function Login() {
                   <div className="login-input-wrap">
                     <input
                       id="login-user"
+                      name="username"
                       className="login-input"
                       type="text"
                       value={username}
@@ -198,11 +163,12 @@ export default function Login() {
                   <div className="login-input-wrap">
                     <input
                       id="login-pw"
+                      name="password"
                       className={"login-input" + (error ? " error" : "")}
                       type={show ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      autoFocus
+                      autoFocus={!totpStep}
                       autoComplete="current-password"
                       placeholder="••••••••"
                       disabled={busy}
@@ -228,14 +194,56 @@ export default function Login() {
                     </div>
                   )}
                 </div>
+                {totpStep && (
+                  <div className="login-field">
+                    <label className="login-label" htmlFor="login-totp">
+                      Authentication code
+                    </label>
+                    <div className="login-input-wrap">
+                      <input
+                        id="login-totp"
+                        name="totp"
+                        className={"login-input" + (codeError ? " error" : "")}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={totp}
+                        onChange={(e) => setTotp(e.target.value.replace(/[^0-9a-zA-Z-]/g, ""))}
+                        autoFocus
+                        placeholder="123 456"
+                        maxLength={14}
+                        disabled={busy}
+                      />
+                    </div>
+                    {codeError && (
+                      <div className="login-error">
+                        <WarnIcon />
+                        Invalid code
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
+                      Lost your device? Enter a <strong>recovery code</strong> instead.
+                    </div>
+                  </div>
+                )}
                 <button className="login-submit" type="submit" disabled={busy}>
-                  {busy ? "Signing in…" : "Sign in"}
-                  {!busy && (
+                  {busy ? (totpStep ? "Verifying…" : "Signing in…") : (totpStep ? "Verify" : "Sign in")}
+                  {!busy && !totpStep && (
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12 H19 M13 6 L19 12 L13 18" />
                     </svg>
                   )}
                 </button>
+                {totpStep && (
+                  <button
+                    type="button"
+                    onClick={backToPassword}
+                    disabled={busy}
+                    style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer" }}
+                  >
+                    ← Back
+                  </button>
+                )}
               </form>
             </>
           )}
