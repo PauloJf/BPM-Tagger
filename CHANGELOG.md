@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v2.16.0 — 2026-09-01
+
+**The admin account can have a name, so password managers stop complaining.**
 
 ### Optional admin username
 

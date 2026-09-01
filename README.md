@@ -12,7 +12,7 @@
         bpm detection & tagging · tempo-locked player · for navidrome
 ```
 
-**v2.15.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.16.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 BPM Tagger started as exactly what the name says: a tool that detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes it back to the file's metadata tag — with a three-detector pipeline, a review queue for the doubtful cases, and a SQLite record of every result. It still does that. But the tags turned out to be a foundation rather than the product, and the app grew into what they make possible: **a cadence-synced running player for your own music**, wrapped in a full library companion.
 
