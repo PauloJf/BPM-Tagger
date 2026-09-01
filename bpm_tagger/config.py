@@ -278,6 +278,12 @@ def build_config() -> dict:
         # Set (in settings.json) the first time the password is changed from the
         # UI; once present it is authoritative and ui_password is ignored.
         "ui_password_hash":           "",
+        # Optional username for the admin login. Empty (the default) keeps the
+        # historical password-only login: sign in with a blank username. Set it
+        # and the admin signs in with username + password — which is what
+        # password managers expect. A blank username still works either way, so
+        # setting this can never lock an admin out.
+        "ui_username":               os.environ.get("UI_USERNAME", "").strip(),
         # Admin two-factor (TOTP). All UI-managed, persisted to settings.json:
         #   totp_enabled          — whether the admin login requires a code.
         #   totp_secret           — the base32 shared secret (a secret at rest,

@@ -156,6 +156,10 @@ def create_app(config: dict) -> Flask:
     app.secret_key = secret
     app.config["UI_PASSWORD"] = config.get("ui_password", "")
     app.config["UI_PASSWORD_HASH"] = config.get("ui_password_hash", "")
+    # Optional admin username (empty = password-only login, the historical
+    # behaviour). Read live from AppState on each login, so a change from the
+    # Settings page applies without a restart.
+    app.config["UI_USERNAME"] = str(config.get("ui_username", "") or "").strip()
     # Sessions carry this stamp; login_required rejects sessions minted under a
     # previous password, so a password change logs out every other device.
     app.config["PW_STAMP"] = password_stamp(

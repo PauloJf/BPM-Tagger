@@ -16,7 +16,8 @@ import sqlite3
 
 from flask import Blueprint, jsonify, request, session
 
-from ..auth import _check_csrf, login_required, verify_ui_password
+from ..auth import (_check_csrf, is_admin_username, login_required,
+                    verify_ui_password)
 from ..state import state
 from .listen import _LISTEN_MODES
 
@@ -99,6 +100,10 @@ def create_player():
     username = str(data.get("username") or "").strip()
     if not username:
         return jsonify(error="A username is required."), 400
+    # The admin's own username (when one is configured) is taken — a duplicate
+    # would be ambiguous at login, where the admin credential wins.
+    if is_admin_username(username):
+        return jsonify(error="That username is already taken."), 409
     password = str(data.get("password") or "")
     bad = _validate_password(password)
     if bad:

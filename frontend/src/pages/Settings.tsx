@@ -17,7 +17,7 @@ type Saved = "" | "saving" | "ok" | "err";
 const SIDEBAR = [
   ["sec-appearance", "Appearance"],
   ["sec-grabber", "Grabber"],
-  ["sec-password", "Password"],
+  ["sec-password", "Admin sign-in"],
   ["sec-2fa", "Two-factor"],
   ["sec-login-protection", "Login protection"],
   ["sec-run-access", "Player access"],
@@ -208,6 +208,11 @@ export default function Settings() {
   const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
   const [lyricsRetryNotFound, setLyricsRetryNotFound] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  // Optional admin login username — an identifier so password managers have a
+  // user field to store. Blank = the historical password-only login.
+  const [adminUser, setAdminUser] = useState("");
+  const [adminUserSaved, setAdminUserSaved] = useState<Saved>("");
+  const [adminUserErr, setAdminUserErr] = useState("");
   const [runPw, setRunPw] = useState({ next: "", confirm: "" });
   const [runSessionDays, setRunSessionDays] = useState(30);
   const [listenModeCfg, setListenModeCfg] = useState("off");
@@ -323,6 +328,7 @@ export default function Settings() {
       measure: b("measure_loudness", true),
     });
     setPreload({ ahead: n("preload_ahead", 5), cacheMb: n("preload_cache_mb", 500) });
+    setAdminUser(s("ui_username"));
     setRunSessionDays(n("run_session_days", 30));
     setListenModeCfg(s("player_listen_mode", "off") || "off");
     const presetDefaults = [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -389,6 +395,21 @@ export default function Settings() {
       setTimeout(() => setSaved(""), 1800);
     } catch {
       setSaved("err");
+    }
+  }
+
+  async function saveAdminUsername(e: React.FormEvent) {
+    e.preventDefault();
+    setAdminUserErr("");
+    setAdminUserSaved("saving");
+    try {
+      await api.post("/api/settings/username", { ui_username: adminUser.trim() });
+      setAdminUserSaved("ok");
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setTimeout(() => setAdminUserSaved(""), 1800);
+    } catch (err) {
+      setAdminUserSaved("err");
+      setAdminUserErr(err instanceof Error ? err.message : "Failed");
     }
   }
 
@@ -815,12 +836,25 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Password */}
+          {/* Admin sign-in: optional username + password */}
           <div id="sec-password" className="settings-card card">
             <div className="settings-card-header">
-              <h2>Password</h2>
-              <p>Change the UI login password.</p>
+              <h2>Admin sign-in</h2>
+              <p>Name the admin account and change its password.</p>
             </div>
+            <form onSubmit={saveAdminUsername}>
+              <div className="settings-fields" style={{ marginBottom: 18 }}>
+                <div className="field-row">
+                  {fieldLabel("Username", "Optional. Set one so a password manager has a user field to save. Signing in with a blank username keeps working either way, so this can't lock you out.")}
+                  <input type="text" autoComplete="username" value={adminUser} placeholder="(none — password only)"
+                         onChange={(e) => setAdminUser(e.target.value)} style={{ maxWidth: 340, width: "100%" }} />
+                </div>
+                {adminUserErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{adminUserErr}</div>}
+                <div>
+                  <SaveButton state={adminUserSaved} label={adminUser.trim() ? "Save username" : "Clear username"} />
+                </div>
+              </div>
+            </form>
             <form onSubmit={changePassword}>
               <div className="settings-fields">
                 <div className="field-row">

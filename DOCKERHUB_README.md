@@ -95,6 +95,7 @@ docker compose up -d && docker compose logs -f
 | `REVIEW_DISAGREE_THRESHOLD` | `15` | BPM gap that flags a track for review |
 | `ENABLE_UI` | `false` | Start the web UI |
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
+| `UI_USERNAME` | _(empty)_ | Optional username for the admin login (for password managers). Blank keeps the password-only sign-in, and a blank username always works. Also in Settings → Admin sign-in |
 | `UI_SESSION_HOURS` | `24` | Admin session length — signed out after this many idle hours (sliding) |
 | `RUN_PASSWORD` | _(empty)_ | Optional **shared, full-access Guest login** for a locked-down **player mode** (Run page + a runner-focused About only). For per-person accounts scoped to specific playlists, create **named player users** in Settings → Player access → Player users. Also settable in Settings → Player access |
 | `RUN_SESSION_DAYS` | `30` | How long a player login stays signed in (days) |

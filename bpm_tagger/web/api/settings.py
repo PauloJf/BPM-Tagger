@@ -4,6 +4,7 @@ Persist to settings.json and update live AppState. GET masks secrets.
 """
 
 import logging
+import re
 
 import requests
 from flask import Blueprint, current_app, jsonify, request, session
@@ -17,6 +18,10 @@ from ..state import state
 log = logging.getLogger(__name__)
 
 settings_bp = Blueprint("settings", __name__)
+
+# Admin usernames: the characters a password manager and a login form both
+# handle without surprises. Same spirit as the player-user names.
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9._@-]+$")
 
 # Values that must never be returned to the client in the clear.
 _SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
@@ -557,6 +562,39 @@ def api_settings_run_session():
     current_app.config["RUN_SESSION_SECONDS"] = days * 86400
     save_settings(st.settings_path, {"run_session_days": days})
     return jsonify(ok=True, run_session_days=days)
+
+
+@settings_bp.route("/api/settings/username", methods=["POST"])
+@login_required
+def api_settings_username():
+    """Admin-only: set or clear the optional admin login username.
+
+    Password managers dislike a password-only form, so an admin can name the
+    account. It is an identifier, not a secret: the password (and 2FA) still do
+    the authenticating, and a blank username keeps working at the login page —
+    so setting one can't lock anybody out.
+    """
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Admins only."), 403
+    st = state()
+    name = str(_json_body().get("ui_username", "") or "").strip()
+    if name:
+        if len(name) > 64:
+            return jsonify(ok=False, error="Username must be 64 characters or fewer."), 400
+        if not _USERNAME_RE.match(name):
+            return jsonify(ok=False, error="Use letters, digits, and . _ - @ only."), 400
+        # A username that also names a player user would be ambiguous at login
+        # (the admin would win and the player could never sign in).
+        if st.db is not None and st.db.get_player_by_username(name):
+            return jsonify(ok=False,
+                           error="A player user already has that username."), 409
+    st.config["ui_username"] = name
+    current_app.config["UI_USERNAME"] = name
+    # None removes the key, so a cleared username falls back to the UI_USERNAME
+    # env var (empty by default = password-only login) on the next start.
+    save_settings(st.settings_path, {"ui_username": name or None})
+    return jsonify(ok=True, ui_username=name)
 
 
 @settings_bp.route("/api/settings/password", methods=["POST"])

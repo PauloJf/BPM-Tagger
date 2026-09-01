@@ -42,6 +42,33 @@ def verify_ui_password(candidate: str) -> bool:
     return bool(expected) and hmac.compare_digest(candidate, expected)
 
 
+def admin_username() -> str:
+    """The configured admin username, or "" when the admin logs in with a
+    password alone (the historical default).
+
+    Read from live AppState first so a change on the Settings page takes effect
+    without a restart; ``current_app.config`` is the boot-time fallback."""
+    name = ""
+    try:
+        from .state import state
+        cfg = getattr(state(), "config", None)
+        if isinstance(cfg, dict):
+            name = str(cfg.get("ui_username", "") or "")
+    except Exception:
+        name = ""
+    if not name:
+        name = str(current_app.config.get("UI_USERNAME", "") or "")
+    return name.strip()
+
+
+def is_admin_username(candidate: str) -> bool:
+    """True when ``candidate`` names the admin account. Matching is
+    case-insensitive, mirroring player usernames. False when no admin username
+    is configured — a blank username is then the only way in."""
+    name = admin_username()
+    return bool(name) and str(candidate or "").strip().lower() == name.lower()
+
+
 def verify_run_password(candidate: str) -> bool:
     """Check a login attempt against the player-only ("Run-only") password.
 

@@ -12,8 +12,9 @@ import time
 from flask import Blueprint, current_app, jsonify, request, session
 
 from ...config import __version__, save_settings
-from ..auth import (_check_csrf, _csrf_token, login_required, password_stamp,
-                    verify_player, verify_run_password, verify_ui_password)
+from ..auth import (_check_csrf, _csrf_token, admin_username, is_admin_username,
+                    login_required, password_stamp, verify_player,
+                    verify_run_password, verify_ui_password)
 from ..state import state
 
 log = logging.getLogger(__name__)
@@ -29,19 +30,27 @@ def api_login():
     password = data.get("password", "")
     username = str(data.get("username", "") or "").strip()
     ip = request.remote_addr or "unknown"
+    # Does this attempt name the admin account (optional UI_USERNAME)? When it
+    # does, the username is just an identifier for the same admin credential —
+    # resolution and lockout keying both treat it like the blank-username form.
+    admin_named = is_admin_username(username)
     # The account this attempt targets: a named player by username, or the shared
-    # key for a blank-username attempt (admin or the RUN_PASSWORD guest). Keyed
-    # lowercase to match the case-insensitive username matching in verify_player,
-    # so case variants can't dodge the per-account counter.
-    account_key = username.lower() if username else "__shared__"
+    # key for an admin/blank-username attempt (admin or the RUN_PASSWORD guest).
+    # Keyed lowercase to match the case-insensitive username matching in
+    # verify_player, so case variants can't dodge the per-account counter.
+    account_key = "__shared__" if (not username or admin_named) else username.lower()
     now = time.time()
     with st.login_lock:
         if st.login_locked(ip, account_key, now):
             return jsonify(ok=False, error="locked_out"), 429
-        # Resolution order (Phase 5):
-        #  * username given → a named player user (Run page only).
+        # Resolution order (Phase 5, + the optional admin username):
+        #  * username matches UI_USERNAME → the admin credential (so a password
+        #    manager has a user field to store; UI_USERNAME unset = never matches).
+        #  * any other username → a named player user (Run page only).
         #  * username blank → admin password wins, else the shared-guest run
         #    password grants the restricted "player" role (unchanged legacy flow).
+        #    A blank username keeps working for the admin even with UI_USERNAME
+        #    set, so configuring one can never lock the admin out.
         role = None
         player_id = None
         # Set when the admin password is right but the TOTP code was wrong/absent,
@@ -49,7 +58,7 @@ def api_login():
         # one) — the password's validity is already implied by that point anyway.
         bad_code = False
         if isinstance(password, str) and password:
-            if username:
+            if username and not admin_named:
                 player = verify_player(username, password)
                 if player:
                     role = "player"
@@ -71,7 +80,9 @@ def api_login():
                 else:
                     role = "admin"
                     stamp = current_app.config.get("PW_STAMP")
-            elif verify_run_password(password):
+            elif not username and verify_run_password(password):
+                # The shared Guest login is password-only — it has no username
+                # to give, so an admin-named attempt never lands here.
                 role = "player"
                 stamp = current_app.config.get("RUN_PW_STAMP")
         if role:
@@ -164,7 +175,9 @@ def api_me():
             resp["username"] = None          # shared Guest login (RUN_PASSWORD)
             resp["full_access"] = True        # accent stays per-browser (no account row)
     elif is_admin:
-        resp["username"] = None
+        # The configured admin username (None when the login is password-only),
+        # so the UI can show who is signed in.
+        resp["username"] = admin_username() or None
         resp["full_access"] = True
         resp["accent_hue"] = st.config.get("accent_hue")
     # Loudness levelling — every role's player needs these on boot to decide

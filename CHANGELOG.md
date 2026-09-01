@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Optional admin username
+
+- The admin login can now have a **username** — set it in **Settings → Admin sign-in** or with the `UI_USERNAME` env var. Password managers dislike a password-only form; giving the account a name means they can save and autofill a proper username + password pair.
+- The username is an **identifier, not a second secret**: the password (and 2FA, if enabled) still does all the authenticating, matching is case-insensitive, and **signing in with a blank username keeps working**, so configuring one can never lock an admin out.
+- Admin and player-user names can't collide in either direction — creating a player with the admin's name is rejected, and so is taking a player's name for the admin.
+- Defaults are unchanged: with no `UI_USERNAME` set, the login is password-only exactly as before.
+
 ## v2.15.0 — 2026-08-29
 
 **Multi-artist credits now link to every artist involved, and the queue actually feels like a queue.**

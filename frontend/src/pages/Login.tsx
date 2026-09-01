@@ -172,11 +172,11 @@ export default function Login() {
           ) : (
             <>
               <div className="login-card-title">Sign in</div>
-              <div className="login-card-sub">Admin &amp; guest: password only. Player user: username + password.</div>
+              <div className="login-card-sub">Sign in with your username and password — or password only, if you haven't set an admin username.</div>
               <form onSubmit={submit}>
                 <div className="login-field">
                   <label className="login-label" htmlFor="login-user">
-                    Username <span style={{ color: "var(--muted)", fontWeight: 400 }}>(player users only)</span>
+                    Username <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional for admin)</span>
                   </label>
                   <div className="login-input-wrap">
                     <input
@@ -186,7 +186,7 @@ export default function Login() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       autoComplete="username"
-                      placeholder="Leave blank for admin"
+                      placeholder="Blank for admin / guest"
                       disabled={busy}
                     />
                   </div>
