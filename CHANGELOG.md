@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.16.2 — 2026-09-02
+
+- **iOS no longer zooms in when you tap an input field.** In the installed PWA, iOS auto-zooms any form control rendered under 16px and never zooms back out on blur — leaving the page stuck zoomed with the player bar unpinned until you pinch out. Form controls now render at ≥16px on touch devices, and on iOS (only) the app adds `maximum-scale=1` to the viewport at runtime, which iOS applies solely to that focus auto-zoom — manual pinch-zoom keeps working everywhere, and Android is untouched.
+
 ## v2.16.1 — 2026-09-01
 
 - **Password managers can fill the two-factor code again.** The 2FA step used to *replace* the sign-in form with a lone code field. A password manager only fills a one-time-code input as part of filling a login form, so with no username or password field beside it — and the field appearing only after the manager had already run its fill — Bitwarden and friends never populated it. The code field now sits in the same form as the username and password, which stay mounted, so a fill on the second step works.
