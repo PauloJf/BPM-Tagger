@@ -542,6 +542,17 @@ input[type=text]:focus, input[type=password]:focus,
 input[type=number]:focus, input[type=email]:focus,
 select:focus, textarea:focus { border-color: var(--accent-border); }
 
+/* iOS Safari auto-zooms any focused form control under 16px, and in the
+   installed PWA it never zooms back out on blur (it can also unpin the fixed
+   player bar). ≥16px on touch devices prevents the zoom — first layer; the
+   runtime maximum-scale=1 patch in main.tsx is the second, needed because
+   iOS 17+ standalone PWAs zoom even at 16px. pointer:coarse instead of a
+   width query so iPad Pro (viewport ≥1024px) is covered too. !important:
+   class-level sizes (.login-input 14px, the 13px base above) must not win. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: max(1em, 16px) !important; }
+}
+
 /* ── Pagination ───────────────────────────────────────────────────────────── */
 /* flex-wrap: a long page list (Prev 1 … 28 29 Next) must fold onto a second
    line on phones instead of widening the page. */
