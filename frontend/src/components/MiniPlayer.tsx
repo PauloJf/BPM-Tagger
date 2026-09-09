@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { usePlayer, type TempoLock } from "../lib/player";
 import { BpmDisplay } from "./BpmDisplay";
 import { Cover } from "./Artwork";
+import { EqBars } from "./EqBars";
 import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
 
 // Kept in sync with Run.tsx — the target the tempo lock lands on, saved there.
@@ -111,8 +112,13 @@ export default function MiniPlayer() {
           />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {current.title}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            {/* Beat-paced equalizer — bounces with what's audible (the locked
+                cadence, or the native BPM); frozen staircase while paused. */}
+            <EqBars playing={playing} beatMs={cadence ? Math.round(60000 / cadence) : undefined} size={13} />
+            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+              {current.title}
+            </div>
           </div>
           {current.artist && (
             <div style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>

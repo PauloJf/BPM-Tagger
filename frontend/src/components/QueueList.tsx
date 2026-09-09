@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePlayer } from "../lib/player";
 import { Cover } from "./Artwork";
+import { EqBars } from "./EqBars";
 
 /** The playback queue rows — drag-to-reorder, jump, move, remove — extracted
  *  from PlayerBar's queue drawer so the Listen page can embed the same list
@@ -9,7 +10,7 @@ import { Cover } from "./Artwork";
  *  via its own wrapper; `fontClass` carries PlayerBar's drawer font stepping
  *  (unused by hosts without one). */
 export default function QueueList({ fontClass = "" }: { fontClass?: string }) {
-  const { orderedQueue, orderPos, jumpTo, removeAt, moveAt, reorderTo } = usePlayer();
+  const { orderedQueue, orderPos, playing, tempoLock, jumpTo, removeAt, moveAt, reorderTo } = usePlayer();
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
@@ -31,7 +32,15 @@ export default function QueueList({ fontClass = "" }: { fontClass?: string }) {
           <span className="player-queue-grip" aria-hidden title="Drag to reorder">⠿</span>
           {!t.ephemeral && <Cover path={t.path} size={30} />}
           <button className="player-queue-title" title={t.title} onClick={() => jumpTo(i)}>
-            {i === orderPos && <span style={{ color: "var(--accent-2)", marginRight: 6 }}>▶</span>}
+            {i === orderPos && (
+              // Playing → beat-paced equalizer bars; paused → the ▶ marker.
+              // Fixed-width slot so toggling playback never shifts the title.
+              <span style={{ display: "inline-flex", width: 17, flexShrink: 0, marginRight: 4, color: "var(--accent-2)" }}>
+                {playing
+                  ? <EqBars playing beatMs={(tempoLock?.target ?? t.bpm) ? Math.round(60000 / (tempoLock?.target ?? t.bpm!)) : undefined} size={11} color="var(--accent-2)" />
+                  : <span>▶</span>}
+              </span>
+            )}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
             {t.artist && <span style={{ color: "var(--muted)" }}> · {t.artist}</span>}
           </button>

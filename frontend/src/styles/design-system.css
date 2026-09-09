@@ -172,6 +172,13 @@ a { color: inherit; }
   50%      { transform: scaleY(0.4); }
 }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+/* EqBars: one bounce per period, scaled from the bottom. The reduced-motion
+   override freezes this at the 100% frame (a low static bar) — still legible
+   as a "now playing" mark without the motion. */
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
 @keyframes wf-shimmer { 0%,100%{opacity:0.5} 50%{opacity:0.25} }
 
 /* ── Sidebar (desktop) ────────────────────────────────────────────────────── */

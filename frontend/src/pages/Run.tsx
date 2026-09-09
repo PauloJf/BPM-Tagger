@@ -17,6 +17,7 @@ import { useTitle } from "../hooks/useTitle";
 import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
+import { EqBars } from "../components/EqBars";
 import PlayerCover from "../components/PlayerCover";
 import PrepareOffline from "../components/PrepareOffline";
 import { pinnedRunQueue } from "../lib/offline";
@@ -1137,7 +1138,16 @@ export default function Run() {
                   title={fromLibrary ? `Play ${t.title} — added from your library` : `Play ${t.title}`}
                 >
                   <span style={{ display: "block", fontSize: 13, fontWeight: 500, fontStyle: fromLibrary ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {isCurrentRow && <span style={{ color: "var(--accent-2)", marginRight: 6 }}>▶</span>}
+                    {isCurrentRow && (
+                      // Playing → equalizer bars paced to what you hear (the
+                      // stretched cadence when locked); paused → the ▶ marker.
+                      // Fixed-width slot so pausing never shifts the title.
+                      <span style={{ display: "inline-flex", width: 17, flexShrink: 0, marginRight: 4, color: "var(--accent-2)", verticalAlign: "baseline" }}>
+                        {playing
+                          ? <EqBars playing beatMs={lockOn && tFolded != null ? Math.round(60000 / (tFolded * tRate)) : t.bpm ? Math.round(60000 / t.bpm) : undefined} size={11} color="var(--accent-2)" />
+                          : <span>▶</span>}
+                      </span>
+                    )}
                     {t.title}
                   </span>
                   {t.artist && <span style={{ display: "block", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{t.artist}</span>}
