@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.17.0 — 2026-09-09
+
+**The players show the beat.**
+
+- **Beat-paced equalizer bars** — the classic "now playing" bars, but bouncing in time with what's actually audible: the locked cadence in Run mode, the track's native BPM otherwise (very fast cadences fold down an octave so the bars never flicker). They appear beside the title in the **floating mini player** and on the **current queue row** everywhere a queue is shown (player-bar drawer, Listen queue panel, Run queue). Paused, the bars freeze into a dimmed static pose; with *reduce motion* enabled they stay still entirely. Pure CSS — deliberately tempo-synced rather than audio-reactive, since a live audio analyser would route playback through a Web Audio context that browsers can silence in the background (mid-run, on a locked phone).
+
 ## v2.16.2 — 2026-09-02
 
 - **iOS no longer zooms in when you tap an input field.** In the installed PWA, iOS auto-zooms any form control rendered under 16px and never zooms back out on blur — leaving the page stuck zoomed with the player bar unpinned until you pinch out. Form controls now render at ≥16px on touch devices, and on iOS (only) the app adds `maximum-scale=1` to the viewport at runtime, which iOS applies solely to that focus auto-zoom — manual pinch-zoom keeps working everywhere, and Android is untouched.
