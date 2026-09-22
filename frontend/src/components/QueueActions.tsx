@@ -69,7 +69,7 @@ export function QueueActions({
         className="btn btn-ghost btn-sm"
         disabled={disabled}
         title={disabled ? disabledTitle : undefined}
-        onClick={() => run((list) => player.playQueue(list, 0, { shuffle: true }))}
+        onClick={() => run((list) => player.playQueue(list, undefined, { shuffle: true }))}
       >
         <ShuffleIcon />Shuffle{label}
       </button>
