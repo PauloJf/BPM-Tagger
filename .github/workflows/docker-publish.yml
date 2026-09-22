@@ -135,6 +135,7 @@ jobs:
       # Set DOCKERHUB_DESCRIPTION_TOKEN to a password / write-scoped PAT to make
       # the sync actually succeed; it falls back to the push token otherwise.
       - name: Update Docker Hub description
+        id: overview
         continue-on-error: true
         uses: peter-evans/dockerhub-description@v4
         with:
@@ -142,6 +143,22 @@ jobs:
           password: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN || secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
           readme-filepath: ./DOCKERHUB_README.md
+
+      # `continue-on-error` above keeps a failed sync from failing a publish whose
+      # images already pushed — but GitHub then reports the step's *conclusion* as
+      # success, so a 403 was completely invisible and the overview sat several
+      # releases stale without anyone noticing. This reads back what Docker Hub
+      # actually serves (which also catches a sync that "succeeded" but wrote
+      # something clipped or wrong) and raises a red ::error:: annotation on the
+      # run. It deliberately does not fail the job: the images are already out,
+      # and the release job behind this one must still run.
+      - name: Verify the overview actually synced
+        if: always()
+        run: |
+          if [ "${{ steps.overview.outcome }}" = "failure" ]; then
+            echo "::warning::The description sync step itself failed — see its log."
+          fi
+          python scripts/check_overview_sync.py --github             --repo "${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger" || true
 
   # Tag the release commit and publish a GitHub release whose notes are this
   # version's CHANGELOG section. Runs only after the images are actually on

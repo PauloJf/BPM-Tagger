@@ -19,11 +19,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import librosa
 import mutagen
 import numpy as np
 from mutagen.id3 import ID3
 from mutagen.mp4 import MP4Tags
+
+from .audio import load_audio
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ def measure_loudness(file_path: str) -> Optional[float]:
         log.debug("pyloudnorm not installed — skipping loudness measurement")
         return None
     try:
-        y, sr = librosa.load(file_path, sr=MEASURE_SR, mono=False)
+        y, sr = load_audio(file_path, sr=MEASURE_SR, mono=False)
         if y.size == 0:
             return None
         # librosa gives (channels, samples) for multichannel and (samples,) for

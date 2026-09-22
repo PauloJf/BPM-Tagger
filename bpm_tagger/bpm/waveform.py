@@ -5,8 +5,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import librosa
 import numpy as np
+
+from .audio import load_audio
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def compute_waveform_peaks(file_path: str, n_bars: int = 300) -> Optional[str]:
     while the file is still warm in the OS page cache.
     """
     try:
-        y, sr = librosa.load(file_path, sr=2000, mono=True)
+        y, sr = load_audio(file_path, sr=2000, mono=True)
         chunk = max(1, len(y) // n_bars)
         peaks: list[float] = []
         for i in range(n_bars):

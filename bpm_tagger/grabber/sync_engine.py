@@ -61,7 +61,9 @@ class SpotifySync(threading.Thread):
             return
         with self._lock:
             self.tagger.index_tags()
-            playlists = self.db.get_enabled_playlists()
+            # Spotify-sourced rows only: Navidrome and Local playlists have no
+            # spotify_id, and PeriodicSync already syncs them by their own route.
+            playlists = self.db.get_enabled_playlists(source="spotify")
             for pl in playlists:
                 if self._stop.is_set():
                     break
@@ -80,6 +82,14 @@ class SpotifySync(threading.Thread):
         return self.db.get_playlist(playlist_id)
 
     def _sync_one(self, pl: dict):
+        # Belt and braces: a row without a Spotify id can only produce
+        # GET /playlists/None -> 400 "Invalid base62 id". Skip it rather than
+        # burning a request and parking the error in last_error, where the UI
+        # would show it as a Spotify problem.
+        if not pl.get("spotify_id"):
+            log.debug("Skipping '%s': not a Spotify playlist (source=%s)",
+                      pl.get("name"), pl.get("source"))
+            return
         try:
             meta = self.client.get_playlist_meta(pl["spotify_id"])
             if meta["snapshot_id"] != (pl.get("snapshot_id") or ""):
