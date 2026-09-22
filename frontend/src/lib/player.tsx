@@ -1380,17 +1380,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, [resumePlay]);
 
-  const playQueue = useCallback((tracks: PlayerTrack[], startIndex = 0, opts?: { shuffle?: boolean }) => {
+  /** Replace the queue and play it.
+   *
+   * `startIndex` ANCHORS a track: with shuffle on it is pinned to the head and
+   * only the rest is shuffled — "play from here, shuffle the remainder". Omit it
+   * for a plain shuffle-all, which puts every track in the draw.
+   *
+   * Passing a literal 0 for shuffle-all is the bug behind #5-era reports that
+   * the whole-library shuffle always opened with the same song: row 0 of the
+   * library query is the alphabetically-first artist's first track, and pinning
+   * it meant it was never actually shuffled. */
+  const playQueue = useCallback((tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }) => {
     if (tracks.length === 0) return;
     clearPreview();
     endRunMode();
-    const start = Math.max(0, Math.min(startIndex, tracks.length - 1));
+    const anchored = startIndex != null;
+    const start = Math.max(0, Math.min(startIndex ?? 0, tracks.length - 1));
     const useShuffle = opts?.shuffle ?? nav.current.shuffle;
     let ord: number[];
     let startPos: number;
     if (useShuffle) {
-      const rest = shuffled(tracks.map((_, i) => i).filter((i) => i !== start));
-      ord = [start, ...rest];
+      const all = tracks.map((_, i) => i);
+      ord = anchored ? [start, ...shuffled(all.filter((i) => i !== start))] : shuffled(all);
       startPos = 0;
     } else {
       ord = tracks.map((_, i) => i);

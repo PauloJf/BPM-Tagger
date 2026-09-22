@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.17.2 — 2026-09-22
+
+- **Shuffle actually shuffles the first track.** Every "Shuffle" button — Listen's whole-library and playlist sources, and the Play / Shuffle / Add trio on Tracks, Artist, Album, Playlist and Cadence — pinned the first track of the list to the head of the queue and shuffled only the rest. That behaviour is right for "play from *this* row, shuffle the remainder", but the shuffle-all buttons were passing row 0, so the opening track was never in the draw: a whole-library shuffle always started with the alphabetically-first artist's first track, and the Tracks page always started with the most recently analyzed one. Anchoring is now opt-in, and a plain shuffle draws from everything. Run mode was never affected — it shuffles server-side.
+- **Smaller upgrades.** The published images had no layer cache, so every release rebuilt the apt and pip layers from scratch and gave them new digests even when nothing in them had changed — a two-file bugfix meant re-pulling the whole ~420 MB image. Builds now reuse a registry layer cache, so future upgrades should pull only the app code. This release still pulls in full (it seeds the cache); the saving starts with the next one. The Docker Hub overview has also been trimmed to less than half its size, well clear of the 25,000-byte cap it was 222 bytes away from.
+
 ## v2.17.1 — 2026-09-22
 
 - **`PRESERVE_MTIME` is now respected by the metadata editor too.** Saving tags from the track editor (and setting an ISRC, and embedding cover art) wrote through a code path that had no mtime handling at all — it came from the grabber, where the files are brand new and the timestamp doesn't matter — so every manual edit bumped the file's modified time even though BPM and lyrics writes preserved it. All of them now restore the timestamps like the rest of the app, and the behaviour is covered by tests. Thanks to [@saschabrockel](https://github.com/saschabrockel) for the precise report ([#5](https://github.com/PauloJf/BPM-Tagger/issues/5)).
