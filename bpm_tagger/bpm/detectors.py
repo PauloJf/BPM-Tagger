@@ -25,8 +25,29 @@ def _get_predictor():
     return _local.predictor
 
 
-def _detect_bpm_deeprhythm(file_path: str) -> float:
-    return round(float(_get_predictor().predict(file_path)), 1)
+# DeepRhythm works on 8-second clips at 22.05 kHz and silently yields nothing
+# from audio too short to fill one.
+_DR_SR = 22050
+_DR_CLIP_SECONDS = 8
+
+
+def _detect_bpm_deeprhythm(file_path: str) -> Optional[float]:
+    """BPM from the DeepRhythm CNN, or None when the file can't feed it.
+
+    Decoding is done here rather than by DeepRhythm's own predict(), which calls
+    librosa.load internally and so inherits the AAC gap that bpm.audio.load_audio
+    exists to close. When that load failed, DeepRhythm returned None into a
+    tensor call and surfaced it as "'NoneType' object has no attribute 'to'" —
+    an error that says nothing about the real cause. Handing it samples via
+    predict_from_audio() keeps every format the rest of the pipeline can read.
+    """
+    y, sr = load_audio(file_path, sr=_DR_SR, mono=True)
+    if y.size < _DR_SR * _DR_CLIP_SECONDS:
+        log.debug("Too short for deeprhythm (%.1fs < %ds): %s",
+                  y.size / _DR_SR, _DR_CLIP_SECONDS, Path(file_path).name)
+        return None
+    bpm = _get_predictor().predict_from_audio(y, sr)
+    return round(float(bpm), 1) if bpm else None
 
 
 def _detect_bpm_essentia(file_path: str) -> Optional[float]:

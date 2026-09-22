@@ -163,9 +163,21 @@ class PlaylistsMixin:
             row = conn.execute("SELECT * FROM playlists WHERE spotify_id = ?", (spotify_id,)).fetchone()
         return dict(row) if row else None
 
-    def get_enabled_playlists(self) -> list[dict]:
+    def get_enabled_playlists(self, source: Optional[str] = None) -> list[dict]:
+        """Enabled playlists, optionally only those from one source.
+
+        PeriodicSync wants them all and dispatches per source itself; a
+        source-specific syncer must pass its own name, or it will be handed rows
+        it cannot possibly handle — the Spotify syncer used to receive Local
+        playlists, whose spotify_id is NULL, and call GET /playlists/None.
+        """
+        sql = "SELECT * FROM playlists WHERE enabled = 1"
+        params: tuple = ()
+        if source:
+            sql += " AND source = ?"
+            params = (source,)
         with self._connect() as conn:
-            rows = conn.execute("SELECT * FROM playlists WHERE enabled = 1").fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
     def set_playlist_enabled(self, playlist_id: int, enabled: bool) -> None:

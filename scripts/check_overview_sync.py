@@ -43,7 +43,22 @@ def normalize(text: str) -> str:
     return text.replace("\r\n", "\n").strip()
 
 
+def _utf8_stdio() -> None:
+    """Don't die on a non-UTF-8 console.
+
+    CI is UTF-8, but a Windows terminal defaults to cp1252 and the changelog is
+    full of arrows and em dashes — printing one there raises UnicodeEncodeError
+    and takes the whole script with it.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def main() -> int:
+    _utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--repo", default=DEFAULT_REPO, help=f"default: {DEFAULT_REPO}")
     ap.add_argument("--github", action="store_true",

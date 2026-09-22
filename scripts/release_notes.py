@@ -45,7 +45,22 @@ def title(version: str, body: str) -> str:
     return f"v{version} — {m.group(1).rstrip('.')}" if m else f"v{version}"
 
 
+def _utf8_stdio() -> None:
+    """Don't die on a non-UTF-8 console.
+
+    CI is UTF-8, but a Windows terminal defaults to cp1252 and the changelog is
+    full of arrows and em dashes — printing one there raises UnicodeEncodeError
+    and takes the whole script with it.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def main() -> int:
+    _utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("version", help="version without the leading v, e.g. 2.17.0")
     ap.add_argument("--title", action="store_true",
