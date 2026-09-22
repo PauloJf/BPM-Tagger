@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.17.3 — 2026-09-22
+
+- **`.m4a` and `.aac` files can be analyzed again.** librosa used to fall back to audioread (and so ffmpeg) for anything libsndfile couldn't decode. That fallback was deprecated in librosa 0.10 and **removed in 1.0** — and with `librosa>=0.10.0` unpinned, the rollover silently broke every AAC file in the library: `Error opening '…': Format not recognised`, with no BPM, no loudness and no waveform. Decoding now goes through `bpm.audio.load_audio`, which tries libsndfile first and shells out to **ffmpeg** (already in the image) for whatever it refuses — so a future librosa release can't decide which formats work. Affected files are re-analyzed on the next scan; `MODE=scan_review` picks up the ones that errored.
+- **A failed Docker Hub overview sync is now visible.** The sync step runs with `continue-on-error` so it can't fail a publish whose images already shipped, but GitHub reports a failed step's *conclusion* as success — so a 403 went unnoticed and the overview sat several releases out of date. The publish now reads back what Docker Hub actually serves and raises a red annotation when it doesn't match, without failing the run.
+
 ## v2.17.2 — 2026-09-22
 
 - **Shuffle actually shuffles the first track.** Every "Shuffle" button — Listen's whole-library and playlist sources, and the Play / Shuffle / Add trio on Tracks, Artist, Album, Playlist and Cadence — pinned the first track of the list to the head of the queue and shuffled only the rest. That behaviour is right for "play from *this* row, shuffle the remainder", but the shuffle-all buttons were passing row 0, so the opening track was never in the draw: a whole-library shuffle always started with the alphabetically-first artist's first track, and the Tracks page always started with the most recently analyzed one. Anchoring is now opt-in, and a plain shuffle draws from everything. Run mode was never affected — it shuffles server-side.

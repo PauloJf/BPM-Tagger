@@ -9,6 +9,8 @@ import librosa
 import mutagen
 import numpy as np
 
+from .audio import load_audio
+
 log = logging.getLogger(__name__)
 
 _local = threading.local()
@@ -48,7 +50,7 @@ def _track_duration(file_path: str) -> Optional[float]:
 
 
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
-    y, sr = librosa.load(file_path, offset=offset, duration=duration, sr=None, mono=True)
+    y, sr = load_audio(file_path, offset=offset, duration=duration, sr=None, mono=True)
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
     candidates = librosa.feature.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
     bpm = float(np.median(candidates)) if len(candidates) > 0 else 0.0
