@@ -30,6 +30,19 @@ jobs:
             exit 1
           fi
 
+      # The publish workflow builds the GitHub release notes from this version's
+      # CHANGELOG section, so a missing section would ship a release with empty
+      # notes — and it can only be caught here, before the images go out.
+      # v2.11.3 and v2.13.0 both shipped with no entry at all.
+      - name: Check CHANGELOG has an entry for VERSION
+        run: |
+          version=$(cat VERSION)
+          if ! python3 scripts/release_notes.py "${version}" > /dev/null; then
+            echo "::error::CHANGELOG.md has no '## v${version}' section"
+            exit 1
+          fi
+          echo "CHANGELOG.md documents v${version}"
+
   backend:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest

@@ -7,6 +7,7 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { Toggle } from "../components/Toggle";
 import { ChangelogModal } from "../components/Changelog";
 import type { SettingsMap } from "../lib/types";
+import { updateState } from "../lib/version";
 
 const STACK: [string, string][] = [
   ["Flask + Waitress", "web server"],
@@ -47,8 +48,16 @@ export default function About() {
 
   const latest = versionQ.data?.latest?.replace(/^v/, "");
   let badge: { text: string; color: string; bold?: boolean } | null = null;
-  if (latest) {
-    badge = latest === version ? { text: "· up to date", color: "var(--ok-fg)" } : { text: `· v${latest} available`, color: "var(--warn-fg)", bold: true };
+  switch (updateState(version, latest)) {
+    case "update-available":
+      badge = { text: `· v${latest} available`, color: "var(--warn-fg)", bold: true };
+      break;
+    case "up-to-date":
+    // A build ahead of the newest published release is not out of date — say so
+    // rather than nagging about a "newer" version that is actually older.
+    case "ahead":
+      badge = { text: "· up to date", color: "var(--ok-fg)" };
+      break;
   }
 
   return (

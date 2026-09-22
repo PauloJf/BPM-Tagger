@@ -432,7 +432,7 @@ def _set_track_isrc(st, file_path: str, isrc: str) -> bool:
     tags["isrc"] = (isrc or "").strip() or None
     tags["norm_title"] = normalize_title(tags["title"])
     tags["norm_artist"] = normalize_artist(tags["artist"])
-    write_track_tags(file_path, tags)
+    write_track_tags(file_path, tags, st.preserve_mtime)
     st.db.update_track_metadata(file_path, file_path, tags, get_file_hash(file_path))
     return True
 
@@ -627,7 +627,7 @@ def api_track_tags():
     tags["norm_artist"] = normalize_artist(tags["artist"])
 
     try:
-        write_track_tags(path, tags)
+        write_track_tags(path, tags, st.preserve_mtime)
         new_path = path
         if data.get("apply_template"):
             ext = os.path.splitext(path)[1].lstrip(".")
@@ -832,7 +832,8 @@ def api_track_cover_put():
         return jsonify(ok=False, error="empty body"), 400
     try:
         image = resize_cover(image)  # normalize to <=1200px (JPEG if re-encoded)
-        embed_cover(path, image)  # MIME sniffed from the actual bytes
+        # MIME sniffed from the actual bytes
+        embed_cover(path, image, preserve_mtime=st.preserve_mtime)
         st.db.refresh_track_hash(path, get_file_hash(path))  # hash only; keep tags
         return jsonify(ok=True)
     except Exception as exc:

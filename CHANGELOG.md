@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.17.1 — 2026-09-22
+
+- **`PRESERVE_MTIME` is now respected by the metadata editor too.** Saving tags from the track editor (and setting an ISRC, and embedding cover art) wrote through a code path that had no mtime handling at all — it came from the grabber, where the files are brand new and the timestamp doesn't matter — so every manual edit bumped the file's modified time even though BPM and lyrics writes preserved it. All of them now restore the timestamps like the rest of the app, and the behaviour is covered by tests. Thanks to [@saschabrockel](https://github.com/saschabrockel) for the precise report ([#5](https://github.com/PauloJf/BPM-Tagger/issues/5)).
+- **The update check stops crying wolf.** It compares the running version against GitHub's latest release with a plain string match, so *any* difference read as "a newer version is available" — including a build **ahead** of the newest published release, which is what everyone saw while the releases page sat nineteen versions behind Docker Hub. The comparison is now numeric, and a build ahead of the latest release reads as up to date. Also reported in [#5](https://github.com/PauloJf/BPM-Tagger/issues/5).
+- **GitHub releases are published automatically again.** Every release from v2.7.1 to v2.17.0 has been backfilled onto the releases page with its changelog notes, and the publish workflow now cuts a tagged GitHub release — notes taken from `CHANGELOG.md` — right after the Docker images land. CI fails the build if the current `VERSION` has no changelog entry, which is how v2.11.3 and v2.13.0 shipped undocumented; both now have entries.
+
 ## v2.17.0 — 2026-09-09
 
 **The players show the beat.**
@@ -83,6 +89,14 @@
 - A plain reload always stayed put, but three entries lost your place — all restored now: the **installed PWA** (always launches at `/run`) reopens the page you last had open; the **bare origin** `/` does the same instead of hardcoding the library; and **signing back in after a session expiry** returns to the page you were bounced from instead of `/tracks`.
 - Deep links and typed URLs always win — only launcher entries are redirected (`/run?bpm=` links, browser tabs on `/run`, and everything else stay exactly where they point). The kiosk shell restores only within its own routable pages, per the admin's listen-mode setting.
 
+## v2.13.0 — 2026-08-15
+
+**Your music can come with you, even when the network doesn't.**
+
+- **Offline preloading.** A service worker now serves `/audio` from a capped, per-device cache: the player's look-ahead fills it as you listen, and each Run preset gets a **Prepare offline** action that downloads its queue up front. HTTPS-only, since it rides the Cache API. The app shell and API stay uncached by design.
+- **The PWA reopens where you left off** instead of always landing on the same page.
+- Fixed the Prepare-offline chips appearing in the mid-run mobile layout, where they had no room.
+
 ## v2.12.0 — 2026-07-31
 
 **The queue follows your account across devices.**
@@ -96,6 +110,10 @@
 
 - The cover on the mobile Listen screen now absorbs **all** the leftover height instead of stopping at the 240px cap tuned for Run's denser cockpit — no more dead bands above the artwork and below the mode row. It stays a perfect square (capped by the screen width), and on the tallest phones any small remainder splits evenly around it.
 - The bottom **Playing / Queue** switcher now stretches to the full content width — two equal, thumb-sized halves inside the page's normal side padding — instead of a small centered pill pair.
+
+## v2.11.3 — 2026-07-29
+
+- **Listen on a phone uses the whole screen.** The cover art now fills the height left over by the surrounding chrome instead of being sized independently, and the bottom mode switcher stretches to the full width.
 
 ## v2.11.2 — 2026-07-28
 

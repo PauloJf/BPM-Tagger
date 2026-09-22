@@ -12,7 +12,7 @@
         bpm detection & tagging · tempo-locked player · for navidrome
 ```
 
-**v2.17.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.17.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 BPM Tagger started as exactly what the name says: a tool that detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes it back to the file's metadata tag — with a three-detector pipeline, a review queue for the doubtful cases, and a SQLite record of every result. It still does that. But the tags turned out to be a foundation rather than the product, and the app grew into what they make possible: **a cadence-synced running player for your own music**, wrapped in a full library companion.
 
@@ -236,7 +236,7 @@ All settings are environment variables. Every variable has a default and is docu
 | `MUSIC_DIR` | `/music` | Path to the music directory inside the container |
 | `DB_PATH` | `/data/bpm_tagger.db` | SQLite database path inside the container |
 | `WRITE_TAGS` | `true` | Write the detected BPM back to each audio file's metadata tag |
-| `PRESERVE_MTIME` | `true` | Restore each file's modified time after tagging, so Navidrome, backups and sort-by-date aren't disturbed. Setting this in docker-compose locks the toggle in the web UI |
+| `PRESERVE_MTIME` | `true` | Restore each file's modified time after any write — BPM tags, lyrics, metadata edits and cover art — so Navidrome, backups and sort-by-date aren't disturbed. Setting this in docker-compose locks the toggle in the web UI |
 | `AUDIO_EXTENSIONS` | `.mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv` | Comma-separated list of file extensions to process |
 | `WORKERS` | `1` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance (~500 MB RAM each). Keep at `1` on NAS/low-memory devices; raise to `2`–`4` on a server with ample RAM. |
 | `REFRESH_HASHES` | `false` | Before the scan starts, recompute the stored `size:mtime` hash for every already-analyzed track. Set to `true` after upgrading from a version that saved the pre-tag hash (causing every tagged file to be re-analyzed on every restart). Safe to leave enabled permanently — it adds a few seconds on large libraries but never triggers re-analysis by itself. |
