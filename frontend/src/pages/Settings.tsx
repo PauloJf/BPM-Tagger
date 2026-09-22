@@ -11,6 +11,7 @@ import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
 import { ACCENT_PRESETS, DEFAULT_ACCENT_HUE, accentSwatch, applyAccentHue, initialAccentHue } from "../lib/accent";
 import { cacheStats, clearOffline, offlineSupported, reconcileIndex } from "../lib/offline";
+import { updateState } from "../lib/version";
 
 type Saved = "" | "saving" | "ok" | "err";
 
@@ -568,8 +569,11 @@ export default function Settings() {
       const d = await api.get<{ latest?: string; error?: string }>("/api/version/check");
       if (d.error) setVersionMsg({ text: `Error: ${d.error}`, color: "var(--err-fg)" });
       else if (!d.latest) setVersionMsg({ text: "No releases published yet", color: "var(--muted)" });
-      else if (d.latest === `v${version}`) setVersionMsg({ text: `✓ Up to date (${d.latest})`, color: "var(--ok-fg)" });
-      else setVersionMsg({ text: `Latest: ${d.latest} (you have v${version})`, color: "var(--warn-fg)" });
+      else if (updateState(version, d.latest) === "update-available")
+        setVersionMsg({ text: `Latest: ${d.latest} (you have v${version})`, color: "var(--warn-fg)" });
+      else if (updateState(version, d.latest) === "ahead")
+        setVersionMsg({ text: `✓ Up to date (v${version}; newest release is ${d.latest})`, color: "var(--ok-fg)" });
+      else setVersionMsg({ text: `✓ Up to date (${d.latest})`, color: "var(--ok-fg)" });
     } catch {
       setVersionMsg({ text: "Network error", color: "var(--err-fg)" });
     }

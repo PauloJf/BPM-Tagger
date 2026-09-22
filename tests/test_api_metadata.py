@@ -1,6 +1,12 @@
-"""Metadata lookup: integrations.metadata gathering + /api/metadata/lookup."""
+"""Metadata lookup: integrations.metadata gathering + /api/metadata/lookup,
+and the PRESERVE_MTIME contract of the editor's Save-metadata write."""
 
+import os
+
+import numpy as np
 import pytest
+import soundfile as sf
+from mutagen.flac import FLAC
 
 import bpm_tagger.integrations.metadata as metadata_mod
 import bpm_tagger.web.api.tracks as tracks_mod
@@ -140,3 +146,38 @@ def test_lookup_normalizes_and_validates_isrc(meta_client, monkeypatch):
 def test_lookup_empty_params_returns_nothing(meta_client):
     r = meta_client.get("/api/metadata/lookup")
     assert r.status_code == 200 and r.get_json() == {"candidates": []}
+
+
+# ── PUT /api/track/tags: PRESERVE_MTIME (issue #5) ────────────────────────────
+
+def _seed_flac(client, name="song.flac"):
+    """Write a real FLAC under music_dir, register it, and backdate its mtime."""
+    st = client.application.extensions["state"]
+    path = os.path.join(st.music_dir, name)
+    sr = 22050
+    y = (0.1 * np.sin(2 * np.pi * 220 * np.arange(sr) / sr)).astype("float32")
+    sf.write(path, y, sr, format="FLAC")
+    old = os.stat(path).st_mtime - 100_000
+    os.utime(path, (old, old))
+    st.db.upsert_track(path, "0:0", 120.0, None, None, 120.0, 0.9, "librosa", "done")
+    return path, old
+
+
+def _tags_put(client, path):
+    csrf = {"X-CSRF-Token": client.get("/api/me").get_json()["csrf_token"]}
+    return client.put("/api/track/tags", headers=csrf,
+                      json={"file_path": path, "title": "SOS", "artist": "ABBA"})
+
+
+def test_save_metadata_preserves_mtime(meta_client):
+    path, old = _seed_flac(meta_client)
+    assert _tags_put(meta_client, path).get_json()["ok"] is True
+    assert FLAC(path)["title"] == ["SOS"]
+    assert os.stat(path).st_mtime == old
+
+
+def test_save_metadata_bumps_mtime_when_preserve_disabled(meta_client):
+    meta_client.application.extensions["state"].preserve_mtime = False
+    path, old = _seed_flac(meta_client)
+    assert _tags_put(meta_client, path).get_json()["ok"] is True
+    assert os.stat(path).st_mtime != old

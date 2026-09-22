@@ -37,13 +37,18 @@ def sniff_image_mime(data: bytes) -> str:
     return "image/jpeg"
 
 
-def write_track_tags(file_path: str, meta: dict) -> str | None:
+def write_track_tags(file_path: str, meta: dict, preserve_mtime: bool = True) -> str | None:
     """Write descriptive tags (title/artist/album/album_artist/track/disc/year/isrc).
 
     Returns None on success, or a short warning string on failure so callers can
-    surface it (the download itself still succeeded)."""
+    surface it (the download itself still succeeded).
+
+    preserve_mtime restores the file's timestamps afterwards, same as
+    bpm.tags.write_bpm_tag — editing tags from the UI shouldn't make a file look
+    freshly modified to Navidrome or a backup tool."""
     ext = os.path.splitext(file_path)[1].lower()
     try:
+        st = os.stat(file_path) if preserve_mtime else None
         if ext == ".mp3":
             try:
                 tags = ID3(file_path)
@@ -74,6 +79,8 @@ def write_track_tags(file_path: str, meta: dict) -> str | None:
             setk("date", meta.get("year"))
             setk("isrc", meta.get("isrc"))
             audio.save()
+        if st is not None:
+            os.utime(file_path, (st.st_atime, st.st_mtime))
     except Exception as exc:
         log.warning("Tag write failed for %s: %s", os.path.basename(file_path), exc)
         return f"tag write failed: {exc}"
@@ -142,8 +149,12 @@ def read_cover(file_path: str) -> tuple[bytes, str] | None:
     return None
 
 
-def embed_cover(file_path: str, image_bytes: bytes, mime: str | None = None) -> str | None:
-    """Embed cover art. Returns None on success or a warning string on failure."""
+def embed_cover(file_path: str, image_bytes: bytes, mime: str | None = None,
+                preserve_mtime: bool = True) -> str | None:
+    """Embed cover art. Returns None on success or a warning string on failure.
+
+    preserve_mtime restores the file's timestamps afterwards (see
+    write_track_tags)."""
     if not image_bytes:
         return None
     # Derive the MIME from the actual bytes unless the caller forced one — a small
@@ -153,6 +164,7 @@ def embed_cover(file_path: str, image_bytes: bytes, mime: str | None = None) -> 
         mime = sniff_image_mime(image_bytes)
     ext = os.path.splitext(file_path)[1].lower()
     try:
+        st = os.stat(file_path) if preserve_mtime else None
         if ext == ".mp3":
             try:
                 tags = ID3(file_path)
@@ -183,6 +195,8 @@ def embed_cover(file_path: str, image_bytes: bytes, mime: str | None = None) -> 
             pic.data = image_bytes
             audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
             audio.save()
+        if st is not None:
+            os.utime(file_path, (st.st_atime, st.st_mtime))
     except Exception as exc:
         log.warning("Cover embed failed for %s: %s", os.path.basename(file_path), exc)
         return f"cover embed failed: {exc}"

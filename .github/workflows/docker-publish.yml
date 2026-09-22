@@ -124,3 +124,39 @@ jobs:
           password: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN || secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger
           readme-filepath: ./DOCKERHUB_README.md
+
+  # Tag the release commit and publish a GitHub release whose notes are this
+  # version's CHANGELOG section. Runs only after the images are actually on
+  # Docker Hub, so a release never advertises a version you can't pull.
+  #
+  # This exists because the releases page had drifted nineteen versions behind
+  # Docker Hub (last release v2.7.0 against a shipped v2.17.0), which made the
+  # UI's update check — it reads GitHub's latest release — tell every user they
+  # were running something newer than "latest". Reported in #5.
+  release:
+    runs-on: ubuntu-latest
+    needs: [check, push]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # Idempotent: a manual re-dispatch of an already-released version (the
+      # re-push escape hatch) leaves the existing release alone.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists — nothing to do."
+            exit 0
+          fi
+          python scripts/release_notes.py "${VERSION}" > notes.md
+          gh release create "v${VERSION}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "$(python scripts/release_notes.py --title "${VERSION}")" \
+            --notes-file notes.md

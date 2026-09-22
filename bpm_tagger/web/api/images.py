@@ -278,7 +278,7 @@ def api_album_cover_set():
             if not os.path.isfile(path):
                 failed.append(os.path.basename(path))
                 continue
-            warn = embed_cover(path, image)
+            warn = embed_cover(path, image, preserve_mtime=st.preserve_mtime)
             if warn:
                 failed.append(os.path.basename(path))
                 continue
@@ -309,7 +309,7 @@ def api_track_cover_from_url():
     image = _fetch_image(str(data.get("url") or ""))
     if not image:
         return jsonify(ok=False, error="could not fetch image from URL"), 400
-    warn = embed_cover(path, image)
+    warn = embed_cover(path, image, preserve_mtime=st.preserve_mtime)
     if warn:
         return jsonify(ok=False, error=warn), 500
     st.db.refresh_track_hash(path, get_file_hash(path))
