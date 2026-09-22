@@ -42,11 +42,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable
 RUN pip install --no-cache-dir --pre essentia || echo "WARNING: essentia not available, falling back to two-detector mode"
 
-COPY VERSION CHANGELOG.md web_ui.py ./
-COPY bpm_tagger/ bpm_tagger/
+# Application code, ordered least- to most-frequently changed so a release
+# invalidates as few layers as possible. VERSION and CHANGELOG.md change on
+# every single release, so they go last — copied earlier they would invalidate
+# the SPA bundle and package layers behind them for nothing.
+COPY web_ui.py ./
 COPY static/ static/
+COPY bpm_tagger/ bpm_tagger/
 # React SPA bundle from the frontend build stage (served by Flask)
 COPY --from=frontend /fe/dist ./frontend/dist
+COPY VERSION CHANGELOG.md ./
 
 RUN mkdir -p /data
 
