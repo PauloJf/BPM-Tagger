@@ -126,7 +126,8 @@ export default function Listen() {
       // ⚠ ORDER IS LOAD-BEARING (mirrors Run's startRun): playQueue() clears the
       // tempo lock and both source scopes so a new queue never inherits a stale
       // run/radio refill — so the Listen source must be re-set *after* it.
-      player.playQueue(tracks, 0, { shuffle });
+      // No anchor: a shuffle here must draw from the whole list, not pin row 0.
+      player.playQueue(tracks, undefined, { shuffle });
       player.setListenSource(scope);
       setView("playing");
     } catch (e) {

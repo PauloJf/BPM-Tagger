@@ -76,6 +76,20 @@ jobs:
 
       # --- slim image (no PyTorch, ~400 MB) → :latest / :vX.Y.Z ---
 
+      # Layer cache, kept on Docker Hub alongside the images.
+      #
+      # Without this, every run builds on a fresh runner with nothing to reuse,
+      # so the apt and pip layers are rebuilt from scratch and get brand-new
+      # digests even when nothing in them changed — which made a bugfix release
+      # a 420 MB re-download for every user (14 of 15 layers changed between
+      # v2.17.0 and v2.17.1). With the cache those layers are reused verbatim,
+      # keeping their digests, so `docker pull` only fetches the app code.
+      #
+      # mode=max caches the frontend build stage too, so an unchanged SPA
+      # produces a byte-identical dist layer rather than one that differs only
+      # by file timestamps. The cache tags are separate per variant so the slim
+      # and full builds don't evict each other; they're cache manifests, not
+      # runnable images, and appear as `buildcache-*` tags on Docker Hub.
       - name: Build and push slim image
         uses: docker/build-push-action@v6
         with:
@@ -83,6 +97,8 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: WITH_DEEPRHYTHM=false
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:buildcache-slim
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:buildcache-slim,mode=max
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ needs.check.outputs.version }}
@@ -96,6 +112,8 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: WITH_DEEPRHYTHM=true
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:buildcache-full
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:buildcache-full,mode=max
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:full
             ${{ secrets.DOCKERHUB_USERNAME }}/bpm-tagger:v${{ needs.check.outputs.version }}-full
