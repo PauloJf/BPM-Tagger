@@ -8,18 +8,21 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from watchdog.observers import Observer
 
+from .. import hooks
 from ..bpm.loudness import analyze_loudness
 from ..bpm.pipeline import ScanProgress, detect_bpm
 from ..bpm.tags import get_file_hash, write_bpm_tag
 from ..bpm.waveform import compute_waveform_peaks
+from ..config import waveforms_enabled
 from ..db import BPMDatabase
-from ..integrations.navidrome import _trigger_navidrome_rescan
-from ..notify.ntfy import NotificationManager
 from .watcher import WatchHandler
+
+if TYPE_CHECKING:
+    from ..notify.ntfy import NotificationManager
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +47,9 @@ class BPMTagger:
         self.config = config
         self.progress = progress or ScanProgress()
         self.db = BPMDatabase(config["db_path"])
-        self.notifier: Optional[NotificationManager] = None
+        self.notifier: Optional["NotificationManager"] = None
         if config.get("ntfy_url") and config.get("ntfy_topic"):
+            from ..notify.ntfy import NotificationManager
             self.notifier = NotificationManager(
                 ntfy_url=config["ntfy_url"],
                 topic=config["ntfy_topic"],
@@ -90,8 +94,12 @@ class BPMTagger:
                 # and re-analyzes an already-tagged file.
                 file_hash = get_file_hash(file_path)
 
-            # Compute waveform while the file is still warm in the OS page cache
-            waveform_peaks = compute_waveform_peaks(file_path)
+            # Compute waveform while the file is still warm in the OS page cache —
+            # only when something will show it (COMPUTE_WAVEFORMS; auto = UI on).
+            # Skipped rows stay NULL: the UI recomputes on demand, and the upsert's
+            # COALESCE never wipes peaks a previous scan stored.
+            waveform_peaks = (compute_waveform_peaks(file_path)
+                              if waveforms_enabled(self.config) else None)
 
             # Same rationale — and an existing ReplayGain tag short-circuits the
             # decode entirely, so most already-tagged libraries pay nothing here.
@@ -186,7 +194,7 @@ class BPMTagger:
                 stats = self.db.get_stats()
                 self.notifier.send_summary(stats["total"], counts["tagged"],
                                            counts["errors"], counts["needs_review"])
-        _trigger_navidrome_rescan(self.config, full=full_rescan)
+        hooks.library_changed(self.config, full=full_rescan)
         log.info("%s done — %d tagged (%d need review), %d skipped, %d errors",
                  label, counts["tagged"], counts["needs_review"],
                  counts["skipped"], counts["errors"])
@@ -280,7 +288,7 @@ class BPMTagger:
         if not self.config.get("index_tags", True):
             return 0
         from ..bpm.tags import read_tags
-        from ..grabber.matching import normalize_artist, normalize_title
+        from ..text import normalize_artist, normalize_title
 
         rows = self.db.get_tracks_needing_tag_index()
         updated = 0

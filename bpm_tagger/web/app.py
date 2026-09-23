@@ -26,6 +26,7 @@ from .api.loudness import loudness_bp
 from .api.lyrics import lyrics_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
+from .api.waveform import waveform_bp
 from .api.inbox import inbox_bp
 from .api.player_state import player_state_bp
 from .api.players import players_bp
@@ -209,7 +210,7 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
                run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp, playlist_ops_bp):
+               listen_bp, playlist_ops_bp, waveform_bp):
         app.register_blueprint(bp)
 
     # ── SPA serving ─────────────────────────────────────────────────────────

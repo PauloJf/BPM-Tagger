@@ -93,7 +93,7 @@ class GrabberMixin:
                 if cur.rowcount == 0:
                     return None
             else:
-                from ..grabber.matching import normalize_artist, normalize_title
+                from ..text import normalize_artist, normalize_title
                 key = (normalize_title(meta.get("title")), normalize_artist(meta.get("artist")))
                 if key != ("", ""):
                     placeholders = ",".join("?" * len(GRAB_NONTERMINAL))

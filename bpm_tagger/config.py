@@ -38,6 +38,31 @@ def _parse_install_consent() -> "bool | None":
         return False
     return None
 
+WAVEFORM_MODES = ("auto", "true", "false")
+
+
+def _parse_waveform_mode() -> str:
+    """COMPUTE_WAVEFORMS: ``auto`` (default — follow ENABLE_UI), ``true`` or
+    ``false``. Anything unrecognised falls back to ``auto``."""
+    raw = os.environ.get("COMPUTE_WAVEFORMS", "auto").strip().lower()
+    if raw in ("1", "yes", "on"):
+        raw = "true"
+    elif raw in ("0", "no", "off"):
+        raw = "false"
+    return raw if raw in WAVEFORM_MODES else "auto"
+
+
+def waveforms_enabled(config: dict) -> bool:
+    """Should a scan compute waveform peaks? They only feed the web UI's player
+    and track views (which also recompute on demand), so ``auto`` skips the
+    extra decode when the UI is off. See docs/plans/core-decoupling.md (A)."""
+    mode = str(config.get("compute_waveforms", "auto")).lower()
+    if mode == "true":
+        return True
+    if mode == "false":
+        return False
+    return bool(config.get("enable_ui"))
+
 # Settings whose UI control is locked when the matching env var is explicitly
 # set (e.g. in docker-compose). Maps env var name → config key. A locked key is
 # authoritative from the environment: settings.json cannot override it and the
@@ -233,6 +258,9 @@ def build_config() -> dict:
         "normalize_playback":         os.environ.get("NORMALIZE_PLAYBACK", "true").lower() == "true",
         "report_path":                os.environ.get("REPORT_PATH", "/data/review_report.csv"),
         "enable_ui":                  os.environ.get("ENABLE_UI", "false").lower() == "true",
+        # Waveform peaks for the UI's player/track views: auto = only when the UI
+        # is on (see waveforms_enabled). A second decode per track otherwise.
+        "compute_waveforms":          _parse_waveform_mode(),
         # ── Anonymous install ping (opt-in, one-time; see install_ping.py) ────
         "install_ping_url":           os.environ.get("INSTALL_PING_URL", INSTALL_PING_URL_DEFAULT),
         # None = not yet asked (UI prompts on first run); True/False = user's answer.

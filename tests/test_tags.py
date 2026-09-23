@@ -13,6 +13,8 @@ from mutagen.wave import WAVE
 
 from bpm_tagger import get_file_hash, write_bpm_tag
 
+pytestmark = pytest.mark.core  # runs in the core-only CI job
+
 
 def _write_flac(path):
     sr = 22050

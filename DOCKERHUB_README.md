@@ -80,6 +80,7 @@ docker compose up -d && docker compose logs -f
 | `MUSIC_DIR` | `/music` | Music directory inside the container |
 | `WRITE_TAGS` | `true` | Write BPM to audio file metadata |
 | `PRESERVE_MTIME` | `true` | Keep each file's modified time after any write (tags, lyrics, metadata, cover art) |
+| `COMPUTE_WAVEFORMS` | `auto` | Waveform peaks for the player; `auto` = only when the web UI is on |
 | `WORKERS` | `1` | Parallel analysis threads (+~500 MB RAM each for deeprhythm) |
 | `REFRESH_HASHES` | `false` | Recompute hashes before scanning (migration from pre-1.0.0) |
 | `BPM_MIN` / `BPM_MAX` | `60` / `200` | BPM floor and ceiling — values below are doubled, above are halved |

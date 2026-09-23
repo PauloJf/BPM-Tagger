@@ -76,7 +76,7 @@ def tagger(monkeypatch):
     t.config = CONFIG
     t.notifier = None
     asked = []
-    monkeypatch.setattr("bpm_tagger.scan.scanner._trigger_navidrome_rescan",
+    monkeypatch.setattr("bpm_tagger.integrations.navidrome._trigger_navidrome_rescan",
                         lambda config, full=False: asked.append(full))
     return t, asked
 

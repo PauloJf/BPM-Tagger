@@ -76,6 +76,31 @@ jobs:
           pip install pip-audit
           pip-audit
 
+  # The core (BPM detection + tagging) must work with none of the optional
+  # layers installed (docs/plans/core-decoupling.md). Installs ONLY
+  # requirements-core.txt, then runs the isolation/layering guards and every
+  # test marked `core`. A new module-level import of flask/requests/rapidfuzz/…
+  # into bpm/, scan/ or db/ fails here even though the full job stays green.
+  core-only:
+    name: Core only (no optional deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-core.txt
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install core deps only
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-core.txt
+          pip install pytest
+      - name: Pytest (core)
+        run: pytest -q -m core
+
   frontend:
     name: Frontend (tsc + build)
     runs-on: ubuntu-latest

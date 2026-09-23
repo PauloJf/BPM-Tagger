@@ -16,6 +16,8 @@ import pytest
 
 import bpm_tagger.bpm.detectors as det
 
+pytestmark = pytest.mark.core  # runs in the core-only CI job
+
 
 @pytest.fixture
 def no_real_audio(monkeypatch):

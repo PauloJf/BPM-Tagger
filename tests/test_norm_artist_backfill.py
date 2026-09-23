@@ -6,7 +6,11 @@ value until this migration recomputes them once."""
 
 import sqlite3
 
+import pytest
+
 from bpm_tagger.db import BPMDatabase
+
+pytestmark = pytest.mark.core  # runs in the core-only CI job
 
 
 def _old_style_db(tmp_path, rows):

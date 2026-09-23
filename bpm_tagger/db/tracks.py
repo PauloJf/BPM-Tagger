@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ..bpm.tags import get_file_hash
-from ..grabber.matching import normalize_artist_name, split_artist_credits
+from ..text import normalize_artist_name, split_artist_credits
 from .constants import TRACK_SORTS
 
 def _dupe_signature(paths) -> str:
@@ -180,6 +180,25 @@ class TracksMixin:
                 "SELECT COUNT(*) FROM tracks "
                 "WHERE status != 'deleted' AND loudness_lufs IS NULL"
             ).fetchone()[0]
+
+    def count_missing_waveforms(self) -> int:
+        """Analyzed tracks with no stored waveform yet (skipped by a headless scan,
+        see COMPUTE_WAVEFORMS) — drives the waveform back-fill progress UI."""
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM tracks "
+                "WHERE status = 'done' AND waveform_peaks IS NULL"
+            ).fetchone()[0]
+
+    def get_missing_waveform_paths(self, limit: int) -> list[str]:
+        """Paths of analyzed tracks still missing a waveform, oldest first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT file_path FROM tracks "
+                "WHERE status = 'done' AND waveform_peaks IS NULL "
+                "ORDER BY analyzed_at LIMIT ?", (limit,)
+            ).fetchall()
+        return [r["file_path"] for r in rows]
 
     def get_unmeasured_loudness_paths(self, limit: int) -> list[str]:
         """Paths of live tracks still missing a loudness value, oldest first."""

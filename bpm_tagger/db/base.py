@@ -296,7 +296,7 @@ class _DBBase:
             self._backfill_track_artists(conn)
 
     def _backfill_track_artists(self, conn):
-        from ..grabber.matching import normalize_artist_name, split_artist_credits
+        from ..text import normalize_artist_name, split_artist_credits
         rows = conn.execute(
             "SELECT id, artist, album_artist FROM tracks WHERE status != 'deleted'"
         ).fetchall()
@@ -322,7 +322,7 @@ class _DBBase:
         if conn.execute(
                 "SELECT 1 FROM app_counters WHERE key = ?", (marker,)).fetchone():
             return
-        from ..grabber.matching import normalize_artist
+        from ..text import normalize_artist
         for table in ("tracks", "playlist_tracks"):
             rows = conn.execute(
                 f"SELECT id, artist FROM {table} WHERE artist IS NOT NULL AND artist != ''"

@@ -2,7 +2,11 @@
 
 import json
 
+import pytest
+
 from bpm_tagger import load_settings_override, settings_file_path
+
+pytestmark = pytest.mark.core  # runs in the core-only CI job
 
 
 def test_settings_file_path_is_sibling_of_db(tmp_path):

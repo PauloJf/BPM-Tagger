@@ -8,7 +8,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
 from ..bpm.detectors import _local
-from ..integrations.navidrome import _trigger_navidrome_rescan
+from .. import hooks
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class WatchHandler(FileSystemEventHandler):
                     if any_tagged and not self._pending:
                         now_t = time.monotonic()
                         if now_t - last_navidrome > 60:
-                            _trigger_navidrome_rescan(self._tagger.config)
+                            hooks.library_changed(self._tagger.config)
                             last_navidrome = now_t
                         any_tagged = False
                     if (last_work_time > 0
