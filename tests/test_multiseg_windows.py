@@ -33,20 +33,22 @@ def test_empty_windows_are_dropped_from_the_median(no_real_audio, monkeypatch):
     # Two good windows and one that decoded to nothing. The median of
     # [128, 0, 130] would be 128 — but of the usable pair it is 129.
     _windows(monkeypatch, [(128.0, 0.9), (0.0, 0.0), (130.0, 0.9)])
-    bpm, conf = det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0)
+    bpm, conf, total, empty = det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0)
     assert bpm == 129.0
     assert conf == pytest.approx(0.9)
+    assert (total, empty) == (3, 1)
 
 
 def test_a_single_empty_window_does_not_halve_the_result(no_real_audio, monkeypatch):
     _windows(monkeypatch, [(120.0, 0.8), (120.0, 0.8), (0.0, 0.0)])
-    bpm, _ = det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0)
+    bpm, _, total, empty = det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0)
     assert bpm == 120.0
+    assert (total, empty) == (3, 1)
 
 
 def test_all_windows_empty_reports_nothing_rather_than_zero_bpm(no_real_audio, monkeypatch):
     _windows(monkeypatch, [(0.0, 0.0)] * 3)
-    assert det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0) == (0.0, 0.0)
+    assert det._detect_bpm_librosa_multiseg("/music/x.m4a", 3, 45.0) == (0.0, 0.0, 3, 3)
 
 
 def test_window_guard_skips_librosa_entirely_on_empty_audio(monkeypatch):

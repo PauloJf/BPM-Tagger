@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
-import { ArrowIcon, ConfBar, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import { ArrowIcon, ConfBar, DecodeWarningBadge, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import LibraryTabs from "../components/LibraryTabs";
 import { QueueActions } from "../components/QueueActions";
@@ -264,6 +264,7 @@ export default function Tracks() {
     { key: "disliked", label: "Disliked", count: data?.disliked_count },
     { key: "review", label: "Review", count: data?.review_count },
     { key: "locked", label: "Locked", count: data?.locked_count },
+    { key: "problems", label: "Problems", count: data?.problems_count },
     { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
     { key: "unplaylisted", label: "No playlist", count: data?.unplaylisted_count },
     { key: "deleted", label: "Deleted", count: data?.deleted_count },
@@ -529,8 +530,9 @@ export default function Tracks() {
                   <div className="col-plays" style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 13, color: t.play_count ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
                     {t.play_count ?? 0}
                   </div>
-                  <div className="col-status">
+                  <div className="col-status" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <StatusBadge track={t} />
+                    <DecodeWarningBadge track={t} />
                   </div>
                   <div className="col-arrow" style={{ textAlign: "right", color: "var(--muted)" }}>
                     <ArrowIcon />

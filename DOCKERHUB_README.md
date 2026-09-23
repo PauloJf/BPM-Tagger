@@ -137,7 +137,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Player mode** — a locked-down view showing only Run (and optionally Listen), enforced server-side. Sign in with the shared **Guest login** (`RUN_PASSWORD`) or a **named player user** scoped to specific playlists. Ideal for a shared phone or a dedicated running device.
 
-**PWA & offline** — installable to your home screen (needs HTTPS), with lock-screen media controls. The player preloads the next few queue tracks into a capped per-device cache, and per-preset **Prepare offline** chips download whole cadence queues in advance — so a run survives network dead zones.
+**PWA & offline** — installable to your home screen, or as a desktop app from Chrome/Edge (needs HTTPS), with lock-screen and media-key controls. The player preloads the next few queue tracks into a capped per-device cache, and per-preset **Prepare offline** chips download whole cadence queues in advance — so a run survives network dead zones.
 
 **Also** — BPM review queue, per-track re-analyze, save & lock, Stats page (BPM histogram, detector breakdown, run totals, library sources), light/dark toggle with a custom accent colour saved to your account, live settings changes without restart, and a `/healthz` endpoint.
 

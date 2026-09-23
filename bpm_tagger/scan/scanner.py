@@ -1,6 +1,7 @@
 """Core tagger — scan phases, parallel processing, watch loop, and review report."""
 
 import csv
+import json
 import logging
 import os
 import threading
@@ -77,7 +78,13 @@ class BPMTagger:
                      bpm, result["confidence"], result["detector"], review_flag)
 
             if self.config["write_tags"]:
-                write_bpm_tag(file_path, bpm, self.config.get("preserve_mtime", True))
+                # write_bpm_tag returns False on a failed write (it logs the
+                # reason itself). Ignoring it meant a file whose tag never
+                # landed was still counted and reported as "tagged", so the
+                # scan summary could claim work it hadn't done.
+                if not write_bpm_tag(file_path, bpm, self.config.get("preserve_mtime", True)):
+                    log.warning("BPM %.1f computed but the tag could not be written to %s",
+                                bpm, Path(file_path).name)
                 # Re-read hash after tagging so the stored value matches the
                 # post-tag file state; otherwise the next scan sees a mismatch
                 # and re-analyzes an already-tagged file.
@@ -92,6 +99,11 @@ class BPMTagger:
             if self.config.get("measure_loudness", True):
                 lufs, source = analyze_loudness(file_path)
 
+            # Empty when clean — never store the literal "[]" (see the "problems"
+            # filter/count, which key off NULL rather than parsing empty arrays).
+            decode_warnings = result.get("decode_warnings") or []
+            warnings_json = json.dumps(decode_warnings) if decode_warnings else None
+
             self.db.upsert_track(
                 file_path, file_hash,
                 bpm, result["bpm_dr"], result["bpm_es"], result["bpm_lb"],
@@ -99,6 +111,7 @@ class BPMTagger:
                 "done", needs_review=result["needs_review"],
                 waveform_peaks=waveform_peaks,
                 loudness_lufs=lufs, loudness_source=source,
+                decode_warnings=warnings_json,
             )
 
             if self.notifier:

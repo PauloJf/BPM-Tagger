@@ -56,6 +56,23 @@ def _parse_sort(args) -> str:
     return sort if sort in TRACK_SORTS else ""
 
 
+def _expose_decode_warnings(track: dict) -> dict:
+    """Turn the raw decode_warnings JSON text (as stored by upsert_track) into
+    a parsed list for the API response — [] when clean — so the SPA never has
+    to know the column is JSON-encoded text.
+
+    Must be applied at EVERY endpoint that serialises a full track row: the
+    library list, track detail, and the artist/album pages all hand back
+    `SELECT *` rows, and one of them skipping this would ship the raw JSON
+    string under a field the SPA types as a list."""
+    raw = track.get("decode_warnings")
+    try:
+        track["decode_warnings"] = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        track["decode_warnings"] = []
+    return track
+
+
 def _parse_bpm_filter(args) -> tuple:
     """Return (bpm_target, bpm_tol) from request args, or (None, 5)."""
     bpm_target = None
@@ -249,6 +266,7 @@ def api_track():
     track = st.db.get_track(path)
     if not track:
         abort(404)
+    _expose_decode_warnings(track)
 
     back = request.args.get("back", "tracks")
     if back not in ("tracks", "review"):
@@ -302,7 +320,7 @@ def api_artist():
     name = request.args.get("name", "").strip()
     if not name:
         return jsonify(name="", tracks=[], stats={})
-    rows = state().db.get_artist_tracks(name)
+    rows = [_expose_decode_warnings(r) for r in state().db.get_artist_tracks(name)]
     bpms = [r["bpm"] for r in rows if r.get("bpm")]
     albums = sorted({(r.get("album") or "") for r in rows})
     stats = {
@@ -323,7 +341,7 @@ def api_album():
     album_artist = request.args.get("album_artist", "").strip()
     if not album:
         return jsonify(album="", album_artist="", tracks=[], stats={})
-    rows = state().db.get_album_tracks(album, album_artist or None)
+    rows = [_expose_decode_warnings(r) for r in state().db.get_album_tracks(album, album_artist or None)]
     bpms = [r["bpm"] for r in rows if r.get("bpm")]
     aa = album_artist or (rows[0].get("album_artist") if rows else "") or ""
     stats = {
@@ -863,6 +881,7 @@ def api_tracks():
                                         filter=filter_by,
                                         bpm_target=bpm_target, bpm_tol=bpm_tol,
                                         bpm_cadence=cadence, sort=sort)
+    rows = [_expose_decode_warnings(r) for r in rows]
     pages = max(1, (total + per_page - 1) // per_page)
     stats = st.db.get_stats()
     return jsonify(tracks=rows, total=total, page=page, pages=pages, per_page=per_page,
@@ -874,7 +893,8 @@ def api_tracks():
                    no_isrc_count=stats.get("missing_isrc", 0),
                    starred_count=stats.get("starred", 0),
                    disliked_count=stats.get("disliked", 0),
-                   unplaylisted_count=stats.get("unplaylisted", 0))
+                   unplaylisted_count=stats.get("unplaylisted", 0),
+                   problems_count=stats.get("decode_problems", 0))
 
 
 @tracks_bp.route("/api/tracks/paths")

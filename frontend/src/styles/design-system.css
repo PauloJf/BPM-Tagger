@@ -493,6 +493,9 @@ body.has-player .nav-mobile-panel { max-height: calc(100dvh - 52px - var(--playe
 .badge--neutral  { background: var(--chip-bg);     color: var(--muted);       border-color: var(--border); }
 .badge--accent   { background: var(--accent-soft); color: var(--accent-2);    border-color: var(--accent-border); }
 .badge--pending  { background: var(--chip-bg);     color: var(--muted);       border-color: var(--border); }
+/* Decode problems: same warm tone as --review, but a distinct class since it's
+   a different, non-fatal condition (the track analyzed fine and has a BPM). */
+.badge--warn     { background: var(--warn-bg);     color: var(--warn-fg);     border-color: var(--warn-bd); }
 
 /* ── Button ───────────────────────────────────────────────────────────────── */
 .btn {
