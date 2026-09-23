@@ -179,14 +179,14 @@ class BPMTagger:
             else:
                 counts["skipped"] += 1
 
-    def _finish_scan(self, counts: dict, label: str):
+    def _finish_scan(self, counts: dict, label: str, full_rescan: bool = False):
         if self.notifier:
             self.notifier.flush()
             if counts["tagged"] or counts["needs_review"]:
                 stats = self.db.get_stats()
                 self.notifier.send_summary(stats["total"], counts["tagged"],
                                            counts["errors"], counts["needs_review"])
-        _trigger_navidrome_rescan(self.config)
+        _trigger_navidrome_rescan(self.config, full=full_rescan)
         log.info("%s done — %d tagged (%d need review), %d skipped, %d errors",
                  label, counts["tagged"], counts["needs_review"],
                  counts["skipped"], counts["errors"])
@@ -269,7 +269,8 @@ class BPMTagger:
         self.progress.start(len(queue))
         counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
-        self._finish_scan(counts, "Scan")
+        # A forced pass rewrote every tag behind an unchanged mtime.
+        self._finish_scan(counts, "Scan", full_rescan=force)
         self.index_tags()
         return counts
 
@@ -308,7 +309,8 @@ class BPMTagger:
         self.progress.start(len(queue))
         counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
-        self._finish_scan(counts, "scan_review")
+        # Re-analyzed in place: same unchanged-mtime problem as a forced scan.
+        self._finish_scan(counts, "scan_review", full_rescan=True)
         return counts
 
     def retry_errors(self) -> dict:
@@ -323,7 +325,8 @@ class BPMTagger:
         self.progress.start(len(queue))
         counts = self._process_files_parallel(queue, force=True)
         self.progress.finish()
-        self._finish_scan(counts, "retry_errors")
+        # Re-analyzed in place: same unchanged-mtime problem as a forced scan.
+        self._finish_scan(counts, "retry_errors", full_rescan=True)
         return counts
 
     def report(self) -> dict:

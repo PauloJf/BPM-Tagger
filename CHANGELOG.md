@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.17.5 — 2026-09-23
+
+- **A re-analysis now reaches Navidrome.** Navidrome detects changed files by modification time, and `PRESERVE_MTIME` deliberately restores the mtime after every tag write — so the quick rescan the app triggered saw nothing changed and skipped every file. After an incremental pass that's correct (only genuinely new or changed files were touched), but after a forced re-analysis it meant rewriting every tag in the library and Navidrome reading none of them. A forced scan (`scan_all` / `watch_all`), `scan_review` and `retry_errors` now ask for a **full** Navidrome scan; incremental scans, the watcher and the grabber still ask for a quick one, since a full scan of a large library is expensive and pointless when the mtimes genuinely changed.
+
 ## v2.17.4 — 2026-09-23
 
 - **The library flags tracks whose analysis was degraded by a decode problem.** A truncated download can still produce a plausible BPM: one track here scored 128.1 at 0.92 confidence off the single analysis window that had audio, because the file stops 40% of the way in — and nothing in the UI hinted at it. `status='error'` only catches total failures, so a partly-unreadable file looked perfectly healthy. Analysis now records decode problems (some or all analysis windows decoding to nothing, or a detector unable to decode at all) and the library shows them: a **Problems** filter pill with a live count, a **decode** badge on the row and track page with the specifics on hover — *"2 of 3 analysis windows decoded to nothing"* — and a matching Stats card. These are not errors and the track still plays; they mean the tempo rests on less of the file than usual, which usually points at a damaged or truncated download.
