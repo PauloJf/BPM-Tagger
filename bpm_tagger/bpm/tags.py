@@ -7,7 +7,7 @@ from pathlib import Path
 import mutagen
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, ID3NoHeaderError, TBPM
-from mutagen.mp4 import MP4
+from mutagen.mp4 import MP4, AtomDataType, MP4FreeForm
 from mutagen.oggvorbis import OggVorbis
 
 log = logging.getLogger(__name__)
@@ -35,6 +35,14 @@ def write_bpm_tag(file_path: str, bpm: float, preserve_mtime: bool = True) -> bo
         elif ext in (".m4a", ".aac"):
             audio = MP4(file_path)
             audio["tmpo"] = [round(bpm)]
+            # Downloaded files often carry a freeform ----:com.apple.iTunes:BPM
+            # atom alongside the standard tmpo one, and readers disagree about
+            # which wins — ffprobe prefers the freeform. Writing only tmpo left
+            # the file advertising two different tempos (seen in the wild: tmpo
+            # 128 beside a stale freeform 85 from the download source). Update
+            # any that exist; don't add one to a file that has none.
+            for key in [k for k in audio if k.startswith("----") and k.lower().endswith(":bpm")]:
+                audio[key] = [MP4FreeForm(bpm_str.encode("utf-8"), AtomDataType.UTF8)]
             audio.save()
         elif ext in (".ogg", ".opus"):
             audio = OggVorbis(file_path)

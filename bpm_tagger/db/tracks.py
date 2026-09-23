@@ -45,15 +45,16 @@ class TracksMixin:
                      status: str, needs_review: bool = False, error: Optional[str] = None,
                      waveform_peaks: Optional[str] = None,
                      loudness_lufs: Optional[float] = None,
-                     loudness_source: Optional[str] = None):
+                     loudness_source: Optional[str] = None,
+                     decode_warnings: Optional[str] = None):
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute("""
                 INSERT INTO tracks
                     (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, bpm_confidence,
                      detector, analyzed_at, status, needs_review, error_message, waveform_peaks,
-                     loudness_lufs, loudness_source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     loudness_lufs, loudness_source, decode_warnings)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     file_hash      = excluded.file_hash,
                     bpm            = excluded.bpm,
@@ -71,10 +72,14 @@ class TracksMixin:
                     -- Same COALESCE treatment as the waveform: an error pass (or a
                     -- scan with measurement off) must not wipe a good measurement.
                     loudness_lufs   = COALESCE(excluded.loudness_lufs, loudness_lufs),
-                    loudness_source = COALESCE(excluded.loudness_source, loudness_source)
+                    loudness_source = COALESCE(excluded.loudness_source, loudness_source),
+                    -- Unlike waveform/loudness, this reflects the *latest* analysis
+                    -- pass outright — a re-scan that decodes cleanly must clear a
+                    -- previously recorded decode problem, not keep it around.
+                    decode_warnings = excluded.decode_warnings
             """, (file_path, file_hash, bpm, bpm_dr, bpm_es, bpm_lb, confidence,
                   detector, now, status, int(needs_review), error, waveform_peaks,
-                  loudness_lufs, loudness_source))
+                  loudness_lufs, loudness_source, decode_warnings))
             conn.commit()
 
     def lock_track(self, file_path: str, bpm: Optional[float]):
@@ -219,6 +224,9 @@ class TracksMixin:
                 "no_isrc": "(isrc IS NULL OR isrc = '')",
                 "starred": "starred = 1",
                 "disliked": "disliked = 1",
+                "problems": (
+                    "(decode_warnings IS NOT NULL AND decode_warnings != '' "
+                    "AND decode_warnings != '[]')"),
                 "unplaylisted": (
                     "NOT EXISTS (SELECT 1 FROM playlist_tracks pt "
                     "WHERE pt.matched_file_path = tracks.file_path "
@@ -812,7 +820,10 @@ class TracksMixin:
                     COUNT(CASE WHEN status!='deleted' AND NOT EXISTS (
                         SELECT 1 FROM playlist_tracks pt
                         WHERE pt.matched_file_path = tracks.file_path
-                        AND pt.removed_at IS NULL) THEN 1 END) AS unplaylisted
+                        AND pt.removed_at IS NULL) THEN 1 END) AS unplaylisted,
+                    COUNT(CASE WHEN status!='deleted' AND decode_warnings IS NOT NULL
+                        AND decode_warnings != '' AND decode_warnings != '[]'
+                        THEN 1 END) AS decode_problems
                 FROM tracks
             """).fetchone()
             return dict(row)

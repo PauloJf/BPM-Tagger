@@ -22,6 +22,9 @@ interface StatsResponse {
     pending: number;
     deleted: number;
     missing_isrc: number;
+    // Analyzed successfully but part of the audio wouldn't decode — not an
+    // error, just worth a look (see Track.decode_warnings).
+    decode_problems: number;
   };
   bpm_descriptive: { avg: number | null; median: number | null; min: number | null; max: number | null };
   bpm_distribution: BpmBucket[];
@@ -160,6 +163,13 @@ export default function Stats() {
             <button className="btn btn-ghost btn-sm" style={{ marginTop: 10, width: "100%", fontSize: 11 }} disabled={retryErrors.isPending} onClick={() => retryErrors.mutate()}>
               {retryErrors.isPending ? "Starting…" : "Retry →"}
             </button>
+          )}
+        </StatCard>
+        <StatCard label="Decode problems" value={num(s.decode_problems)} color="var(--warn-fg)">
+          {s.decode_problems > 0 && (
+            <Link to="/tracks?filter=problems" className="btn btn-ghost btn-sm" style={{ marginTop: 10, width: "100%", fontSize: 11, textAlign: "center" }}>
+              View →
+            </Link>
           )}
         </StatCard>
         <StatCard label="Locked" value={num(s.locked)} color="var(--info-fg)" />

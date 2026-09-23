@@ -104,9 +104,12 @@ def load_audio(file_path: str, *, sr: Optional[int] = None, mono: bool = True,
     try:
         y, out_sr = librosa.load(file_path, sr=sr, mono=mono,
                                  offset=offset, duration=duration)
-        # A successful load of an undecodable file yields nothing useful; treat
-        # it like a failure so ffmpeg gets its turn.
-        if y.size:
+        # An empty *window* is a legitimate answer — a segment offset can land
+        # past the end of the decodable audio, e.g. when a container's declared
+        # duration overstates what actually decodes. Only a whole-file read that
+        # comes back empty is suspicious enough to be worth an ffmpeg attempt;
+        # retrying the rest just spawns a subprocess to be told the same thing.
+        if y.size or offset or duration:
             return y, int(out_sr)
         first_error: Optional[Exception] = None
     except Exception as exc:                      # noqa: BLE001 — any decode failure

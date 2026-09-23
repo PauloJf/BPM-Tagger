@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from .audio import AudioLoadError
 from .detectors import (
     _detect_bpm_deeprhythm,
     _detect_bpm_essentia,
@@ -158,30 +159,58 @@ def _normalize_bpm(bpm: float, bpm_min: float, bpm_max: float) -> float:
 
 def detect_bpm(file_path: str, config: dict, progress: Optional[ScanProgress] = None) -> dict:
     """
-    Return dict with keys: bpm, bpm_dr, bpm_es, bpm_lb, confidence, detector, needs_review.
+    Return dict with keys: bpm, bpm_dr, bpm_es, bpm_lb, confidence, detector, needs_review,
+    decode_warnings (list[dict], empty when clean).
     Runs deeprhythm + essentia as primary detectors; librosa as confidence/tiebreaker.
     """
     n_seg = int(config.get("multi_segment_count", 3))
     seg_dur = float(config.get("segment_duration", 45))
+
+    # Decode problems found along the way — surfaced to the UI so a track that
+    # scored fine can still be flagged as a degraded analysis (see the
+    # Anyma - Neverland (From Japan).m4a incident: 128.1 BPM from 2 bad windows,
+    # nothing in the UI hinted at it).
+    decode_warnings: list[dict] = []
 
     bpm_dr: Optional[float] = None
     if config.get("use_deeprhythm", True):
         if progress: progress.set_step("deeprhythm")
         try:
             bpm_dr = _detect_bpm_deeprhythm(file_path)
+        except AudioLoadError as exc:
+            log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
+            decode_warnings.append({
+                "code": "decode_failed",
+                "detail": f"deeprhythm could not decode the file: {exc}",
+            })
         except Exception as exc:
             log.warning("deeprhythm failed for %s: %s", Path(file_path).name, exc)
 
     bpm_es: Optional[float] = None
     if config.get("use_essentia", True):
         if progress: progress.set_step("essentia")
-        bpm_es = _detect_bpm_essentia(file_path)  # handles exceptions internally
+        # Swallows its own exceptions and returns None on any failure, so a
+        # decode failure can't be told apart from any other — no warning here.
+        bpm_es = _detect_bpm_essentia(file_path)
 
     if progress: progress.set_step("librosa")
     if config.get("multi_segment", True):
-        bpm_lb, conf_lb = _detect_bpm_librosa_multiseg(file_path, n_seg, seg_dur)
+        bpm_lb, conf_lb, total_windows, empty_windows = _detect_bpm_librosa_multiseg(
+            file_path, n_seg, seg_dur)
     else:
         bpm_lb, conf_lb = _librosa_window(file_path, 0.0, 180.0)
+        total_windows, empty_windows = 1, (1 if bpm_lb <= 0 else 0)
+
+    if empty_windows >= total_windows:
+        decode_warnings.append({
+            "code": "no_decodable_audio",
+            "detail": "no analysis window produced audio",
+        })
+    elif empty_windows:
+        decode_warnings.append({
+            "code": "empty_windows",
+            "detail": f"{empty_windows} of {total_windows} analysis windows decoded to nothing",
+        })
 
     bpm_final, needs_review = _reconcile(bpm_dr, bpm_es, bpm_lb, config)
 
@@ -204,4 +233,5 @@ def detect_bpm(file_path: str, config: dict, progress: Optional[ScanProgress] = 
         "confidence":   conf_lb,
         "detector":     detector,
         "needs_review": needs_review,
+        "decode_warnings": decode_warnings,
     }

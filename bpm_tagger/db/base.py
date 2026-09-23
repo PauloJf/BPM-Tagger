@@ -113,6 +113,9 @@ class _DBBase:
             # ── Loudness normalization (NULL = never measured) ────────────────
             ("loudness_lufs",   "REAL"),  # integrated loudness, ITU-R BS.1770
             ("loudness_source", "TEXT"),  # tag (existing ReplayGain) | measured
+            # Decode problems surfaced during BPM analysis (JSON array of
+            # {code, detail}; NULL = clean). See bpm/pipeline.py::detect_bpm.
+            ("decode_warnings", "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")

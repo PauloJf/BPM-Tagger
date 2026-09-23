@@ -462,6 +462,12 @@ export default function TrackDetail() {
             </span>
           ) : null}
           {!track.locked && !flagged && !track.reviewed && track.status !== "error" ? <span className="badge badge--ok">ok</span> : null}
+          {track.decode_warnings && track.decode_warnings.length > 0 ? (
+            <span className="badge badge--warn" title={track.decode_warnings.map((w) => w.detail).join("; ")}>
+              <span className="badge-dot" />
+              decode
+            </span>
+          ) : null}
           <button
             className="btn btn-bare btn-sm"
             style={{ padding: "2px 6px", color: track.starred ? "var(--warn-fg)" : "var(--muted)" }}
@@ -612,6 +618,18 @@ export default function TrackDetail() {
               </div>
             </div>
             {track.status !== "error" && <DetectorBar track={track} />}
+            {track.decode_warnings && track.decode_warnings.length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--warn-fg)", marginBottom: 6 }}>
+                  Worth a look
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+                  {track.decode_warnings.map((w, i) => (
+                    <li key={i}>{w.detail}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Override */}

@@ -40,6 +40,17 @@ export interface Track {
   // null = never measured, which the player treats as "play at full volume".
   loudness_lufs?: number | null;
   loudness_source?: string | null;
+  // Non-fatal: the track still analyzed and has a BPM, but part of the audio
+  // wouldn't decode, so the result rests on less of the file than usual.
+  // Empty (or absent, for older cached responses) means clean.
+  decode_warnings?: DecodeWarning[];
+}
+
+export type DecodeWarningCode = "empty_windows" | "no_decodable_audio" | "decode_failed";
+
+export interface DecodeWarning {
+  code: DecodeWarningCode;
+  detail: string;
 }
 
 // ── Run mode ──────────────────────────────────────────────────────────────
@@ -127,6 +138,7 @@ export interface TracksPage {
   starred_count: number;
   disliked_count: number;
   unplaylisted_count: number;
+  problems_count: number;
 }
 
 export interface AudioQuality {
@@ -251,6 +263,7 @@ export interface Stats {
   error: number;
   needs_review: number;
   locked: number;
+  decode_problems: number;
   [k: string]: unknown;
 }
 

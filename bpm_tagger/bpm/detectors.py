@@ -72,6 +72,8 @@ def _track_duration(file_path: str) -> Optional[float]:
 
 def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[float, float]:
     y, sr = load_audio(file_path, offset=offset, duration=duration, sr=None, mono=True)
+    if y.size == 0:
+        return 0.0, 0.0
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
     candidates = librosa.feature.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
     bpm = float(np.median(candidates)) if len(candidates) > 0 else 0.0
@@ -84,15 +86,32 @@ def _librosa_window(file_path: str, offset: float, duration: float) -> tuple[flo
     return round(bpm, 1), conf
 
 
-def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int, seg_duration: float) -> tuple[float, float]:
+def _detect_bpm_librosa_multiseg(file_path: str, n_segments: int,
+                                 seg_duration: float) -> tuple[float, float, int, int]:
+    """Return (bpm, confidence, total_windows, empty_windows).
+
+    The last two let the caller (bpm/pipeline.py::detect_bpm) record a
+    decode_warnings entry when some or all windows came back empty — see the
+    comment below for why that happens.
+    """
     total = _track_duration(file_path)
 
     if total is None or total < seg_duration * 1.5:
-        return _librosa_window(file_path, 0.0, 180.0)
+        bpm, conf = _librosa_window(file_path, 0.0, 180.0)
+        return bpm, conf, 1, (1 if bpm <= 0 else 0)
 
     offsets = [
         max(0.0, min(total * (i + 1) / (n_segments + 1) - seg_duration / 2, total - seg_duration))
         for i in range(n_segments)
     ]
-    bpms, confs = zip(*[_librosa_window(file_path, o, seg_duration) for o in offsets])
-    return round(float(np.median(bpms)), 1), float(np.median(confs))
+    # A window can decode to nothing when the container's declared duration
+    # overstates the real audio (damaged trailing frames). librosa then warns
+    # "n_fft=2048 is too large for input signal of length=0" and contributes a
+    # 0 BPM that drags the median down, so drop those windows instead.
+    windows = [_librosa_window(file_path, o, seg_duration) for o in offsets]
+    usable = [(b, c) for b, c in windows if b > 0]
+    empty = len(windows) - len(usable)
+    if not usable:
+        return 0.0, 0.0, len(windows), empty
+    bpms, confs = zip(*usable)
+    return round(float(np.median(bpms)), 1), float(np.median(confs)), len(windows), empty

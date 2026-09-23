@@ -110,6 +110,20 @@ export function StatusBadge({ track }: { track: Track }) {
   return <span className="badge badge--ok">ok</span>;
 }
 
+/** Flags a track whose BPM is real but rests on less audio than usual because
+ *  part of the file wouldn't decode (see Track.decode_warnings). Deliberately
+ *  separate from StatusBadge — it's not an error, the analysis succeeded. */
+export function DecodeWarningBadge({ track }: { track: Track }) {
+  const warnings = track.decode_warnings;
+  if (!warnings || warnings.length === 0) return null;
+  return (
+    <span className="badge badge--warn" title={warnings.map((w) => w.detail).join("; ")}>
+      <Dot />
+      decode
+    </span>
+  );
+}
+
 export const FolderIcon = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
     <path d="M3 7 a2 2 0 0 1 2 -2 h4 l2 2 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z" />

@@ -1,9 +1,11 @@
 """Characterization tests for write_bpm_tag and get_file_hash."""
 
 import os
+import shutil
 import wave
 
 import numpy as np
+import pytest
 import soundfile as sf
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3
@@ -113,3 +115,55 @@ def test_get_file_hash_changes_with_content(tmp_path):
     h1 = get_file_hash(str(f))
     f.write_bytes(b"abcdef")
     assert get_file_hash(str(f)) != h1
+
+
+# ── m4a: the freeform BPM atom must not drift from tmpo ──────────────────────
+#
+# Downloads commonly carry ----:com.apple.iTunes:BPM alongside the standard
+# tmpo atom. Writing only tmpo left the file advertising two tempos, and
+# readers disagree about which wins — ffprobe reports the freeform one. Seen in
+# a real library: tmpo 128 next to a stale freeform 85 from the source.
+
+def _write_m4a(path):
+    import subprocess
+    import shutil as _shutil
+    if not _shutil.which("ffmpeg"):
+        return False
+    src = path.parent / "src.wav"
+    sr = 22050
+    y = (0.1 * np.sin(2 * np.pi * 220 * np.arange(sr) / sr)).astype("float32")
+    sf.write(str(src), y, sr)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:a", "aac", str(path)],
+                   check=True, capture_output=True, timeout=60)
+    return True
+
+
+needs_ffmpeg_m4a = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not installed")
+
+
+@needs_ffmpeg_m4a
+def test_m4a_write_updates_a_stale_freeform_bpm(tmp_path):
+    from mutagen.mp4 import MP4, AtomDataType, MP4FreeForm
+    f = tmp_path / "song.m4a"
+    assert _write_m4a(f)
+    audio = MP4(str(f))
+    audio["----:com.apple.iTunes:BPM"] = [MP4FreeForm(b"85", AtomDataType.UTF8)]
+    audio.save()
+
+    assert write_bpm_tag(str(f), 128.0) is True
+
+    out = MP4(str(f))
+    assert out["tmpo"] == [128]
+    assert bytes(out["----:com.apple.iTunes:BPM"][0]) == b"128", "freeform atom left stale"
+
+
+@needs_ffmpeg_m4a
+def test_m4a_write_does_not_invent_a_freeform_bpm(tmp_path):
+    """A file without one stays clean — we correct drift, we don't add atoms."""
+    from mutagen.mp4 import MP4
+    f = tmp_path / "song.m4a"
+    assert _write_m4a(f)
+    assert write_bpm_tag(str(f), 128.0) is True
+    out = MP4(str(f))
+    assert out["tmpo"] == [128]
+    assert not [k for k in out if k.startswith("----") and k.lower().endswith(":bpm")]
