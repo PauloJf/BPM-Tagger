@@ -13,7 +13,7 @@ from flask import Blueprint
 from ..state import state
 from .auth import authenticate
 from .envelope import E_GENERIC, E_NOT_FOUND, SubsonicError, failed
-from .handlers import METHODS, OWNER_METHODS
+from .handlers import METHODS
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +28,12 @@ def dispatch(method: str):
     name = method[:-5] if method.endswith(".view") else method
     st = state()
     try:
-        owner = authenticate(st)
+        who = authenticate(st)
         handler = METHODS.get(name)
         if handler is None:
             return failed(E_NOT_FOUND if not name else E_GENERIC,
                           f"Method '{name}' is not supported by this server.")
-        return handler(st, owner) if name in OWNER_METHODS else handler(st)
+        return handler(st, who)
     except SubsonicError as exc:
         return failed(exc.code, exc.message)
     except Exception:

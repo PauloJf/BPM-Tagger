@@ -70,8 +70,8 @@ def env(base_config):
     app = _app(base_config)
     client = app.test_client()
     csrf = _login(client)
-    key = client.post("/api/subsonic/api-key", headers=csrf).get_json()["api_key"]
-    pw = client.post("/api/subsonic/password", headers=csrf).get_json()["password"]
+    key = client.post("/api/subsonic/accounts/admin/api-key", headers=csrf).get_json()["api_key"]
+    pw = client.post("/api/subsonic/accounts/admin/password", headers=csrf).get_json()["password"]
     music = base_config["music_dir"]
     a = os.path.join(music, "Artist", "Album", "01.flac")
     b = os.path.join(music, "Artist", "Album", "02.flac")
@@ -173,7 +173,7 @@ def test_failures_feed_the_login_lockout(env):
 
 
 def test_revoked_key_stops_working(env):
-    env["admin"].delete("/api/subsonic/api-key", headers=env["csrf"])
+    env["admin"].delete("/api/subsonic/accounts/admin/api-key", headers=env["csrf"])
     assert _json(_get(env, "ping"))["error"]["code"] == 44
 
 
@@ -321,14 +321,15 @@ def test_status_and_restart_hint(base_config):
     client = app.test_client()
     csrf = _login(client)
     st = client.get("/api/subsonic").get_json()
-    assert st["enabled"] is False and st["active"] is False and st["username"] == "admin"
+    assert st["enabled"] is False and st["active"] is False
+    assert st["accounts"][0]["owner"] == "admin" and st["accounts"][0]["username"] == "admin"
     r = client.post("/api/subsonic/settings", json={"subsonic_enabled": True}, headers=csrf).get_json()
     assert r["enabled"] is True and r["restart_required"] is True
 
 
 def test_credentials_are_never_readable_back(env):
     st = env["admin"].get("/api/subsonic").get_json()
-    assert st["has_api_key"] and st["has_password"]
+    assert st["accounts"][0]["has_api_key"] and st["accounts"][0]["has_password"]
     assert env["key"] not in str(st) and env["pw"] not in str(st)
     assert env["key"] not in str(env["admin"].get("/api/settings").get_json())
 
@@ -336,5 +337,5 @@ def test_credentials_are_never_readable_back(env):
 def test_admin_routes_are_closed_to_the_player_role(base_config):
     client = _app(base_config, run_password="runpw").test_client()
     csrf = _login(client, "runpw")
-    assert client.post("/api/subsonic/api-key", headers=csrf).status_code == 403
+    assert client.post("/api/subsonic/accounts/admin/api-key", headers=csrf).status_code == 403
     assert client.get("/api/subsonic").status_code == 403

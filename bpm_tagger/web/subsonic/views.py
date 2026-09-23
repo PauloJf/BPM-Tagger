@@ -51,6 +51,9 @@ def song(track: dict, music_dir: str) -> dict:
         rel = os.path.basename(path)
     if rel.startswith(".."):
         rel = os.path.basename(path)
+    # Folder-browsing clients navigate up through `parent`, so it names the
+    # containing directory; ID3 clients use albumId.
+    parent = ids.dir_id(rel.rsplit("/", 1)[0] if "/" in rel else "")
     artist = track.get("artist") or ""
     aid = ids.track_album_id(track)
     # No star timestamp is stored; the analysis time stands in for it.
@@ -58,7 +61,7 @@ def song(track: dict, music_dir: str) -> dict:
                if track.get("starred") else None)
     return {
         "id": ids.song_id(track),
-        "parent": aid,
+        "parent": parent,
         "isDir": False,
         "title": track.get("title") or os.path.splitext(os.path.basename(path))[0],
         "album": track.get("album") or None,
@@ -114,13 +117,36 @@ def album(row: dict) -> dict:
 
 
 def artist(row: dict) -> dict:
-    """``row`` is an entry from ``db.list_artists``."""
+    """``row`` is an entry from ``db.subsonic_artists`` (or ``list_artists``)."""
+    aid = ids.artist_id_norm(row["norm_name"]) if row.get("norm_name") else ids.artist_id(row["name"])
+    return {"id": aid, "name": row["name"], "coverArt": aid, "albumCount": row.get("albums") or 0}
+
+
+def playlist(row: dict, owner_name: str, writable: bool) -> dict:
+    """``row`` is from ``db.subsonic_playlist_summaries``. Only Local playlists
+    are writable over Subsonic — Spotify/Navidrome mirrors belong to their source."""
+    pid = ids.playlist_id(row["id"])
+    created = iso(row.get("created_at")) or "1970-01-01T00:00:00.000Z"
     return {
-        "id": ids.artist_id(row["name"]),
-        "name": row["name"],
-        "coverArt": ids.artist_id(row["name"]),
-        "albumCount": row.get("albums") or 0,
+        "id": pid,
+        "name": row.get("name") or "",
+        "comment": row.get("description") or None,
+        "owner": owner_name,
+        "public": False,
+        "songCount": row.get("song_count") or 0,
+        "duration": int((row.get("duration_ms") or 0) / 1000),
+        "created": created,
+        "changed": iso(row.get("changed_at")) or iso(row.get("last_synced_at")) or created,
+        "coverArt": pid,
+        "readonly": not writable,
     }
+
+
+def directory_child(rel: str, parent_rel: str) -> dict:
+    did = ids.dir_id(rel)
+    name = rel.rsplit("/", 1)[-1]
+    return {"id": did, "parent": ids.dir_id(parent_rel), "isDir": True,
+            "title": name, "name": name, "coverArt": did}
 
 
 def index_letter(name: str) -> str:

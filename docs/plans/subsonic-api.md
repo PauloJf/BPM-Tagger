@@ -2,7 +2,39 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Phase 1 implemented** (Unreleased, 2026-09-23). Phases 2–3 open.
+Status: **Phases 1–2 implemented** (Unreleased, 2026-09-23). Phase 3 open.
+
+Phase 2 implementation notes:
+
+- **Player users** get Subsonic credentials per account (having credentials *is*
+  the per-account switch). A player's scope is its `player_playlists`, the same
+  rule as Run mode. It's applied as a subquery on the playlist ids to every
+  query in `db/subsonic.py`, including by-id lookups: a player gets error 70 for
+  a song outside its scope on `getSong`, `stream`, `star` and `scrobble`, not
+  only on browsing. This is stricter than the web `/audio` rule, because Subsonic
+  song ids are sequential and easy to guess. Players can star and scrobble, but
+  can't write playlists (`playlistRole=false`, error 50).
+- **Folder browsing** is built from the DB's file paths, not a filesystem walk,
+  and cached for 10 s per scope (`web/subsonic/dirs.py`). A song's `parent` is
+  now its folder's `dir-` id, so folder apps can navigate up; ID3 apps use
+  `albumId`. `getMusicDirectory` also accepts `al-` and `ar-` ids, plus `1`
+  (the music folder).
+- **Playlists:** all playlists are listed for the admin; only Local ones are
+  writable (`readonly` flag). `createPlaylist` with a `playlistId` replaces the
+  songs, per spec. A Local playlist holds each library track once, so a
+  repeated song id is added once.
+- **Lyrics** come from `bpm/lyrics.read_lyrics` (embedded tag, then `.lrc`
+  sidecar). LRC is parsed into OpenSubsonic `structuredLyrics`, including lines
+  with several timestamps; metadata tags are dropped.
+- **Similar songs** stay offline: the seed's artists first, then an
+  octave-folded ±5 % BPM band. No Deezer call on this path.
+  `getArtistInfo2` / `getAlbumInfo2` return empty info, so artist and album
+  pages don't error.
+- **Genres** are still empty: the tag index has no genre column. Adding one
+  means re-reading every file's tags, so it's left for its own change.
+- Verified live with curl, with a player user scoped to one playlist: its
+  artists, playlists and search show only that playlist's tracks; streaming a
+  track outside it gives 70; `createPlaylist` gives 50.
 
 Phase 1 implementation notes (these amend the design below):
 

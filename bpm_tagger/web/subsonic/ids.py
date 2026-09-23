@@ -3,7 +3,10 @@
 * song   ``tr-<tracks.id>`` — the autoincrement key survives rescans (rows are
   keyed by file_path, never re-created for an unchanged file);
 * album  ``al-<16 hex>`` — sha1 of the normalized (album_artist, album) pair;
-* artist ``ar-<16 hex>`` — sha1 of the normalized artist name (``track_artists.norm_name``).
+* artist ``ar-<16 hex>`` — sha1 of the normalized artist name (``track_artists.norm_name``);
+* playlist ``pl-<playlists.id>``;
+* directory ``dir-<16 hex>`` — sha1 of the path relative to MUSIC_DIR (``/``-separated,
+  ``""`` for the root), for folder-browsing clients.
 
 Hash ids stay stable across rescans and even DB rebuilds, as long as the tags
 don't change. Resolving an album id back to its groups needs the id map, which
@@ -39,8 +42,26 @@ def album_id(album: str, album_artist: str) -> str:
                       normalize_artist_name(album or ""))
 
 
+def artist_id_norm(norm_name: str) -> str:
+    return "ar-" + _h(norm_name or "")
+
+
 def artist_id(name: str) -> str:
-    return "ar-" + _h(normalize_artist_name(name or ""))
+    return artist_id_norm(normalize_artist_name(name or ""))
+
+
+def playlist_id(pid: int) -> str:
+    return f"pl-{pid}"
+
+
+def parse_playlist_id(pid: str) -> Optional[int]:
+    if pid.startswith("pl-") and pid[3:].isdigit():
+        return int(pid[3:])
+    return int(pid) if pid.isdigit() else None  # some clients strip the prefix
+
+
+def dir_id(rel: str) -> str:
+    return "dir-" + _h("dir\x1f" + rel)
 
 
 def track_album_id(track: dict) -> Optional[str]:

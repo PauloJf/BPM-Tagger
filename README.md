@@ -346,9 +346,20 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic / OpenSubsonic API at `/rest` (needs `ENABLE_UI=true`). Off means the routes don't exist at all. Also a toggle in **Settings → Subsonic API**, which takes effect on restart |
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept clients that send the password itself (`p=`) from any address. Off: plain passwords are only accepted over https or from a private network; token auth and API keys always work |
 
-**Client setup:** server address = your BPM Tagger URL (the same as the web UI), username = your admin username (or `admin` if you log in with a password only). Then either paste an **API key** (clients with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both in **Settings → Subsonic API**; each is shown once, can be regenerated, and is separate from your web password.
+**Client setup:** server address = your BPM Tagger URL (the same as the web UI), username = the account's username: your admin username (or `admin` if you log in with a password only), or a player user's name. Then either paste an **API key** (apps with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both per account in **Settings → Subsonic API**; each is shown once, can be regenerated or revoked, and is separate from web passwords.
 
-What Phase 1 covers: artists, albums (`getAlbumList2` in every sort order except by genre), songs, search (including the empty-query full sync some clients use), random songs, streaming and download with range requests, cover art (embedded, else `cover.jpg`/`folder.jpg` beside the files), song stars (the same stars Run mode prefers), and scrobbles (counted as local plays, and forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on). Not yet: playlists, folder browsing for older clients, lyrics, transcoding (files stream as-is), and player-user accounts; the admin account is the only Subsonic user for now. The plan is in `docs/plans/subsonic-api.md`.
+**Accounts.** The admin sees the whole library and can create and edit Local playlists. A **player user** has no Subsonic access until you generate credentials for it, and then sees only the tracks of the playlists it's associated with (the same rule as Run mode). It can star and scrobble those tracks, but not edit playlists. Disabling or deleting the player user cuts its Subsonic access off on the next request.
+
+**What's covered:**
+- Browsing by tags: artists, albums (every `getAlbumList2` sort order except by genre), songs, search (including the empty-query full sync some apps use), random songs.
+- Browsing by folder (`getIndexes` / `getMusicDirectory`) for older apps like DSub.
+- Playlists: all playlists are listed; Local ones can be created, edited and deleted, while Spotify and Navidrome mirrors are read-only.
+- Lyrics: synced or plain, from the embedded tag or a `.lrc` sidecar (OpenSubsonic `songLyrics` + legacy `getLyrics`).
+- "Similar songs": the same artist first, then tracks at a nearby tempo (±5 %, octave-folded like Run mode). Top songs by play count.
+- Streaming and download with range requests, and cover art (embedded, else `cover.jpg`/`folder.jpg` beside the files).
+- Song stars (the same stars Run mode prefers) and scrobbles (counted as local plays, and forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on).
+
+Not yet: transcoding (files stream as-is), genres, and album/artist stars. The plan is in `docs/plans/subsonic-api.md`.
 
 ### Music Grabber
 

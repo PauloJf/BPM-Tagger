@@ -14,8 +14,11 @@ Plaintext ``p=`` (incl. ``enc:``) is only accepted over https, from a private
 network, or when ``subsonic_allow_plain_password`` is on.
 
 Failures feed the same per-IP / per-account / global lockout as ``/api/login``.
-Phase 1 serves the admin account only: player users are always playlist-scoped,
-and scoped browsing is Phase 2.
+
+Accounts: the admin (whole library) and player users (Phase 2). A player sees
+only the tracks of the playlists it is associated with — the same rule as Run
+mode — and can't create or edit playlists. Disabling or deleting a player
+locks its Subsonic access out on the very next request.
 """
 
 import hashlib
@@ -23,6 +26,8 @@ import hmac
 import ipaddress
 import threading
 import time
+from dataclasses import dataclass
+from typing import Optional
 
 from flask import request
 
@@ -37,6 +42,21 @@ _last_touch: dict[str, float] = {}
 _TOUCH_EVERY = 60.0  # seconds — last_used_at, without a DB write per request
 
 
+@dataclass(frozen=True)
+class Principal:
+    owner: str                      # 'admin' | 'player:<id>'
+    username: str
+    scope: Optional[list] = None    # None = whole library; else allowed playlist ids
+
+    @property
+    def is_admin(self) -> bool:
+        return self.owner == ADMIN_OWNER
+
+
+def player_owner(player_id: int) -> str:
+    return f"player:{player_id}"
+
+
 def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
@@ -46,9 +66,22 @@ def subsonic_username() -> str:
     return admin_username() or "admin"
 
 
-def _owner_for_username(username: str):
+def _owner_for_username(db, username: str):
     if username.strip().lower() == subsonic_username().lower():
         return ADMIN_OWNER
+    row = db.get_player_by_username(username.strip().lower())
+    return player_owner(row["id"]) if row else None
+
+
+def principal_for(db, owner: str) -> Optional[Principal]:
+    """The live account behind ``owner``, or None if it no longer may sign in."""
+    if owner == ADMIN_OWNER:
+        return Principal(ADMIN_OWNER, subsonic_username(), None)
+    if owner.startswith("player:") and owner[7:].isdigit():
+        row = db.get_player(int(owner[7:]))
+        if row and row.get("enabled"):
+            return Principal(owner, row["username"],
+                             sorted(db.playlist_ids_for_player(row["id"])))
     return None
 
 
@@ -85,8 +118,8 @@ def _touch(db, owner: str) -> None:
         pass
 
 
-def authenticate(st) -> str:
-    """Resolve the request to an account owner, or raise SubsonicError."""
+def authenticate(st) -> Principal:
+    """Resolve the request to an account, or raise SubsonicError."""
     v = request.values
     user = (v.get("u") or "").strip()
     token, salt, plain, key = v.get("t") or "", v.get("s") or "", v.get("p") or "", v.get("apiKey") or ""
@@ -113,7 +146,7 @@ def authenticate(st) -> str:
         if key:
             owner = st.db.find_subsonic_owner_by_key_hash(hash_api_key(key))
         else:
-            candidate = _owner_for_username(user)
+            candidate = _owner_for_username(st.db, user)
             cred = st.db.get_subsonic_credentials(candidate) if candidate else None
             stored = (cred or {}).get("password") or ""
             if stored:
@@ -131,8 +164,9 @@ def authenticate(st) -> str:
             raise SubsonicError(E_WRONG_CREDENTIALS, "Wrong username or password.")
         st.login_succeeded(ip, account)
 
-    if owner != ADMIN_OWNER:
-        # Only reachable with a hand-inserted row: players get no credentials in Phase 1.
+    who = principal_for(st.db, owner)
+    if who is None:
+        # Credentials outlived their account (player disabled or deleted).
         raise SubsonicError(E_NOT_AUTHORIZED, "This account has no Subsonic access.")
     _touch(st.db, owner)
-    return owner
+    return who
