@@ -133,3 +133,40 @@ def test_reports_clearly_when_ffmpeg_is_absent(tmp_path, monkeypatch):
     monkeypatch.setattr("bpm_tagger.bpm.audio.shutil.which", lambda name: None)
     with pytest.raises(AudioLoadError):
         load_audio(str(junk))
+
+
+# ── empty windows (from the v2.17.3 scan logs) ───────────────────────────────
+#
+# "n_fft=2048 is too large for input signal of length=0" appeared on an .m4a
+# whose container declares more audio than actually decodes: a multi-segment
+# offset landed past the real end, ffmpeg returned zero bytes, and the empty
+# array went to librosa anyway.
+
+def test_empty_windowed_read_is_not_retried_through_ffmpeg(wav, monkeypatch):
+    """An empty *window* is a valid answer, so it needs no second opinion."""
+    monkeypatch.setattr("bpm_tagger.bpm.audio.librosa.load",
+                        lambda *a, **kw: (np.array([], "float32"), SR))
+    called = []
+    monkeypatch.setattr("bpm_tagger.bpm.audio._ffmpeg_load",
+                        lambda *a, **kw: called.append(1) or (np.array([], "float32"), SR))
+    y, _ = load_audio(wav, sr=SR, mono=True, offset=99.0, duration=5.0)
+    assert y.size == 0
+    assert called == [], "ffmpeg should not be re-run for a legitimately empty window"
+
+
+def test_whole_file_reading_empty_still_tries_ffmpeg(wav, monkeypatch):
+    """With no window requested, nothing coming back is worth a second opinion."""
+    monkeypatch.setattr("bpm_tagger.bpm.audio.librosa.load",
+                        lambda *a, **kw: (np.array([], "float32"), SR))
+    called = []
+    monkeypatch.setattr("bpm_tagger.bpm.audio._ffmpeg_load",
+                        lambda *a, **kw: called.append(1) or (np.ones(10, "float32"), SR))
+    y, _ = load_audio(wav)
+    assert called == [1] and y.size == 10
+
+
+@needs_ffmpeg
+def test_offset_past_the_end_yields_empty_without_raising(aac):
+    """The real shape of the bug: ffmpeg seeks past the end and returns nothing."""
+    y, _ = load_audio(aac, sr=SR, mono=True, offset=600.0, duration=45.0)
+    assert y.size == 0
