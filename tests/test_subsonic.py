@@ -298,7 +298,8 @@ def test_star_unstar_and_starred2(env):
     assert _json(_get(env, "star", id=sid))["status"] == "ok"
     songs = _json(_get(env, "getStarred2"))["starred2"]["song"]
     assert [s["id"] for s in songs] == [sid] and songs[0]["starred"]
-    assert len(_json(_get(env, "getAlbumList2", type="starred"))["albumList2"]["album"]) == 1
+    # A starred song doesn't star its album — album stars are explicit.
+    assert _json(_get(env, "getAlbumList2", type="starred"))["albumList2"]["album"] == []
     _get(env, "unstar", id=sid)
     assert _json(_get(env, "getStarred2"))["starred2"]["song"] == []
 

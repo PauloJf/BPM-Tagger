@@ -353,18 +353,18 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 **Accounts.** The admin sees the whole library and can create and edit Local playlists. A **player user** has no Subsonic access until you generate credentials for it, and then sees only the tracks of the playlists it's associated with (the same rule as Run mode). It can star and scrobble those tracks, but not edit playlists. Disabling or deleting the player user cuts its Subsonic access off on the next request.
 
 **What's covered:**
-- Browsing by tags: artists, albums (every `getAlbumList2` sort order except by genre), songs, search (including the empty-query full sync some apps use), random songs.
+- Browsing by tags: artists, albums (every `getAlbumList2` sort order, including by genre), songs, genres (a tag like "House; Techno" counts as both), search (including the empty-query full sync some apps use), random songs (optionally by genre).
 - Browsing by folder (`getIndexes` / `getMusicDirectory`) for older apps like DSub.
 - Playlists: all playlists are listed; Local ones can be created, edited and deleted, while Spotify and Navidrome mirrors are read-only.
 - Lyrics: synced or plain, from the embedded tag or a `.lrc` sidecar (OpenSubsonic `songLyrics` + legacy `getLyrics`).
 - "Similar songs": the same artist first, then tracks at a nearby tempo (±5 %, octave-folded like Run mode). Top songs by play count.
 - Streaming and download with range requests, and cover art (embedded, else `cover.jpg`/`folder.jpg` beside the files).
-- Song stars (the same stars Run mode prefers) and scrobbles (counted as local plays, and forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on).
+- Stars on songs, albums and artists. Song stars are the library's own stars (the ones Run mode prefers); album and artist stars are stored separately and are library-wide too. Scrobbles count as local plays, and are forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on.
 - **Run presets as playlists**, so a Subsonic app can play a cadence-matched list (see `SUBSONIC_RUN_PLAYLISTS`). A player user's Run playlists draw only from its own playlists.
 - **Transcoding** when turned on (`SUBSONIC_TRANSCODE`): the app's `format` / `maxBitRate` decide; `timeOffset` seeks into a transcoded stream; downloads are always the original file.
 - `startScan` / `getScanStatus` drive BPM Tagger's own scan (admin only), the same pass as the web UI's Scan button.
 
-Not yet: genres, and album/artist stars. The plan is in `docs/plans/subsonic-api.md`.
+Album lists come from a precomputed album index that's kept up to date while the API is on (during a scan it refreshes at most every 15 seconds). With the API off, nothing maintains it and scans pay nothing for it. The plan is in `docs/plans/subsonic-api.md`.
 
 ### Music Grabber
 

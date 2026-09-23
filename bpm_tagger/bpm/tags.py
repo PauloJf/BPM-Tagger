@@ -155,7 +155,7 @@ def read_tags(file_path: str) -> dict:
     """Best-effort metadata read for the grabber tag index. Missing fields → None."""
     out = {"title": None, "artist": None, "album": None, "album_artist": None,
            "track_no": None, "disc_no": None, "year": None, "isrc": None,
-           "duration_ms": None}
+           "duration_ms": None, "genre": None}
     try:
         easy = mutagen.File(file_path, easy=True)
         if easy is None:
@@ -171,6 +171,9 @@ def read_tags(file_path: str) -> dict:
             digits = "".join(c for c in str(date)[:4] if c.isdigit())
             out["year"] = int(digits) if len(digits) == 4 else None
         out["isrc"] = _read_isrc(file_path, easy)
+        # Every genre value, joined; split_genres() takes it apart again.
+        genres = [str(g).strip() for g in (easy.get("genre") or []) if str(g).strip()]
+        out["genre"] = "; ".join(genres) or None
         if getattr(easy, "info", None) and getattr(easy.info, "length", None):
             out["duration_ms"] = int(easy.info.length * 1000)
     except Exception as exc:

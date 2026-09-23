@@ -89,7 +89,7 @@ class _Artists:
         self._cache: dict = {}
 
     def all(self, db, scope) -> list[dict]:
-        key = None if scope is None else tuple(scope)
+        key = (db.db_path, None if scope is None else tuple(scope))
         with self._lock:
             hit = self._cache.get(key)
             if hit and time.monotonic() - hit[0] < 10.0:
@@ -116,6 +116,10 @@ def _artist_or_404(st, who, aid: str) -> dict:
     if not row:
         raise SubsonicError(E_NOT_FOUND, "Artist not found.")
     return row
+
+
+def _stars(st, kind: str) -> dict:
+    return st.db.subsonic_star_map(kind)
 
 
 def _album_keys(tracks) -> list:
@@ -189,8 +193,9 @@ def start_scan(st, who):
 
 def _artist_index(st, who) -> list:
     buckets: dict[str, list[dict]] = {}
+    stars = _stars(st, "artist")
     for row in sorted(artists_index.all(st.db, who.scope), key=lambda r: views.sort_name(r["name"])):
-        buckets.setdefault(views.index_letter(row["name"]), []).append(views.artist(row))
+        buckets.setdefault(views.index_letter(row["name"]), []).append(views.artist(row, stars))
     return [{"name": k, "artist": buckets[k]}
             for k in sorted(buckets, key=lambda k: (k == "#", k))]
 
@@ -203,14 +208,16 @@ def _artist_albums(st, who, row) -> list:
     keys = _album_keys(st.db.subsonic_artist_tracks(row["norm_name"], who.scope))
     if not keys:
         return []
-    return [views.album(a) for a in st.db.subsonic_albums(
+    stars = _stars(st, "album")
+    return [views.album(a, stars) for a in st.db.subsonic_albums(
         "byYear", limit=10_000, keys=keys, scope=who.scope)]
 
 
 def get_artist(st, who):
     row = _artist_or_404(st, who, _req("id"))
     albums = _artist_albums(st, who, row)
-    return ok(artist={**views.artist(row), "albumCount": len(albums), "album": albums})
+    return ok(artist={**views.artist(row, _stars(st, "artist")), "albumCount": len(albums),
+                      "album": albums})
 
 
 def _album(st, who, aid: str):
@@ -219,7 +226,7 @@ def _album(st, who, aid: str):
                                  scope=who.scope) if keys else []
     if not rows:
         raise SubsonicError(E_NOT_FOUND, "Album not found.")
-    base = views.album(rows[0])
+    base = views.album(rows[0], _stars(st, "album"))
     if len(rows) > 1:  # case/accent variants merged under one id
         base["songCount"] = sum(r["song_count"] for r in rows)
         base["duration"] = sum(int((r["duration_ms"] or 0) / 1000) for r in rows)
@@ -237,13 +244,23 @@ def get_song(st, who):
 
 def _album_list(st, who):
     kind = _req("type")
-    if kind == "byGenre":
-        return []  # genres aren't indexed (yet)
-    rows = st.db.subsonic_albums(kind, limit=_int("size", 10, 1, 500),
-                                 offset=_int("offset", 0, 0, 1_000_000),
-                                 from_year=_opt_int("fromYear"), to_year=_opt_int("toYear"),
-                                 scope=who.scope)
-    return [views.album(r) for r in rows]
+    size, offset = _int("size", 10, 1, 500), _int("offset", 0, 0, 1_000_000)
+    stars = _stars(st, "album")
+    if kind in ("starred", "byGenre"):
+        # Both are a key set first, then the ordinary (name-ordered) album query.
+        if kind == "starred":
+            keys = [k for aid in stars for k in albums_index.keys_for(st.db, aid)]
+        else:
+            keys = st.db.subsonic_genre_album_keys(_req("genre"), who.scope)
+        if not keys:
+            return []
+        rows = st.db.subsonic_albums("alphabeticalByName", limit=size, offset=offset,
+                                     keys=keys, scope=who.scope)
+    else:
+        rows = st.db.subsonic_albums(kind, limit=size, offset=offset,
+                                     from_year=_opt_int("fromYear"), to_year=_opt_int("toYear"),
+                                     scope=who.scope)
+    return [views.album(r, stars) for r in rows]
 
 
 def get_album_list2(st, who):
@@ -255,16 +272,21 @@ def get_album_list(st, who):
 
 
 def get_genres(st, who):
-    return ok(genres={"genre": []})
+    return ok(genres={"genre": [
+        {"value": g["name"], "songCount": g["song_count"], "albumCount": g["album_count"]}
+        for g in st.db.subsonic_genres(who.scope)]})
 
 
 def get_songs_by_genre(st, who):
-    return ok(songsByGenre={"song": []})
+    rows = st.db.subsonic_genre_songs(_req("genre"), _int("count", 10, 1, 500),
+                                      _int("offset", 0, 0, 10_000_000), who.scope)
+    return ok(songsByGenre={"song": _songs(st, rows)})
 
 
 def get_random_songs(st, who):
     rows = st.db.subsonic_random_songs(_int("size", 10, 1, 500), _opt_int("fromYear"),
-                                       _opt_int("toYear"), who.scope)
+                                       _opt_int("toYear"), who.scope,
+                                       genre=request.values.get("genre") or None)
     return ok(randomSongs={"song": _songs(st, rows)})
 
 
@@ -279,9 +301,11 @@ def _search(st, who):
     ql = q.lower()
     matches = [a for a in artists_index.all(st.db, who.scope) if not ql or ql in a["name"].lower()]
     a_off = _int("artistOffset", 0, 0, 10_000_000)
+    album_stars, artist_stars = _stars(st, "album"), _stars(st, "artist")
     return {
-        "artist": [views.artist(a) for a in matches[a_off:a_off + _int("artistCount", 20, 0, 1000)]],
-        "album": [views.album(a) for a in albums],
+        "artist": [views.artist(a, artist_stars)
+                   for a in matches[a_off:a_off + _int("artistCount", 20, 0, 1000)]],
+        "album": [views.album(a, album_stars) for a in albums],
         "song": _songs(st, songs),
     }
 
@@ -743,11 +767,18 @@ def _song_ids() -> list[str]:
 
 
 def _set_star(st, who, starred: bool):
-    # Album/artist stars (albumId / artistId) have nowhere to live yet — accepted
-    # and ignored, so clients don't surface an error. Song stars are real stars:
-    # the same flag the web UI, Run mode and Navidrome star sync use.
+    """Song stars are the library's own star (the flag the web UI, Run mode and
+    Navidrome star sync use). Album and artist stars live in subsonic_stars,
+    keyed by id. All are library-wide, like song stars; a player can only star
+    what its scope shows it."""
     for sid in _song_ids():
         st.db.set_starred(_song_or_404(st, who, sid)["file_path"], starred)
+    for aid in [i for i in request.values.getlist("albumId") if i]:
+        _album(st, who, aid)  # 70 unless visible to this account
+        st.db.set_subsonic_star("album", aid, starred)
+    for aid in [i for i in request.values.getlist("artistId") if i]:
+        _artist_or_404(st, who, aid)
+        st.db.set_subsonic_star("artist", aid, starred)
     return ok()
 
 
@@ -760,7 +791,19 @@ def unstar(st, who):
 
 
 def _starred_body(st, who) -> dict:
-    return {"artist": [], "album": [], "song": _songs(st, st.db.subsonic_starred_songs(who.scope))}
+    album_stars, artist_stars = _stars(st, "album"), _stars(st, "artist")
+    albums = []
+    for aid in album_stars:
+        keys = albums_index.keys_for(st.db, aid)
+        rows = st.db.subsonic_albums("alphabeticalByName", limit=len(keys), keys=keys,
+                                     scope=who.scope) if keys else []
+        if rows:
+            albums.append(views.album(rows[0], album_stars))
+    artists = [views.artist(row, artist_stars)
+               for aid in artist_stars
+               if (row := artists_index.by_id(st.db, who.scope, aid)) is not None]
+    return {"artist": artists, "album": albums,
+            "song": _songs(st, st.db.subsonic_starred_songs(who.scope))}
 
 
 def get_starred2(st, who):

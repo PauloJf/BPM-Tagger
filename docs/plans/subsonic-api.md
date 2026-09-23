@@ -2,8 +2,37 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Phases 1–3 implemented** (Unreleased, 2026-09-23). Open: genres, album/artist
-stars, an albums table if large libraries need it.
+Status: **Phases 1–3 implemented**, plus genres, album/artist stars and the album
+index (Unreleased, 2026-09-23). Nothing open from this plan.
+
+Follow-up notes (genres, stars, album index):
+
+- **Genres** are part of the core tag index. `read_tags` returns every genre
+  value "; "-joined in `tracks.genre`. `text.split_genres` splits it on
+  `; / , | NUL`; "&" is kept, so "Drum & Bass" is one genre. The parts go into
+  `track_genres`, the genre analogue of `track_artists`. Adding the column
+  clears every `tags_indexed_hash` once, so an upgraded library re-reads its
+  tags on the next `index_tags()` pass. That's a metadata read only, with no
+  re-analysis. Subsonic: `getGenres`, `getSongsByGenre`, `byGenre` album lists,
+  a `genre` filter on random songs, and `genre` plus OpenSubsonic `genres[]` on
+  songs (first genre on albums).
+- **Album and artist stars** live in `subsonic_stars`, keyed by Subsonic id and
+  library-wide like song stars. A player can star only what its scope shows.
+  Album stars are explicit: a starred song no longer makes its album count as
+  starred, so `type=starred` lists and the album's `starred` field agree with
+  what the user starred.
+- **Album index:** `subsonic_album_index` holds the per-album aggregate (and the
+  album id, computed in Python). Three triggers on `tracks` (insert, delete, and
+  update of the album-relevant columns) set a dirty flag in `subsonic_meta`. A
+  read rebuilds the index when it's dirty, at most every 15 s
+  (`ALBUM_INDEX_MIN_INTERVAL`), so a running scan doesn't trigger a rebuild per
+  request. The triggers are created when the API is registered and dropped when
+  it isn't, so a core-only or API-off install's scans never write the flag.
+  Scoped (player) queries still aggregate live over their own tracks. Measured
+  at 50,000 tracks and 5,000 albums: a rebuild takes ~340 ms, an indexed album
+  list ~21 ms, and the live aggregate ~127 ms.
+- The in-memory id, artist and folder caches are now keyed per database, not
+  process-wide.
 
 Phase 3 implementation notes:
 

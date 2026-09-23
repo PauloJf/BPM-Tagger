@@ -223,9 +223,12 @@ def create_app(config: dict) -> Flask:
         from .subsonic import subsonic_bp
         app.register_blueprint(subsonic_bp)
         csrf_exempt = _CSRF_EXEMPT_ENDPOINTS + SUBSONIC_ENDPOINTS
+        st.db.ensure_album_index()
         log.info("Subsonic API enabled at /rest")
     else:
         csrf_exempt = _CSRF_EXEMPT_ENDPOINTS
+        # No API, no album-index upkeep: scans don't pay for the triggers.
+        st.db.drop_album_index_triggers()
 
     # ── SPA serving ─────────────────────────────────────────────────────────
     @app.route("/assets/<path:filename>")

@@ -18,6 +18,7 @@ import threading
 import time
 from typing import Optional
 
+from ...db.subsonic import subsonic_album_id
 from ...text import normalize_artist_name
 
 _MAP_TTL = 10.0  # seconds; an album tagged a moment ago shows up within this
@@ -38,8 +39,7 @@ def parse_song_id(sid: str) -> Optional[int]:
 
 
 def album_id(album: str, album_artist: str) -> str:
-    return "al-" + _h(normalize_artist_name(album_artist or "") + "\x1f" +
-                      normalize_artist_name(album or ""))
+    return subsonic_album_id(album, album_artist)
 
 
 def artist_id_norm(norm_name: str) -> str:
@@ -76,17 +76,15 @@ class AlbumIndex:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._built = 0.0
-        self._map: dict[str, list[tuple[str, str]]] = {}
+        self._by_db: dict = {}   # db_path → (built_at, {album_id: [(album, album_artist)]})
 
     def keys_for(self, db, aid: str) -> list[tuple[str, str]]:
         with self._lock:
-            age = time.monotonic() - self._built
+            built, amap = self._by_db.get(db.db_path, (0.0, {}))
+            age = time.monotonic() - built
             # A miss may be a brand-new album — rebuild, but at most once a second
             # so a stream of bogus ids can't turn every request into a table scan.
-            if age > _MAP_TTL or (aid not in self._map and age > 1.0):
-                m: dict[str, list[tuple[str, str]]] = {}
-                for album, aa in db.subsonic_album_keys():
-                    m.setdefault(album_id(album, aa), []).append((album, aa))
-                self._map, self._built = m, time.monotonic()
-            return list(self._map.get(aid, []))
+            if age > _MAP_TTL or (aid not in amap and age > 1.0):
+                amap = db.subsonic_album_id_map()
+                self._by_db[db.db_path] = (time.monotonic(), amap)
+            return list(amap.get(aid, []))

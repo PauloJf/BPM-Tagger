@@ -50,7 +50,7 @@ class DirIndex:
         self._cache: dict = {}   # scope key → (built_at, {dir_id: Folder})
 
     def folders(self, db, music_dir: str, scope) -> dict:
-        key = None if scope is None else tuple(sorted(scope))
+        key = (db.db_path, music_dir, None if scope is None else tuple(sorted(scope)))
         with self._lock:
             hit = self._cache.get(key)
             if hit and time.monotonic() - hit[0] < _TTL:

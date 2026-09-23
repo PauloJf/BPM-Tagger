@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from ...text import split_artist_credits
+from ...text import split_artist_credits, split_genres
 from . import ids
 
 CONTENT_TYPES = {
@@ -85,14 +85,18 @@ def song(track: dict, music_dir: str) -> dict:
         "type": "music",
         "mediaType": "song",
         "isVideo": False,
+        "genre": (split_genres(track.get("genre")) or [None])[0],
+        # OpenSubsonic: every genre, not just the first.
+        "genres": [{"name": g} for g in split_genres(track.get("genre"))] or None,
         # OpenSubsonic: the whole point of this server.
         "bpm": int(round(track["bpm"])) if track.get("bpm") else None,
         "isrc": [track["isrc"]] if track.get("isrc") else None,
     }
 
 
-def album(row: dict) -> dict:
-    """``row`` is an aggregate from ``db.subsonic_albums``."""
+def album(row: dict, stars: dict | None = None) -> dict:
+    """``row`` is an aggregate from ``db.subsonic_albums``; ``stars`` is the
+    ``{album_id: starred_at}`` map (explicit album stars)."""
     aid = ids.album_id(row["name"], row.get("album_artist") or "")
     artist = row.get("artist") or ""
     return {
@@ -109,17 +113,18 @@ def album(row: dict) -> dict:
         "played": iso(row.get("last_played")),
         "created": iso(row.get("created")) or "1970-01-01T00:00:00.000Z",
         "year": row.get("year"),
-        "starred": (iso(row.get("created")) or "1970-01-01T00:00:00.000Z")
-        if row.get("starred") else None,
+        "genre": (split_genres(row.get("genre")) or [None])[0],
+        "starred": iso((stars or {}).get(aid)),
         "isDir": True,
         "mediaType": "album",
     }
 
 
-def artist(row: dict) -> dict:
+def artist(row: dict, stars: dict | None = None) -> dict:
     """``row`` is an entry from ``db.subsonic_artists`` (or ``list_artists``)."""
     aid = ids.artist_id_norm(row["norm_name"]) if row.get("norm_name") else ids.artist_id(row["name"])
-    return {"id": aid, "name": row["name"], "coverArt": aid, "albumCount": row.get("albums") or 0}
+    return {"id": aid, "name": row["name"], "coverArt": aid, "albumCount": row.get("albums") or 0,
+            "starred": iso((stars or {}).get(aid))}
 
 
 def playlist(row: dict, owner_name: str, writable: bool) -> dict:

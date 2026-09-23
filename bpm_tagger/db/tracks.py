@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ..bpm.tags import get_file_hash
-from ..text import normalize_artist_name, split_artist_credits
+from ..text import normalize_artist_name, normalize_genre, split_artist_credits, split_genres
 from .constants import TRACK_SORTS
 
 def _dupe_signature(paths) -> str:
@@ -947,6 +947,19 @@ class TracksMixin:
                         "INSERT OR IGNORE INTO track_artists (track_id, name, norm_name) "
                         "VALUES (?, ?, ?)", (track_id, name, key))
 
+    def _sync_track_genres(self, conn, file_path: str, genre: Optional[str]) -> None:
+        """Rebuild this track's track_genres rows from its genre tag."""
+        row = conn.execute(
+            "SELECT id FROM tracks WHERE file_path = ?", (file_path,)).fetchone()
+        if not row:
+            return
+        conn.execute("DELETE FROM track_genres WHERE track_id = ?", (row["id"],))
+        for name in split_genres(genre):
+            key = normalize_genre(name)
+            if key:
+                conn.execute("INSERT OR IGNORE INTO track_genres (track_id, name, norm_name) "
+                             "VALUES (?, ?, ?)", (row["id"], name, key))
+
     def update_track_metadata(self, old_path: str, new_path: str, tags: dict,
                               file_hash: str) -> None:
         """Rewrite a track's descriptive tags and (if it moved) its file_path,
@@ -1068,13 +1081,15 @@ class TracksMixin:
                 UPDATE tracks SET
                     title=?, artist=?, album=?, album_artist=?, track_no=?, disc_no=?,
                     year=?, isrc=?, duration_ms=?, norm_title=?, norm_artist=?,
-                    tags_indexed_hash=?
+                    genre=?, tags_indexed_hash=?
                 WHERE file_path=?
             """, (tags.get("title"), tags.get("artist"), tags.get("album"),
                   tags.get("album_artist"), tags.get("track_no"), tags.get("disc_no"),
                   tags.get("year"), tags.get("isrc"), tags.get("duration_ms"),
-                  tags.get("norm_title"), tags.get("norm_artist"), file_hash, file_path))
+                  tags.get("norm_title"), tags.get("norm_artist"), tags.get("genre"),
+                  file_hash, file_path))
             self._sync_track_artists(conn, file_path, tags.get("artist"), tags.get("album_artist"))
+            self._sync_track_genres(conn, file_path, tags.get("genre"))
             conn.commit()
 
     # ── Library matching support ──────────────────────────────────────────────
