@@ -1,7 +1,11 @@
 """Characterization tests for _reconcile — combining detector BPM values."""
 
 
+import pytest
+
 from bpm_tagger import _reconcile
+
+pytestmark = pytest.mark.core  # runs in the core-only CI job
 
 
 def cfg(**over):

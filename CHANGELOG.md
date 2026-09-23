@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **The core runs without the optional layers.** BPM detection, tag writing and the database no longer depend on the web UI, grabber, Navidrome or ntfy code, at runtime or at import time. `requirements-core.txt` lists what the core needs (librosa, numpy, mutagen, soundfile, watchdog, pyloudnorm); `requirements.txt` still installs everything, so the Docker image is unchanged. A new CI job installs only the core list and runs the core tests, plus two guards: one that scans a real file with every optional package blocked, and one that fails if a core module imports an optional layer at module level. See `docs/plans/core-decoupling.md`.
+- **Headless scans skip waveforms.** Waveform peaks feed only the web UI, but every scan computed them, which is a second full decode per track. The new `COMPUTE_WAVEFORMS` setting (`auto` / `true` / `false`, also in **Settings → Scan**) defaults to `auto`, which computes them only when the web UI is on, so Docker setups with the UI behave exactly as before. Tracks without stored peaks are still computed on demand when played, and a **Fill missing waveforms** back-fill appears in Settings when any are missing.
+
 ## v2.17.5 — 2026-09-23
 
 - **A re-analysis now reaches Navidrome.** Navidrome detects changed files by modification time, and `PRESERVE_MTIME` deliberately restores the mtime after every tag write — so the quick rescan the app triggered saw nothing changed and skipped every file. After an incremental pass that's correct (only genuinely new or changed files were touched), but after a forced re-analysis it meant rewriting every tag in the library and Navidrome reading none of them. A forced scan (`scan_all` / `watch_all`), `scan_review` and `retry_errors` now ask for a **full** Navidrome scan; incremental scans, the watcher and the grabber still ask for a quick one, since a full scan of a large library is expensive and pointless when the mtimes genuinely changed.

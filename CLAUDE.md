@@ -30,6 +30,10 @@ Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify play
 
 ---
 
+## Core vs optional layers
+
+The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`, `db/`, `config.py`, `main.py`). Everything else — `web/`, `grabber/`, `integrations/`, `notify/`, `install_ping.py` — is an optional layer: off by default or inert until configured, and **never imported at module level by core code** (lazy imports behind a config check only). `tests/test_core_isolation.py` enforces this, and the `core-only` CI job runs every `pytest.mark.core` test with only `requirements-core.txt` installed. New core tests: add `pytestmark = pytest.mark.core`. New features: add an opt-in toggle. See `docs/plans/core-decoupling.md`.
+
 ## Repository Layout
 
 | File / Dir | Purpose |
@@ -44,13 +48,16 @@ Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify play
 | `bpm_tagger/integrations/` | `navidrome.py` (Subsonic rescan), `isrc.py`, `musicbrainz.py` |
 | `bpm_tagger/notify/` | `ntfy.py` — `NotificationManager` |
 | `bpm_tagger/web/` | Flask app factory (`app.py`), `auth.py` (CSRF), `state.py`, and JSON API blueprints under `api/` |
+| `bpm_tagger/text.py` | Stdlib-only title/artist normalizers (`normalize_artist`, `split_artist_credits`, …) — used by the core; `grabber/matching.py` re-exports them and adds the rapidfuzz scoring |
+| `bpm_tagger/hooks.py` | Neutral hooks the core fires for optional layers (`library_changed` → Navidrome rescan when configured) |
 | `bpm_tagger/trash.py` | Soft-delete / recoverable trash for duplicate resolution |
 | `frontend/` | React SPA (Vite + TypeScript + Tailwind); built to `frontend/dist`, served by Flask |
 | `web_ui.py` | Back-compat shim → re-exports `bpm_tagger.web.app.start` / `create_app` |
 | `tests/` | pytest suite (`conftest.py` + `test_*.py`); `pytest.ini` sets `pythonpath` |
 | `ruff.toml` | Ruff lint config |
 | `run.ps1` | Local Windows dev launcher |
-| `requirements.txt` | Python dependencies |
+| `requirements-core.txt` | Core-only deps (detection + tagging); CI's `core-only` job installs just this |
+| `requirements.txt` | Core + every optional layer (`-r requirements-core.txt`); what the Docker image installs |
 | `Dockerfile` | Multi-stage build; `WITH_DEEPRHYTHM=true` for full image; builds the frontend bundle |
 | `docker-compose.yml` | Primary deployment path |
 | `.github/workflows/ci.yml` | CI on push/PR — backend (ruff + pytest) and frontend (tsc + build) |

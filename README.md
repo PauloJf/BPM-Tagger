@@ -166,6 +166,17 @@ Off by default. The acquisition pipeline: watch your Spotify playlists (synced a
 
 > **⚠️ LAN / local access only by default.** The web UI has no TLS. If you want to reach it from outside your home network, put a reverse proxy (nginx, Caddy) with HTTPS in front of port 5000 — do not expose it to the internet over plain HTTP.
 
+### Core only (no UI, no Docker)
+
+The core — BPM detection, tag writing and the SQLite record — runs on its own. Everything else (web UI, players, grabber, Navidrome, ntfy) is an optional layer, and the core installs and runs without any of their packages:
+
+```bash
+pip install -r requirements-core.txt
+MODE=scan_unscanned MUSIC_DIR=/path/to/music DB_PATH=./bpm.db python -m bpm_tagger
+```
+
+`requirements.txt` is the core plus every optional layer, which is what the Docker image installs. CI runs the core test suite against `requirements-core.txt` alone, so the core never grows a dependency on an optional layer.
+
 ---
 
 ## Hardware / Memory
@@ -238,6 +249,7 @@ All settings are environment variables. Every variable has a default and is docu
 | `DB_PATH` | `/data/bpm_tagger.db` | SQLite database path inside the container |
 | `WRITE_TAGS` | `true` | Write the detected BPM back to each audio file's metadata tag |
 | `PRESERVE_MTIME` | `true` | Restore each file's modified time after any write — BPM tags, lyrics, metadata edits and cover art — so Navidrome, backups and sort-by-date aren't disturbed. Setting this in docker-compose locks the toggle in the web UI |
+| `COMPUTE_WAVEFORMS` | `auto` | Store waveform peaks during the scan, for the player's scrubber and the track pages. That is a second decode per track, so `auto` does it only when the web UI is on (`ENABLE_UI=true`). `true` always computes them (e.g. a headless scan you'll browse later), `false` never does. Tracks without stored peaks are computed on demand when played, and **Settings → Scan → Fill missing waveforms** back-fills them all |
 | `AUDIO_EXTENSIONS` | `.mp3,.flac,.ogg,.m4a,.aac,.wav,.opus,.wv` | Comma-separated list of file extensions to process |
 | `WORKERS` | `1` | Number of parallel worker threads for BPM analysis. Each worker loads its own deeprhythm model instance (~500 MB RAM each). Keep at `1` on NAS/low-memory devices; raise to `2`–`4` on a server with ample RAM. |
 | `REFRESH_HASHES` | `false` | Before the scan starts, recompute the stored `size:mtime` hash for every already-analyzed track. Set to `true` after upgrading from a version that saved the pre-tag hash (causing every tagged file to be re-analyzed on every restart). Safe to leave enabled permanently — it adds a few seconds on large libraries but never triggers re-analysis by itself. |

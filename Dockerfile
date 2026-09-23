@@ -36,7 +36,7 @@ RUN if [ "$WITH_DEEPRHYTHM" = "true" ]; then \
         && python -c "from deeprhythm import DeepRhythmPredictor; DeepRhythmPredictor(quiet=True)"; \
     fi
 
-COPY requirements.txt .
+COPY requirements.txt requirements-core.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install essentia (pre-release); non-fatal — code falls back gracefully if unavailable

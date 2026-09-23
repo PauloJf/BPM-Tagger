@@ -93,7 +93,7 @@ class SuggestionsMixin:
             if kind == "track":
                 conn.execute("DELETE FROM suggestions WHERE kind='track' AND dz_id=?", (key,))
             elif kind == "artist":
-                from ..grabber.matching import normalize_artist
+                from ..text import normalize_artist
                 rows = conn.execute(
                     "SELECT id, name FROM suggestions WHERE kind='artist'").fetchall()
                 ids = [(r["id"],) for r in rows if normalize_artist(r["name"]) == key]

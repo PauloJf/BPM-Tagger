@@ -18,6 +18,8 @@ import soundfile as sf
 
 from bpm_tagger.bpm.audio import AudioLoadError, load_audio
 
+pytestmark = pytest.mark.core  # runs in the core-only CI job
+
 HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 needs_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg/ffprobe not installed")
 

@@ -1,0 +1,13 @@
+# Core: BPM detection + tag writing + the SQLite record of it.
+# Enough for a headless scan (ENABLE_UI=false, MODE=scan_* / watch):
+#   pip install -r requirements-core.txt
+# Optional detectors are installed separately (see Dockerfile / README):
+# essentia (`pip install --pre essentia`) and deeprhythm (PyTorch, `:full` image).
+librosa>=0.10.0
+numpy>=1.24.0
+mutagen>=1.47.0
+soundfile>=0.12.1
+watchdog>=4.0.0
+# ITU-R BS.1770 loudness measurement (pure Python; numpy/scipy already come with librosa).
+# Imported lazily and skipped when absent — only the player's volume leveling uses it.
+pyloudnorm>=0.1.1

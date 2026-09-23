@@ -15,6 +15,25 @@ from pathlib import Path
 import pytest
 
 
+def _optional_layers_installed() -> bool:
+    try:
+        import flask  # noqa: F401
+        import rapidfuzz  # noqa: F401
+        import requests  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# Core-only environment (CI's `core-only` job installs just requirements-core.txt):
+# test modules for the optional layers can't even be imported there, and pytest
+# imports every module before `-m core` deselects anything. Skip collecting any
+# file that isn't marked core, so the marker alone decides what runs.
+if not _optional_layers_installed():
+    collect_ignore = [p.name for p in Path(__file__).parent.glob("test_*.py")
+                      if "pytest.mark.core" not in p.read_text(encoding="utf-8")]
+
+
 @pytest.fixture
 def base_config(tmp_path):
     """A minimal config dict sufficient to boot the web app in tests."""

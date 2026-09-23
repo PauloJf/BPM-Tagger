@@ -46,6 +46,10 @@ interface LyricsFillStatus {
   running: boolean; total: number; done: number; filled: number; not_found: number;
 }
 
+interface WaveformFillStatus {
+  running: boolean; total: number; done: number; filled: number; failed: number; remaining: number;
+}
+
 interface LoudnessFillStatus {
   running: boolean; total: number; done: number;
   measured: number; tagged: number; failed: number; remaining: number;
@@ -134,6 +138,21 @@ export default function Settings() {
     qc.invalidateQueries({ queryKey: ["loudness-fill"] });
   }
 
+  // Waveform back-fill (tracks scanned while COMPUTE_WAVEFORMS skipped them).
+  const waveformFillQ = useQuery({
+    queryKey: ["waveform-fill"],
+    queryFn: () => api.get<WaveformFillStatus>("/api/waveform/fill/status"),
+    refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
+  });
+  async function startWaveformFill() {
+    await api.post("/api/waveform/fill/start", {});
+    qc.invalidateQueries({ queryKey: ["waveform-fill"] });
+  }
+  async function cancelWaveformFill() {
+    await api.post("/api/waveform/fill/cancel", {});
+    qc.invalidateQueries({ queryKey: ["waveform-fill"] });
+  }
+
   const [applied, setApplied] = useState<Record<string, string>>({});
   async function startFill() {
     await api.post("/api/isrc/fill/start", {});
@@ -178,7 +197,7 @@ export default function Settings() {
 
   // Per-section local state, seeded once settings load.
   const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
-  const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, conf: 0.4 });
+  const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, waveforms: "auto", conf: 0.4 });
   const [mode, setMode] = useState("watch");
   const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false, scrobble: false });
   const [syncInterval, setSyncInterval] = useState(0);
@@ -318,7 +337,7 @@ export default function Settings() {
     const n = (k: string, d: number) => (cfg[k] == null ? d : Number(cfg[k]));
     const b = (k: string, d: boolean) => (cfg[k] == null ? d : Boolean(cfg[k]));
     setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
-    setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), conf: n("review_confidence_threshold", 0.4) });
+    setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), waveforms: s("compute_waveforms", "auto") || "auto", conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
     setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
     setSyncInterval(n("sync_interval_minutes", 0));
@@ -1169,7 +1188,7 @@ export default function Settings() {
               <h2>Scan Behavior</h2>
               <p>Tune the BPM detector stack.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/scan", { workers: scan.workers, bpm_min: scan.bpmMin, bpm_max: scan.bpmMax, use_deeprhythm: scan.useDr, use_essentia: scan.useEs, write_tags: scan.writeTags, preserve_mtime: scan.preserveMtime, review_confidence_threshold: scan.conf }, setScanSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/scan", { workers: scan.workers, bpm_min: scan.bpmMin, bpm_max: scan.bpmMax, use_deeprhythm: scan.useDr, use_essentia: scan.useEs, write_tags: scan.writeTags, preserve_mtime: scan.preserveMtime, compute_waveforms: scan.waveforms, review_confidence_threshold: scan.conf }, setScanSaved); }}>
               <div className="settings-fields">
                 <div className="field-row">
                   {fieldLabel(<>Workers <span className="badge badge--review" style={{ fontSize: 10, padding: "1px 6px", marginLeft: 4 }}>⚠ Memory</span></>, "Each deeprhythm worker adds ~500 MB RAM")}
@@ -1207,6 +1226,14 @@ export default function Settings() {
                   <Toggle on={scan.preserveMtime} disabled={isLocked("preserve_mtime")} onChange={(v) => setScan({ ...scan, preserveMtime: v })} label="Preserve file date" />
                 </div>
                 <div className="field-row">
+                  {fieldLabel("Waveforms", "Peaks for the player and track pages — a second decode per track. Auto computes them only while the web UI is on")}
+                  <select value={scan.waveforms} onChange={(e) => setScan({ ...scan, waveforms: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                    <option value="auto">Auto (with UI)</option>
+                    <option value="true">Always</option>
+                    <option value="false">Never</option>
+                  </select>
+                </div>
+                <div className="field-row">
                   {fieldLabel("Review threshold", "Confidence below this flags a track for review (0–1)")}
                   <div className="slider-wrap">
                     <input type="range" min={0} max={1} step={0.01} value={scan.conf} onChange={(e) => setScan({ ...scan, conf: +e.target.value })} />
@@ -1218,6 +1245,38 @@ export default function Settings() {
                 </div>
               </div>
             </form>
+            {(() => {
+              const f = waveformFillQ.data;
+              // Nothing to offer until a headless/"Never" scan has left gaps.
+              if (!f || (!f.running && f.total === 0 && f.remaining === 0)) return null;
+              return (
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Fill missing waveforms</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxWidth: 480, lineHeight: 1.5 }}>
+                    Some tracks were scanned without waveforms. They're computed on demand when played; this fills them all now, one file at a time.
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button"
+                            disabled={f.running || f.remaining === 0} onClick={startWaveformFill}>
+                      {f.running ? "Computing…" : "Fill missing waveforms"}
+                    </button>
+                    {f.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelWaveformFill}>Cancel</button>
+                    )}
+                    {(f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} done · {f.filled} filled · {f.failed} failed
+                      </span>
+                    )}
+                    {!f.running && (
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                        {f.remaining === 0 ? "Every track has a waveform." : `${f.remaining} track${f.remaining === 1 ? "" : "s"} without one.`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Refresh stored hashes</div>
               <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxWidth: 480, lineHeight: 1.5 }}>

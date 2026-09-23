@@ -1,14 +1,15 @@
-librosa>=0.10.0
-numpy>=1.24.0
-mutagen>=1.47.0
+# Everything: the core plus every optional layer. This is what the Docker image installs.
+-r requirements-core.txt
+
+# HTTP client — ntfy, Navidrome, MusicBrainz/Deezer/lrclib lookups, install ping
 requests>=2.31.0
-watchdog>=4.0.0
-soundfile>=0.12.1
-# ITU-R BS.1770 loudness measurement (pure Python; numpy/scipy already come with librosa)
-pyloudnorm>=0.1.1
+# Web UI + JSON API (ENABLE_UI)
 flask>=3.0
 waitress>=3.0
+# Fuzzy track matching — grabber, Navidrome playlist/star/play-count sync, suggestions
 rapidfuzz>=3.9.0
+# Cover-art handling — grabber tagging, playlist covers
+pillow>=10.0.0,<11
+# Download providers — grabber (GRABBER_ENABLED)
 yt-dlp>=2024.8.0
 streamrip>=2.1.0
-pillow>=10.0.0,<11

@@ -1,12 +1,15 @@
 """read_tags + scanner.index_tags → DB tag index (grabber library matching)."""
 
 import numpy as np
+import pytest
 import soundfile as sf
 from mutagen.flac import FLAC
 
 from bpm_tagger.bpm.tags import read_tags
 from bpm_tagger.db import BPMDatabase
 from bpm_tagger.scan.scanner import BPMTagger
+
+pytestmark = pytest.mark.core  # runs in the core-only CI job
 
 
 def _tagged_flac(path, **tags):

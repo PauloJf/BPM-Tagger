@@ -4,6 +4,8 @@ import pytest
 
 from bpm_tagger import _normalize_bpm
 
+pytestmark = pytest.mark.core  # runs in the core-only CI job
+
 
 @pytest.mark.parametrize("bpm, lo, hi, expected", [
     (120.0, 60.0, 200.0, 120.0),   # already in range

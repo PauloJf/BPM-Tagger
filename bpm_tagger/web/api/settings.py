@@ -9,7 +9,7 @@ import re
 import requests
 from flask import Blueprint, current_app, jsonify, request, session
 
-from ...config import __version__, env_locked_keys, save_settings
+from ...config import WAVEFORM_MODES, __version__, env_locked_keys, save_settings
 from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
 from ..auth import _check_csrf, login_required, password_stamp, verify_ui_password
@@ -117,12 +117,17 @@ def api_settings_scan():
     except (ValueError, TypeError):
         bpm_min, bpm_max = 60.0, 200.0
 
+    wf_mode = str(data.get("compute_waveforms", st.config.get("compute_waveforms", "auto"))).lower()
+    if wf_mode not in WAVEFORM_MODES:
+        wf_mode = "auto"
+
     updates = {
         "workers":                     workers,
         "use_deeprhythm":              bool(data.get("use_deeprhythm")),
         "use_essentia":                bool(data.get("use_essentia")),
         "write_tags":                  bool(data.get("write_tags")),
         "preserve_mtime":              bool(data.get("preserve_mtime", True)),
+        "compute_waveforms":           wf_mode,
         "review_confidence_threshold": conf_thr,
         "bpm_min":                     bpm_min,
         "bpm_max":                     bpm_max,

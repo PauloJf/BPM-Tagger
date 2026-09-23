@@ -2,8 +2,21 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **proposed** (2026-09-23). Nothing implemented yet. This is a prerequisite
-for (and independent of) [subsonic-api.md](subsonic-api.md).
+Status: **implemented** (Unreleased, 2026-09-23). Implementation notes:
+
+- Open questions resolved as proposed: `COMPUTE_WAVEFORMS` defaults to `auto`,
+  and the non-core importers stay on the `grabber.matching` re-export.
+- The layering guard also blocks the optional *packages* (flask, requests,
+  rapidfuzz, …) at module level, not just the optional package modules.
+- The core-only CI job needs `tests/conftest.py` to skip collecting unmarked
+  test files when the optional packages are missing. pytest imports every
+  module before `-m core` deselects anything.
+- The **Fill missing waveforms** control only appears in Settings → Scan when
+  some tracks are missing peaks.
+- `pytest.mark.core` files: tags, reconcile, normalize_bpm, audio_load,
+  multiseg_windows, deeprhythm_detector, config, tag_index, norm_artist_backfill,
+  waveform_toggle, core_isolation. Verified in a clean venv with only
+  `requirements-core.txt` (79 passed).
 
 ## Goal
 
