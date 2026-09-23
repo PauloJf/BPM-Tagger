@@ -55,20 +55,32 @@ def ping_navidrome(url: str, user: str, pwd: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _trigger_navidrome_rescan(config: dict):
+def _trigger_navidrome_rescan(config: dict, full: bool = False):
+    """Ask Navidrome to rescan. `full` forces it to re-read every file.
+
+    Navidrome's default scan detects changes by mtime — and PRESERVE_MTIME
+    deliberately restores the mtime after every tag write, so a quick scan sees
+    nothing changed and skips the file. That's the right trade for an
+    incremental pass (only genuinely new/changed files are touched anyway), but
+    after a forced re-analysis it means we rewrite every tag in the library and
+    Navidrome never reads one of them. Forced scans therefore ask for a full
+    one: the work is pointless otherwise."""
     url  = config.get("navidrome_url", "").rstrip("/")
     user = config.get("navidrome_user", "")
     pwd  = config.get("navidrome_pass", "")
     if not (url and user and pwd):
         return
     try:
+        params = _sub_params(user, pwd)
+        if full:
+            params["fullScan"] = "true"
         resp = requests.get(
             f"{url}/rest/startScan",
-            params=_sub_params(user, pwd),
+            params=params,
             timeout=10,
         )
         _sub_response(resp)
-        log.info("Navidrome rescan triggered")
+        log.info("Navidrome %s rescan triggered", "full" if full else "quick")
     except Exception as exc:
         log.warning("Navidrome rescan request failed: %s", exc)
 

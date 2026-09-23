@@ -12,7 +12,7 @@
         bpm detection & tagging · tempo-locked player · for navidrome
 ```
 
-**v2.17.4** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.17.5** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 BPM Tagger started as exactly what the name says: a tool that detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes it back to the file's metadata tag — with a three-detector pipeline, a review queue for the doubtful cases, and a SQLite record of every result. It still does that. But the tags turned out to be a foundation rather than the product, and the app grew into what they make possible: **a cadence-synced running player for your own music**, wrapped in a full library companion.
 
@@ -851,7 +851,7 @@ volumes:
 
 **Tips:**
 - Set `user:` in `docker-compose.yml` to match Navidrome's user/group so both containers can read and write the same files without permission conflicts
-- Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan — and also when the watch-mode queue drains — so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step
+- Set `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` to trigger an automatic library rescan after every scan — and also when the watch-mode queue drains — so new BPM tags appear in Navidrome immediately without a manual *Administration → Rescan Library* step. A pass that re-analyzes files already in the library (`scan_all` / `watch_all`, `scan_review`, Retry Errors) asks for a **full** rescan instead: Navidrome spots changes by modification time, and `PRESERVE_MTIME` restores it after every tag write, so a quick rescan would skip the very files that were just re-tagged
 - With the same credentials, enable **two-way star sync** (Settings → Navidrome) to reconcile BPM Tagger's starred tracks with Navidrome's favourites in both directions — stars set in either app reach the other, and Run-mode queues keep preferring them
 - Also enable **Scrobble plays** so runs count in Navidrome (and Last.fm/ListenBrainz through it), and hit **Pull play counts** occasionally so the Run queue's *prefer familiar tracks* option knows what you actually play
 - Your BPM tags also power **Navidrome smart playlists** — see [Smart playlists on your BPM tags](#smart-playlists-on-your-bpm-tags) for a drop-in `.nsp` cadence playlist every Subsonic client can use
