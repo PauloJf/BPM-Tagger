@@ -10,16 +10,14 @@ form body — OpenSubsonic formPost).
 import io
 import logging
 import os
-import random
 import re
-import statistics
 import threading
 import time
 from datetime import datetime, timezone
 
 from flask import Response, request, send_file
 
-from ...text import normalize_artist_name, split_artist_credits
+from ...text import normalize_artist_name
 from ..state import _assert_in_music_dir
 from . import ids, views
 from .dirs import dir_index
@@ -612,27 +610,10 @@ def _seed_tracks(st, who, sid: str) -> list:
 
 
 def _similar(st, who, seed: list, count: int) -> list:
-    """Offline "similar": the seed's own artists first (shuffled), then tracks
-    at a nearby tempo — BPM is what this library knows best. ±5 %, octave-folded
-    like Run mode, so a 170 BPM seed also pulls 85 BPM tracks."""
-    seen = {t["id"] for t in seed}
-    picked: list = []
-    norms = {normalize_artist_name(c) for t in seed for c in split_artist_credits(t.get("artist"))}
-    same = []
-    for n in norms:
-        same += [t for t in st.db.subsonic_artist_tracks(n, who.scope) if t["id"] not in seen]
-    random.shuffle(same)
-    for t in same:
-        if len(picked) >= count // 2:
-            break
-        if t["id"] not in seen:
-            picked.append(t)
-            seen.add(t["id"])
-    bpms = [t["bpm"] for t in seed if t.get("bpm")]
-    if bpms and len(picked) < count:
-        picked += st.db.subsonic_bpm_neighbours(statistics.median(bpms), 0.05, sorted(seen),
-                                                count - len(picked), who.scope)
-    return picked[:count]
+    """Offline "similar" — the shared rule in ``web/similar.py`` (same artist,
+    then nearby tempo), scoped to what this account may see."""
+    from ..similar import similar_tracks
+    return [t for t, _reason in similar_tracks(st.db, seed, count, who.scope)]
 
 
 def get_similar_songs(st, who):

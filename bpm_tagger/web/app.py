@@ -89,6 +89,9 @@ _PLAYER_ALLOWED = {
     # by the player_listen_mode setting, so listing it here only opens the door
     # when the admin has turned the feature on.
     "api_listen.api_listen_queue",
+    # Offline "similar from your library" (Similar panel + similar radio) —
+    # scoped to the player's own playlists inside the handler.
+    "api_suggestions.related_library",
     "media.audio", "media.healthz", "media.api_scrobble",
     # Now-playing display + the two allowed track flags (star / dislike)
     "api_tracks.api_track", "api_tracks.api_track_cover_get",
