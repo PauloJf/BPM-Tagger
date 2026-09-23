@@ -23,10 +23,14 @@ interface SubsonicStatus {
   enabled: boolean;
   active: boolean;
   allow_plain_password: boolean;
+  transcode: boolean;
+  ffmpeg_available: boolean;
+  run_playlists: boolean;
   accounts: Account[];
 }
 
 type Kind = "api-key" | "password";
+type SettingKey = "subsonic_enabled" | "subsonic_allow_plain_password" | "subsonic_transcode" | "subsonic_run_playlists";
 
 function Label({ label, hint }: { label: string; hint?: string }) {
   return (
@@ -76,7 +80,7 @@ export default function SubsonicSettings() {
   const [err, setErr] = useState("");
   const s = q.data;
 
-  async function save(body: Partial<Record<"subsonic_enabled" | "subsonic_allow_plain_password", boolean>>) {
+  async function save(body: Partial<Record<SettingKey, boolean>>) {
     setErr("");
     try {
       await api.post("/api/subsonic/settings", body);
@@ -168,6 +172,20 @@ export default function SubsonicSettings() {
         })}
       </div>
 
+      <div className="field-row">
+        <Label label="Run presets as playlists"
+               hint="Each Run preset appears in apps as a read-only “Run · …” playlist: tracks within 4 % of its BPM (half/double time too), starred first. Apps play them at native speed." />
+        <Toggle on={s.run_playlists} onChange={(v) => void save({ subsonic_run_playlists: v })}
+                label="Run presets as playlists" />
+      </div>
+      <div className="field-row">
+        <Label label="Transcode on request"
+               hint={s.ffmpeg_available
+                 ? "Re-encode to Opus/MP3 when an app asks for a lower bitrate (e.g. on mobile data). Uses CPU per play; at most 4 at once, beyond that files stream as-is."
+                 : "Needs ffmpeg, which isn't installed here, so files always stream as-is."} />
+        <Toggle on={s.transcode} disabled={!s.ffmpeg_available}
+                onChange={(v) => void save({ subsonic_transcode: v })} label="Transcode on request" />
+      </div>
       <div className="field-row">
         <Label label="Allow plain passwords anywhere"
                hint="Off: apps that send the password itself (not a token) are only accepted over https or from your local network." />

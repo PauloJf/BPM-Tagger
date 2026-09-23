@@ -106,6 +106,7 @@ docker compose up -d && docker compose logs -f
 | `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
+| `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
 | `LYRICS_ENABLED` | `false` | Auto-fetch lyrics (LRCLIB) for grabbed tracks; manual/bulk fetch always available in the UI |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 

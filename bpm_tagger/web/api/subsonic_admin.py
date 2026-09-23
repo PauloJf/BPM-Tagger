@@ -38,6 +38,7 @@ def _account(owner: str, username: str, kind: str, cred: dict, enabled: bool = T
 
 def _status():
     from ..subsonic.auth import ADMIN_OWNER, player_owner, subsonic_username
+    from ..subsonic.transcode import ffmpeg_path
     st = state()
     creds = {c["owner"]: c for c in st.db.list_subsonic_credentials()}
     accounts = [_account(ADMIN_OWNER, subsonic_username(), "admin", creds.get(ADMIN_OWNER, {}))]
@@ -51,6 +52,9 @@ def _status():
         # takes effect on restart).
         "active": "subsonic" in current_app.blueprints,
         "allow_plain_password": bool(st.config.get("subsonic_allow_plain_password")),
+        "transcode": bool(st.config.get("subsonic_transcode")),
+        "ffmpeg_available": ffmpeg_path() is not None,
+        "run_playlists": bool(st.config.get("subsonic_run_playlists", True)),
         "accounts": accounts,
     }
 
@@ -79,7 +83,8 @@ def api_subsonic_settings():
     st = state()
     data = request.get_json(force=True, silent=True) or {}
     updates = {}
-    for key in ("subsonic_enabled", "subsonic_allow_plain_password"):
+    for key in ("subsonic_enabled", "subsonic_allow_plain_password",
+                "subsonic_transcode", "subsonic_run_playlists"):
         if key in data:
             updates[key] = bool(data[key])
     st.config.update(updates)

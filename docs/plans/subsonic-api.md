@@ -2,7 +2,33 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Phases 1–2 implemented** (Unreleased, 2026-09-23). Phase 3 open.
+Status: **Phases 1–3 implemented** (Unreleased, 2026-09-23). Open: genres, album/artist
+stars, an albums table if large libraries need it.
+
+Phase 3 implementation notes:
+
+- **Transcoding** (`web/subsonic/transcode.py`, `SUBSONIC_TRANSCODE`, off by
+  default): `plan()` decides from `format` / `maxBitRate` / the file's own
+  bitrate. `raw` never transcodes. `mp3|opus` transcodes unless the file
+  already is that format within the cap. With no format, a binding cap uses
+  the default format: Opus when the ffmpeg build has libopus, else MP3.
+  ffmpeg writes to a pipe that's streamed to the client, and the process is
+  killed on response close. At most `MAX_CONCURRENT = 4` transcodes run at
+  once; over the cap, the original file is served rather than an error.
+  `timeOffset` becomes `-ss`. `estimateContentLength=true` sets an estimated
+  `Content-Length`. `download` always serves the original.
+- **Run presets as playlists** (`pl-run-<index>`, `SUBSONIC_RUN_PLAYLISTS`, on
+  by default): the shared Run eligibility rule (`web/api/run._eligible`) at a
+  fixed ±4 % instead of the stretch limit, because Subsonic apps play at native
+  speed. Starred first, then closest, capped at 200. Read-only. A player's
+  Run playlists draw from its own playlists only.
+- **startScan / getScanStatus** run `tagger.scan_directory` (`fullScan=true` =
+  forced) on a thread, admin only. `getNowPlaying` stays an empty stub.
+- **Albums table:** still not needed; left open.
+- Verified live under Waitress with a static ffmpeg 7.1 (scratch copy, not a
+  dependency): MP3 and Opus outputs, `timeOffset`, and six mid-stream client
+  disconnects with no leaked ffmpeg processes and no leaked slots. The
+  transcode tests skip without ffmpeg; CI's backend job installs it.
 
 Phase 2 implementation notes:
 

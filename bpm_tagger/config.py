@@ -383,6 +383,11 @@ def build_config() -> dict:
         # Accept plaintext p= passwords from any address. Off: only over https
         # or from a private network (token auth and API keys always work).
         "subsonic_allow_plain_password": os.environ.get("SUBSONIC_ALLOW_PLAIN_PASSWORD", "false").lower() == "true",
+        # Re-encode on the fly (ffmpeg) when a client asks for a format/bitrate.
+        # Off: files always stream as-is. Costs CPU per play; capped concurrency.
+        "subsonic_transcode":         os.environ.get("SUBSONIC_TRANSCODE", "false").lower() == "true",
+        # Expose each Run preset as a read-only "Run · <name>" playlist.
+        "subsonic_run_playlists":     os.environ.get("SUBSONIC_RUN_PLAYLISTS", "true").lower() == "true",
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
         "index_tags":                 os.environ.get("INDEX_TAGS", "true").lower() == "true",
         # Spotify OAuth — client id/secret are env-only, never persisted to settings.json

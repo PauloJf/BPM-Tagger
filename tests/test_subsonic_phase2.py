@@ -72,7 +72,8 @@ def _body(r):
 # ── Playlists ─────────────────────────────────────────────────────────────────
 
 def test_get_playlists_and_entries(lib):
-    pls = {p["name"]: p for p in _body(lib["call"]("getPlaylists"))["playlists"]["playlist"]}
+    pls = {p["name"]: p for p in _body(lib["call"]("getPlaylists"))["playlists"]["playlist"]
+           if not p["id"].startswith("pl-run-")}  # Run presets: see test_subsonic_phase3
     assert set(pls) == {"Mine", "From Spotify"}
     assert pls["Mine"]["songCount"] == 2 and pls["Mine"]["readonly"] is False
     assert pls["From Spotify"]["readonly"] is True
@@ -200,7 +201,8 @@ def test_player_sees_only_its_playlists_tracks(lib):
     assert call("getUser")["user"]["playlistRole"] is False
     artists = [a["name"] for i in call("getArtists")["artists"]["index"] for a in i["artist"]]
     assert artists == ["Pacer"]
-    assert [p["name"] for p in call("getPlaylists")["playlists"]["playlist"]] == ["Mine"]
+    assert [p["name"] for p in call("getPlaylists")["playlists"]["playlist"]
+            if not p["id"].startswith("pl-run-")] == ["Mine"]
     songs = call("search3", query="")["searchResult3"]["song"]
     assert sorted(s["title"] for s in songs) == ["Run", "Walk"]
     top = [a["name"] for i in call("getIndexes")["indexes"]["index"] for a in i["artist"]]

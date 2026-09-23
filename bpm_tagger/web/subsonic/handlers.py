@@ -23,7 +23,8 @@ from ...text import normalize_artist_name, split_artist_credits
 from ..state import _assert_in_music_dir
 from . import ids, views
 from .dirs import dir_index
-from .envelope import E_MISSING_PARAM, E_NOT_AUTHORIZED, E_NOT_FOUND, SubsonicError, ok
+from . import transcode
+from .envelope import E_GENERIC, E_MISSING_PARAM, E_NOT_AUTHORIZED, E_NOT_FOUND, SubsonicError, ok
 
 log = logging.getLogger(__name__)
 
@@ -75,9 +76,9 @@ def _songs(st, rows) -> list:
     return [views.song(t, st.music_dir) for t in rows]
 
 
-def _require_admin(who):
+def _require_admin(who, message: str = "This account can't change playlists."):
     if not who.is_admin:
-        raise SubsonicError(E_NOT_AUTHORIZED, "This account can't change playlists.")
+        raise SubsonicError(E_NOT_AUTHORIZED, message)
 
 
 # ── Artist lookup (cached per scope, like the album index) ───────────────────
@@ -157,10 +158,31 @@ def get_user(st, who):
     })
 
 
-def get_scan_status(st, who):
+def _scan_status(st, who) -> dict:
     progress = getattr(st, "progress", None)
     scanning = bool(getattr(progress, "is_scanning", False)) if progress else False
-    return ok(scanStatus={"scanning": scanning, "count": st.db.subsonic_count_tracks(who.scope)})
+    return {"scanning": scanning, "count": st.db.subsonic_count_tracks(who.scope)}
+
+
+def get_scan_status(st, who):
+    return ok(scanStatus=_scan_status(st, who))
+
+
+def start_scan(st, who):
+    """Start an incremental BPM scan (new/changed files), the same pass as the
+    web UI's Scan button. ``fullScan=true`` is honoured as a forced re-analysis.
+    Admin only. Already scanning: just report the status."""
+    _require_admin(who, "Only the admin can start a scan.")
+    tagger = getattr(st, "tagger", None)
+    if tagger is None:
+        raise SubsonicError(E_GENERIC, "Scanning isn't available in this process.")
+    if not _scan_status(st, who)["scanning"]:
+        force = (request.values.get("fullScan") or "").lower() == "true"
+        threading.Thread(target=lambda: tagger.scan_directory(force=force),
+                         name="subsonic-scan", daemon=True).start()
+    status = _scan_status(st, who)
+    status["scanning"] = True
+    return ok(scanStatus=status)
 
 
 # ── Browsing (ID3) ────────────────────────────────────────────────────────────
@@ -333,11 +355,67 @@ def get_music_directory(st, who):
 
 # ── Playlists ─────────────────────────────────────────────────────────────────
 
+# Run presets as virtual playlists (Phase 3): each preset's cadence as a playlist a
+# Subsonic app can play. Apps can't tempo-lock, so tracks play at native speed,
+# hence a tight band rather than Run mode's stretch limit: 4 %, octave-folded.
+RUN_NATIVE_TOLERANCE = 0.04
+RUN_PLAYLIST_MAX = 200
+_RUN_PREFIX = "pl-run-"
+
+
+def _run_presets(st) -> list:
+    if not st.config.get("subsonic_run_playlists", True):
+        return []
+    from ..api.run import _presets
+    return _presets(st.config)
+
+
+def _run_playlist_tracks(st, who, preset: dict) -> list:
+    from ..api.run import _eligible, _run_settings
+    octave, _limit = _run_settings(st.config)
+    cands = (st.db.get_run_candidates(None) if who.is_admin
+             else st.db.get_run_candidates_for_playlists(who.scope or []))
+    found = _eligible(cands, float(preset["bpm"]), octave, RUN_NATIVE_TOLERANCE)
+    found.sort(key=lambda x: (not x[0]["starred"], x[2]))
+    paths = [t["file_path"] for t, _f, _d in found[:RUN_PLAYLIST_MAX]]
+    rows = st.db.subsonic_tracks_by_paths(paths)
+    return [rows[p] for p in paths if p in rows]
+
+
+def _run_playlist_view(st, who, index: int, preset: dict, tracks=None) -> dict:
+    if tracks is None:
+        tracks = _run_playlist_tracks(st, who, preset)
+    pid = f"{_RUN_PREFIX}{index}"
+    return {
+        "id": pid, "name": f"Run · {preset['name']} ({preset['bpm']} BPM)",
+        "comment": f"Tracks within {int(RUN_NATIVE_TOLERANCE * 100)} % of {preset['bpm']} BPM "
+                   "(half/double time included), starred first. Plays at native speed.",
+        "owner": who.username, "public": False, "songCount": len(tracks),
+        "duration": sum(int((t.get("duration_ms") or 0) / 1000) for t in tracks),
+        "created": "1970-01-01T00:00:00.000Z",
+        "changed": views.iso(datetime.now(timezone.utc).isoformat()),
+        "coverArt": pid, "readonly": True,
+    }
+
+
+def _run_preset_for(st, raw: str):
+    if not raw.startswith(_RUN_PREFIX) or not raw[len(_RUN_PREFIX):].isdigit():
+        return None
+    index = int(raw[len(_RUN_PREFIX):])
+    presets = _run_presets(st)
+    return (index, presets[index]) if index < len(presets) else None
+
+
 def _visible_playlists(st, who) -> list:
     return st.db.subsonic_playlist_summaries(None if who.is_admin else who.scope)
 
 
 def _playlist_or_404(st, who, raw: str) -> dict:
+    if raw.startswith(_RUN_PREFIX):
+        # Virtual and read-only; callers that write reject it via _local_or_denied.
+        if _run_preset_for(st, raw) is None:
+            raise SubsonicError(E_NOT_FOUND, "Playlist not found.")
+        return {"id": raw, "source": "run"}
     pid = ids.parse_playlist_id(raw)
     rows = st.db.subsonic_playlist_summaries([pid]) if pid is not None else []
     if not rows or (not who.is_admin and pid not in (who.scope or [])):
@@ -356,11 +434,20 @@ def _playlist_with_entries(st, who, row) -> dict:
 
 
 def get_playlists(st, who):
-    return ok(playlists={"playlist": [_playlist_view(st, who, p) for p in _visible_playlists(st, who)]})
+    real = [_playlist_view(st, who, p) for p in _visible_playlists(st, who)]
+    run = [_run_playlist_view(st, who, i, p) for i, p in enumerate(_run_presets(st))]
+    return ok(playlists={"playlist": real + run})
 
 
 def get_playlist(st, who):
-    return ok(playlist=_playlist_with_entries(st, who, _playlist_or_404(st, who, _req("id"))))
+    raw = _req("id")
+    preset = _run_preset_for(st, raw)
+    if preset is not None:
+        index, p = preset
+        tracks = _run_playlist_tracks(st, who, p)
+        return ok(playlist={**_run_playlist_view(st, who, index, p, tracks),
+                            "entry": _songs(st, tracks)})
+    return ok(playlist=_playlist_with_entries(st, who, _playlist_or_404(st, who, raw)))
 
 
 def _local_or_denied(row) -> None:
@@ -543,11 +630,33 @@ def get_top_songs(st, who):
 
 # ── Media ─────────────────────────────────────────────────────────────────────
 
+def _source_kbps(path: str, track: dict):
+    seconds = (track.get("duration_ms") or 0) / 1000
+    try:
+        return int(os.path.getsize(path) * 8 / seconds / 1000) if seconds else None
+    except OSError:
+        return None
+
+
 def stream(st, who, as_attachment: bool = False):
     track = _song_or_404(st, who, _req("id"))
     real = _assert_in_music_dir(track["file_path"])
     if not os.path.isfile(real):
         raise SubsonicError(E_NOT_FOUND, "File is missing on disk.")
+    if not as_attachment and st.config.get("subsonic_transcode"):
+        target = transcode.plan(real, _source_kbps(real, track), request.values.get("format", ""),
+                                _int("maxBitRate", 0, 0, 10_000))
+        if target:
+            try:
+                offset = max(0.0, float(request.values.get("timeOffset") or 0))
+            except ValueError:
+                offset = 0.0
+            resp = transcode.stream_response(
+                real, *target, offset=offset,
+                duration_s=int((track.get("duration_ms") or 0) / 1000) or None,
+                estimate_length=(request.values.get("estimateContentLength") or "").lower() == "true")
+            if resp is not None:
+                return resp
     ext = os.path.splitext(real)[1].lower()
     return send_file(real, mimetype=views.CONTENT_TYPES.get(ext, "application/octet-stream"),
                      conditional=True, as_attachment=as_attachment,
@@ -598,6 +707,9 @@ def _cover_candidates(st, who, cid: str) -> list:
     if cid.startswith("ar-"):
         row = artists_index.by_id(st.db, who.scope, cid)
         return st.db.subsonic_artist_tracks(row["norm_name"], who.scope)[:8] if row else []
+    if cid.startswith(_RUN_PREFIX):
+        preset = _run_preset_for(st, cid)
+        return _run_playlist_tracks(st, who, preset[1])[:8] if preset else []
     if cid.startswith("pl-"):
         row = _playlist_or_404(st, who, cid)
         return st.db.subsonic_playlist_entries(row["id"])[:8]
@@ -690,7 +802,7 @@ METHODS = {
     "ping": ping, "getLicense": get_license,
     "getOpenSubsonicExtensions": get_open_subsonic_extensions,
     "getMusicFolders": get_music_folders, "getUser": get_user,
-    "getScanStatus": get_scan_status,
+    "getScanStatus": get_scan_status, "startScan": start_scan,
     # ID3 browsing
     "getArtists": get_artists, "getArtist": get_artist, "getAlbum": get_album,
     "getSong": get_song, "getAlbumList2": get_album_list2, "getAlbumList": get_album_list,

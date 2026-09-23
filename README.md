@@ -345,6 +345,8 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 |---|---|---|
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic / OpenSubsonic API at `/rest` (needs `ENABLE_UI=true`). Off means the routes don't exist at all. Also a toggle in **Settings → Subsonic API**, which takes effect on restart |
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept clients that send the password itself (`p=`) from any address. Off: plain passwords are only accepted over https or from a private network; token auth and API keys always work |
+| `SUBSONIC_TRANSCODE` | `false` | Re-encode on the fly (ffmpeg, Opus or MP3) when an app asks for a format or a bitrate below the file's, e.g. on mobile data. Costs CPU per play; at most 4 at once, beyond that files stream as-is. Off: files always stream as-is |
+| `SUBSONIC_RUN_PLAYLISTS` | `true` | Show each Run preset as a read-only **Run · <name> (<bpm> BPM)** playlist: tracks within 4 % of the preset's BPM (half and double time included), starred first. Subsonic apps can't tempo-lock, so these play at native speed, hence the tight band |
 
 **Client setup:** server address = your BPM Tagger URL (the same as the web UI), username = the account's username: your admin username (or `admin` if you log in with a password only), or a player user's name. Then either paste an **API key** (apps with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both per account in **Settings → Subsonic API**; each is shown once, can be regenerated or revoked, and is separate from web passwords.
 
@@ -358,8 +360,11 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 - "Similar songs": the same artist first, then tracks at a nearby tempo (±5 %, octave-folded like Run mode). Top songs by play count.
 - Streaming and download with range requests, and cover art (embedded, else `cover.jpg`/`folder.jpg` beside the files).
 - Song stars (the same stars Run mode prefers) and scrobbles (counted as local plays, and forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on).
+- **Run presets as playlists**, so a Subsonic app can play a cadence-matched list (see `SUBSONIC_RUN_PLAYLISTS`). A player user's Run playlists draw only from its own playlists.
+- **Transcoding** when turned on (`SUBSONIC_TRANSCODE`): the app's `format` / `maxBitRate` decide; `timeOffset` seeks into a transcoded stream; downloads are always the original file.
+- `startScan` / `getScanStatus` drive BPM Tagger's own scan (admin only), the same pass as the web UI's Scan button.
 
-Not yet: transcoding (files stream as-is), genres, and album/artist stars. The plan is in `docs/plans/subsonic-api.md`.
+Not yet: genres, and album/artist stars. The plan is in `docs/plans/subsonic-api.md`.
 
 ### Music Grabber
 
