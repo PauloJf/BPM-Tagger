@@ -376,6 +376,13 @@ def build_config() -> dict:
         "sync_interval_minutes":      int(os.environ.get("SYNC_INTERVAL_MINUTES", "0")),
 
         # ── Grabber (M3+) ─────────────────────────────────────────────────────
+        # ── Optional Subsonic API (docs/plans/subsonic-api.md) ────────────────
+        # Serves /rest/* to Subsonic clients. Needs ENABLE_UI; takes effect on
+        # restart (the blueprint is registered at startup, or not at all).
+        "subsonic_enabled":           os.environ.get("SUBSONIC_ENABLED", "false").lower() == "true",
+        # Accept plaintext p= passwords from any address. Off: only over https
+        # or from a private network (token auth and API keys always work).
+        "subsonic_allow_plain_password": os.environ.get("SUBSONIC_ALLOW_PLAIN_PASSWORD", "false").lower() == "true",
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
         "index_tags":                 os.environ.get("INDEX_TAGS", "true").lower() == "true",
         # Spotify OAuth — client id/secret are env-only, never persisted to settings.json

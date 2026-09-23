@@ -88,6 +88,7 @@ The reason the engine exists: a tempo-run player over your own library, built on
 
 Everything around the music itself — useful daily, running or not. Almost all of it works without the grabber; where an add-to-queue or download button appears, it lights up only when the grabber is on.
 
+- **Subsonic API (optional, `SUBSONIC_ENABLED=true`)** — serve the library to Subsonic apps (Symfonium, Feishin, DSub, play:Sub…) straight from BPM Tagger: browse artists and albums, search, stream, cover art, stars and scrobbles, with the detected **BPM in every song** (OpenSubsonic `bpm` field). It uses its **own credentials** (an API key and/or a generated Subsonic password from **Settings → Subsonic API**), never your web password. With it on, Navidrome becomes optional for people who listen through those apps. See [Subsonic API](#subsonic-api-optional)
 - **Web UI** — browser interface to browse all tracks, review flagged ones, play audio, and correct BPM with a tap-tempo button; live search and BPM ± tolerance filter; Prev/Next navigation moves through the review queue without returning to the list; back navigation preserves filter, page, and search state
 - **"Problems" library filter** — a filter pill (with a live count) for tracks whose analysis was degraded because part of the audio would not decode. These are *not* errors: the track has a BPM and plays fine, but the result rests on less of the file than usual, which usually means a truncated or damaged download. A small **decode** badge marks the rows, with the specifics on hover — e.g. *"2 of 3 analysis windows decoded to nothing"* — and the track page repeats them. The Stats page carries a matching count. Worth checking because a partly-unreadable file can still produce a plausible-looking tempo.
 - **"No playlist" library filter** — a filter pill (with a live count) that shows every track not in *any* playlist — Spotify, Navidrome, or Local — so you can find orphaned tracks and file them; removed (tombstoned) playlist rows don't count as coverage
@@ -337,6 +338,17 @@ No BPM Tagger feature at all — just a consequence of the tags it writes. Navid
 ```
 
 Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second range mimics Run mode's octave folding — an 85 BPM track steps at 170 with a foot on every beat; drop that block if you only want true-tempo matches. (Unlike Run mode, a smart playlist can't tempo-lock: tracks play at native speed.)
+
+### Subsonic API (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `SUBSONIC_ENABLED` | `false` | Serve the Subsonic / OpenSubsonic API at `/rest` (needs `ENABLE_UI=true`). Off means the routes don't exist at all. Also a toggle in **Settings → Subsonic API**, which takes effect on restart |
+| `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept clients that send the password itself (`p=`) from any address. Off: plain passwords are only accepted over https or from a private network; token auth and API keys always work |
+
+**Client setup:** server address = your BPM Tagger URL (the same as the web UI), username = your admin username (or `admin` if you log in with a password only). Then either paste an **API key** (clients with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both in **Settings → Subsonic API**; each is shown once, can be regenerated, and is separate from your web password.
+
+What Phase 1 covers: artists, albums (`getAlbumList2` in every sort order except by genre), songs, search (including the empty-query full sync some clients use), random songs, streaming and download with range requests, cover art (embedded, else `cover.jpg`/`folder.jpg` beside the files), song stars (the same stars Run mode prefers), and scrobbles (counted as local plays, and forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on). Not yet: playlists, folder browsing for older clients, lyrics, transcoding (files stream as-is), and player-user accounts; the admin account is the only Subsonic user for now. The plan is in `docs/plans/subsonic-api.md`.
 
 ### Music Grabber
 

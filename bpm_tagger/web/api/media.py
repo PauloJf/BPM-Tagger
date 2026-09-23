@@ -37,7 +37,6 @@ def api_scrobble():
     never a substitute for, the library-global play count above."""
     _check_csrf()
     st = state()
-    cfg = st.config
 
     body = request.get_json(silent=True) or {}
     path = str(body.get("path", ""))
@@ -50,23 +49,35 @@ def api_scrobble():
     st.db.bump_play_count(path)
     _record_play_event(st, body, path)
 
+    forwarded, error = forward_scrobble(st, track)
+    if error:
+        return jsonify(ok=True, forwarded=False, forward_error=error)
+    return jsonify(ok=True, forwarded=forwarded)
+
+
+def forward_scrobble(st, track: dict) -> tuple[bool, str | None]:
+    """Best-effort forward of one play to Navidrome, when NAVIDROME_SCROBBLE and
+    its credentials are set. Returns ``(forwarded, error)``; not configured is
+    ``(False, None)``. Shared by the built-in player and the Subsonic API."""
+    cfg = st.config
     url = str(cfg.get("navidrome_url", "")).rstrip("/")
     user = str(cfg.get("navidrome_user", ""))
     pwd = str(cfg.get("navidrome_pass", ""))
     if not (cfg.get("navidrome_scrobble") and url and user and pwd):
-        return jsonify(ok=True, forwarded=False)
+        return False, None
 
     from ...integrations.navidrome import resolve_id, scrobble
+    path = track["file_path"]
     sid = track.get("nd_song_id")
     if not sid:
         sid = resolve_id(url, user, pwd, track)
         if sid:
             st.db.set_nd_song_id(path, sid)
     if not sid:
-        return jsonify(ok=True, forwarded=False, forward_error="track not matched in Navidrome")
+        return False, "track not matched in Navidrome"
     if not scrobble(url, user, pwd, sid):
-        return jsonify(ok=True, forwarded=False, forward_error="Navidrome rejected the scrobble")
-    return jsonify(ok=True, forwarded=True)
+        return False, "Navidrome rejected the scrobble"
+    return True, None
 
 
 def _record_play_event(st, body: dict, path: str) -> None:

@@ -553,3 +553,14 @@ class _DBBase:
                 PRIMARY KEY (kind, key)
             )
         """)
+        # Optional Subsonic API (docs/plans/subsonic-api.md): per-account API
+        # credentials, separate from the web login. Inert unless SUBSONIC_ENABLED.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_credentials (
+                owner        TEXT PRIMARY KEY,         -- 'admin' | 'player:<id>'
+                api_key_hash TEXT UNIQUE,              -- sha256 hex of the OpenSubsonic apiKey
+                password     TEXT,                     -- generated Subsonic password (token auth needs it)
+                created_at   TEXT,
+                last_used_at TEXT
+            )
+        """)

@@ -2,7 +2,35 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **proposed** (2026-09-23). Nothing implemented yet.
+Status: **Phase 1 implemented** (Unreleased, 2026-09-23). Phases 2–3 open.
+
+Phase 1 implementation notes (these amend the design below):
+
+- **Subsonic password stored as-is, not encrypted.** Token auth needs the
+  plaintext. Encryption at rest would add `cryptography`, a new dependency, and
+  the key would sit next to the DB anyway. The password is generated (never the
+  web password), API-only and revocable. That's the same posture as
+  `navidrome_pass` in settings.json. API keys are stored sha256-hashed. Open
+  question 2 is therefore moot.
+- **Admin account only.** Player users are always playlist-scoped
+  (`full_access` is no longer honoured), so Subsonic access for them needs
+  scoped browse and search. That moves to Phase 2, with the per-account switch.
+- **No albums table yet.** `getAlbumList2` aggregates `tracks` per request
+  (`db/subsonic.py`), and album ids resolve through a 10 s in-memory id map
+  (`web/subsonic/ids.py`). That's fine at the libraries tested. Add the table
+  if a large library shows it's slow.
+- **Restart-required toggle** (open question 1): the blueprint is registered
+  at startup or not at all, and `/rest/` is in `_API_PREFIXES`, so a disabled
+  install 404s instead of serving the SPA shell.
+- Album and artist stars are accepted and ignored (only songs have a star
+  column). `getPlaylists`, `getGenres` and `getNowPlaying` return empty lists,
+  so clients that call them at startup don't error.
+- Plaintext `p=` is allowed over https, from private or loopback addresses, or
+  when `SUBSONIC_ALLOW_PLAIN_PASSWORD` is on.
+- Verified against a live server with curl (a real FLAC library): browse,
+  album detail with detected BPM, ranged stream, folder cover art, star,
+  scrobble, XML envelope, and a bad-key error. No credentials appear in the
+  server log. Not yet tried with a real client app.
 
 ## Goal
 

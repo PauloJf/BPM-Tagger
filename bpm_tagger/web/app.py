@@ -37,6 +37,7 @@ from .api.run import run_bp
 from .api.settings import settings_bp
 from .api.spotify import spotify_bp
 from .api.stats import stats_bp
+from .api.subsonic_admin import subsonic_admin_bp
 from .api.suggestions import suggestions_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token, password_stamp
@@ -57,7 +58,9 @@ _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
                           "spa", "spa_assets", "api_spotify.spotify_callback")
 
 # Path prefixes owned by the backend — never served the SPA shell.
-_API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/")
+# "rest/" is the optional Subsonic API: listed even when it's disabled, so /rest/*
+# 404s instead of being handed the SPA shell.
+_API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/", "rest/")
 
 # Player-only ("Run-only") role scope. A session that logged in with the run
 # password may reach ONLY these endpoints; every other API endpoint is 403'd by
@@ -210,8 +213,19 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
                run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp, playlist_ops_bp, waveform_bp):
+               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
         app.register_blueprint(bp)
+
+    # Optional Subsonic API: registered only when enabled, so a disabled install
+    # has no /rest routes at all. Imported lazily for the same reason.
+    if config.get("subsonic_enabled"):
+        from .subsonic import ENDPOINTS as SUBSONIC_ENDPOINTS
+        from .subsonic import subsonic_bp
+        app.register_blueprint(subsonic_bp)
+        csrf_exempt = _CSRF_EXEMPT_ENDPOINTS + SUBSONIC_ENDPOINTS
+        log.info("Subsonic API enabled at /rest")
+    else:
+        csrf_exempt = _CSRF_EXEMPT_ENDPOINTS
 
     # ── SPA serving ─────────────────────────────────────────────────────────
     @app.route("/assets/<path:filename>")
@@ -260,7 +274,7 @@ def create_app(config: dict) -> Flask:
 
     @app.before_request
     def _ensure_csrf():
-        if request.endpoint not in _CSRF_EXEMPT_ENDPOINTS:
+        if request.endpoint not in csrf_exempt:
             _csrf_token()
 
     @app.before_request
