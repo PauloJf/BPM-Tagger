@@ -1,8 +1,124 @@
 # Plan: Optional Subsonic / OpenSubsonic API
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
+> The endpoint reference (what's implemented, per method) is [`../subsonic-api.md`](../subsonic-api.md).
 
-Status: **proposed** (2026-09-23). Nothing implemented yet.
+Status: **Phases 1–3 implemented**, plus genres, album/artist stars and the album
+index (Unreleased, 2026-09-23). Nothing open from this plan.
+
+Follow-up notes (genres, stars, album index):
+
+- **Genres** are part of the core tag index. `read_tags` returns every genre
+  value "; "-joined in `tracks.genre`. `text.split_genres` splits it on
+  `; / , | NUL`; "&" is kept, so "Drum & Bass" is one genre. The parts go into
+  `track_genres`, the genre analogue of `track_artists`. Adding the column
+  clears every `tags_indexed_hash` once, so an upgraded library re-reads its
+  tags on the next `index_tags()` pass. That's a metadata read only, with no
+  re-analysis. Subsonic: `getGenres`, `getSongsByGenre`, `byGenre` album lists,
+  a `genre` filter on random songs, and `genre` plus OpenSubsonic `genres[]` on
+  songs (first genre on albums).
+- **Album and artist stars** live in `subsonic_stars`, keyed by Subsonic id and
+  library-wide like song stars. A player can star only what its scope shows.
+  Album stars are explicit: a starred song no longer makes its album count as
+  starred, so `type=starred` lists and the album's `starred` field agree with
+  what the user starred.
+- **Album index:** `subsonic_album_index` holds the per-album aggregate (and the
+  album id, computed in Python). Three triggers on `tracks` (insert, delete, and
+  update of the album-relevant columns) set a dirty flag in `subsonic_meta`. A
+  read rebuilds the index when it's dirty, at most every 15 s
+  (`ALBUM_INDEX_MIN_INTERVAL`), so a running scan doesn't trigger a rebuild per
+  request. The triggers are created when the API is registered and dropped when
+  it isn't, so a core-only or API-off install's scans never write the flag.
+  Scoped (player) queries still aggregate live over their own tracks. Measured
+  at 50,000 tracks and 5,000 albums: a rebuild takes ~340 ms, an indexed album
+  list ~21 ms, and the live aggregate ~127 ms.
+- The in-memory id, artist and folder caches are now keyed per database, not
+  process-wide.
+
+Phase 3 implementation notes:
+
+- **Transcoding** (`web/subsonic/transcode.py`, `SUBSONIC_TRANSCODE`, off by
+  default): `plan()` decides from `format` / `maxBitRate` / the file's own
+  bitrate. `raw` never transcodes. `mp3|opus` transcodes unless the file
+  already is that format within the cap. With no format, a binding cap uses
+  the default format: Opus when the ffmpeg build has libopus, else MP3.
+  ffmpeg writes to a pipe that's streamed to the client, and the process is
+  killed on response close. At most `MAX_CONCURRENT = 4` transcodes run at
+  once; over the cap, the original file is served rather than an error.
+  `timeOffset` becomes `-ss`. `estimateContentLength=true` sets an estimated
+  `Content-Length`. `download` always serves the original.
+- **Run presets as playlists** (`pl-run-<index>`, `SUBSONIC_RUN_PLAYLISTS`, on
+  by default): the shared Run eligibility rule (`web/api/run._eligible`) at a
+  fixed ±4 % instead of the stretch limit, because Subsonic apps play at native
+  speed. Starred first, then closest, capped at 200. Read-only. A player's
+  Run playlists draw from its own playlists only.
+- **startScan / getScanStatus** run `tagger.scan_directory` (`fullScan=true` =
+  forced) on a thread, admin only. `getNowPlaying` stays an empty stub.
+- **Albums table:** still not needed; left open.
+- Verified live under Waitress with a static ffmpeg 7.1 (scratch copy, not a
+  dependency): MP3 and Opus outputs, `timeOffset`, and six mid-stream client
+  disconnects with no leaked ffmpeg processes and no leaked slots. The
+  transcode tests skip without ffmpeg; CI's backend job installs it.
+
+Phase 2 implementation notes:
+
+- **Player users** get Subsonic credentials per account (having credentials *is*
+  the per-account switch). A player's scope is its `player_playlists`, the same
+  rule as Run mode. It's applied as a subquery on the playlist ids to every
+  query in `db/subsonic.py`, including by-id lookups: a player gets error 70 for
+  a song outside its scope on `getSong`, `stream`, `star` and `scrobble`, not
+  only on browsing. This is stricter than the web `/audio` rule, because Subsonic
+  song ids are sequential and easy to guess. Players can star and scrobble, but
+  can't write playlists (`playlistRole=false`, error 50).
+- **Folder browsing** is built from the DB's file paths, not a filesystem walk,
+  and cached for 10 s per scope (`web/subsonic/dirs.py`). A song's `parent` is
+  now its folder's `dir-` id, so folder apps can navigate up; ID3 apps use
+  `albumId`. `getMusicDirectory` also accepts `al-` and `ar-` ids, plus `1`
+  (the music folder).
+- **Playlists:** all playlists are listed for the admin; only Local ones are
+  writable (`readonly` flag). `createPlaylist` with a `playlistId` replaces the
+  songs, per spec. A Local playlist holds each library track once, so a
+  repeated song id is added once.
+- **Lyrics** come from `bpm/lyrics.read_lyrics` (embedded tag, then `.lrc`
+  sidecar). LRC is parsed into OpenSubsonic `structuredLyrics`, including lines
+  with several timestamps; metadata tags are dropped.
+- **Similar songs** stay offline: the seed's artists first, then an
+  octave-folded ±5 % BPM band. No Deezer call on this path.
+  `getArtistInfo2` / `getAlbumInfo2` return empty info, so artist and album
+  pages don't error.
+- **Genres** are still empty: the tag index has no genre column. Adding one
+  means re-reading every file's tags, so it's left for its own change.
+- Verified live with curl, with a player user scoped to one playlist: its
+  artists, playlists and search show only that playlist's tracks; streaming a
+  track outside it gives 70; `createPlaylist` gives 50.
+
+Phase 1 implementation notes (these amend the design below):
+
+- **Subsonic password stored as-is, not encrypted.** Token auth needs the
+  plaintext. Encryption at rest would add `cryptography`, a new dependency, and
+  the key would sit next to the DB anyway. The password is generated (never the
+  web password), API-only and revocable. That's the same posture as
+  `navidrome_pass` in settings.json. API keys are stored sha256-hashed. Open
+  question 2 is therefore moot.
+- **Admin account only.** Player users are always playlist-scoped
+  (`full_access` is no longer honoured), so Subsonic access for them needs
+  scoped browse and search. That moves to Phase 2, with the per-account switch.
+- **No albums table yet.** `getAlbumList2` aggregates `tracks` per request
+  (`db/subsonic.py`), and album ids resolve through a 10 s in-memory id map
+  (`web/subsonic/ids.py`). That's fine at the libraries tested. Add the table
+  if a large library shows it's slow.
+- **Restart-required toggle** (open question 1): the blueprint is registered
+  at startup or not at all, and `/rest/` is in `_API_PREFIXES`, so a disabled
+  install 404s instead of serving the SPA shell.
+- Album and artist stars are accepted and ignored (only songs have a star
+  column). `getPlaylists`, `getGenres` and `getNowPlaying` return empty lists,
+  so clients that call them at startup don't error.
+- Plaintext `p=` is allowed over https, from private or loopback addresses, or
+  when `SUBSONIC_ALLOW_PLAIN_PASSWORD` is on.
+- Verified against a live server with curl (a real FLAC library): browse,
+  album detail with detected BPM, ranged stream, folder cover art, star,
+  scrobble, XML envelope, and a bad-key error. No credentials appear in the
+  server log. Not yet tried with a real client app.
 
 ## Goal
 

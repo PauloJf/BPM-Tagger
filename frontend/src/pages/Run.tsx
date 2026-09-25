@@ -1098,7 +1098,7 @@ export default function Run() {
         )}
         {similarOpen && queueTrack?.artist && (
           <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-            <QueueSimilar artist={queueTrack.artist} onClose={() => setSimilarOpen(false)} />
+            <QueueSimilar artist={queueTrack.artist} path={queueTrack.path} onClose={() => setSimilarOpen(false)} />
           </div>
         )}
         <div data-testid="queue-list" ref={queueListRef} style={listStyle}>

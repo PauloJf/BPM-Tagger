@@ -109,3 +109,28 @@ def normalize_artist(artist: Optional[str]) -> str:
     parts = [p for p in parts if p]
     tokens = sorted({_base_normalize(p) for p in (parts + feats) if _base_normalize(p)})
     return " ".join(tokens)
+
+
+# Genre tags hold several values in one string more often than not ("Electronic;
+# House", "Rock/Pop"), and ID3v2.4 joins multiple frames with NUL. Split on all
+# of them; "&" is left alone ("Drum & Bass" is one genre).
+_GENRE_SPLIT = re.compile(r"\s*[;/,\x00|]\s*")
+
+
+def split_genres(genre: Optional[str]) -> list[str]:
+    """Individual genre names from a genre tag value, deduped case-insensitively,
+    in tag order."""
+    if not genre:
+        return []
+    out, seen = [], set()
+    for g in _GENRE_SPLIT.split(genre):
+        g = g.strip()
+        if g and g.lower() not in seen:
+            seen.add(g.lower())
+            out.append(g)
+    return out
+
+
+def normalize_genre(name: Optional[str]) -> str:
+    """Case/diacritics-insensitive key for one genre name."""
+    return _base_normalize(name)

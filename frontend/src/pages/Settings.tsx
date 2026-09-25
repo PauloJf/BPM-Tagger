@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import type { SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
 import PlayerUsers from "../components/PlayerUsers";
+import SubsonicSettings from "../components/SubsonicSettings";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
@@ -26,6 +27,7 @@ const SIDEBAR = [
   ["sec-scan", "Scan Behavior"],
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
+  ["sec-subsonic", "Subsonic API"],
   ["sec-playback", "Playback"],
   ["sec-run", "Run Mode"],
   ["sec-artwork", "Artwork"],
@@ -1398,6 +1400,15 @@ export default function Settings() {
                 </div>
               </div>
             </form>
+          </div>
+
+          {/* Subsonic API (optional) */}
+          <div id="sec-subsonic" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Subsonic API</h2>
+              <p>Optional. Lets Subsonic apps browse, stream, star and scrobble your library straight from BPM Tagger, with detected BPM included. Uses its own credentials, never your web password.</p>
+            </div>
+            <SubsonicSettings />
           </div>
 
           {/* Playback */}

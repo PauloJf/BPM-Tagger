@@ -16,7 +16,7 @@ simplification, playlist playback + queue hygiene).
 | Run settings — single "max stretch" slider | [run-settings-single-stretch-slider.md](run-settings-single-stretch-slider.md) | ✅ Done (v2.10.0, breaking) |
 | Playlist playback + queue hygiene | [playlist-playback-and-queue-hygiene.md](playlist-playback-and-queue-hygiene.md) | ✅ Done (v2.10.0) |
 | Core decoupling (waveform toggle, import isolation, core requirements) | [core-decoupling.md](core-decoupling.md) | ✅ Done (Unreleased) |
-| Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | 📝 Proposed (2026-09-23) |
+| Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | ✅ Phases 1–3 done (Unreleased); genres open |
 
 ---
 

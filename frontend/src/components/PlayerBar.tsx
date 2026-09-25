@@ -69,7 +69,7 @@ export default function PlayerBar() {
       )}
       {similarOpen && current.artist && (
         <div className="player-queue">
-          <QueueSimilar artist={current.artist} onClose={() => setSimilarOpen(false)} />
+          <QueueSimilar artist={current.artist} path={isPreview ? undefined : current.path} onClose={() => setSimilarOpen(false)} />
         </div>
       )}
       {queueOpen && hasQueue && (
