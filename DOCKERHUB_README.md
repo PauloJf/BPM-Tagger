@@ -21,6 +21,7 @@ Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/B
 |---|---|---|---|
 | `latest` _(default)_ | essentia + librosa | ~400 MB | NAS / low-memory devices |
 | `full` | deeprhythm (CNN) + essentia + librosa | ~1.8 GB | Servers with spare RAM |
+| `beta` / `beta-full` | as `latest` / `full` | as above | Testing the next release early (see the GitHub pre-releases; back up `/data` first) |
 
 ---
 

@@ -203,6 +203,7 @@ cd frontend && npm test      # frontend suite (vitest) — required gate alongsi
 ### CI & publishing
 
 - **`ci.yml`** runs on every push to `main` / `feature/music-grabber` and on PRs: backend (ruff + pytest) and frontend (tsc + `npm run build`).
+- **`docker-beta.yml`** is the public **beta channel**. Pushing a git tag `vX.Y.Z-beta.N` on any commit (typically the PR branch under test) runs the backend tests, then builds that exact commit. It pushes `:vX.Y.Z-beta.N`, `:vX.Y.Z-beta.N-full`, and the moving `:beta` / `:beta-full` tags, then creates a GitHub **pre-release** whose notes are the CHANGELOG's *Unreleased* section plus how to test and report. It stamps the beta version into the image's VERSION only, never the repo, and never touches `:latest` / `:full`, the Docker Hub overview, or stable releases. Flow: fix on the branch, tag `-beta.N+1`, testers re-pull `:beta`, and once it's clean, merge and bump `VERSION` on `main`.
 - **`docker-publish.yml`** builds & pushes both image variants from `main` using the `VERSION` file. It fires automatically after CI succeeds on `main` and publishes only when the repo's `VERSION` has no matching tag on Docker Hub yet — so the release commit that bumps `VERSION` triggers the publish, and ordinary merges are no-ops. Manual `workflow_dispatch` still works and publishes unconditionally (re-push / overview re-sync).
 
 ---

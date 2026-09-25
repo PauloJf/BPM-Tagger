@@ -200,6 +200,8 @@ For the `full` image, peak RAM scales with workers:
 | 2 | ~1 350 MB |
 | 4 | ~2 300 MB |
 
+**Beta builds.** Upcoming features are published first as betas: `:beta` (slim) and `:beta-full`, which always point at the newest beta, plus a pinned tag per build such as `:v2.18.0-beta.1`. Each beta has a GitHub **pre-release** listing what's in it and how to report problems (include the version shown in Settings). They're for testers: back up `/data` before switching, and switch back to `:latest` any time. `:latest` and `:full` only ever move on a stable release.
+
 Set `deploy.resources.limits.memory` in `docker-compose.yml` to at least the peak RAM for your configuration. The defaults (`latest` image, limit `800M`) are sized for NAS devices. Switch to `:full` and raise the limit if you want CNN accuracy.
 
 ---
