@@ -326,4 +326,9 @@ def start(config: dict, progress=None, tagger=None):
     from waitress import serve
     port = int(config.get("ui_port", 5000))
     log.info("BPM UI running on http://0.0.0.0:%d", port)
-    serve(app, host="0.0.0.0", port=port, threads=12)
+    # Worker threads. 12 is plenty for the web UI; Subsonic apps are far more
+    # parallel (cover grids, look-ahead streams), and a request that finds every
+    # thread busy waits in Waitress's queue — for an audio stream, that's a
+    # playback stall. So the default doubles while the API is on.
+    threads = int(config.get("ui_threads") or (24 if config.get("subsonic_enabled") else 12))
+    serve(app, host="0.0.0.0", port=port, threads=max(4, min(64, threads)))

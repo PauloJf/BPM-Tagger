@@ -344,6 +344,8 @@ def build_config() -> dict:
         # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
         # so the login brute-force lockout keys on the real client IP.
         "ui_trusted_proxies":         int(os.environ.get("UI_TRUSTED_PROXIES", "0")),
+        # Waitress worker threads; 0 = auto (12, or 24 while the Subsonic API is on).
+        "ui_threads":                 int(os.environ.get("UI_THREADS", "0") or 0),
         # Force the session cookie's Secure flag on even when UI_PUBLIC_URL isn't
         # an https origin — for a TLS-terminating reverse proxy that forwards
         # plain http. Leave off for direct http/local use, or login breaks there.

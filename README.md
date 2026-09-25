@@ -351,9 +351,10 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic / OpenSubsonic API at `/rest` (needs `ENABLE_UI=true`). Off means the routes don't exist at all. Also a toggle in **Settings → Subsonic API**, which takes effect on restart |
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept clients that send the password itself (`p=`) from any address. Off: plain passwords are only accepted over https or from a private network; token auth and API keys always work |
 | `SUBSONIC_TRANSCODE` | `false` | Re-encode on the fly (ffmpeg, Opus or MP3) when an app asks for a format or a bitrate below the file's, e.g. on mobile data. Costs CPU per play; at most 4 at once, beyond that files stream as-is. Off: files always stream as-is |
+| `UI_THREADS` | `0` (auto) | Web server worker threads. Auto is 12, or 24 while the Subsonic API is on, because apps make many parallel requests (cover grids, look-ahead streams) and a request that finds every thread busy has to wait |
 | `SUBSONIC_RUN_PLAYLISTS` | `true` | Show each Run preset as a read-only **Run · <name> (<bpm> BPM)** playlist: tracks within 4 % of the preset's BPM (half and double time included), starred first. Subsonic apps can't tempo-lock, so these play at native speed, hence the tight band |
 
-**Client setup:** server address = your BPM Tagger URL (the same as the web UI), username = the account's username: your admin username (or `admin` if you log in with a password only), or a player user's name. Then either paste an **API key** (apps with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both per account in **Settings → Subsonic API**; each is shown once, can be regenerated or revoked, and is separate from web passwords.
+**Client setup:** in the app, choose the **OpenSubsonic** (or Subsonic) server type, **not "Navidrome"**. An app's Navidrome mode talks to Navidrome's own internal API, which BPM Tagger doesn't provide. Server address = your BPM Tagger URL (the same as the web UI), username = the account's username: your admin username (or `admin` if you log in with a password only), or a player user's name. Then either paste an **API key** (apps with OpenSubsonic API-key support) or the generated **Subsonic password** (classic token auth). Generate both per account in **Settings → Subsonic API**; each is shown once, can be regenerated or revoked, and is separate from web passwords.
 
 **Accounts.** The admin sees the whole library and can create and edit Local playlists. A **player user** has no Subsonic access until you generate credentials for it, and then sees only the tracks of the playlists it's associated with (the same rule as Run mode). It can star and scrobble those tracks, but not edit playlists. Disabling or deleting the player user cuts its Subsonic access off on the next request.
 
@@ -368,6 +369,10 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 - **Run presets as playlists**, so a Subsonic app can play a cadence-matched list (see `SUBSONIC_RUN_PLAYLISTS`). A player user's Run playlists draw only from its own playlists.
 - **Transcoding** when turned on (`SUBSONIC_TRANSCODE`): the app's `format` / `maxBitRate` decide; `timeOffset` seeks into a transcoded stream; downloads are always the original file.
 - `startScan` / `getScanStatus` drive BPM Tagger's own scan (admin only), the same pass as the web UI's Scan button.
+
+**Connected apps.** Settings → Subsonic API lists the apps that used the API in the last hour: account, app and version, address, last seen, and what each one is playing right now (with elapsed time), or what it last played. "Now playing" comes from the app's own reports; for an app that never sends them, it's inferred from its last stream, marked as such, since some apps download upcoming tracks ahead. The same data serves Subsonic's `getNowPlaying`: the admin sees everyone, and a player user sees only its own apps. The list is live and in memory, so it isn't kept across restarts.
+
+**Cover art** is resized once per size and cached under `/data/subsonic_covers`, so a busy cover grid can't hold up audio streams.
 
 Album lists come from a precomputed album index that's kept up to date while the API is on (during a scan it refreshes at most every 15 seconds). With the API off, nothing maintains it and scans pay nothing for it. The plan is in `docs/plans/subsonic-api.md`.
 
