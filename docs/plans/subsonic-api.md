@@ -1,6 +1,7 @@
 # Plan: Optional Subsonic / OpenSubsonic API
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
+> The endpoint reference (what's implemented, per method) is [`../subsonic-api.md`](../subsonic-api.md).
 
 Status: **Phases 1–3 implemented**, plus genres, album/artist stars and the album
 index (Unreleased, 2026-09-23). Nothing open from this plan.

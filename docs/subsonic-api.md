@@ -1,0 +1,188 @@
+# Subsonic API — endpoint reference
+
+BPM Tagger can serve the [Subsonic](http://www.subsonic.org/pages/api.jsp) /
+[OpenSubsonic](https://opensubsonic.netlify.app/) API, so Subsonic apps
+(Symfonium, Feishin, DSub, play:Sub, Amperfy…) can browse and stream your library
+directly. This page lists what's implemented and how each method behaves.
+Design notes and history are in [`plans/subsonic-api.md`](plans/subsonic-api.md).
+
+> `tests/test_subsonic_docs.py` checks that every method the server implements
+> is listed here, so this page can't fall behind the code.
+
+## Turning it on
+
+| Variable | Default | |
+|---|---|---|
+| `SUBSONIC_ENABLED` | `false` | Serve `/rest`. Needs `ENABLE_UI=true`. Off means the routes don't exist (404). Also a toggle in **Settings → Subsonic API**, applied on restart. |
+| `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept `p=` (plain or `enc:` hex) from any address. Off: only over https (`UI_PUBLIC_URL` https) or from a private/loopback address. |
+| `SUBSONIC_TRANSCODE` | `false` | Re-encode `stream` on request (ffmpeg → Opus/MP3). |
+| `SUBSONIC_RUN_PLAYLISTS` | `true` | Expose each Run preset as a read-only playlist. |
+| `UI_THREADS` | `0` (auto) | Server threads: 12, or 24 while the API is on. |
+
+In the app, choose **OpenSubsonic** (or Subsonic) as the server type, **not
+"Navidrome"**. An app's Navidrome mode uses Navidrome's own internal API, which
+BPM Tagger doesn't provide.
+
+## Requests and responses
+
+- **URL:** `/rest/<method>` or `/rest/<method>.view`, with `GET` or `POST`
+  (form body: OpenSubsonic `formPost`).
+- **Common parameters:** `v` (API version, accepted but not enforced), `c` (the
+  app's name, shown under Connected apps), `f` (`xml` default, `json`, `jsonp` +
+  `callback`).
+- **Envelope:** `version="1.16.1"`, `type="bpm-tagger"`, `serverVersion`,
+  `openSubsonic=true`. Errors are HTTP 200 with `status="failed"` and
+  `error{code,message}`, as the spec requires. Binary methods (`stream`,
+  `download`, `getCoverArt`) return the bytes on success, or the error envelope
+  on failure.
+- **Stateless:** no session, no cookie, no CSRF. Every request authenticates.
+
+### Authentication
+
+Subsonic credentials are **separate from the web login**. Generate them per
+account in **Settings → Subsonic API**; each is shown once and can be revoked.
+
+| Mode | Parameters | Notes |
+|---|---|---|
+| API key (OpenSubsonic `apiKeyAuthentication`) | `apiKey` | Preferred. Stored sha256-hashed. Sending `u` as well is error 43. |
+| Token | `u`, `t` = md5(password + `s`), `s` | Uses the account's generated Subsonic password. |
+| Password | `u`, `p` (or `p=enc:<hex>`) | Only over https / from a private network unless `SUBSONIC_ALLOW_PLAIN_PASSWORD`; otherwise error 42. |
+
+The admin's username is the admin username, or `admin` when the web UI uses a
+password only. Player users log in with their own username.
+
+Failed attempts count toward the same per-IP / per-account / global lockout as
+the web login (Settings → Login protection).
+
+### Accounts and scope
+
+| | Admin | Player user |
+|---|---|---|
+| Sees | the whole library | only tracks of its assigned playlists (the Run-mode rule): every browse, search, list, and by-id lookup |
+| Stream / star / scrobble | anything | only in-scope songs (error 70 otherwise) |
+| Playlists | read all; create/edit/delete **Local** ones | read its own; no writes (error 50) |
+| `startScan` | yes | no (error 50) |
+| `getNowPlaying` | every account's apps | its own apps |
+
+A player has no Subsonic access until the admin generates credentials for it.
+Disabling or deleting the player cuts access on its next request.
+
+### IDs
+
+| Prefix | Meaning | Stable? |
+|---|---|---|
+| `tr-<n>` | song (`tracks.id`) | yes, across rescans |
+| `al-<hash>` | album: normalized (album artist, album) | yes, while the tags don't change |
+| `ar-<hash>` | artist: normalized credited name | yes, while the tags don't change |
+| `dir-<hash>` | folder (path relative to the music folder) | yes, while the file isn't moved |
+| `pl-<n>` | playlist | yes |
+| `pl-run-<i>` | Run preset *i* as a virtual playlist | while the presets don't change |
+
+Music folder id: `1` (a single folder).
+
+### Error codes used
+
+`0` generic / unsupported method · `10` missing parameter · `40` wrong
+credentials (also while locked out) · `42` auth mechanism not allowed (plain
+password over an insecure connection) · `43` conflicting auth parameters · `44`
+invalid API key · `50` not authorized · `70` not found.
+
+### OpenSubsonic extensions
+
+`apiKeyAuthentication` v1 · `formPost` v1 · `songLyrics` v1. Song objects also
+carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
+`isrc[]`.
+
+## Methods
+
+### System
+
+| Method | Notes |
+|---|---|
+| `ping` | |
+| `getLicense` | Always `valid=true`. |
+| `getOpenSubsonicExtensions` | The three extensions above. |
+| `getMusicFolders` | One folder, id `1`. |
+| `getUser` | Your own user only; roles reflect the account (`adminRole`, `playlistRole` for the admin). |
+| `getScanStatus` | `scanning` + `count` (tracks visible to you). |
+| `startScan` | Admin. Starts BPM Tagger's own incremental scan (the web UI's Scan button). `fullScan=true` forces a re-analysis. |
+
+### Browsing by tags (ID3)
+
+| Method | Notes |
+|---|---|
+| `getArtists` | Indexed A–Z (`#` for the rest), ignoring the articles `The El La Los Las Le Les`. Every credited artist counts ("A, B" lists both). |
+| `getArtist` | The artist + albums (sorted by year). |
+| `getAlbum` | The album + songs (disc/track order). Case/accent variants of one album are merged. |
+| `getSong` | |
+| `getAlbumList2` | `type`: `random`, `newest`, `recent`, `frequent`, `starred`, `alphabeticalByName`, `alphabeticalByArtist`, `byYear` (`fromYear`/`toYear`; from > to sorts newest first), `byGenre` (`genre`). `size` ≤ 500, `offset`. Admin lists read the precomputed album index. |
+| `getAlbumList` | Same as `getAlbumList2`, legacy element name. |
+| `getGenres` | Name, `songCount`, `albumCount`. A tag like "House; Techno" counts under both. |
+| `getSongsByGenre` | `genre` (case-insensitive), `count` ≤ 500, `offset`. |
+| `getRandomSongs` | `size` ≤ 500, `fromYear`, `toYear`, `genre`. Analyzed tracks only. |
+| `search3` | `query` across title/artist/album; separate artist/album/song `*Count` / `*Offset`. **An empty query (or `""`) pages through everything**, the full-library sync some apps use. |
+| `search2` | Same as `search3`, legacy element name. |
+| `getArtistInfo2` / `getArtistInfo` | Empty info (no biography or similar artists yet), so artist pages don't error. |
+| `getAlbumInfo2` / `getAlbumInfo` | Empty info. |
+| `getNowPlaying` | What connected apps are playing, from their now-playing scrobbles, or inferred from streams for apps that don't send them. |
+
+### Browsing by folder
+
+| Method | Notes |
+|---|---|
+| `getIndexes` | Top-level folders as the index, and any files at the root as `child`. Built from the library, never from files outside it. |
+| `getMusicDirectory` | A `dir-` id lists subfolders + songs. Also accepts `al-` (the album's songs), `ar-` (the artist's albums) and `1` (the root). Songs' `parent` is their folder, so apps can navigate up. |
+
+### Playlists
+
+| Method | Notes |
+|---|---|
+| `getPlaylists` | Your visible playlists (`readonly` = not a Local playlist, or you're a player), then one read-only **"Run · <name> (<bpm> BPM)"** playlist per Run preset (tracks within ±4 % of the preset, half/double time included, starred first). |
+| `getPlaylist` | Entries are the playlist's tracks you have in the library. |
+| `createPlaylist` | Admin. `name` + `songId`… creates a Local playlist. With `playlistId`, replaces an existing Local playlist's songs. A song appears once per Local playlist. |
+| `updatePlaylist` | Admin, Local only. `name`, `comment`, `songIdToAdd`…, `songIndexToRemove`… |
+| `deletePlaylist` | Admin, Local only. Spotify/Navidrome mirrors and Run playlists give error 50. |
+
+### Lyrics
+
+| Method | Notes |
+|---|---|
+| `getLyricsBySongId` | OpenSubsonic `structuredLyrics`: synced lines carry `start` (ms), plain lyrics are line by line. Empty list when the track has none. |
+| `getLyrics` | Legacy: `artist` + `title` → plain text (timestamps removed). |
+
+Lyrics come from the file's embedded tag or a `.lrc` sidecar, the same place
+the web player reads. The API doesn't fetch missing lyrics online; use the web
+UI's per-track fetch or **Settings → Lyrics** bulk fill (LRCLIB), and every app
+sees the results.
+
+### Similar and top
+
+| Method | Notes |
+|---|---|
+| `getSimilarSongs` | Seed: `tr-`, `al-` or `ar-` id. The seed's artists first, then tracks within ±5 % of its tempo (octave-folded). Offline, from the library only; disliked tracks excluded. `count` ≤ 500. |
+| `getSimilarSongs2` | Same rule. |
+| `getTopSongs` | `artist` (name): their tracks by play count. |
+
+### Media
+
+| Method | Notes |
+|---|---|
+| `stream` | The file, with HTTP range support. With `SUBSONIC_TRANSCODE`, `format` (`mp3`, `opus`, `raw`) and `maxBitRate` may re-encode it on the fly (no ranges; `timeOffset` seeks; `estimateContentLength=true` sets a length estimate). At most 4 transcodes run at once; beyond that the original is served. |
+| `download` | Always the original file. |
+| `getCoverArt` | `id`: song, album, artist, playlist or folder; optional `size`. Embedded art first, then `cover.jpg`/`folder.jpg`/`front.jpg` beside the files. Resized covers are cached under `/data/subsonic_covers`, with at most 2 first-time resizes at once (beyond that the original is sent). 404 when there's no art. |
+
+### Annotation
+
+| Method | Notes |
+|---|---|
+| `star` / `unstar` | `id` (songs), `albumId`, `artistId` (all repeatable). Song stars are the library's own stars (the ones Run mode prefers); album and artist stars are stored separately. All are library-wide. |
+| `getStarred2` / `getStarred` | Starred artists, albums and songs visible to you. |
+| `scrobble` | `id`… with `time`… (ms). `submission=true` (default) counts a play (play count + per-account play event, forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on). `submission=false` is "now playing": nothing recorded, but it feeds Connected apps and `getNowPlaying`. |
+
+## Not implemented
+
+Any other method returns error `0` ("not supported by this server"). Notably:
+podcasts, internet radio, shares, jukebox control, chat, bookmarks and play
+queue (`getPlayQueue` / `savePlayQueue`), user management (`getUsers`,
+`createUser`…), video, `setRating`, and avatars. Album and artist info have no
+content yet (see above), and lyrics aren't fetched on demand.

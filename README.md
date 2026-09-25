@@ -374,7 +374,7 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 
 **Cover art** is resized once per size and cached under `/data/subsonic_covers`, so a busy cover grid can't hold up audio streams.
 
-Album lists come from a precomputed album index that's kept up to date while the API is on (during a scan it refreshes at most every 15 seconds). With the API off, nothing maintains it and scans pay nothing for it. The plan is in `docs/plans/subsonic-api.md`.
+Album lists come from a precomputed album index that's kept up to date while the API is on (during a scan it refreshes at most every 15 seconds). With the API off, nothing maintains it and scans pay nothing for it. Every implemented method, with its parameters and behaviour, is listed in [`docs/subsonic-api.md`](docs/subsonic-api.md). The design history is in `docs/plans/subsonic-api.md`.
 
 ### Music Grabber
 
