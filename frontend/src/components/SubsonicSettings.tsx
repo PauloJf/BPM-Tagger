@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Toggle } from "./Toggle";
+import SubsonicClients from "./SubsonicClients";
 
 // Optional Subsonic API (docs/plans/subsonic-api.md): the on/off switch and each
 // account's Subsonic credentials. The server returns a generated key or password
@@ -137,6 +138,9 @@ export default function SubsonicSettings() {
         <Label label="Server address" hint="Enter this in the app, with the account's username below." />
         <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{window.location.origin}</code>
       </div>
+
+      {/* Only while /rest is actually served: otherwise there's nothing to show. */}
+      {s.active && <SubsonicClients />}
 
       <div>
         <div className="field-row-label" style={{ marginBottom: 2 }}>Accounts</div>

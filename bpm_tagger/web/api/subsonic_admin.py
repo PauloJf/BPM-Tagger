@@ -73,6 +73,19 @@ def api_subsonic_status():
     return _forbidden() or jsonify(_status())
 
 
+@subsonic_admin_bp.route("/api/subsonic/clients")
+@login_required
+def api_subsonic_clients():
+    """Subsonic apps seen in the last hour and what each is playing (live,
+    in memory — see web/subsonic/activity.py). Empty while the API is off."""
+    guard = _forbidden()
+    if guard:
+        return guard
+    from ..subsonic.activity import registry as activity
+    import time
+    return jsonify(now=time.time(), clients=activity.snapshot())
+
+
 @subsonic_admin_bp.route("/api/subsonic/settings", methods=["POST"])
 @login_required
 def api_subsonic_settings():

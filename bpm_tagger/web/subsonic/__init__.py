@@ -8,9 +8,10 @@ request carries its own credentials (see ``auth.py``).
 
 import logging
 
-from flask import Blueprint
+from flask import Blueprint, g, request
 
 from ..state import state
+from .activity import registry as activity
 from .auth import authenticate
 from .envelope import E_GENERIC, E_NOT_FOUND, SubsonicError, failed
 from .handlers import METHODS
@@ -29,6 +30,11 @@ def dispatch(method: str):
     st = state()
     try:
         who = authenticate(st)
+        # Which app is this? Subsonic clients name themselves in `c`.
+        g.subsonic_client = activity.seen(
+            who.owner, who.username, request.values.get("c") or "",
+            request.values.get("v") or "", request.remote_addr or "",
+            request.headers.get("User-Agent", ""))
         handler = METHODS.get(name)
         if handler is None:
             return failed(E_NOT_FOUND if not name else E_GENERIC,

@@ -7,30 +7,27 @@ outside its playlists. Parameters come from ``request.values`` (query string or
 form body — OpenSubsonic formPost).
 """
 
-import io
 import logging
 import os
 import re
 import threading
 import time
+import zlib
 from datetime import datetime, timezone
 
-from flask import Response, request, send_file
+from flask import Response, g, request, send_file
 
 from ...text import normalize_artist_name
 from ..state import _assert_in_music_dir
 from . import ids, views
 from .dirs import dir_index
-from . import transcode
+from . import covers, transcode
+from .activity import registry as activity
 from .envelope import E_GENERIC, E_MISSING_PARAM, E_NOT_AUTHORIZED, E_NOT_FOUND, SubsonicError, ok
 
 log = logging.getLogger(__name__)
 
 albums_index = ids.AlbumIndex()
-
-_FOLDER_COVERS = ("cover.jpg", "cover.jpeg", "cover.png", "folder.jpg", "folder.jpeg",
-                  "folder.png", "front.jpg", "front.png")
-
 
 # ── Parameter helpers ─────────────────────────────────────────────────────────
 
@@ -317,7 +314,21 @@ def search2(st, who):
 
 
 def get_now_playing(st, who):
-    return ok(nowPlaying={"entry": []})
+    """What connected apps are playing right now (see activity.py). The admin
+    sees every account's apps; a player user sees only its own."""
+    entries = []
+    for c in activity.snapshot(None if who.is_admin else who.owner):
+        p = c["playing"]
+        if not p:
+            continue
+        track = st.db.get_track_by_id(p["track_id"], who.scope)
+        if not track:
+            continue
+        entries.append({**views.song(track, st.music_dir), "username": c["username"],
+                        "minutesAgo": p["elapsed_s"] // 60, "playerId": zlib.crc32(  # stable across restarts
+                            f'{c["owner"]}|{c["app"]}|{c["ip"]}'.encode()) % 1_000_000,
+                        "playerName": c["app"]})
+    return ok(nowPlaying={"entry": entries})
 
 
 def get_artist_info2(st, who):
@@ -648,6 +659,8 @@ def stream(st, who, as_attachment: bool = False):
     real = _assert_in_music_dir(track["file_path"])
     if not os.path.isfile(real):
         raise SubsonicError(E_NOT_FOUND, "File is missing on disk.")
+    if not as_attachment and getattr(g, "subsonic_client", None):
+        activity.streamed(g.subsonic_client, track)
     if not as_attachment and st.config.get("subsonic_transcode"):
         target = transcode.plan(real, _source_kbps(real, track), request.values.get("format", ""),
                                 _int("maxBitRate", 0, 0, 10_000))
@@ -670,38 +683,6 @@ def stream(st, who, as_attachment: bool = False):
 
 def download(st, who):
     return stream(st, who, as_attachment=True)
-
-
-def _folder_cover(directory: str):
-    for name in _FOLDER_COVERS:
-        p = os.path.join(directory, name)
-        if os.path.isfile(p):
-            with open(p, "rb") as f:
-                return f.read(), "image/png" if name.endswith(".png") else "image/jpeg"
-    return None
-
-
-def _cover_for_track(track: dict):
-    from ...grabber.tagging import read_cover
-    path = _assert_in_music_dir(track["file_path"])
-    return read_cover(path) or _folder_cover(os.path.dirname(path))
-
-
-def _resize(data: bytes, mime: str, size):
-    if not size:
-        return data, mime
-    try:
-        from PIL import Image
-        img = Image.open(io.BytesIO(data))
-        if max(img.size) <= size:
-            return data, mime
-        img = img.convert("RGB")
-        img.thumbnail((size, size))
-        out = io.BytesIO()
-        img.save(out, format="JPEG", quality=88)
-        return out.getvalue(), "image/jpeg"
-    except Exception:  # Pillow missing or unreadable image → original bytes
-        return data, mime
 
 
 def _cover_candidates(st, who, cid: str) -> list:
@@ -728,17 +709,16 @@ def _cover_candidates(st, who, cid: str) -> list:
 
 
 def get_cover_art(st, who):
-    for track in _cover_candidates(st, who, _req("id")):
-        cover = _cover_for_track(track)
-        if cover:
-            data, mime = cover
-            if not (mime or "").lower().startswith("image/"):
-                mime = "application/octet-stream"
-            data, mime = _resize(data, mime, _opt_int("size"))
-            return Response(data, mimetype=mime,
-                            headers={"Cache-Control": "private, max-age=86400"})
-    # Spec: 404 with no body is what clients expect for "no art".
-    return Response(status=404)
+    """Cached, capped cover rendering — see covers.py for why it matters."""
+    tracks = _cover_candidates(st, who, _req("id"))
+    for t in tracks:
+        _assert_in_music_dir(t["file_path"])
+    cover = covers.cover_for(st.config, tracks, _opt_int("size"))
+    if cover is None:
+        # Spec: 404 with no body is what clients expect for "no art".
+        return Response(status=404)
+    data, mime = cover
+    return Response(data, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
 
 
 # ── Annotation ────────────────────────────────────────────────────────────────
@@ -797,7 +777,14 @@ def get_starred(st, who):
 
 def scrobble(st, who):
     if request.values.get("submission", "true").lower() == "false":
-        return ok()  # "now playing" — nothing to record
+        # "Now playing": nothing to record as a play, but it's the most reliable
+        # signal of what this app is playing — feed the live activity view.
+        key = getattr(g, "subsonic_client", None)
+        for sid in _song_ids()[:1]:
+            track = _song_or_404(st, who, sid)
+            if key:
+                activity.now_playing_report(key, track)
+        return ok()
     times = request.values.getlist("time")
     for i, sid in enumerate(_song_ids()):
         track = _song_or_404(st, who, sid)
