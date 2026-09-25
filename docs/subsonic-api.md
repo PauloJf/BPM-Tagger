@@ -118,11 +118,11 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 | `getArtist` | The artist + albums (sorted by year). |
 | `getAlbum` | The album + songs (disc/track order). Case/accent variants of one album are merged. |
 | `getSong` | |
-| `getAlbumList2` | `type`: `random`, `newest`, `recent`, `frequent`, `starred`, `alphabeticalByName`, `alphabeticalByArtist`, `byYear` (`fromYear`/`toYear`; from > to sorts newest first), `byGenre` (`genre`). `size` ≤ 500, `offset`. Admin lists read the precomputed album index. |
+| `getAlbumList2` | `type`: `random`, `newest`, `recent`, `frequent`, `starred`, `alphabeticalByName`, `alphabeticalByArtist`, `byYear` (`fromYear`/`toYear`; from > to sorts newest first), `byGenre` (`genre`). `size` ≤ 500, `offset`. Admin lists read the precomputed album index; its `starred` type and the album `starred` timestamp are still the **admin's** star (`tracks.starred`) — album lists are global and not per-account, unlike song stars below. |
 | `getAlbumList` | Same as `getAlbumList2`, legacy element name. |
 | `getGenres` | Name, `songCount`, `albumCount`. A tag like "House; Techno" counts under both. |
 | `getSongsByGenre` | `genre` (case-insensitive), `count` ≤ 500, `offset`. |
-| `getRandomSongs` | `size` ≤ 500, `fromYear`, `toYear`, `genre`. Analyzed tracks only. |
+| `getRandomSongs` | `size` ≤ 500, `fromYear`, `toYear`, `genre`. Analyzed tracks only, rating-weighted for the caller and skipping its own dislikes (see Ratings below). |
 | `search3` | `query` across title/artist/album; separate artist/album/song `*Count` / `*Offset`. **An empty query (or `""`) pages through everything**, the full-library sync some apps use. |
 | `search2` | Same as `search3`, legacy element name. |
 | `getArtistInfo2` / `getArtistInfo` | `biography` (MusicBrainz → Wikidata → Wikipedia), `similarArtist`… (Deezer's related artists that are **in your library** and visible to you; `count` ≤ 100), and `small`/`medium`/`largeImageUrl` (the artist's Deezer photo, only when **Fetch artist images online** is on in Settings → Artwork, because apps load it straight from Deezer). Shares the web UI's 24 h cache. Waits up to 3 s for a lookup; a slower one finishes in the background for the next visit. Off with `SUBSONIC_ARTIST_INFO=false`. |
@@ -140,7 +140,7 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 
 | Method | Notes |
 |---|---|
-| `getPlaylists` | Your visible playlists (`readonly` = not a Local playlist, or you're a player), then one read-only **"Run · <name> (<bpm> BPM)"** playlist per Run preset (tracks within ±4 % of the preset, half/double time included, starred first). |
+| `getPlaylists` | Your visible playlists (`readonly` = not a Local playlist, or you're a player), then one read-only **"Run · <name> (<bpm> BPM)"** playlist per Run preset (tracks within ±4 % of the preset, half/double time included, rating-weighted for you and skipping your own dislikes — see Ratings below). Each `getPlaylist` on a Run preset draws fresh, so its songs and order can differ between calls; it isn't cached. |
 | `getPlaylist` | Entries are the playlist's tracks you have in the library. |
 | `createPlaylist` | Admin. `name` + `songId`… creates a Local playlist. With `playlistId`, replaces an existing Local playlist's songs. A song appears once per Local playlist. |
 | `updatePlaylist` | Admin, Local only. `name`, `comment`, `songIdToAdd`…, `songIndexToRemove`… |
@@ -176,7 +176,7 @@ lyrics from the web UI's per-track fetch or **Settings → Lyrics** bulk fill.
 
 | Method | Notes |
 |---|---|
-| `getSimilarSongs` | Seed: `tr-`, `al-` or `ar-` id. The seed's artists first, then tracks within ±5 % of its tempo (octave-folded). Offline, from the library only; disliked tracks excluded. `count` ≤ 500. |
+| `getSimilarSongs` | Seed: `tr-`, `al-` or `ar-` id. The seed's artists first, then tracks within ±5 % of its tempo (octave-folded). Offline, from the library only; rating-weighted for the caller, whose own dislikes are excluded (see Ratings below). `count` ≤ 500. |
 | `getSimilarSongs2` | Same rule. |
 | `getTopSongs` | `artist` (name): their tracks by play count. |
 
@@ -192,12 +192,34 @@ lyrics from the web UI's per-track fetch or **Settings → Lyrics** bulk fill.
 
 | Method | Notes |
 |---|---|
-| `star` / `unstar` | `id` (songs), `albumId`, `artistId` (all repeatable). Song stars are the library's own stars (the ones Run mode prefers); album and artist stars are stored separately. All are library-wide. |
-| `getStarred2` / `getStarred` | Starred artists, albums and songs visible to you. |
+| `star` / `unstar` | `id` (songs), `albumId`, `artistId` (all repeatable). A song star/unstar sets **your own** derived star (rating ≥ 4 / 3 — see Ratings below); `albumId` / `artistId` stars are stored separately in `subsonic_stars` and stay library-wide. |
+| `setRating` | OpenSubsonic. `id` (a song only — `tr-`) + `rating` 0–5, `0` clears it. Sets **your own** rating (`db/ratings.py`); an album or artist id, or an out-of-range/missing `rating`, is error `0` or `10`. |
+| `getStarred2` / `getStarred` | Artists and albums starred library-wide, plus songs **you've** starred (your rating ≥ 4). |
 | `scrobble` | `id`… with `time`… (ms). `submission=true` (default) counts a play (play count + per-account play event, forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on). `submission=false` is "now playing": nothing recorded, but it feeds Connected apps and `getNowPlaying`. |
+
+### Ratings and rating-weighted picking
+
+Ratings are **per account** (`docs/plans/ratings-weighted-picking.md`): your `setRating` /
+`star` / `unstar` never touch another account's view, and a song's `userRating` and
+`starred` on every song object (`search3`, `getAlbum`, `getSong`, `getRandomSongs`,
+playlists, `getStarred(2)`, `getSimilarSongs(2)`, `getTopSongs`, the play queue,
+`getNowPlaying`…) are always **yours** — a star is a rating ≥ 4, and `userRating` is
+omitted when you haven't rated the song. Dislike is a separate, per-account flag; it
+excludes a song from `getRandomSongs`, `getSimilarSongs(2)` and the "Run · <preset>"
+playlists for you, but never hides it from another account, and doesn't stop you playing
+it directly.
+
+`getRandomSongs`, `getSimilarSongs(2)` and the "Run · <preset>" playlists all draw from a
+pool and then **sample it weighted by your rating** (unrated tracks get a neutral weight;
+higher ratings are more likely, 1★ tracks less so; admin-configured in Settings → Ratings
+& picking) — so repeated calls needn't return the same songs, and a Run playlist's
+`getPlaylist` isn't cached between calls. The one exception is the **album/artist index**:
+`getAlbumList2 type=starred` and every album/artist `starred` timestamp stay the **admin's**
+library-wide star, since album and artist browsing isn't per-account.
 
 ## Not implemented
 
 Any other method returns error `0` ("not supported by this server"). Notably:
 podcasts, internet radio, shares, jukebox control, chat, bookmarks, user management (`getUsers`,
-`createUser`…), video, `setRating`, and avatars. `getAlbumInfo2` returns no content yet.
+`createUser`…), video, rating albums or artists, and avatars. `getAlbumInfo2` returns no
+content yet.

@@ -17,6 +17,7 @@ import { BpmDisplay } from "../components/BpmDisplay";
 import PlayerCover from "../components/PlayerCover";
 import QueueList from "../components/QueueList";
 import PageHeader from "../components/PageHeader";
+import { RatingStars, DislikeButton } from "../components/RatingStars";
 
 const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
 
@@ -46,7 +47,7 @@ const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
  */
 export default function Listen() {
   useTitle("Listen");
-  const { role, fullAccess, listenMode } = useAuth();
+  const { role, fullAccess, listenMode, isGuest } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
   const { current, playing, audioRef, radio, setRadio, radioMode, setRadioMode, listenSource, tempoLock } = player;
@@ -63,6 +64,7 @@ export default function Listen() {
   const [starting, setStarting] = useState(false);
   const [startErr, setStartErr] = useState("");
   const [dislikedPaths, setDislikedPaths] = useState<Set<string>>(() => new Set());
+  const [ratings, setRatings] = useState<Record<string, number | null>>({});
 
   // Playlist sources — the same session-scoped list the Run page draws from
   // (admin/guest: every playlist; a named player: its associated ones).
@@ -102,8 +104,8 @@ export default function Listen() {
   });
   const detail = trackQ.data?.track;
   const bpm = current?.bpm ?? detail?.bpm ?? null;
-  const starred = current?.starred ?? Boolean(detail?.starred);
-  const currentDisliked = !!current && dislikedPaths.has(current.path);
+  const currentRating = current ? (ratings[current.path] ?? current.rating ?? detail?.rating ?? null) : null;
+  const currentDisliked = !!current && (dislikedPaths.has(current.path) || !!detail?.disliked);
 
   async function startPlayback(shuffle: boolean) {
     if (!source) return;
@@ -111,7 +113,10 @@ export default function Listen() {
     setStartErr("");
     try {
       const src = library ? "library" : pooled ? "mine" : String(selectedPlaylistId);
-      const resp = await api.get<ListenQueueResponse>(`/api/listen/queue?playlist=${src}`);
+      // Explicit shuffle of a playlist/library/mine source is weighted
+      // server-side (D12) — dislikes already excluded — so no client shuffle.
+      const resp = await api.get<ListenQueueResponse>(
+        `/api/listen/queue?playlist=${src}${shuffle ? "&order=weighted" : ""}`);
       if (!resp.tracks.length) {
         setStartErr(selectedPlaylist
           ? `No playable tracks in “${selectedPlaylist.name}” — none of its entries matched a local file.`
@@ -122,14 +127,15 @@ export default function Listen() {
       }
       const tracks: PlayerTrack[] = resp.tracks.map((t) => ({
         path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
-        starred: t.starred, loudnessLufs: t.loudness_lufs,
+        starred: t.starred, rating: t.rating, disliked: t.disliked, loudnessLufs: t.loudness_lufs,
       }));
       const scope: ListenSource = library ? "library" : pooled ? "mine" : selectedPlaylistId;
       // ⚠ ORDER IS LOAD-BEARING (mirrors Run's startRun): playQueue() clears the
       // tempo lock and both source scopes so a new queue never inherits a stale
       // run/radio refill — so the Listen source must be re-set *after* it.
-      // No anchor: a shuffle here must draw from the whole list, not pin row 0.
-      player.playQueue(tracks, undefined, { shuffle });
+      // No anchor: a shuffle here must draw from the whole list, not pin row 0
+      // (the server already returned it in weighted/whole order).
+      player.playQueue(tracks, undefined, { shuffle: false });
       player.setListenSource(scope);
       setView("playing");
     } catch (e) {
@@ -139,21 +145,25 @@ export default function Listen() {
     }
   }
 
-  function toggleStar() {
-    if (!current) return;
-    const next = !starred;
-    player.setTrackStarred(current.path, next);
-    api.post("/api/track/star", { path: current.path, starred: next }).catch(() => {});
+  function setRating(rating: number | null) {
+    if (!current || isGuest) return;
+    setRatings((r) => ({ ...r, [current.path]: rating }));
+    player.setTrackRating(current.path, rating);
+    api.post("/api/track/rating", { path: current.path, rating }).catch(() => {
+      setRatings((r) => ({ ...r, [current.path]: currentRating }));
+      player.setTrackRating(current.path, currentRating);
+    });
   }
 
   function toggleDislike() {
-    if (!current) return;
+    if (!current || isGuest) return;
     const next = !currentDisliked;
     setDislikedPaths((s) => {
       const n = new Set(s);
       if (next) n.add(current.path); else n.delete(current.path);
       return n;
     });
+    player.setTrackDisliked(current.path, next);
     api.post("/api/track/dislike", { path: current.path, disliked: next }).catch(() => {});
     if (next) player.next();
   }
@@ -292,17 +302,9 @@ export default function Listen() {
         <span>-{fmtTime(Math.max(0, dur - time))}</span>
       </div>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 18, marginTop: 10 }}>
-        <button
-          style={{ ...ctlBtn, width: 40, height: 40, color: starred ? "var(--warn-fg)" : "var(--muted)", borderColor: starred ? "var(--warn-fg)" : "var(--border)" }}
-          onClick={toggleStar}
-          aria-pressed={starred}
-          aria-label={starred ? "Unstar" : "Star"}
-          title={starred ? "Unstar" : "Star this track"}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-            <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
-          </svg>
-        </button>
+        {!isGuest && (
+          <RatingStars value={currentRating} onChange={setRating} compact label={current?.title} />
+        )}
         <button style={ctlBtn} onClick={player.prev} aria-label="Previous" title="Previous">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14h2V5H6zm3 7l11 7V5l-11 7z" /></svg>
         </button>
@@ -320,17 +322,7 @@ export default function Listen() {
         <button style={ctlBtn} onClick={player.next} aria-label="Next" title="Next">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5v14h2V5h-2zM4 19l11-7L4 5v14z" /></svg>
         </button>
-        <button
-          style={{ ...ctlBtn, width: 40, height: 40, color: currentDisliked ? "var(--err-fg)" : "var(--muted)", borderColor: currentDisliked ? "var(--err-fg)" : "var(--border)" }}
-          onClick={toggleDislike}
-          aria-pressed={currentDisliked}
-          aria-label={currentDisliked ? "Remove dislike" : "Dislike"}
-          title={currentDisliked ? "Remove dislike" : "Dislike — skips now and is never auto-picked again"}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={currentDisliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-          </svg>
-        </button>
+        {!isGuest && <DislikeButton on={currentDisliked} onToggle={toggleDislike} size={16} />}
       </div>
     </div>
   );

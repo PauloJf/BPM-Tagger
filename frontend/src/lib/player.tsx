@@ -12,7 +12,9 @@ export interface PlayerTrack {
   src?: string;            // absolute stream URL; used instead of audioUrl(path) when set
   ephemeral?: boolean;     // one-off external clip — never persisted (dies on reload)
   fromPlaylist?: boolean;  // run mode: from the selected playlist vs a library top-up
-  starred?: boolean;       // run mode: last-known star state (for the queue's star toggle)
+  starred?: boolean;       // derived (rating >= 4), kept for compat with older reads
+  rating?: number | null;  // last-known 1-5 rating (for the queue's rating widget)
+  disliked?: boolean;      // last-known dislike state (for the queue's dislike toggle)
   loudnessLufs?: number | null;  // integrated loudness for volume levelling (null = unmeasured)
 }
 
@@ -163,10 +165,12 @@ interface PlayerState {
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
-  /** Optimistically reflect a star toggle on the matching queued track — used by
-   *  the Run queue so refilled tracks (never in the page's build response) update
-   *  too. */
-  setTrackStarred(path: string, starred: boolean): void;
+  /** Optimistically reflect a rating change on the matching queued track (and
+   *  its derived star) — used by the Run/Listen queues so refilled tracks
+   *  (never in the page's build response) update too. */
+  setTrackRating(path: string, rating: number | null): void;
+  /** Same, for the dislike flag. */
+  setTrackDisliked(path: string, disliked: boolean): void;
   play(track: PlayerTrack): void;                                  // one-off
   playQueue(tracks: PlayerTrack[], startIndex?: number, opts?: { shuffle?: boolean }): void;
   enqueue(track: PlayerTrack): void;   // append to the queue
@@ -701,14 +705,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const body: { bpm: number; exclude: string[]; playlist?: number | "mine" } = { bpm: tempoLock.target, exclude };
     if (runSourceRef.current != null) body.playlist = runSourceRef.current;
     api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number;
-      starred?: boolean; from_playlist?: boolean; loudness_lufs?: number | null }[] }>(
+      starred?: boolean; rating?: number | null; from_playlist?: boolean; loudness_lufs?: number | null }[] }>(
       "/api/run/queue", body)
       .then((resp) => {
         const { queue, order, pos } = nav.current;
         const cur = queue[order[pos]];
         let batch: PlayerTrack[] = resp.tracks.map((t) =>
           ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred,
-            fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs }));
+            rating: t.rating ?? null, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs }));
         // Defense in depth: the exclude window is bounded, so the currently
         // playing track could in principle fall outside it on a huge queue.
         const noRepeat = batch.filter((t) => t.path !== cur?.path);
@@ -724,11 +728,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Listen-mode radio: the non-cadence sibling of the run refill above. When
   // the radio toggle is on and the queue was started from a Listen source (a
-  // playlist or the pooled "mine"), reaching the last queued track fetches the
-  // source's playable tracks again and appends a shuffled batch of what hasn't
-  // been queued recently — so a playlist keeps playing instead of stopping.
-  // The exclusion/shuffle lives client-side (unlike the run refill's server
-  // sampling) because the source list is small and already ours to page.
+  // playlist or the pooled "mine"), reaching the last queued track asks the
+  // server for a fresh weighted batch (POST /api/listen/pick), excluding what
+  // was queued recently, and appends it as-is — the server already excludes
+  // the caller's dislikes and weights by rating, so no client shuffle here.
   const extendingListen = useRef(false);
   useEffect(() => {
     if (!radio || radioMode !== "source" || tempoLock || previewing || repeat !== "off") return;
@@ -736,27 +739,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (order.length === 0 || pos !== order.length - 1) return;
     if (extendingListen.current) return;
     extendingListen.current = true;
-    const src = String(listenSource);   // a playlist id, "mine", or "library"
-    api.get<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
-      starred?: boolean; disliked?: boolean; loudness_lufs?: number | null }[] }>(
-      `/api/listen/queue?playlist=${src}`)
+    const src = listenSource;   // a playlist id, "mine", or "library"
+    const { queue: q0, order: o0, pos: p0 } = nav.current;
+    const cur = q0[o0[p0]];
+    const exclude = q0.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path);
+    if (cur && !exclude.includes(cur.path)) exclude.push(cur.path);
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
+      starred?: boolean; rating?: number | null; loudness_lufs?: number | null }[]; recycled?: boolean }>(
+      "/api/listen/pick", { playlist: src, count: LISTEN_REFILL_COUNT, exclude })
       .then((resp) => {
-        const { queue, order, pos } = nav.current;
-        const cur = queue[order[pos]];
-        const recent = new Set(queue.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path));
-        if (cur) recent.add(cur.path);
-        const pool = resp.tracks.filter((t) => !t.disliked);
-        // Prefer what hasn't been queued recently; once a small source is
-        // exhausted, recycle the full pool rather than letting radio dry up
-        // (mirrors the run refill's `recycled` fallback).
-        let cands = pool.filter((t) => !recent.has(t.path));
-        if (!cands.length) cands = pool.filter((t) => t.path !== cur?.path);
-        if (!cands.length) return;
-        const batch: PlayerTrack[] = shuffled(cands.map((_, i) => i))
-          .slice(0, LISTEN_REFILL_COUNT)
-          .map((i) => cands[i])
-          .map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
-            starred: t.starred, loudnessLufs: t.loudness_lufs }));
+        const { queue, order } = nav.current;
+        const batch: PlayerTrack[] = resp.tracks.map((t) => ({
+          path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+          starred: t.starred, rating: t.rating ?? null, loudnessLufs: t.loudness_lufs,
+        }));
+        if (!batch.length) return;
         const base = queue.length;
         setQueue([...queue, ...batch]);
         setOrder([...order, ...batch.map((_, i) => base + i)]);
@@ -783,7 +780,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     extendingSimilar.current = true;
     const exclude = q.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path);
     api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
-      starred?: boolean; loudness_lufs?: number | null }[] }>(
+      starred?: boolean; rating?: number | null; loudness_lufs?: number | null }[] }>(
       "/api/related/library", { path: seed.path, count: LISTEN_REFILL_COUNT, exclude })
       .then((resp) => {
         const { queue, order } = nav.current;
@@ -791,7 +788,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const batch: PlayerTrack[] = resp.tracks
           .filter((t) => !have.has(t.path))
           .map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
-            starred: t.starred, loudnessLufs: t.loudness_lufs }));
+            starred: t.starred, rating: t.rating ?? null, loudnessLufs: t.loudness_lufs }));
         if (!batch.length) return;
         const base = queue.length;
         setQueue([...queue, ...batch]);
@@ -1642,9 +1639,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent((c) => (c && c.path === path && c.bpm !== bpm ? { ...c, bpm } : c));
   }, []);
 
-  // Reflect a star toggle onto the queued track (queue rows read t.starred).
-  const setTrackStarred = useCallback((path: string, starred: boolean) => {
-    setQueue((q) => q.map((t) => (t.path === path && t.starred !== starred ? { ...t, starred } : t)));
+  // Reflect a rating change onto the queued track (queue rows read t.rating /
+  // t.starred). The derived star mirrors D1: starred ⇔ rating >= 4.
+  const setTrackRating = useCallback((path: string, rating: number | null) => {
+    const starred = rating != null && rating >= 4;
+    setQueue((q) => q.map((t) => (t.path === path ? { ...t, rating, starred } : t)));
+  }, []);
+  const setTrackDisliked = useCallback((path: string, disliked: boolean) => {
+    setQueue((q) => q.map((t) => (t.path === path && t.disliked !== disliked ? { ...t, disliked } : t)));
   }, []);
 
   // Global keyboard shortcuts (ignored while typing; Space is left for tap-tempo).
@@ -1683,7 +1685,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource,
       listenSource, setListenSource, radio, setRadio, radioMode, setRadioMode,
-      updateTrackBpm, setTrackStarred,
+      updateTrackBpm, setTrackRating, setTrackDisliked,
       play, playQueue, enqueue, enqueueMany, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent, isQueued,

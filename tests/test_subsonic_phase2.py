@@ -223,12 +223,16 @@ def test_player_cannot_edit_playlists(lib):
 
 
 def test_player_stars_and_scrobbles_are_attributed(lib):
+    """A player's star is its own derived rating (D1/D4), never the admin's
+    tracks.starred projection — another account's star never leaks over."""
     run = f"tr-{lib['ids']['run']}"
     lib["call"]("star", as_="player", id=run)
     lib["call"]("scrobble", as_="player", id=run)
-    assert lib["st"].db.get_track(lib["paths"]["run"])["starred"] == 1
+    owner = f"player:{lib['player_id']}"
+    assert lib["st"].db.get_mark(owner, lib["paths"]["run"])["starred"] is True
+    assert lib["st"].db.get_track(lib["paths"]["run"])["starred"] == 0
     events = lib["st"].db.list_play_events()
-    assert events[0]["owner"] == f"player:{lib['player_id']}"
+    assert events[0]["owner"] == owner
 
 
 def test_disabled_player_is_locked_out_immediately(lib):

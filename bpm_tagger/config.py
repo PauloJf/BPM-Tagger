@@ -82,7 +82,46 @@ def env_locked_keys() -> list:
 # load_settings_override does a blind config.update — so sweep them out rather
 # than let dead keys reappear in the config dict and the /api/settings payload.
 # v2.10.0: max stretch became the single run-queue authority.
-_DEAD_SETTINGS = ("run_tolerance_pct", "run_force_tempo")
+# v2.18: ratings-weighted picking replaced the two run preference toggles —
+# translated once by _migrate_pick_settings before the sweep.
+_DEAD_SETTINGS = ("run_tolerance_pct", "run_force_tempo",
+                  "run_prefer_starred", "run_prefer_familiar")
+
+
+def _env_bool(name: str) -> "bool | None":
+    raw = os.environ.get(name)
+    return None if raw is None else raw.strip().lower() == "true"
+
+
+def _pick_env_defaults() -> dict:
+    """pick_* defaults from the environment. The retired RUN_PREFER_STARRED /
+    RUN_PREFER_FAMILIAR still steer them for one release (with a warning):
+    prefer_starred=false -> ratings off; prefer_familiar=true -> new songs
+    'less' (0.5). The PICK_* vars win when both are set."""
+    old_starred, old_familiar = _env_bool("RUN_PREFER_STARRED"), _env_bool("RUN_PREFER_FAMILIAR")
+    for name, val in (("RUN_PREFER_STARRED", old_starred), ("RUN_PREFER_FAMILIAR", old_familiar)):
+        if val is not None:
+            log.warning("%s is deprecated (ratings-weighted picking replaced it) — "
+                        "use PICK_USE_RATINGS / PICK_NEW_FACTOR; it will be removed.", name)
+    use = _env_bool("PICK_USE_RATINGS")
+    if use is None:
+        use = True if old_starred is None else old_starred
+    new_factor = os.environ.get("PICK_NEW_FACTOR")
+    if new_factor is None:
+        new_factor = "0.5" if old_familiar else "1"
+    return {
+        "pick_use_ratings": use,
+        "pick_weights":     os.environ.get("PICK_WEIGHTS", "0.1,0.5,1,1,3,6"),
+        "pick_new_factor":  new_factor,
+    }
+
+
+def _migrate_pick_settings(data: dict) -> None:
+    """Translate a settings.json written before ratings (in place)."""
+    if "run_prefer_starred" in data and "pick_use_ratings" not in data:
+        data["pick_use_ratings"] = bool(data["run_prefer_starred"])
+    if data.get("run_prefer_familiar") and "pick_new_factor" not in data:
+        data["pick_new_factor"] = 0.5
 
 
 def _read_version() -> str:
@@ -159,6 +198,7 @@ def load_settings_override(config: dict) -> dict:
             # Env-locked keys stay authoritative from the environment.
             for key in env_locked_keys():
                 data.pop(key, None)
+            _migrate_pick_settings(data)
             for key in _DEAD_SETTINGS:
                 data.pop(key, None)
             config.update(data)
@@ -280,11 +320,11 @@ def build_config() -> dict:
         "run_presets":                _parse_run_presets(os.environ.get(
             "RUN_PRESETS", "Warmup:120,Easy:155,Steady:165,Tempo:175")),
         "run_octave_fold":            os.environ.get("RUN_OCTAVE_FOLD", "true").lower() == "true",
-        "run_prefer_starred":         os.environ.get("RUN_PREFER_STARRED", "true").lower() == "true",
-        # Within a star tier, fill the queue most-played-first (play counts
-        # pulled from Navidrome). Off = closest BPM first, as before.
-        "run_prefer_familiar":        os.environ.get("RUN_PREFER_FAMILIAR", "false").lower() == "true",
         "run_queue_size":             int(os.environ.get("RUN_QUEUE_SIZE", "20")),
+        # ── Rating-weighted picking (Run, Listen shuffle/radio, similar, Subsonic)
+        # Six weights in order 1★,2★,3★,unrated,4★,5★ and a multiplier on "new"
+        # (unrated + unplayed by the account) tracks; see web/weighting.py.
+        **_pick_env_defaults(),
         # The single authority over a run queue: how far (%) playbackRate may move
         # from 1 to land a track on the target cadence. Enforced at selection (a
         # track that can't reach the target within it isn't queued) and again at
@@ -369,6 +409,10 @@ def build_config() -> dict:
         # Two-way star sync (docs/plans/navidrome-star-sync.md): gates the
         # "Sync stars now" button in Settings. Manual trigger only in v1.
         "navidrome_star_sync":        os.environ.get("NAVIDROME_STAR_SYNC", "false").lower() == "true",
+        # Two-way ADMIN rating sync (docs/plans/ratings-weighted-picking.md §
+        # "Navidrome rating sync", D15/D16), opt-in and off by default. While
+        # on, star sync becomes push-only for songs (ratings own the star).
+        "navidrome_sync_ratings":     os.environ.get("NAVIDROME_SYNC_RATINGS", "false").lower() == "true",
         # Scrobble plays from the built-in player to Navidrome (which forwards
         # to Last.fm/ListenBrainz when configured there).
         "navidrome_scrobble":         os.environ.get("NAVIDROME_SCROBBLE", "false").lower() == "true",

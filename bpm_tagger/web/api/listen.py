@@ -16,19 +16,30 @@ default-deny ``_PLAYER_ALLOWED`` list, and additionally 403s player sessions
 itself while the effective mode is ``off`` — so turning the feature off actually
 turns it off, not just hides the tab. Admin and guest-with-full-access sessions
 are never gated (the page is always routable for them).
-"""
+
+Rating-weighted picking (docs/plans/ratings-weighted-picking.md): the queue
+overlays the caller's own rating/dislike/star (``annotate_marks``);
+``?order=weighted`` returns the same tracks in a rating-weighted permutation
+with the caller's dislikes dropped (D12/D13 — in-order play keeps them, shown
+with the dislike mark); ``POST /api/listen/pick`` draws a weighted batch for
+the radio's refill. ``_source_tracks`` is the one place that resolves a
+``?playlist=`` value into a pool, shared by all three."""
 
 import os
+import random
 
 from typing import Optional
 
 from flask import Blueprint, g, jsonify, request, session
 
-from ..auth import login_required
+from ..auth import _check_csrf, login_required, session_owner
 from ..state import state
+from ..weighting import sample, weighted_order, weights_from_config
 from .run import _run_scope
 
 listen_bp = Blueprint("api_listen", __name__)
+
+MAX_EXCLUDE = 500  # same defensive cap as the Run queue's exclude list
 
 _LISTEN_MODES = ("off", "on", "default", "only")
 
@@ -72,41 +83,31 @@ def effective_listen_mode(st=None, player: Optional[dict] = None) -> str:
     return listen_mode(st.config)
 
 
-@listen_bp.route("/api/listen/queue")
-@login_required
-def api_listen_queue():
-    """The playable tracks of ?playlist= — an id, "mine" (every playlist the
-    session may play, unioned), or "library" (the whole library, full-access
-    sessions only) — in playlist/shelf order. "Playable" = a live library file;
-    a detected BPM is NOT required, unlike the run queue.
-
-    The client owns ordering beyond this (its shuffle toggle) and the radio
-    refill (it re-fetches this list and appends what it hasn't played recently),
-    so this stays a plain listing rather than a sampler."""
-    st = state()
-    if session.get("role") == "player" and effective_listen_mode(st) == "off":
-        return jsonify(error="forbidden"), 403
-
+def _source_tracks(st, raw):
+    """Resolve ``?playlist=`` (an id, "mine" or "library") to (label, tracks) —
+    tracks carry ``file_path``/``title``/``artist``/``bpm``/``play_count`` (the
+    fields ``annotate_marks`` and the weighted sampler need) plus
+    ``duration_ms``/``loudness_lufs``. Returns (None, (response, status)) for a
+    scope violation or an unknown playlist, so every caller (the queue, order=
+    weighted, and pick) enforces the same rules from one place."""
     full, allowed = _run_scope()
-    raw = request.args.get("playlist")
     kind = str(raw).lower()
 
     if kind == "library":
         # Whole-library source: full-access sessions only, mirroring the Run
         # source rule — a scoped player never reaches past its playlists.
         if not full:
-            return jsonify(error="forbidden"), 403
+            return None, (jsonify(error="forbidden"), 403)
         tracks = [{
-            "path":    t["file_path"],
-            "title":   t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
-            "artist":  t["artist"] or "",
-            "bpm":     t["bpm"],
-            "starred": bool(t["starred"]),
-            "disliked": bool(t["disliked"]),
+            "file_path": t["file_path"],
+            "title":     t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
+            "artist":    t["artist"] or "",
+            "bpm":       t["bpm"],
+            "play_count": t.get("play_count"),
             "duration_ms": t["duration_ms"],
             "loudness_lufs": t["loudness_lufs"],
         } for t in st.db.get_listen_library()]
-        return jsonify(tracks=tracks, playlist="library", count=len(tracks))
+        return ("library", tracks), None
 
     pooled = kind == "mine"
     playlist_id = None
@@ -114,11 +115,12 @@ def api_listen_queue():
         try:
             playlist_id = int(raw)
         except (ValueError, TypeError):
-            return jsonify(error="playlist must be a playlist id, \"mine\" or \"library\""), 400
+            return None, (jsonify(
+                error="playlist must be a playlist id, \"mine\" or \"library\""), 400)
         if not st.db.get_playlist(playlist_id):
-            return jsonify(error="playlist not found"), 404
+            return None, (jsonify(error="playlist not found"), 404)
         if not full and playlist_id not in allowed:
-            return jsonify(error="forbidden"), 403
+            return None, (jsonify(error="forbidden"), 403)
 
     if pooled:
         ids = sorted(allowed) if not full else [p["id"] for p in st.db.list_playlists()]
@@ -136,14 +138,108 @@ def api_listen_queue():
                 continue
             seen.add(path)
             tracks.append({
-                "path":    path,
-                "title":   r["title"] or os.path.splitext(os.path.basename(path))[0],
-                "artist":  r.get("local_artist") or r["artist"] or "",
-                "bpm":     r.get("local_bpm"),
-                "starred": bool(r.get("local_starred")),
-                "disliked": bool(r.get("local_disliked")),
+                "file_path": path,
+                "title":     r["title"] or os.path.splitext(os.path.basename(path))[0],
+                "artist":    r.get("local_artist") or r["artist"] or "",
+                "bpm":       r.get("local_bpm"),
+                "play_count": r.get("local_play_count"),
                 "duration_ms": r.get("local_duration_ms") or r.get("duration_ms"),
                 "loudness_lufs": r.get("local_loudness_lufs"),
             })
-    return jsonify(tracks=tracks, playlist=("mine" if pooled else playlist_id),
-                   count=len(tracks))
+    return ("mine" if pooled else playlist_id, tracks), None
+
+
+def _serialize(t: dict) -> dict:
+    """A track dict (post annotate_marks) into the wire shape the Listen
+    endpoints share."""
+    return {
+        "path":    t["file_path"],
+        "title":   t["title"],
+        "artist":  t["artist"],
+        "bpm":     t["bpm"],
+        "starred": bool(t.get("starred")),
+        "rating":  t.get("rating"),
+        "disliked": bool(t.get("disliked")),
+        "duration_ms": t.get("duration_ms"),
+        "loudness_lufs": t.get("loudness_lufs"),
+    }
+
+
+@listen_bp.route("/api/listen/queue")
+@login_required
+def api_listen_queue():
+    """The playable tracks of ?playlist= — an id, "mine" (every playlist the
+    session may play, unioned), or "library" (the whole library, full-access
+    sessions only) — in playlist/shelf order by default, or ``?order=weighted``
+    for a rating-weighted permutation with the caller's dislikes dropped
+    (D12/D13). "Playable" = a live library file; a detected BPM is NOT
+    required, unlike the run queue.
+
+    In-order play always includes disliked tracks (shown with the mark) — only
+    the weighted order drops them. The client owns further ordering (its
+    shuffle toggle for album/artist, which stays uniform per D12) and the radio
+    refill (POST /api/listen/pick)."""
+    st = state()
+    if session.get("role") == "player" and effective_listen_mode(st) == "off":
+        return jsonify(error="forbidden"), 403
+
+    resolved, err = _source_tracks(st, request.args.get("playlist"))
+    if err:
+        return err
+    label, raw_tracks = resolved
+    owner = session_owner()
+    rows = st.db.annotate_marks(raw_tracks, owner)
+
+    if str(request.args.get("order", "")).lower() == "weighted":
+        weights = weights_from_config(st.config, owner)
+        rows = [r for r in weighted_order(rows, weights.weight, random.Random())
+                if not r.get("disliked")]
+
+    tracks = [_serialize(r) for r in rows]
+    return jsonify(tracks=tracks, playlist=label, count=len(tracks))
+
+
+@listen_bp.route("/api/listen/pick", methods=["POST"])
+@login_required
+def api_listen_pick():
+    """A rating-weighted batch drawn from ?playlist='s pool for the radio's
+    refill — the POST counterpart of ``?order=weighted`` that also honours an
+    ``exclude`` list (the tracks already in the client's queue), the same
+    recycle-when-exhausted rule as the Run queue: if nothing is left once the
+    caller's dislikes and the excluded paths are dropped, the exclusion is
+    dropped and the full (non-disliked) pool is resampled instead of starving
+    the refill."""
+    st = state()
+    if session.get("role") == "player" and effective_listen_mode(st) == "off":
+        return jsonify(error="forbidden"), 403
+    _check_csrf()
+    body = request.get_json(silent=True) or {}
+
+    resolved, err = _source_tracks(st, body.get("playlist"))
+    if err:
+        return err
+    label, raw_tracks = resolved
+    exclude = body.get("exclude") or []
+    if not isinstance(exclude, list):
+        return jsonify(error="exclude must be a list of paths"), 400
+    exclude_set = {str(p) for p in exclude[:MAX_EXCLUDE]}
+    try:
+        count = max(1, min(100, int(body.get("count", 20))))
+    except (ValueError, TypeError):
+        count = 20
+
+    owner = session_owner()
+    rows = st.db.annotate_marks(raw_tracks, owner)
+    pool = [r for r in rows if not r.get("disliked")]
+    weights = weights_from_config(st.config, owner)
+    rng = random.Random()
+
+    picked = sample([r for r in pool if r["file_path"] not in exclude_set],
+                    count, weights.weight, rng)
+    recycled = False
+    if not picked and pool:
+        picked = sample(pool, count, weights.weight, rng)
+        recycled = True
+
+    tracks = [_serialize(r) for r in picked]
+    return jsonify(tracks=tracks, playlist=label, recycled=recycled)

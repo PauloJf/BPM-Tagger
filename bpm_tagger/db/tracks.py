@@ -8,6 +8,7 @@ from typing import Optional
 from ..bpm.tags import get_file_hash
 from ..text import normalize_artist_name, normalize_genre, split_artist_credits, split_genres
 from .constants import TRACK_SORTS
+from .ratings import not_disliked_sql
 
 def _dupe_signature(paths) -> str:
     """Stable signature for a duplicate group (its sorted, unique file paths)."""
@@ -220,6 +221,13 @@ class TracksMixin:
             return True
         return track["file_hash"] != file_hash
 
+    # The admin's rating for a tracks row — a correlated subquery rather than a
+    # LEFT JOIN so it works unchanged in both the paged listing (SELECT tracks.*)
+    # and the plain path list (a different, narrower column list): both just
+    # reference this expression, in the WHERE/ORDER BY or as a SELECT alias.
+    _ADMIN_RATING_SUBQ = ("(SELECT r.rating FROM track_ratings r "
+                          "WHERE r.track_id = tracks.id AND r.owner = 'admin')")
+
     @staticmethod
     def _tracks_filter(q: str, filter: str,
                        bpm_target: Optional[float], bpm_tol: float,
@@ -237,12 +245,18 @@ class TracksMixin:
             clauses.append("status = 'deleted'")
         else:
             clauses.append("status != 'deleted'")
+            rated_n = None
+            if filter.startswith("rated") and filter[5:].isdigit() and 1 <= int(filter[5:]) <= 5:
+                rated_n = int(filter[5:])
             fc = {
                 "review": "needs_review = 1 AND locked = 0 AND reviewed = 0",
                 "locked": "locked = 1",
                 "no_isrc": "(isrc IS NULL OR isrc = '')",
                 "starred": "starred = 1",
                 "disliked": "disliked = 1",
+                # The admin's own rating (D19's Tracks-page filter); "unrated"
+                # is the plain absence of it, "ratedN" is "at least N stars".
+                "unrated": f"{TracksMixin._ADMIN_RATING_SUBQ} IS NULL",
                 "problems": (
                     "(decode_warnings IS NOT NULL AND decode_warnings != '' "
                     "AND decode_warnings != '[]')"),
@@ -250,7 +264,7 @@ class TracksMixin:
                     "NOT EXISTS (SELECT 1 FROM playlist_tracks pt "
                     "WHERE pt.matched_file_path = tracks.file_path "
                     "AND pt.removed_at IS NULL)"),
-            }.get(filter, "")
+            }.get(filter, f"{TracksMixin._ADMIN_RATING_SUBQ} >= {rated_n}" if rated_n else "")
             if fc:
                 clauses.append(fc)
         if q:
@@ -286,7 +300,8 @@ class TracksMixin:
                 f"SELECT COUNT(*) FROM tracks {where}", params
             ).fetchone()[0]
             rows = conn.execute(
-                f"SELECT * FROM tracks {where} ORDER BY {order} LIMIT ? OFFSET ?",
+                f"SELECT tracks.*, {self._ADMIN_RATING_SUBQ} AS rating FROM tracks {where} "
+                f"ORDER BY {order} LIMIT ? OFFSET ?",
                 params + [limit, offset]
             ).fetchall()
         return [dict(r) for r in rows], total
@@ -303,21 +318,20 @@ class TracksMixin:
         order = self._tracks_order(sort)
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT file_path, title, artist, loudness_lufs FROM tracks {where} "
+                f"SELECT file_path, title, artist, loudness_lufs, disliked FROM tracks {where} "
                 f"ORDER BY {order} LIMIT ?",
                 params + [limit]
             ).fetchall()
         return [dict(r) for r in rows]
 
     def set_starred(self, file_path: str, starred: bool):
-        with self._connect() as conn:
-            conn.execute("UPDATE tracks SET starred = ? WHERE file_path = ?",
-                         (1 if starred else 0, file_path))
+        """The admin's star, through the rating (star -> 4, unstar -> 3; see
+        db/ratings.py). Kept for callers that predate per-account ratings."""
+        self.set_owner_starred("admin", file_path, starred)
 
     def set_disliked(self, file_path: str, disliked: bool):
-        with self._connect() as conn:
-            conn.execute("UPDATE tracks SET disliked = ? WHERE file_path = ?",
-                         (1 if disliked else 0, file_path))
+        """The admin's dislike (db/ratings.py keeps tracks.disliked in step)."""
+        self.set_owner_disliked("admin", file_path, disliked)
 
     def all_tracks_for_star_sync(self) -> list[dict]:
         """Every non-deleted track with the fields the Navidrome star-sync driver
@@ -336,16 +350,19 @@ class TracksMixin:
         Caller advances the baseline ONLY after any required remote write succeeded,
         so a failed push retries on the next run. Updates nd_song_id when a fresh id
         was resolved (never clears a cached id with None)."""
+        # The star is derived from the admin's rating, so a pulled star/unstar
+        # moves the rating (star -> 4 if below, unstar a >= 4 -> 3) and the
+        # projection follows; only the baseline and id are written directly.
+        self.set_owner_starred("admin", file_path, starred)
         with self._connect() as conn:
             if nd_song_id is not None:
                 conn.execute(
-                    "UPDATE tracks SET starred = ?, starred_base = ?, nd_song_id = ? "
-                    "WHERE file_path = ?",
-                    (1 if starred else 0, 1 if starred else 0, nd_song_id, file_path))
+                    "UPDATE tracks SET starred_base = ?, nd_song_id = ? WHERE file_path = ?",
+                    (1 if starred else 0, nd_song_id, file_path))
             else:
                 conn.execute(
-                    "UPDATE tracks SET starred = ?, starred_base = ? WHERE file_path = ?",
-                    (1 if starred else 0, 1 if starred else 0, file_path))
+                    "UPDATE tracks SET starred_base = ? WHERE file_path = ?",
+                    (1 if starred else 0, file_path))
 
     def set_play_counts(self, updates: list[tuple]) -> int:
         """Bulk-write pulled play data: (file_path, play_count, last_played,
@@ -511,38 +528,43 @@ class TracksMixin:
         return int(row[0]) if row and row[0] else 0
 
     # Runnable rows of a playlist: matched local files (non-tombstone, 'have')
-    # joined to analyzed, non-deleted, non-disliked tracks. Deduped by file_path
-    # (two source tracks can resolve to one local file). Shared by the run-queue
-    # builder and its per-playlist availability count.
+    # joined to analyzed, non-deleted tracks the account hasn't disliked. Deduped
+    # by file_path (two source tracks can resolve to one local file). Shared by
+    # the run-queue builder and its per-playlist availability count. Params:
+    # (playlist_id, owner).
     _PLAYLIST_RUN_JOIN = (
         "FROM playlist_tracks pt JOIN tracks t ON t.file_path = pt.matched_file_path "
         "WHERE pt.playlist_id = ? AND pt.removed_at IS NULL AND pt.match_status = 'have' "
-        "AND t.status != 'deleted' AND t.bpm IS NOT NULL "
-        "AND (t.disliked IS NULL OR t.disliked = 0)"
+        "AND t.status != 'deleted' AND t.bpm IS NOT NULL AND " + not_disliked_sql("t")
     )
+    _RUN_COLS = ("t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count, "
+                 "t.loudness_lufs ")
 
-    def get_run_candidates(self, playlist_id: Optional[int] = None) -> list[dict]:
-        """Analyzed, non-deleted, non-disliked tracks feeding the run-queue builder
-        (which octave-folds and scores in Python, cheap even at library scale).
-        Disliked tracks are dropped here so they never surface in a run.
+    def get_run_candidates(self, playlist_id: Optional[int] = None,
+                           owner: str = "admin") -> list[dict]:
+        """Analyzed, non-deleted tracks feeding the run-queue builder (which
+        octave-folds and scores in Python, cheap even at library scale). The
+        account's disliked tracks are dropped here so they never surface in a
+        run; ``starred`` is the admin projection — callers wanting the
+        account's own view run the rows through annotate_marks().
 
         With ``playlist_id`` the pool is restricted to that playlist's matched local
         tracks (Phase 3) instead of the whole library."""
         with self._connect() as conn:
             if playlist_id is None:
                 rows = conn.execute(
-                    "SELECT file_path, title, artist, bpm, starred, play_count, loudness_lufs FROM tracks "
-                    "WHERE status != 'deleted' AND bpm IS NOT NULL "
-                    "AND (disliked IS NULL OR disliked = 0)"
+                    "SELECT " + self._RUN_COLS + "FROM tracks t "
+                    "WHERE t.status != 'deleted' AND t.bpm IS NOT NULL AND "
+                    + not_disliked_sql("t"), (owner,)
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count, t.loudness_lufs "
-                    + self._PLAYLIST_RUN_JOIN + " GROUP BY t.file_path", (playlist_id,)
+                    "SELECT " + self._RUN_COLS
+                    + self._PLAYLIST_RUN_JOIN + " GROUP BY t.file_path", (playlist_id, owner)
                 ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_run_candidates_for_playlists(self, playlist_ids) -> list[dict]:
+    def get_run_candidates_for_playlists(self, playlist_ids, owner: str = "admin") -> list[dict]:
         """Run candidates pooled across several playlists — the union of a scoped
         player's assigned playlists, deduped by file_path. Used as the top-up pool
         for a scoped player so a thin playlist never pads from the whole library.
@@ -555,12 +577,11 @@ class TracksMixin:
             "FROM playlist_tracks pt JOIN tracks t ON t.file_path = pt.matched_file_path "
             f"WHERE pt.playlist_id IN ({placeholders}) AND pt.removed_at IS NULL "
             "AND pt.match_status = 'have' AND t.status != 'deleted' AND t.bpm IS NOT NULL "
-            "AND (t.disliked IS NULL OR t.disliked = 0)"
+            "AND " + not_disliked_sql("t")
         )
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT t.file_path, t.title, t.artist, t.bpm, t.starred, t.play_count, t.loudness_lufs "
-                + join + " GROUP BY t.file_path", ids
+                "SELECT " + self._RUN_COLS + join + " GROUP BY t.file_path", ids + [owner]
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -568,24 +589,25 @@ class TracksMixin:
         """Every playable library track for the Listen (regular, non-cadence)
         player's whole-library source: non-deleted, BPM or not. Shelf order
         (artist, album, disc, track) so "Play" reads like flipping through the
-        collection; the client owns shuffle. Disliked tracks are included but
-        flagged — playing the whole library is an explicit choice, unlike a
-        run's auto-pick — and the radio refill filters them client-side."""
+        collection. ``starred`` / ``disliked`` are the admin projection — the
+        Listen API overlays the caller's own marks (annotate_marks). Disliked
+        tracks are included: in-order play is an explicit choice, unlike the
+        weighted picks, which drop them."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT file_path, title, artist, bpm, starred, disliked, "
+                "SELECT file_path, title, artist, bpm, starred, disliked, play_count, "
                 "duration_ms, loudness_lufs FROM tracks WHERE status != 'deleted' "
                 "ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, "
                 "disc_no, track_no, file_path"
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def count_run_candidates(self, playlist_id: int) -> int:
+    def count_run_candidates(self, playlist_id: int, owner: str = "admin") -> int:
         """How many of a playlist's tracks are actually runnable (matched + BPM)."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT COUNT(DISTINCT t.file_path) AS n " + self._PLAYLIST_RUN_JOIN,
-                (playlist_id,),
+                (playlist_id, owner),
             ).fetchone()
         return int(row["n"] or 0)
 

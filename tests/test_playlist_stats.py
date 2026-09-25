@@ -14,6 +14,7 @@ import sqlite3
 import pytest
 
 from bpm_tagger.db import BPMDatabase
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
 
 
 def _login(client):
@@ -30,6 +31,7 @@ def _seed(base_config, name, *, bpm=None, duration_ms=None, play_count=0,
         "INSERT INTO tracks (file_path, title, artist, bpm, duration_ms, play_count, "
         "status, disliked, analyzed_at) VALUES (?, ?, 'Artist', ?, ?, ?, ?, ?, ?)",
         (path, name, bpm, duration_ms, play_count, status, disliked, f"2026-01-{name[-1]}"))
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)  # admin marks from the flags
     conn.commit()
     conn.close()
     return path

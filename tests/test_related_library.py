@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from bpm_tagger.config import build_config
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
 
 
 def _app(base_config, **over):
@@ -47,6 +48,7 @@ def lib(base_config):
         for credit in [a.strip() for a in artist.split(",")]:
             conn.execute("INSERT INTO track_artists (track_id, name, norm_name) VALUES (?, ?, ?)",
                          (tid, credit, credit.lower()))
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)  # admin marks from the flags
     conn.commit()
     conn.close()
     admin = app.test_client()

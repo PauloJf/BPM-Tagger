@@ -10,6 +10,10 @@ interface AuthState {
   role: Role | null;
   username: string | null;
   fullAccess: boolean;
+  // The shared RUN_PASSWORD login: role "player" with full access and no
+  // named identity (see /api/me — full_access is true only for admin and this
+  // login). Rating/dislike are read-only for it (no per-account row to write).
+  isGuest: boolean;
   version: string;
   reviewCount: number;
   installPingAsk: boolean;
@@ -123,9 +127,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refresh().catch(() => {});
   }, [refresh]);
 
+  const isGuest = role === "player" && fullAccess && !username;
+
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, role, username, fullAccess, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, preloadAhead, listenMode, login, logout, refresh }}
+      value={{ ready, authenticated, role, username, fullAccess, isGuest, version, reviewCount, installPingAsk, dismissInstallPingAsk, normalizePlayback, loudnessTargetLufs, preloadAhead, listenMode, login, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

@@ -6,7 +6,9 @@ Two concerns live here:
 * The Subsonic client used by the two-way star sync (`get_starred`, `resolve_id`,
   `set_star`) — see docs/plans/navidrome-star-sync.md.
 * Scrobbling (`scrobble`) and the full-library song walk (`iter_all_songs`) that
-  feeds the play-count pull.
+  feeds the play-count pull and the opt-in two-way rating sync (`set_rating`;
+  each song from `iter_all_songs` already carries `userRating` — see
+  docs/plans/ratings-weighted-picking.md § Navidrome rating sync).
 
 Subsonic keys songs by an opaque `id`; BPM Tagger keys by `file_path`. Identity is
 resolved fast-path by path suffix and falls back to the grabber's fuzzy matcher.
@@ -255,4 +257,21 @@ def set_star(url: str, user: str, pwd: str, song_id: str, starred: bool) -> bool
         return _sub_response(resp).get("status") == "ok"
     except Exception as exc:
         log.warning("Navidrome %s failed for id=%s: %s", ep, song_id, exc)
+        return False
+
+
+def set_rating(url: str, user: str, pwd: str, song_id: str, rating: int) -> bool:
+    """Set (1-5) or clear (0) a song's Subsonic rating for `user`. Returns True
+    only on a Subsonic 'ok' status; the caller (rating_sync) advances the sync
+    baseline only when this returns True, same retry-next-run contract as
+    set_star."""
+    try:
+        resp = requests.get(
+            f"{url.rstrip('/')}/rest/setRating",
+            params={**_sub_params(user, pwd), "id": song_id, "rating": int(rating or 0)},
+            timeout=15,
+        )
+        return _sub_response(resp).get("status") == "ok"
+    except Exception as exc:
+        log.warning("Navidrome setRating failed for id=%s: %s", song_id, exc)
         return False

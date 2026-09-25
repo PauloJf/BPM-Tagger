@@ -33,6 +33,9 @@ export interface Track {
   lyrics_synced?: number;
   starred?: number;
   disliked?: number;
+  // Caller's own 1-5 rating; null/absent = unrated. On the Tracks page this is
+  // the admin's rating (that page has no other viewer).
+  rating?: number | null;
   // Navidrome play data (null until pulled)
   play_count?: number | null;
   last_played?: string | null;
@@ -59,7 +62,8 @@ export interface RunTrack {
   title: string;
   artist: string;
   bpm: number;
-  starred: boolean;
+  starred: boolean;   // derived: rating >= 4 (kept for compat)
+  rating: number | null;
   play_count?: number | null;
   run_bpm: number;   // BPM after octave fold (×½/×1/×2)
   rate: number;      // playbackRate that lands run_bpm on the target (always in-limit)
@@ -73,8 +77,7 @@ export interface RunQueueResponse {
   count: number;
   octave_fold: boolean;
   stretch_limit_pct: number;  // the max-stretch limit this queue was selected under
-  prefer_starred: boolean;
-  prefer_familiar?: boolean;
+  use_ratings: boolean;
   recycled?: boolean;   // true when every non-excluded match ran out and the full pool was reshuffled
   topped_up?: boolean;  // true when a playlist run was filled out with library tracks (too few matched)
   playlist?: number | null;   // playlist id the pool was scoped to, or null for the whole library
@@ -211,6 +214,7 @@ export interface ListenTrack {
   bpm: number | null;
   starred: boolean;
   disliked: boolean;
+  rating: number | null;
   duration_ms: number | null;
   loudness_lufs: number | null;
 }
@@ -219,6 +223,15 @@ export interface ListenQueueResponse {
   tracks: ListenTrack[];
   playlist: number | "mine" | "library";
   count: number;
+  recycled?: boolean;
+}
+
+/** POST /api/listen/pick response — a weighted batch for the radio refill,
+ *  the caller's dislikes already excluded. */
+export interface ListenPickResponse {
+  tracks: ListenTrack[];
+  playlist: number | "mine" | "library";
+  recycled: boolean;
 }
 
 // Player-user account, as returned by the admin /api/players endpoints.
@@ -428,8 +441,42 @@ export interface LibraryRelatedTrack {
   artist: string;
   bpm: number | null;
   starred: boolean;
+  rating?: number | null;
   loudness_lufs: number | null;
   reason: "artist" | "tempo";
+}
+
+// ── Ratings & weighted picking ─────────────────────────────────────────────
+/** The six weights, in the order the API expects: 1★,2★,3★,unrated,4★,5★. */
+export type PickWeights = [number, number, number, number, number, number];
+
+export interface PickPreviewResponse {
+  counts: Record<"1" | "2" | "3" | "4" | "5" | "unrated" | "new", number>;
+  share: Record<"1" | "2" | "3" | "4" | "5" | "unrated" | "new", number>;
+  use_ratings?: boolean;
+  weights?: PickWeights;
+  new_factor?: number;
+}
+
+export interface RatingsDistribution {
+  "1": number; "2": number; "3": number; "4": number; "5": number;
+  unrated: number; disliked: number; total: number;
+}
+
+/** GET /api/stats/ratings?owner=<key> */
+export interface RatingsStatsResponse {
+  owner: string;
+  distribution: RatingsDistribution;
+}
+
+/** GET /api/runs/<id>/tracks — a finished run's tracks for the Run journal. */
+export interface RunJournalTrack {
+  path: string;
+  title: string;
+  artist: string;
+  played_at: string | null;
+  rating: number | null;
+  disliked: boolean;
 }
 
 export interface DeezerArtistInfo {

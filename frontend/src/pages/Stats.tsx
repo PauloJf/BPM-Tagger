@@ -7,6 +7,7 @@ import { ArtistLinks } from "../components/ArtistLinks";
 import PageHeader from "../components/PageHeader";
 import BpmHistogram, { type BpmBucket } from "../components/BpmHistogram";
 import RunJournal from "../components/RunJournal";
+import type { RatingsStatsResponse } from "../lib/types";
 
 interface TopTrack { file_path: string; title: string | null; artist: string | null; album: string | null; album_artist: string | null; bpm: number | null; play_count: number }
 interface TopArtist { name: string; plays: number; tracks: number }
@@ -307,6 +308,8 @@ export default function Stats() {
         );
       })()}
 
+      <RatingsCard owners={statsQ.data.run_owners || []} />
+
       {statsQ.data.grabber && (() => {
         const g = statsQ.data.grabber;
         const libTotal = g.managed + g.unmanaged || 1;
@@ -408,6 +411,80 @@ export default function Stats() {
         );
       })()}
     </>
+  );
+}
+
+/** Rating distribution (1-5, unrated, disliked) for one account, with an owner
+ *  filter mirroring RunModeCard/RunJournal's (same `run_owners` list). Defaults
+ *  to "admin" — there's no pooled "all accounts" reading for per-account
+ *  ratings, unlike the Run stats' account-blind all-time total. */
+function RatingsCard({ owners }: { owners: { key: string; label: string }[] }) {
+  const [owner, setOwner] = useState("admin");
+  const [data, setData] = useState<RatingsStatsResponse | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setFailed(false);
+    api.get<RatingsStatsResponse>(`/api/stats/ratings?owner=${encodeURIComponent(owner)}`)
+      .then((r) => { if (alive) setData(r); })
+      .catch(() => { if (alive) { setData(null); setFailed(true); } })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [owner]);
+
+  const levels: Array<{ key: "1" | "2" | "3" | "4" | "5" | "unrated"; label: string }> = [
+    { key: "5", label: "5★" }, { key: "4", label: "4★" }, { key: "3", label: "3★" },
+    { key: "2", label: "2★" }, { key: "1", label: "1★" }, { key: "unrated", label: "Unrated" },
+  ];
+  const dist = data?.distribution;
+  const total = dist?.total || 0;
+  const maxCount = dist ? Math.max(1, ...levels.map((l) => dist[l.key] || 0)) : 1;
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <div className="section-label">
+        <span>Ratings</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="section-hint">how this account has rated the library</span>
+          <select aria-label="Filter ratings by account" value={owner}
+                  onChange={(e) => setOwner(e.target.value)} style={{ fontSize: 12 }}>
+            <option value="admin">Admin</option>
+            {owners.filter((o) => o.key !== "admin" && o.key !== "unattributed").map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        </span>
+      </div>
+      {failed ? (
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>Failed to load ratings for this account.</p>
+      ) : loading ? (
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>Loading…</p>
+      ) : !total ? (
+        <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>Nothing rated yet.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {levels.map((l) => {
+            const count = dist?.[l.key] || 0;
+            const pct = Math.round((count / maxCount) * 100);
+            return (
+              <div key={l.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 52, fontSize: 12, color: "var(--muted)", flexShrink: 0 }}>{l.label}</span>
+                <div style={{ flex: 1, height: 10, background: "var(--border)", borderRadius: 6, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
+                </div>
+                <span style={{ width: 40, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{num(count)}</span>
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+            <span>{num(total)} rated · {num(dist?.disliked || 0)} disliked</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

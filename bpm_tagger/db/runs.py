@@ -254,6 +254,28 @@ class RunsMixin:
                 "SELECT key, SUM(value) AS value FROM run_stats_owner GROUP BY key").fetchall()
         return {r["key"]: r["value"] for r in rows}
 
+    def get_run(self, run_id: int) -> Optional[dict]:
+        """One journal row by id, or None — the Run journal's per-run track list
+        (web/api/stats.py) uses it to check the caller may see this run before
+        listing its tracks."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_run_track_events(self, run_id: int) -> list[dict]:
+        """The tracks played during one run, played-order, each with its title/
+        artist off the tracks table when the file is still in the library (a
+        deleted/moved file still shows the play, just without them). Feeds the
+        Run journal's expandable per-run track list (D19); the caller overlays
+        its own rating/dislike marks with annotate_marks."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pe.file_path, pe.played_at, t.title, t.artist "
+                "FROM play_events pe LEFT JOIN tracks t ON t.file_path = pe.file_path "
+                "WHERE pe.run_id = ? ORDER BY pe.played_at, pe.id", (run_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_run_owners(self) -> list[str]:
         """Every owner key that has attributed run data (counters or journal)."""
         with self._connect() as conn:

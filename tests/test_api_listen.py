@@ -10,6 +10,8 @@ is off. Admin sessions are never gated.
 import os
 import sqlite3
 
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
+
 
 def _app(base_config, **over):
     from bpm_tagger.config import build_config
@@ -56,6 +58,7 @@ def _seed_playlist(db_path, music_dir, name, tracks):
             "INSERT INTO playlist_tracks (playlist_id, source_track_id, title, artist, "
             "match_status, matched_file_path, position) VALUES (?, ?, ?, 'Artist', 'have', ?, ?)",
             (pid, path, title, path, i))
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)  # admin marks from the starred flag above
     conn.commit()
     conn.close()
     return pid
@@ -326,3 +329,95 @@ def test_listen_mode_validation_and_player_forbidden(base_config):
     p, _, pcsrf = _login(app, password="runner99")
     assert p.post("/api/settings/listen-mode", json={"player_listen_mode": "on"},
                   headers=pcsrf).status_code == 403
+
+
+# ── rating-weighted picking: order=weighted and POST /api/listen/pick ────────
+
+def _rate(client, csrf, path, rating):
+    r = client.post("/api/track/rating", json={"path": path, "rating": rating}, headers=csrf)
+    assert r.status_code == 200, r.get_json()
+
+
+def _dislike(client, csrf, path):
+    r = client.post("/api/track/dislike", json={"path": path, "disliked": True}, headers=csrf)
+    assert r.status_code == 200, r.get_json()
+
+
+def test_order_weighted_drops_the_callers_dislikes(base_config):
+    app = _app(base_config)
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("keep", 150.0), ("hated", 150.0)])
+    c, _, csrf = _login(app, password="s3cret")
+    hated_path = f"{base_config['music_dir']}/mix-hated.mp3"
+    _dislike(c, csrf, hated_path)
+
+    # Default (in-order) queue still includes the disliked track, marked.
+    plain = c.get(f"/api/listen/queue?playlist={pid}").get_json()
+    assert {t["title"] for t in plain["tracks"]} == {"keep", "hated"}
+    assert next(t for t in plain["tracks"] if t["title"] == "hated")["disliked"] is True
+
+    # order=weighted drops it (D12/D13).
+    weighted = c.get(f"/api/listen/queue?playlist={pid}&order=weighted").get_json()
+    assert {t["title"] for t in weighted["tracks"]} == {"keep"}
+
+
+def test_order_weighted_favors_the_callers_rating(base_config):
+    """A 5-star track leads a weighted permutation far more often than a
+    1-star one, across repeated seeded draws (the endpoint uses a fresh RNG
+    each call, so run several times rather than asserting on one)."""
+    app = _app(base_config)
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("hi", 150.0), ("lo", 150.0)])
+    c, _, csrf = _login(app, password="s3cret")
+    _rate(c, csrf, f"{base_config['music_dir']}/mix-hi.mp3", 5)
+    _rate(c, csrf, f"{base_config['music_dir']}/mix-lo.mp3", 1)
+    hi_first = 0
+    for _ in range(40):
+        data = c.get(f"/api/listen/queue?playlist={pid}&order=weighted").get_json()
+        if data["tracks"][0]["title"] == "hi":
+            hi_first += 1
+    assert hi_first > 25                          # far more often than the 50/50 a coin flip gives
+
+
+def test_listen_pick_excludes_dislikes_and_the_given_paths(base_config):
+    app = _app(base_config)
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("a", 150.0), ("b", 150.0), ("c", 150.0)])
+    c, _, csrf = _login(app, password="s3cret")
+    _dislike(c, csrf, f"{base_config['music_dir']}/mix-c.mp3")
+    r = c.post("/api/listen/pick",
+              json={"playlist": pid, "count": 10, "exclude": [f"{base_config['music_dir']}/mix-a.mp3"]},
+              headers=csrf)
+    assert r.status_code == 200
+    data = r.get_json()
+    assert {t["title"] for t in data["tracks"]} == {"b"}
+    assert data["recycled"] is False
+
+
+def test_listen_pick_recycles_when_exclude_exhausts_the_pool(base_config):
+    app = _app(base_config)
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix",
+                         [("a", 150.0), ("b", 150.0)])
+    c, _, csrf = _login(app, password="s3cret")
+    exclude = [f"{base_config['music_dir']}/mix-{t}.mp3" for t in ("a", "b")]
+    r = c.post("/api/listen/pick", json={"playlist": pid, "exclude": exclude}, headers=csrf)
+    assert r.status_code == 200
+    data = r.get_json()
+    assert {t["title"] for t in data["tracks"]} == {"a", "b"}
+    assert data["recycled"] is True
+
+
+def test_listen_pick_requires_csrf_and_validates_exclude(base_config):
+    app = _app(base_config)
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix", [("a", 150.0)])
+    c, _, csrf = _login(app, password="s3cret")
+    assert c.post("/api/listen/pick", json={"playlist": pid}).status_code == 403
+    r = c.post("/api/listen/pick", json={"playlist": pid, "exclude": "nope"}, headers=csrf)
+    assert r.status_code == 400
+
+
+def test_listen_pick_player_gated_like_the_queue(base_config):
+    app = _app(base_config, run_password="runner99")   # listen mode defaults off
+    pid = _seed_playlist(base_config["db_path"], base_config["music_dir"], "mix", [("a", 150.0)])
+    c, _, csrf = _login(app, password="runner99")
+    assert c.post("/api/listen/pick", json={"playlist": pid}, headers=csrf).status_code == 403

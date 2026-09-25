@@ -24,7 +24,7 @@ from ...integrations.metadata import gather_metadata
 from ...integrations.navidrome import _trigger_navidrome_rescan
 from ...integrations.ratelimit import deezer_limiter
 from ...trash import move_to_trash, purge_trash, trash_stats
-from ..auth import _check_csrf, login_required
+from ..auth import _check_csrf, login_required, session_owner
 from ..state import _assert_in_music_dir, state
 
 log = logging.getLogger(__name__)
@@ -115,10 +115,14 @@ def api_save_bpm():
         return jsonify(ok=False, error=str(exc))
 
 
-@tracks_bp.route("/api/track/star", methods=["POST"])
-@login_required
-def api_track_star():
+def _mark_target():
+    """Shared prologue of the rating / dislike / star endpoints: CSRF, the
+    caller's account (403 for the shared guest, which never rates — D6), and a
+    validated, existing track path. Returns (state, owner, path, body)."""
     _check_csrf()
+    owner = session_owner()
+    if owner == "guest":
+        abort(403)
     st = state()
     data = request.get_json(force=True, silent=True) or {}
     path = str(data.get("path", ""))
@@ -127,26 +131,39 @@ def api_track_star():
     _assert_in_music_dir(path)
     if not st.db.get_track(path):
         abort(404)
-    starred = bool(data.get("starred"))
-    st.db.set_starred(path, starred)
-    return jsonify(ok=True, starred=starred)
+    return st, owner, path, data
+
+
+@tracks_bp.route("/api/track/rating", methods=["POST"])
+@login_required
+def api_track_rating():
+    """Set (1-5) or clear (null / 0) the caller's own rating of a track."""
+    st, owner, path, data = _mark_target()
+    try:
+        mark = st.db.set_rating(owner, path, data.get("rating"))
+    except (ValueError, TypeError):
+        return jsonify(ok=False, error="rating must be 1-5 or null"), 400
+    return jsonify(ok=True, **mark)
+
+
+@tracks_bp.route("/api/track/star", methods=["POST"])
+@login_required
+def api_track_star():
+    """Compat shim from before ratings: star -> rating 4 (if below), unstar a
+    >= 4 track -> 3. The caller's own rating."""
+    st, owner, path, data = _mark_target()
+    mark = st.db.set_owner_starred(owner, path, bool(data.get("starred")))
+    return jsonify(ok=True, **mark)
 
 
 @tracks_bp.route("/api/track/dislike", methods=["POST"])
 @login_required
 def api_track_dislike():
-    _check_csrf()
-    st = state()
-    data = request.get_json(force=True, silent=True) or {}
-    path = str(data.get("path", ""))
-    if not path:
-        abort(400)
-    _assert_in_music_dir(path)
-    if not st.db.get_track(path):
-        abort(404)
-    disliked = bool(data.get("disliked"))
-    st.db.set_disliked(path, disliked)
-    return jsonify(ok=True, disliked=disliked)
+    """The caller's own dislike — a hard exclusion from their Run, radio,
+    shuffle and similar picks, independent of the rating."""
+    st, owner, path, data = _mark_target()
+    mark = st.db.set_owner_disliked(owner, path, bool(data.get("disliked")))
+    return jsonify(ok=True, **mark)
 
 
 @tracks_bp.route("/api/unlock", methods=["POST"])
@@ -267,6 +284,8 @@ def api_track():
     if not track:
         abort(404)
     _expose_decode_warnings(track)
+    # The caller's own rating / dislike / star, not the admin projection.
+    track.update(st.db.get_mark(session_owner(), path))
 
     back = request.args.get("back", "tracks")
     if back not in ("tracks", "review"):

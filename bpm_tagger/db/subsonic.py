@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from ..text import normalize_artist_name, normalize_genre
+from .ratings import ADMIN_OWNER, STAR_MIN, not_disliked_sql
 
 _LIVE = "status != 'deleted'"
 
@@ -330,9 +331,16 @@ class SubsonicMixin:
     def subsonic_random_songs(self, size: int, from_year: Optional[int] = None,
                               to_year: Optional[int] = None,
                               scope: Optional[list] = None,
-                              genre: Optional[str] = None) -> list[dict]:
+                              genre: Optional[str] = None,
+                              owner: str = ADMIN_OWNER,
+                              pool_size: Optional[int] = None) -> list[dict]:
+        """A random pool, dropping ``owner``'s dislikes, for the caller to weight
+        and sample down to ``size`` (rating-weighted picking, D17). ``pool_size``
+        overrides the SQL ``LIMIT`` so callers can over-fetch before weighting;
+        it defaults to ``size`` for callers that don't weight."""
         where, params = scope_sql(scope)
-        where += " AND status = 'done'"
+        where += " AND status = 'done' AND " + not_disliked_sql("tracks")
+        params.append(owner)
         if genre:
             where += " AND id IN (SELECT track_id FROM track_genres WHERE norm_name = ?)"
             params.append(normalize_genre(genre))
@@ -342,11 +350,21 @@ class SubsonicMixin:
         if to_year is not None:
             where += " AND year <= ?"
             params.append(to_year)
-        return self._tracks(where, params + [size], " ORDER BY RANDOM() LIMIT ?")
+        return self._tracks(where, params + [pool_size or size], " ORDER BY RANDOM() LIMIT ?")
 
-    def subsonic_starred_songs(self, scope: Optional[list] = None) -> list[dict]:
+    def subsonic_starred_songs(self, scope: Optional[list] = None,
+                               owner: str = ADMIN_OWNER) -> list[dict]:
+        """Songs starred by ``owner``: the admin reads the ``tracks.starred``
+        projection (fast, indexed); any other account is derived live from its
+        own ``track_ratings`` (rating >= STAR_MIN, D1)."""
         where, params = scope_sql(scope)
-        return self._tracks(where + " AND starred = 1", params,
+        if owner == ADMIN_OWNER:
+            where += " AND starred = 1"
+        else:
+            where += (" AND EXISTS (SELECT 1 FROM track_ratings r WHERE r.track_id = tracks.id "
+                      "AND r.owner = ? AND r.rating >= ?)")
+            params += [owner, STAR_MIN]
+        return self._tracks(where, params,
                             " ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, disc_no, track_no")
 
     def subsonic_tracks_by_ids(self, ids: list, scope: Optional[list] = None) -> dict:

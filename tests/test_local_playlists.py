@@ -14,6 +14,7 @@ import sqlite3
 import pytest
 
 from bpm_tagger.db import BPMDatabase
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
 
 
 @pytest.fixture
@@ -170,6 +171,7 @@ def test_disliked_local_track_is_not_runnable(db):
     path = _seed_track(db, "/music/a.mp3", "A")
     with db._connect() as conn:
         conn.execute("UPDATE tracks SET disliked = 1 WHERE file_path = ?", (path,))
+        conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)
         conn.commit()
     pid = db.add_local_playlist("PL")
     db.add_track_to_local_playlist(pid, path)

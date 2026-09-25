@@ -4,8 +4,11 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 // The card fetches its own pages; drive it through a controlled api.get.
 const h = vi.hoisted(() => ({
   get: vi.fn(),
+  post: vi.fn(() => Promise.resolve({})),
+  isGuest: false,
 }));
-vi.mock("../lib/api", () => ({ api: { get: h.get } }));
+vi.mock("../lib/api", () => ({ api: { get: h.get, post: h.post } }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ isGuest: h.isGuest }) }));
 
 import RunJournal, { fmtRunDur, fmtRunWhen, type RunRow } from "./RunJournal";
 
@@ -32,6 +35,9 @@ const page = (items: RunRow[], has_more = false) => ({ items, has_more });
 beforeEach(() => {
   cleanup();
   h.get.mockReset();
+  h.post.mockReset();
+  h.post.mockResolvedValue({});
+  h.isGuest = false;
 });
 
 describe("RunJournal — formatting helpers", () => {
@@ -145,6 +151,40 @@ describe("RunJournal — paging", () => {
     // Offsets follow what the server handed over, not what survived the dedupe.
     expect(h.get.mock.calls.map((c) => c[0])).toEqual([
       "/api/stats/runs?offset=0", "/api/stats/runs?offset=2", "/api/stats/runs?offset=4"]);
+  });
+});
+
+describe("RunJournal — expand to a run's tracks", () => {
+  it("lazily fetches and shows RatingStars + dislike per track on expand", async () => {
+    h.get.mockImplementation((url: string) => {
+      if (url.startsWith("/api/runs/")) return Promise.resolve({
+        tracks: [{ path: "/a.mp3", title: "A", artist: "Ar", played_at: null, rating: 3, disliked: false }],
+      });
+      return Promise.resolve(page([row()]));
+    });
+    render(<RunJournal />);
+    const runRow = (await screen.findByText("Admin")).closest("tr") as HTMLElement;
+    fireEvent.click(runRow);
+    expect(await screen.findByText("A")).toBeTruthy();
+    expect(h.get).toHaveBeenCalledWith("/api/runs/1/tracks");
+    expect(screen.getByLabelText(/Rating: 3 stars/)).toBeTruthy();
+    expect(screen.getByLabelText("Dislike")).toBeTruthy();
+  });
+
+  it("hides the rating/dislike controls for the guest", async () => {
+    h.isGuest = true;
+    h.get.mockImplementation((url: string) => {
+      if (url.startsWith("/api/runs/")) return Promise.resolve({
+        tracks: [{ path: "/a.mp3", title: "A", artist: "Ar", played_at: null, rating: null, disliked: false }],
+      });
+      return Promise.resolve(page([row()]));
+    });
+    render(<RunJournal />);
+    const runRow = (await screen.findByText("Admin")).closest("tr") as HTMLElement;
+    fireEvent.click(runRow);
+    expect(await screen.findByText("A")).toBeTruthy();
+    expect(screen.queryByLabelText(/Rating:|Not rated/)).toBeNull();
+    expect(screen.queryByLabelText("Dislike")).toBeNull();
   });
 });
 

@@ -47,7 +47,7 @@ vi.mock("../lib/api", () => ({
   api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn(() => Promise.resolve({})) },
   audioUrl: (p: string) => `/audio?path=${p}`,
 }));
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess, listenMode: h.listenMode }) }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess, listenMode: h.listenMode, isGuest: h.role === "player" && h.fullAccess }) }));
 vi.mock("../lib/player", () => ({
   usePlayer: () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
@@ -61,7 +61,7 @@ vi.mock("../lib/player", () => ({
     playQueue(tracks: unknown[], _start: number, opts?: { shuffle?: boolean }) {
       h.calls.push("playQueue"); h.queued = tracks; h.shuffleOpt = opts?.shuffle;
     },
-    setTrackStarred() {}, toggleShuffle() {}, cycleRepeat() {},
+    setTrackRating() {}, setTrackDisliked() {}, toggleShuffle() {}, cycleRepeat() {},
     next() {}, prev() {}, toggle() {}, stop() {},
   }),
 }));
@@ -182,12 +182,14 @@ describe("Listen — starting playback", () => {
     expect((h.queued as Array<{ path: string }>).map((t) => t.path)).toEqual(["/a.mp3", "/b.mp3"]);
   });
 
-  it("Shuffle plays the same queue shuffled", async () => {
+  it("Shuffle fetches the weighted order and plays it as-is (no client shuffle)", async () => {
+    localStorage.setItem(SOURCE_KEY, "pl:1");
     vi.mocked(api.get).mockResolvedValue(resp);
     render(<Listen />);
     fireEvent.click(screen.getByText("Shuffle"));
     await vi.waitFor(() => expect(h.calls).toContain("playQueue"));
-    expect(h.shuffleOpt).toBe(true);
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith("/api/listen/queue?playlist=1&order=weighted");
+    expect(h.shuffleOpt).toBe(false);
   });
 
   it("sets the listen source AFTER playQueue (which clears it) — order is load-bearing", async () => {

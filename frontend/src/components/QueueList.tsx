@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { usePlayer } from "../lib/player";
 import { Cover } from "./Artwork";
 import { EqBars } from "./EqBars";
+import { RatingStars, DislikeButton } from "./RatingStars";
 
 /** The playback queue rows — drag-to-reorder, jump, move, remove — extracted
  *  from PlayerBar's queue drawer so the Listen page can embed the same list
@@ -10,9 +13,20 @@ import { EqBars } from "./EqBars";
  *  via its own wrapper; `fontClass` carries PlayerBar's drawer font stepping
  *  (unused by hosts without one). */
 export default function QueueList({ fontClass = "" }: { fontClass?: string }) {
-  const { orderedQueue, orderPos, playing, tempoLock, jumpTo, removeAt, moveAt, reorderTo } = usePlayer();
+  const { orderedQueue, orderPos, playing, tempoLock, jumpTo, removeAt, moveAt, reorderTo,
+          setTrackRating, setTrackDisliked } = usePlayer();
+  const { isGuest } = useAuth();
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  function setRating(path: string, rating: number | null) {
+    setTrackRating(path, rating);
+    api.post("/api/track/rating", { path, rating }).catch(() => {});
+  }
+  function toggleDislike(path: string, disliked: boolean) {
+    setTrackDisliked(path, !disliked);
+    api.post("/api/track/dislike", { path, disliked: !disliked }).catch(() => {});
+  }
 
   return (
     <div className={("player-queue-list " + fontClass).trim()}>
@@ -46,6 +60,12 @@ export default function QueueList({ fontClass = "" }: { fontClass?: string }) {
           </button>
           {t.bpm != null && <span className="player-queue-bpm" title={`${Math.round(t.bpm)} BPM`}>{Math.round(t.bpm)}</span>}
           <div className="player-queue-actions">
+            {!isGuest && !t.ephemeral && (
+              <>
+                <RatingStars value={t.rating ?? null} onChange={(v) => setRating(t.path, v)} compact size={13} label={t.title} />
+                <DislikeButton on={!!t.disliked} onToggle={() => toggleDislike(t.path, !!t.disliked)} size={13} />
+              </>
+            )}
             <button className="btn btn-bare btn-sm" disabled={i === 0} onClick={() => moveAt(i, -1)} aria-label="Move up" title="Move up">↑</button>
             <button className="btn btn-bare btn-sm" disabled={i === orderedQueue.length - 1} onClick={() => moveAt(i, 1)} aria-label="Move down" title="Move down">↓</button>
             <button className="btn btn-bare btn-sm" onClick={() => removeAt(i)} aria-label="Remove" title="Remove from queue">✕</button>

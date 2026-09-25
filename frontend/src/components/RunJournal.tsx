@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { RatingStars, DislikeButton } from "./RatingStars";
+import type { RunJournalTrack } from "../lib/types";
 
 /** The run journal on the Stats page: one row per run, newest first.
  *
@@ -50,10 +53,43 @@ export function fmtRunWhen(iso: string | null): string {
 }
 
 export default function RunJournal({ owner = "all" }: { owner?: string }) {
+  const { isGuest } = useAuth();
   const [items, setItems] = useState<RunRow[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // A finished run's tracks, fetched lazily on first expand and cached by run id.
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [runTracks, setRunTracks] = useState<Record<number, RunJournalTrack[] | "loading" | "error">>({});
+
+  async function toggleExpand(id: number) {
+    const next = expanded === id ? null : id;
+    setExpanded(next);
+    if (next != null && runTracks[next] == null) {
+      setRunTracks((m) => ({ ...m, [next]: "loading" }));
+      try {
+        const r = await api.get<{ tracks: RunJournalTrack[] }>(`/api/runs/${next}/tracks`);
+        setRunTracks((m) => ({ ...m, [next]: r.tracks }));
+      } catch {
+        setRunTracks((m) => ({ ...m, [next]: "error" }));
+      }
+    }
+  }
+
+  function setTrackRating(runId: number, path: string, rating: number | null) {
+    const list = runTracks[runId];
+    if (!Array.isArray(list)) return;
+    setRunTracks((m) => ({ ...m, [runId]: list.map((t) => (t.path === path ? { ...t, rating } : t)) }));
+    api.post("/api/track/rating", { path, rating }).catch(() => {});
+  }
+
+  function toggleTrackDislike(runId: number, path: string, disliked: boolean) {
+    const list = runTracks[runId];
+    if (!Array.isArray(list)) return;
+    const next = !disliked;
+    setRunTracks((m) => ({ ...m, [runId]: list.map((t) => (t.path === path ? { ...t, disliked: next } : t)) }));
+    api.post("/api/track/dislike", { path, disliked: next }).catch(() => {});
+  }
   // Pre-attribution history was never recorded per run, so that bucket has no
   // journal to show — say so rather than rendering a misleading empty list.
   const unattributed = owner === "unattributed";
@@ -129,20 +165,69 @@ export default function RunJournal({ owner = "all" }: { owner?: string }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      {fmtRunWhen(r.started_at)}
-                      {r.open && <span style={{ color: "var(--accent-2)", marginLeft: 6 }}>· live</span>}
-                    </td>
-                    <td>{r.owner_label}</td>
-                    <td className="num" style={{ textAlign: "left" }}>{fmtRunDur(r.duration_ms)}</td>
-                    <td className="src" title={r.source_label}>{r.source_label}</td>
-                    <td className="num">{r.tracks}</td>
-                    <td className="num">{r.avg_cadence != null ? Math.round(r.avg_cadence) : "—"}</td>
-                    <td className="num">{r.stretched_pct}%</td>
-                  </tr>
-                ))}
+                {items.map((r) => {
+                  const isOpen = expanded === r.id;
+                  const list = runTracks[r.id];
+                  return (
+                    <Fragment key={r.id}>
+                      <tr
+                        onClick={() => toggleExpand(r.id)}
+                        aria-expanded={isOpen}
+                        style={{ cursor: "pointer" }}
+                        title={isOpen ? "Collapse" : "Show this run's tracks"}
+                      >
+                        <td>
+                          {fmtRunWhen(r.started_at)}
+                          {r.open && <span style={{ color: "var(--accent-2)", marginLeft: 6 }}>· live</span>}
+                        </td>
+                        <td>{r.owner_label}</td>
+                        <td className="num" style={{ textAlign: "left" }}>{fmtRunDur(r.duration_ms)}</td>
+                        <td className="src" title={r.source_label}>{r.source_label}</td>
+                        <td className="num">{r.tracks}</td>
+                        <td className="num">{r.avg_cadence != null ? Math.round(r.avg_cadence) : "—"}</td>
+                        <td className="num">{r.stretched_pct}%</td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={7} style={{ padding: 0 }}>
+                            <div style={{ padding: "6px 10px 12px", background: "var(--surface-2)" }}>
+                              {list == null || list === "loading" ? (
+                                <p style={{ color: "var(--muted)", fontSize: 12, margin: "6px 0" }}>Loading tracks…</p>
+                              ) : list === "error" ? (
+                                <p style={{ color: "var(--muted)", fontSize: 12, margin: "6px 0" }}>Failed to load this run's tracks.</p>
+                              ) : list.length === 0 ? (
+                                <p style={{ color: "var(--muted)", fontSize: 12, margin: "6px 0" }}>No tracks recorded for this run.</p>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {list.map((t) => (
+                                    <div key={t.path} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 2px" }}>
+                                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {t.title}{t.artist && <span style={{ color: "var(--muted)" }}> · {t.artist}</span>}
+                                      </span>
+                                      {!isGuest && (
+                                        <>
+                                          <RatingStars
+                                            value={t.rating} compact size={13} label={t.title}
+                                            onChange={(v) => setTrackRating(r.id, t.path, v)}
+                                          />
+                                          <DislikeButton
+                                            on={t.disliked}
+                                            onToggle={() => toggleTrackDislike(r.id, t.path, t.disliked)}
+                                            size={13}
+                                          />
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

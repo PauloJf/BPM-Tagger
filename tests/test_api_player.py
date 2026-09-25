@@ -126,13 +126,23 @@ def test_player_may_play_star_dislike_scrobble(base_config):
     # Build queue (GET, no CSRF) is allowed and returns the seeded track.
     q = client.get("/api/run/queue?bpm=150")
     assert q.status_code == 200 and q.get_json()["tracks"]
-    # The three approved mutations pass the scope gate (not 403).
-    assert client.post("/api/track/star", json={"path": path, "starred": True},
-                       headers=csrf).status_code == 200
-    assert client.post("/api/track/dislike", json={"path": path, "disliked": True},
-                       headers=csrf).status_code == 200
+    # Scrobble passes the scope gate. Star / dislike pass it too, but the shared
+    # guest has no account to rate under, so they answer 403 (ratings plan, D6)...
     assert client.post("/api/scrobble", json={"path": path},
                        headers=csrf).status_code != 403
+    assert client.post("/api/track/star", json={"path": path, "starred": True},
+                       headers=csrf).status_code == 403
+    assert client.post("/api/track/dislike", json={"path": path, "disliked": True},
+                       headers=csrf).status_code == 403
+    # ...while a named player user rates and dislikes for itself.
+    from werkzeug.security import generate_password_hash
+    client.application.extensions["state"].db.add_player("runner", generate_password_hash("runrunrun"))
+    named = _client(client.application)
+    assert named.post("/api/login", json={"username": "runner", "password": "runrunrun"}).status_code == 200
+    ncsrf = {"X-CSRF-Token": named.get("/api/me").get_json()["csrf_token"]}
+    for url, body in (("/api/track/star", {"starred": True}), ("/api/track/dislike", {"disliked": True}),
+                      ("/api/track/rating", {"rating": 5})):
+        assert named.post(url, json={"path": path, **body}, headers=ncsrf).status_code == 200
 
 
 def test_player_may_list_run_playlists_but_not_manage(base_config):

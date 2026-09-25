@@ -86,7 +86,7 @@ export default function QueueSimilar({ artist, path, onClose }: { artist: string
     ({ path: t.file_path!, title: t.title, artist: t.artist, bpm: t.bpm });
   const fromLibrary = (t: LibraryRelatedTrack): PlayerTrack =>
     ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm, starred: t.starred,
-       loudnessLufs: t.loudness_lufs });
+       rating: t.rating ?? null, loudnessLufs: t.loudness_lufs });
   const enqueue = (t: RelatedTrack) => { if (t.file_path) player.enqueue(fromDeezer(t)); };
 
   // Queue all: library picks first, then Deezer's in-library matches, deduped.

@@ -21,6 +21,7 @@ import { EqBars } from "../components/EqBars";
 import PlayerCover from "../components/PlayerCover";
 import PrepareOffline from "../components/PrepareOffline";
 import { pinnedRunQueue } from "../lib/offline";
+import { RatingStars, DislikeButton } from "../components/RatingStars";
 
 const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
@@ -69,43 +70,6 @@ export function bufferNote(info: BufferInfo | undefined, pctFallback: number): s
   if (info && info.aheadSec > 0) parts.push(`${info.aheadSec.toFixed(1)}s ahead`);
   if (info && info.stalls > 0) parts.push(`try ${info.stalls}`);
   return parts.join(" · ");
-}
-
-/** Star toggle used in the queue list. */
-function Star({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      className="btn btn-bare btn-sm"
-      style={{ padding: 4, color: on ? "var(--warn-fg)" : "var(--muted)", flexShrink: 0 }}
-      onClick={onToggle}
-      aria-pressed={on}
-      aria-label={on ? "Unstar" : "Star"}
-      title={on ? "Unstar" : "Star — starred tracks are preferred when building run queues"}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-        <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
-      </svg>
-    </button>
-  );
-}
-
-/** Dislike toggle used in the queue list — excludes the track from future
- *  run-queue builds (it stays in the queue it's already in). */
-function Dislike({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      className="btn btn-bare btn-sm"
-      style={{ padding: 4, color: on ? "var(--err-fg)" : "var(--muted)", flexShrink: 0 }}
-      onClick={onToggle}
-      aria-pressed={on}
-      aria-label={on ? "Remove dislike" : "Dislike"}
-      title={on ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-      </svg>
-    </button>
-  );
 }
 
 /** Compact one-line audio-quality summary, e.g. "FLAC · 16-bit/44.1 kHz" or
@@ -242,7 +206,7 @@ export default function Run() {
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
   // the same limits; this just keeps the UI honest.
-  const { role, fullAccess } = useAuth();
+  const { role, fullAccess, isGuest } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
   const mini = useMiniPlayer();
@@ -472,7 +436,7 @@ export default function Run() {
   function launchQueue(resp: RunQueueResponse) {
     player.playQueue(
       resp.tracks.map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
-        starred: t.starred, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),
+        starred: t.starred, rating: t.rating, fromPlaylist: t.from_playlist, loudnessLufs: t.loudness_lufs })),
       0, { shuffle: false },
     );
     // Pin the run's source so the mid-run auto-refill stays scoped to it.
@@ -516,22 +480,24 @@ export default function Run() {
     }
   }
 
-  function toggleStar(path: string, starred: boolean) {
-    const next = !starred;
+  function setRating(path: string, rating: number | null) {
+    if (isGuest) return;
     // Optimistic, on the queued track itself so it works for auto-refilled
-    // tracks too (they never lived in queueInfo). A failed star isn't worth
+    // tracks too (they never lived in queueInfo). A failed write isn't worth
     // interrupting a run.
-    player.setTrackStarred(path, next);
-    api.post("/api/track/star", { path, starred: next }).catch(() => {});
+    player.setTrackRating(path, rating);
+    api.post("/api/track/rating", { path, rating }).catch(() => {});
   }
 
   function toggleDislike(path: string, disliked: boolean) {
+    if (isGuest) return;
     const next = !disliked;
     setDislikedPaths((s) => {
       const n = new Set(s);
       if (next) n.add(path); else n.delete(path);
       return n;
     });
+    player.setTrackDisliked(path, next);
     api.post("/api/track/dislike", { path, disliked: next }).catch(() => {});
     // Disliking the track that's currently playing skips it right away —
     // no reason to keep listening to something you just ruled out.
@@ -964,21 +930,15 @@ export default function Run() {
         <span>-{fmtTime(Math.max(0, dur - time))}</span>
       </div>
       <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center", gap: 22, marginTop: 12 }}>
-        <button
-          style={{
-            ...ctlBtn, width: 40, height: 40, position: "absolute", left: 0,
-            color: currentDisliked ? "var(--err-fg)" : "var(--muted)",
-            borderColor: currentDisliked ? "var(--err-fg)" : "var(--border)",
-          }}
-          onClick={() => current && toggleDislike(current.path, currentDisliked)}
-          aria-label={currentDisliked ? "Remove dislike" : "Dislike"}
-          aria-pressed={currentDisliked}
-          title={currentDisliked ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={currentDisliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-          </svg>
-        </button>
+        {!isGuest && (
+          <div style={{ position: "absolute", left: 0 }}>
+            <DislikeButton
+              on={currentDisliked}
+              onToggle={() => current && toggleDislike(current.path, currentDisliked)}
+              size={16}
+            />
+          </div>
+        )}
         <button style={ctlBtn} onClick={player.prev} aria-label="Previous" title="Previous">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14h2V5H6zm3 7l11 7V5l-11 7z" /></svg>
         </button>
@@ -1108,8 +1068,8 @@ export default function Run() {
             </div>
           )}
           {player.orderedQueue.map((t, i) => {
-            const starred = t.starred;
-            const disliked = dislikedPaths.has(t.path);
+            const rating = t.rating ?? null;
+            const disliked = dislikedPaths.has(t.path) || !!t.disliked;
             const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
             const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
             // Capped: the stretch limit keeps this track from reaching the target.
@@ -1128,10 +1088,12 @@ export default function Run() {
             const fromLibrary = player.runSource != null && player.runSource !== "mine" && t.fromPlaylist === false;
             return (
               <div key={`${t.path}-${i}`} ref={isCurrentRow ? playingRowRef : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
-                {starred !== undefined && (
-                  <Star on={starred} onToggle={() => toggleStar(t.path, starred)} />
+                {!isGuest && (
+                  <>
+                    <RatingStars value={rating} onChange={(v) => setRating(t.path, v)} compact size={14} label={t.title} />
+                    <DislikeButton on={disliked} onToggle={() => toggleDislike(t.path, disliked)} size={14} />
+                  </>
                 )}
-                <Dislike on={disliked} onToggle={() => toggleDislike(t.path, disliked)} />
                 <button
                   style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }}
                   onClick={() => player.jumpTo(i)}

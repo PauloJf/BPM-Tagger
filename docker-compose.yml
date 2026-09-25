@@ -179,7 +179,9 @@ services:
       # -----------------------------------------------------------------------
       # RUN_PRESETS: "Warmup:120,Easy:155,Steady:165,Tempo:175"  # four named presets, Name:bpm
       # RUN_OCTAVE_FOLD: "true"        # half/double-time tracks count as matches
-      # RUN_PREFER_STARRED: "true"     # fill run queues with starred tracks first
+      # PICK_USE_RATINGS: "true"       # weight run/listen/similar picks by 1-5 star ratings
+      # PICK_WEIGHTS: "0.1,0.5,1,1,3,6"  # weights for 1★,2★,3★,unrated,4★,5★
+      # PICK_NEW_FACTOR: "1"           # new (unrated + unplayed) tracks: 0 never … 4 much more
       # RUN_QUEUE_SIZE: "20"           # tracks per run queue
       # RUN_STRETCH_LIMIT_PCT: "15"    # max % a track may be stretched to reach the
       #                                # target — also what makes it eligible at all

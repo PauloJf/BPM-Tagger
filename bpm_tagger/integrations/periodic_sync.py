@@ -9,6 +9,10 @@ enabled each tick:
   * **playlists** — enabled Spotify (needs grabber + live connection) and Navidrome
     (needs creds) playlists; **Local never syncs**. Each source self-gates; a failure
     on one playlist doesn't abort the tick.
+  * **ratings** — when ``navidrome_sync_ratings`` is on (opt-in, admin only —
+    docs/plans/ratings-weighted-picking.md § "Navidrome rating sync"). Runs
+    BEFORE stars each tick so a pulled rating's star projection is already in
+    place when the (then push-only) star sync runs.
   * **stars** — when ``navidrome_star_sync`` is on.
   * **play counts** — when Navidrome is configured.
 
@@ -52,6 +56,7 @@ class PeriodicSync(threading.Thread):
 
     def _tick(self):
         self._sync_playlists()
+        self._sync_ratings()
         self._sync_stars()
         self._pull_play_counts()
 
@@ -73,6 +78,18 @@ class PeriodicSync(threading.Thread):
                         g.sync.sync_playlist(pl["id"])
             except Exception as exc:
                 log.warning("PeriodicSync: playlist '%s' sync failed: %s", pl.get("name"), exc)
+
+    def _sync_ratings(self):
+        if not self.config.get("navidrome_sync_ratings"):
+            return
+        from .navidrome_playlists import navidrome_configured
+        if not navidrome_configured(self.config):
+            return
+        try:
+            from .rating_sync import sync_ratings
+            sync_ratings(self.db, self.config)
+        except Exception as exc:
+            log.warning("PeriodicSync: rating sync failed: %s", exc)
 
     def _sync_stars(self):
         if not self.config.get("navidrome_star_sync"):
