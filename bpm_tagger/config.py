@@ -391,6 +391,9 @@ def build_config() -> dict:
         # When an app asks for lyrics a file doesn't have, look them up on LRCLIB
         # and save them (LYRICS_MODE: embedded or .lrc sidecar). Writes files.
         "subsonic_fetch_lyrics":      os.environ.get("SUBSONIC_FETCH_LYRICS", "false").lower() == "true",
+        # getArtistInfo2: biography (MusicBrainz/Wikipedia) + similar artists
+        # (Deezer) for app artist pages. Network lookups, cached 24 h.
+        "subsonic_artist_info":       os.environ.get("SUBSONIC_ARTIST_INFO", "true").lower() == "true",
         # Expose each Run preset as a read-only "Run · <name>" playlist.
         "subsonic_run_playlists":     os.environ.get("SUBSONIC_RUN_PLAYLISTS", "true").lower() == "true",
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",

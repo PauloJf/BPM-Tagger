@@ -101,6 +101,46 @@ def _prune(directory: str) -> None:
             pass
 
 
+def image_file(config: dict, path: str, size: Optional[int]):
+    """(bytes, mime) of an image file (an artist photo), resized and cached like
+    track art. Keyed on the file's mtime, so replacing the photo refreshes it."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    mime = "image/png" if path.lower().endswith(".png") else "image/jpeg"
+    if size is None:
+        return data, mime
+    size = max(MIN_SIZE, min(MAX_SIZE, size))
+    directory = cache_dir(config)
+    cached = os.path.join(directory, hashlib.sha1(
+        f"file|{path}|{mtime}|{size}".encode("utf-8")).hexdigest() + ".jpg")
+    try:
+        with open(cached, "rb") as f:
+            return f.read(), "image/jpeg"
+    except OSError:
+        pass
+    if not _render_slots.acquire(blocking=False):
+        return data, mime
+    try:
+        small = _resize(data, size)
+    finally:
+        _render_slots.release()
+    if small is None:
+        return data, mime
+    try:
+        os.makedirs(directory, exist_ok=True)
+        tmp = f"{cached}.{threading.get_ident()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(small)
+        os.replace(tmp, cached)
+    except OSError as exc:
+        log.debug("Cover cache write failed: %s", exc)
+    return small, "image/jpeg"
+
+
 def cover_for(config: dict, tracks: list, size: Optional[int]):
     """(bytes, mime) for the first of ``tracks`` that has art, or None."""
     if size is not None:

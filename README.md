@@ -352,6 +352,7 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept clients that send the password itself (`p=`) from any address. Off: plain passwords are only accepted over https or from a private network; token auth and API keys always work |
 | `SUBSONIC_TRANSCODE` | `false` | Re-encode on the fly (ffmpeg, Opus or MP3) when an app asks for a format or a bitrate below the file's, e.g. on mobile data. Costs CPU per play; at most 4 at once, beyond that files stream as-is. Off: files always stream as-is |
 | `UI_THREADS` | `0` (auto) | Web server worker threads. Auto is 12, or 24 while the Subsonic API is on, because apps make many parallel requests (cover grids, look-ahead streams) and a request that finds every thread busy has to wait |
+| `SUBSONIC_ARTIST_INFO` | `true` | Biography (MusicBrainz → Wikipedia) and similar artists from your library (Deezer) on apps' artist pages. Online lookups, cached for a day; artist photos also need **Fetch artist images online** |
 | `SUBSONIC_FETCH_LYRICS` | `false` | When an app asks for lyrics a song doesn't have, look them up on LRCLIB and save them (embedded or `.lrc`, per Settings → Lyrics). Writes to your files. A slow lookup finishes in the background and is ready next time |
 | `SUBSONIC_RUN_PLAYLISTS` | `true` | Show each Run preset as a read-only **Run · <name> (<bpm> BPM)** playlist: tracks within 4 % of the preset's BPM (half and double time included), starred first. Subsonic apps can't tempo-lock, so these play at native speed, hence the tight band |
 
@@ -369,6 +370,8 @@ Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second ra
 - Stars on songs, albums and artists. Song stars are the library's own stars (the ones Run mode prefers); album and artist stars are stored separately and are library-wide too. Scrobbles count as local plays, and are forwarded to Navidrome when `NAVIDROME_SCROBBLE` is on.
 - **Run presets as playlists**, so a Subsonic app can play a cadence-matched list (see `SUBSONIC_RUN_PLAYLISTS`). A player user's Run playlists draw only from its own playlists.
 - **Transcoding** when turned on (`SUBSONIC_TRANSCODE`): the app's `format` / `maxBitRate` decide; `timeOffset` seeks into a transcoded stream; downloads are always the original file.
+- **Resume on another device**: the play queue and position are saved per account (`savePlayQueue` / `getPlayQueue`, and the index-based pair).
+- **Artist pages**: biography, similar artists from your library, and the artist photo (see `SUBSONIC_ARTIST_INFO`).
 - `startScan` / `getScanStatus` drive BPM Tagger's own scan (admin only), the same pass as the web UI's Scan button.
 
 **Connected apps.** Settings → Subsonic API lists the apps that used the API in the last hour: account, app and version, address, last seen, and what each one is playing right now (with elapsed time), or what it last played. "Now playing" comes from the app's own reports; for an app that never sends them, it's inferred from its last stream, marked as such, since some apps download upcoming tracks ahead. The same data serves Subsonic's `getNowPlaying`: the admin sees everyone, and a player user sees only its own apps. The list is live and in memory, so it isn't kept across restarts.

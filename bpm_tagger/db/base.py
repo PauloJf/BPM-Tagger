@@ -616,6 +616,18 @@ class _DBBase:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_album_id ON subsonic_album_index(album_id)")
+        # Subsonic play queue per account (savePlayQueue / getPlayQueue): resume
+        # on another device. Song ids in order; duplicates allowed.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_play_queue (
+                owner         TEXT PRIMARY KEY,
+                track_ids     TEXT NOT NULL,           -- JSON array of tracks.id
+                current_index INTEGER,
+                position_ms   INTEGER DEFAULT 0,
+                changed_at    TEXT,
+                changed_by    TEXT                     -- the app (Subsonic `c`)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS subsonic_meta (
                 key   TEXT PRIMARY KEY,

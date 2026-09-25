@@ -56,6 +56,7 @@ def _status():
         "ffmpeg_available": ffmpeg_path() is not None,
         "run_playlists": bool(st.config.get("subsonic_run_playlists", True)),
         "fetch_lyrics": bool(st.config.get("subsonic_fetch_lyrics")),
+        "artist_info": bool(st.config.get("subsonic_artist_info", True)),
         "accounts": accounts,
     }
 
@@ -98,7 +99,8 @@ def api_subsonic_settings():
     data = request.get_json(force=True, silent=True) or {}
     updates = {}
     for key in ("subsonic_enabled", "subsonic_allow_plain_password",
-                "subsonic_transcode", "subsonic_run_playlists", "subsonic_fetch_lyrics"):
+                "subsonic_transcode", "subsonic_run_playlists", "subsonic_fetch_lyrics",
+                "subsonic_artist_info"):
         if key in data:
             updates[key] = bool(data[key])
     st.config.update(updates)

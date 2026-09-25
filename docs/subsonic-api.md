@@ -17,6 +17,7 @@ Design notes and history are in [`plans/subsonic-api.md`](plans/subsonic-api.md)
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept `p=` (plain or `enc:` hex) from any address. Off: only over https (`UI_PUBLIC_URL` https) or from a private/loopback address. |
 | `SUBSONIC_TRANSCODE` | `false` | Re-encode `stream` on request (ffmpeg → Opus/MP3). |
 | `SUBSONIC_RUN_PLAYLISTS` | `true` | Expose each Run preset as a read-only playlist. |
+| `SUBSONIC_ARTIST_INFO` | `true` | Biography and similar artists for `getArtistInfo2` (online lookups, cached 24 h). |
 | `SUBSONIC_FETCH_LYRICS` | `false` | Look up lyrics a file doesn't have on LRCLIB when an app asks, and save them. |
 | `UI_THREADS` | `0` (auto) | Server threads: 12, or 24 while the API is on. |
 
@@ -90,7 +91,7 @@ invalid API key · `50` not authorized · `70` not found.
 
 ### OpenSubsonic extensions
 
-`apiKeyAuthentication` v1 · `formPost` v1 · `songLyrics` v1. Song objects also
+`apiKeyAuthentication` v1 · `formPost` v1 · `songLyrics` v1 · `indexBasedQueue` v1. Song objects also
 carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 `isrc[]`.
 
@@ -103,7 +104,7 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 | `ping` | |
 | `getLicense` | Always `valid=true`. |
 | `tokenInfo` | OpenSubsonic: the username an API key belongs to (apps call it after an API-key login). |
-| `getOpenSubsonicExtensions` | The three extensions above. |
+| `getOpenSubsonicExtensions` | The extensions above. |
 | `getMusicFolders` | One folder, id `1`. |
 | `getUser` | Your own user only; roles reflect the account (`adminRole`, `playlistRole` for the admin). |
 | `getScanStatus` | `scanning` + `count` (tracks visible to you). |
@@ -124,7 +125,7 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 | `getRandomSongs` | `size` ≤ 500, `fromYear`, `toYear`, `genre`. Analyzed tracks only. |
 | `search3` | `query` across title/artist/album; separate artist/album/song `*Count` / `*Offset`. **An empty query (or `""`) pages through everything**, the full-library sync some apps use. |
 | `search2` | Same as `search3`, legacy element name. |
-| `getArtistInfo2` / `getArtistInfo` | Empty info (no biography or similar artists yet), so artist pages don't error. |
+| `getArtistInfo2` / `getArtistInfo` | `biography` (MusicBrainz → Wikidata → Wikipedia), `similarArtist`… (Deezer's related artists that are **in your library** and visible to you; `count` ≤ 100), and `small`/`medium`/`largeImageUrl` (the artist's Deezer photo, only when **Fetch artist images online** is on in Settings → Artwork, because apps load it straight from Deezer). Shares the web UI's 24 h cache. Waits up to 3 s for a lookup; a slower one finishes in the background for the next visit. Off with `SUBSONIC_ARTIST_INFO=false`. |
 | `getAlbumInfo2` / `getAlbumInfo` | Empty info. |
 | `getNowPlaying` | What connected apps are playing, from their now-playing scrobbles, or inferred from streams for apps that don't send them. |
 
@@ -144,6 +145,15 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 | `createPlaylist` | Admin. `name` + `songId`… creates a Local playlist. With `playlistId`, replaces an existing Local playlist's songs. A song appears once per Local playlist. |
 | `updatePlaylist` | Admin, Local only. `name`, `comment`, `songIdToAdd`…, `songIndexToRemove`… |
 | `deletePlaylist` | Admin, Local only. Spotify/Navidrome mirrors and Run playlists give error 50. |
+
+### Play queue (resume on another device)
+
+| Method | Notes |
+|---|---|
+| `savePlayQueue` | `id`… (the queue, in order; repeats allowed), `current` (song id), `position` (ms). Replaces this account's saved queue; no `id` clears it. Songs outside a player's scope are dropped. |
+| `getPlayQueue` | The saved queue: `entry`…, `current`, `position`, `changed`, `changedBy` (the app that saved it), `username`. No `playQueue` element when nothing is saved. |
+| `savePlayQueueByIndex` | OpenSubsonic `indexBasedQueue`: like `savePlayQueue`, but `currentIndex` names the current *position*, which stays right when a song is queued twice. |
+| `getPlayQueueByIndex` | The same saved queue with `currentIndex`. Both pairs read and write one queue per account. Songs deleted since are dropped, and the current position moves to the next surviving song. |
 
 ### Lyrics
 
@@ -176,7 +186,7 @@ lyrics from the web UI's per-track fetch or **Settings → Lyrics** bulk fill.
 |---|---|
 | `stream` | The file, with HTTP range support. With `SUBSONIC_TRANSCODE`, `format` (`mp3`, `opus`, `raw`) and `maxBitRate` may re-encode it on the fly (no ranges; `timeOffset` seeks; `estimateContentLength=true` sets a length estimate). At most 4 transcodes run at once; beyond that the original is served. |
 | `download` | Always the original file. |
-| `getCoverArt` | `id`: song, album, artist, playlist or folder; optional `size`. Embedded art first, then `cover.jpg`/`folder.jpg`/`front.jpg` beside the files. Resized covers are cached under `/data/subsonic_covers`, with at most 2 first-time resizes at once (beyond that the original is sent). 404 when there's no art. |
+| `getCoverArt` | `id`: song, album, artist, playlist or folder; optional `size`. For an artist, the artist's own photo when there is one locally (a custom pick in the web UI → `artist.jpg` beside the music → the downloaded cache). Otherwise, and for everything else: embedded art first, then `cover.jpg`/`folder.jpg`/`front.jpg` beside the files. Resized covers are cached under `/data/subsonic_covers`, with at most 2 first-time resizes at once (beyond that the original is sent). 404 when there's no art. |
 
 ### Annotation
 
@@ -189,7 +199,5 @@ lyrics from the web UI's per-track fetch or **Settings → Lyrics** bulk fill.
 ## Not implemented
 
 Any other method returns error `0` ("not supported by this server"). Notably:
-podcasts, internet radio, shares, jukebox control, chat, bookmarks and play
-queue (`getPlayQueue` / `savePlayQueue`), user management (`getUsers`,
-`createUser`…), video, `setRating`, and avatars. Album and artist info have no
-content yet (see above).
+podcasts, internet radio, shares, jukebox control, chat, bookmarks, user management (`getUsers`,
+`createUser`…), video, `setRating`, and avatars. `getAlbumInfo2` returns no content yet.

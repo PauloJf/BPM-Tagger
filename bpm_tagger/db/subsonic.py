@@ -165,6 +165,35 @@ class SubsonicMixin:
                                 "ORDER BY starred_at DESC", (kind,)).fetchall()
         return {r["item_id"]: r["starred_at"] for r in rows}
 
+    # ── Play queue ───────────────────────────────────────────────────────────
+    def save_subsonic_play_queue(self, owner: str, track_ids: list, current_index,
+                                 position_ms: int, changed_by: str) -> None:
+        """Replace this account's saved queue; an empty list clears it."""
+        import json
+        with self._connect() as conn:
+            if not track_ids:
+                conn.execute("DELETE FROM subsonic_play_queue WHERE owner = ?", (owner,))
+                return
+            conn.execute(
+                "INSERT INTO subsonic_play_queue (owner, track_ids, current_index, position_ms, "
+                "changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(owner) DO UPDATE SET track_ids = excluded.track_ids, "
+                "current_index = excluded.current_index, position_ms = excluded.position_ms, "
+                "changed_at = excluded.changed_at, changed_by = excluded.changed_by",
+                (owner, json.dumps([int(t) for t in track_ids]), current_index,
+                 max(0, int(position_ms or 0)), _now(), (changed_by or "")[:60]))
+
+    def get_subsonic_play_queue(self, owner: str) -> Optional[dict]:
+        import json
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM subsonic_play_queue WHERE owner = ?",
+                               (owner,)).fetchone()
+        if not row:
+            return None
+        out = dict(row)
+        out["track_ids"] = json.loads(out["track_ids"] or "[]")
+        return out
+
     # ── Genres ───────────────────────────────────────────────────────────────
     def subsonic_genres(self, scope: Optional[list] = None) -> list[dict]:
         """Genre name (the most common spelling), song count and album count."""
@@ -319,6 +348,17 @@ class SubsonicMixin:
         where, params = scope_sql(scope)
         return self._tracks(where + " AND starred = 1", params,
                             " ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, disc_no, track_no")
+
+    def subsonic_tracks_by_ids(self, ids: list, scope: Optional[list] = None) -> dict:
+        """{id: track} for the live, in-scope tracks among ``ids``."""
+        out: dict = {}
+        uniq = list(dict.fromkeys(int(i) for i in ids))
+        s, sp = scope_sql(scope)
+        for i in range(0, len(uniq), 500):
+            chunk = uniq[i:i + 500]
+            for t in self._tracks(f" AND id IN ({','.join('?' * len(chunk))})" + s, chunk + sp):
+                out[t["id"]] = t
+        return out
 
     def subsonic_tracks_by_paths(self, paths: list[str]) -> dict:
         """{file_path: track} for the given paths (live rows only)."""

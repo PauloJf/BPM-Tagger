@@ -21,7 +21,7 @@ from ...text import normalize_artist_name
 from ..state import _assert_in_music_dir
 from . import ids, views
 from .dirs import dir_index
-from . import covers, lyrics_fetch, transcode
+from . import artist_info, covers, lyrics_fetch, transcode
 from .activity import registry as activity
 from .envelope import E_GENERIC, E_MISSING_PARAM, E_NOT_AUTHORIZED, E_NOT_FOUND, SubsonicError, ok
 
@@ -136,6 +136,7 @@ def get_open_subsonic_extensions(st, who):
         {"name": "apiKeyAuthentication", "versions": [1]},
         {"name": "formPost", "versions": [1]},
         {"name": "songLyrics", "versions": [1]},
+        {"name": "indexBasedQueue", "versions": [1]},
     ])
 
 
@@ -337,14 +338,44 @@ def get_now_playing(st, who):
     return ok(nowPlaying={"entry": entries})
 
 
+def _deezer_sized(url: str, px: int) -> str:
+    """Deezer CDN picture URLs embed their size (".../1000x1000-000000-80-0-0.jpg")."""
+    return re.sub(r"/\d+x\d+-", f"/{px}x{px}-", url, count=1)
+
+
+def _artist_info(st, who) -> dict:
+    """Biography, photo URLs and in-library similar artists (see artist_info.py)."""
+    row = _artist_or_404(st, who, _req("id"))
+    out: dict = {"similarArtist": []}
+    if not st.config.get("subsonic_artist_info", True):
+        return out
+    info = artist_info.lookup(row["name"])
+    if info["bio"]:
+        out["biography"] = info["bio"]
+    img = (info["self"] or {}).get("image_url") or ""
+    if img and "/artist//" not in img and st.config.get("fetch_artist_images"):
+        out["smallImageUrl"] = _deezer_sized(img, 250)
+        out["mediumImageUrl"] = _deezer_sized(img, 500)
+        out["largeImageUrl"] = _deezer_sized(img, 1000)
+    library = {r["norm_name"]: r for r in artists_index.all(st.db, who.scope)}
+    stars = _stars(st, "artist")
+    seen = {row["norm_name"]}
+    for rel in info["related"] or []:
+        norm = normalize_artist_name(rel["name"])
+        if norm in library and norm not in seen:
+            seen.add(norm)
+            out["similarArtist"].append(views.artist(library[norm], stars))
+        if len(out["similarArtist"]) >= _int("count", 20, 0, 100):
+            break
+    return out
+
+
 def get_artist_info2(st, who):
-    _artist_or_404(st, who, _req("id"))
-    return ok(artistInfo2={"similarArtist": []})
+    return ok(artistInfo2=_artist_info(st, who))
 
 
 def get_artist_info(st, who):
-    _artist_or_404(st, who, _req("id"))
-    return ok(artistInfo={"similarArtist": []})
+    return ok(artistInfo=_artist_info(st, who))
 
 
 def get_album_info2(st, who):
@@ -551,6 +582,91 @@ def delete_playlist(st, who):
     return ok()
 
 
+# ── Play queue (resume on another device) ────────────────────────────────────
+#
+# One saved queue per account. The id-based pair (savePlayQueue/getPlayQueue)
+# names the current track by id; OpenSubsonic's indexBasedQueue pair names it by
+# position, which stays right when a song is queued twice. Both read and write
+# the same stored queue. Songs deleted since, or outside a player's scope, are
+# dropped on read, and the current position follows to the next surviving song.
+
+MAX_QUEUE = 5000
+
+
+def _save_queue(st, who, current_index_of):
+    raw_ids = [i for i in request.values.getlist("id") if i][:MAX_QUEUE]
+    parsed = [ids.parse_song_id(i) for i in raw_ids]
+    visible = st.db.subsonic_tracks_by_ids([p for p in parsed if p is not None], who.scope)
+    kept = [p for p in parsed if p is not None and p in visible]
+    try:
+        position = int(request.values.get("position") or 0)
+    except ValueError:
+        position = 0
+    index = current_index_of(kept, parsed) if kept else None
+    st.db.save_subsonic_play_queue(who.owner, kept, index, position,
+                                   request.values.get("c") or "")
+    return ok()
+
+
+def save_play_queue(st, who):
+    def current_index_of(kept, _parsed):
+        cur = ids.parse_song_id(request.values.get("current") or "")
+        return kept.index(cur) if cur in kept else 0
+    return _save_queue(st, who, current_index_of)
+
+
+def save_play_queue_by_index(st, who):
+    def current_index_of(kept, parsed):
+        try:
+            raw = int(request.values.get("currentIndex") or 0)
+        except ValueError:
+            raw = 0
+        # Map the client's index (into what it sent) onto the kept list.
+        raw = max(0, min(raw, len(parsed) - 1))
+        before = sum(1 for p in parsed[:raw] if p is not None and p in kept)
+        return min(before, len(kept) - 1)
+    return _save_queue(st, who, current_index_of)
+
+
+def _load_queue(st, who):
+    saved = st.db.get_subsonic_play_queue(who.owner)
+    if not saved or not saved["track_ids"]:
+        return None
+    visible = st.db.subsonic_tracks_by_ids(saved["track_ids"], who.scope)
+    cur = saved.get("current_index") or 0
+    entries, index = [], None
+    for i, tid in enumerate(saved["track_ids"]):
+        if tid in visible:
+            if index is None and i >= cur:
+                index = len(entries)
+            entries.append(visible[tid])
+    if not entries:
+        return None
+    if index is None:
+        index = len(entries) - 1
+    base = {"position": saved.get("position_ms") or 0, "username": who.username,
+            "changed": views.iso(saved.get("changed_at")),
+            "changedBy": saved.get("changed_by") or None,
+            "entry": _songs(st, entries)}
+    return base, index, entries
+
+
+def get_play_queue(st, who):
+    loaded = _load_queue(st, who)
+    if loaded is None:
+        return ok()
+    base, index, entries = loaded
+    return ok(playQueue={"current": ids.song_id(entries[index]), **base})
+
+
+def get_play_queue_by_index(st, who):
+    loaded = _load_queue(st, who)
+    if loaded is None:
+        return ok()
+    base, index, _entries = loaded
+    return ok(playQueueByIndex={"currentIndex": index, **base})
+
+
 # ── Lyrics ────────────────────────────────────────────────────────────────────
 
 _LRC_TIME = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
@@ -723,9 +839,40 @@ def _cover_candidates(st, who, cid: str) -> list:
     return []
 
 
+def _artist_photo(st, name: str):
+    """The artist's own image, if there is one locally — the same order the web
+    UI uses: a custom pick → artist.jpg beside the music → the downloaded cache.
+    (Online lookups stay the web UI's job; this never goes to the network.)"""
+    from ..api.tracks import _ARTIST_IMG_NAMES, _artist_image_cache
+    _dir, custom, cached, _miss = _artist_image_cache(name)
+    if os.path.isfile(custom):
+        return custom
+    seen = set()
+    for t in st.db.get_artist_tracks(name)[:50]:
+        d = os.path.dirname(t["file_path"])
+        for folder in (d, os.path.dirname(d)):
+            if folder in seen:
+                continue
+            seen.add(folder)
+            for fname in _ARTIST_IMG_NAMES:
+                p = os.path.join(folder, fname)
+                if os.path.isfile(p):
+                    return p
+    return cached if os.path.isfile(cached) else None
+
+
 def get_cover_art(st, who):
     """Cached, capped cover rendering — see covers.py for why it matters."""
-    tracks = _cover_candidates(st, who, _req("id"))
+    cid = _req("id")
+    if cid.startswith("ar-"):
+        row = artists_index.by_id(st.db, who.scope, cid)
+        photo = _artist_photo(st, row["name"]) if row else None
+        if photo:
+            cover = covers.image_file(st.config, photo, _opt_int("size"))
+            if cover:
+                return Response(cover[0], mimetype=cover[1],
+                                headers={"Cache-Control": "private, max-age=86400"})
+    tracks = _cover_candidates(st, who, cid)
     for t in tracks:
         _assert_in_music_dir(t["file_path"])
     cover = covers.cover_for(st.config, tracks, _opt_int("size"))
@@ -839,6 +986,10 @@ METHODS = {
     "getAlbumInfo2": get_album_info2, "getAlbumInfo": get_album_info2,
     # Folder browsing
     "getIndexes": get_indexes, "getMusicDirectory": get_music_directory,
+    # Play queue (resume elsewhere)
+    "getPlayQueue": get_play_queue, "savePlayQueue": save_play_queue,
+    "getPlayQueueByIndex": get_play_queue_by_index,
+    "savePlayQueueByIndex": save_play_queue_by_index,
     # Playlists
     "getPlaylists": get_playlists, "getPlaylist": get_playlist,
     "createPlaylist": create_playlist, "updatePlaylist": update_playlist,

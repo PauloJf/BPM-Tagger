@@ -28,12 +28,13 @@ interface SubsonicStatus {
   ffmpeg_available: boolean;
   run_playlists: boolean;
   fetch_lyrics: boolean;
+  artist_info: boolean;
   accounts: Account[];
 }
 
 type Kind = "api-key" | "password";
 type SettingKey = "subsonic_enabled" | "subsonic_allow_plain_password" | "subsonic_transcode"
-  | "subsonic_run_playlists" | "subsonic_fetch_lyrics";
+  | "subsonic_run_playlists" | "subsonic_fetch_lyrics" | "subsonic_artist_info";
 
 function Label({ label, hint }: { label: string; hint?: string }) {
   return (
@@ -183,6 +184,12 @@ export default function SubsonicSettings() {
                hint="Each Run preset appears in apps as a read-only “Run · …” playlist: tracks within 4 % of its BPM (half/double time too), starred first. Apps play them at native speed." />
         <Toggle on={s.run_playlists} onChange={(v) => void save({ subsonic_run_playlists: v })}
                 label="Run presets as playlists" />
+      </div>
+      <div className="field-row">
+        <Label label="Artist info"
+               hint="Biography (MusicBrainz → Wikipedia) and similar artists from your library (Deezer) on apps' artist pages. Looked up online, cached for a day. Artist photos also need Settings → Artwork → “Fetch artist images online”." />
+        <Toggle on={s.artist_info} onChange={(v) => void save({ subsonic_artist_info: v })}
+                label="Artist info" />
       </div>
       <div className="field-row">
         <Label label="Fetch missing lyrics"

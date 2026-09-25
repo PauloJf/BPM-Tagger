@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Resume on another device.** Subsonic apps can save and restore the play queue and position per account (`savePlayQueue` / `getPlayQueue`, plus OpenSubsonic's index-based pair, which stays right when a song is queued twice), so you can stop on the phone and continue on the desktop.
+- **Artist pages in Subsonic apps have content now.** `getArtistInfo2` returns a biography (MusicBrainz → Wikipedia), similar artists from your library (Deezer), and, when **Fetch artist images online** is on, the artist's photo. It shares the web UI's cache and has an **Artist info** toggle in Settings → Subsonic API. Artist covers in apps also use your own artist images (a custom pick, or `artist.jpg`) instead of the first album's cover.
 - **Subsonic apps can fetch missing lyrics.** With the new **Fetch missing lyrics** toggle (Settings → Subsonic API, or `SUBSONIC_FETCH_LYRICS`), a song an app asks lyrics for, but that has none, is looked up on LRCLIB and saved the same way the web UI's fetch saves them, so every app and the web player have them from then on. Off by default because it writes to your files.
 - **Fixed: API-key logins could fail in stricter apps.** The OpenSubsonic API-key extension requires a `tokenInfo` method (which user a key belongs to), and it was missing.
 - **Connected Subsonic apps, and what they're playing.** Settings → Subsonic API now lists every app that used the API in the last hour: account, app and version, address, when it was last seen, and the track it's playing right now with elapsed time, or what it last played. `getNowPlaying` returns the same data to apps (the admin sees all, a player user sees only its own).
