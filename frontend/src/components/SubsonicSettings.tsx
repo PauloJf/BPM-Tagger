@@ -27,11 +27,13 @@ interface SubsonicStatus {
   transcode: boolean;
   ffmpeg_available: boolean;
   run_playlists: boolean;
+  fetch_lyrics: boolean;
   accounts: Account[];
 }
 
 type Kind = "api-key" | "password";
-type SettingKey = "subsonic_enabled" | "subsonic_allow_plain_password" | "subsonic_transcode" | "subsonic_run_playlists";
+type SettingKey = "subsonic_enabled" | "subsonic_allow_plain_password" | "subsonic_transcode"
+  | "subsonic_run_playlists" | "subsonic_fetch_lyrics";
 
 function Label({ label, hint }: { label: string; hint?: string }) {
   return (
@@ -181,6 +183,12 @@ export default function SubsonicSettings() {
                hint="Each Run preset appears in apps as a read-only “Run · …” playlist: tracks within 4 % of its BPM (half/double time too), starred first. Apps play them at native speed." />
         <Toggle on={s.run_playlists} onChange={(v) => void save({ subsonic_run_playlists: v })}
                 label="Run presets as playlists" />
+      </div>
+      <div className="field-row">
+        <Label label="Fetch missing lyrics"
+               hint="When an app asks for lyrics a song doesn't have, look them up on LRCLIB and save them (embedded or .lrc, per Settings → Lyrics). Writes to your files. A slow lookup finishes in the background and is ready next time." />
+        <Toggle on={s.fetch_lyrics} onChange={(v) => void save({ subsonic_fetch_lyrics: v })}
+                label="Fetch missing lyrics" />
       </div>
       <div className="field-row">
         <Label label="Transcode on request"

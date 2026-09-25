@@ -21,7 +21,7 @@ from ...text import normalize_artist_name
 from ..state import _assert_in_music_dir
 from . import ids, views
 from .dirs import dir_index
-from . import covers, transcode
+from . import covers, lyrics_fetch, transcode
 from .activity import registry as activity
 from .envelope import E_GENERIC, E_MISSING_PARAM, E_NOT_AUTHORIZED, E_NOT_FOUND, SubsonicError, ok
 
@@ -137,6 +137,12 @@ def get_open_subsonic_extensions(st, who):
         {"name": "formPost", "versions": [1]},
         {"name": "songLyrics", "versions": [1]},
     ])
+
+
+def token_info(st, who):
+    """OpenSubsonic apiKeyAuthentication: which user a key belongs to. Apps
+    call it right after an API-key login (they have no username to show)."""
+    return ok(tokenInfo={"username": who.username})
 
 
 def get_music_folders(st, who):
@@ -578,9 +584,18 @@ def _read_lyrics(track):
     return found[0], is_synced(found[0])
 
 
+def _lyrics_for(st, track):
+    """Stored lyrics, or — with SUBSONIC_FETCH_LYRICS — a short-wait LRCLIB
+    lookup that saves them for next time (see lyrics_fetch.py)."""
+    found = _read_lyrics(track)
+    if found is None and lyrics_fetch.fetch_and_wait(st, track):
+        found = _read_lyrics(track)
+    return found
+
+
 def get_lyrics_by_song_id(st, who):
     track = _song_or_404(st, who, _req("id"))
-    found = _read_lyrics(track)
+    found = _lyrics_for(st, track)
     if not found:
         return ok(lyricsList={"structuredLyrics": []})
     text, synced = found
@@ -599,7 +614,7 @@ def get_lyrics(st, who):
                 continue
             if artist and artist not in (track.get("artist") or "").lower():
                 continue
-            found = _read_lyrics(track)
+            found = _lyrics_for(st, track)
             if found:
                 # Legacy getLyrics is plain text: drop the LRC timestamps.
                 plain = "\n".join(ln["value"] for ln in _structured(*found))
@@ -812,7 +827,7 @@ def scrobble(st, who):
 METHODS = {
     "ping": ping, "getLicense": get_license,
     "getOpenSubsonicExtensions": get_open_subsonic_extensions,
-    "getMusicFolders": get_music_folders, "getUser": get_user,
+    "getMusicFolders": get_music_folders, "getUser": get_user, "tokenInfo": token_info,
     "getScanStatus": get_scan_status, "startScan": start_scan,
     # ID3 browsing
     "getArtists": get_artists, "getArtist": get_artist, "getAlbum": get_album,

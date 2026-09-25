@@ -17,6 +17,7 @@ Design notes and history are in [`plans/subsonic-api.md`](plans/subsonic-api.md)
 | `SUBSONIC_ALLOW_PLAIN_PASSWORD` | `false` | Accept `p=` (plain or `enc:` hex) from any address. Off: only over https (`UI_PUBLIC_URL` https) or from a private/loopback address. |
 | `SUBSONIC_TRANSCODE` | `false` | Re-encode `stream` on request (ffmpeg → Opus/MP3). |
 | `SUBSONIC_RUN_PLAYLISTS` | `true` | Expose each Run preset as a read-only playlist. |
+| `SUBSONIC_FETCH_LYRICS` | `false` | Look up lyrics a file doesn't have on LRCLIB when an app asks, and save them. |
 | `UI_THREADS` | `0` (auto) | Server threads: 12, or 24 while the API is on. |
 
 In the app, choose **OpenSubsonic** (or Subsonic) as the server type, **not
@@ -101,6 +102,7 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 |---|---|
 | `ping` | |
 | `getLicense` | Always `valid=true`. |
+| `tokenInfo` | OpenSubsonic: the username an API key belongs to (apps call it after an API-key login). |
 | `getOpenSubsonicExtensions` | The three extensions above. |
 | `getMusicFolders` | One folder, id `1`. |
 | `getUser` | Your own user only; roles reflect the account (`adminRole`, `playlistRole` for the admin). |
@@ -151,9 +153,14 @@ carry OpenSubsonic fields: **`bpm`** (the detected tempo), `genres[]`, and
 | `getLyrics` | Legacy: `artist` + `title` → plain text (timestamps removed). |
 
 Lyrics come from the file's embedded tag or a `.lrc` sidecar, the same place
-the web player reads. The API doesn't fetch missing lyrics online; use the web
-UI's per-track fetch or **Settings → Lyrics** bulk fill (LRCLIB), and every app
-sees the results.
+the web player reads. With **`SUBSONIC_FETCH_LYRICS`** (or the toggle in
+Settings → Subsonic API), a song without lyrics is looked up on LRCLIB when an
+app asks, and saved per Settings → Lyrics (embedded or sidecar), so every app
+and the web player have them from then on. The request waits up to 4 s. A
+slower lookup finishes in the background and is served next time. At most 2
+lookups run at once, and a song LRCLIB has nothing for (or marks instrumental)
+isn't looked up again (retry it from the web UI). Without the setting, fill
+lyrics from the web UI's per-track fetch or **Settings → Lyrics** bulk fill.
 
 ### Similar and top
 
@@ -185,4 +192,4 @@ Any other method returns error `0` ("not supported by this server"). Notably:
 podcasts, internet radio, shares, jukebox control, chat, bookmarks and play
 queue (`getPlayQueue` / `savePlayQueue`), user management (`getUsers`,
 `createUser`…), video, `setRating`, and avatars. Album and artist info have no
-content yet (see above), and lyrics aren't fetched on demand.
+content yet (see above).

@@ -388,6 +388,9 @@ def build_config() -> dict:
         # Re-encode on the fly (ffmpeg) when a client asks for a format/bitrate.
         # Off: files always stream as-is. Costs CPU per play; capped concurrency.
         "subsonic_transcode":         os.environ.get("SUBSONIC_TRANSCODE", "false").lower() == "true",
+        # When an app asks for lyrics a file doesn't have, look them up on LRCLIB
+        # and save them (LYRICS_MODE: embedded or .lrc sidecar). Writes files.
+        "subsonic_fetch_lyrics":      os.environ.get("SUBSONIC_FETCH_LYRICS", "false").lower() == "true",
         # Expose each Run preset as a read-only "Run · <name>" playlist.
         "subsonic_run_playlists":     os.environ.get("SUBSONIC_RUN_PLAYLISTS", "true").lower() == "true",
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
