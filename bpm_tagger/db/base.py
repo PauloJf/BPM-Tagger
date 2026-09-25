@@ -164,6 +164,7 @@ class _DBBase:
         self._create_player_tables(conn)
         self._create_run_tables(conn)
         self._create_track_artists_table(conn)
+        self._create_ratings_table(conn)
         self._fix_normalize_artist_word_boundary_bug(conn)
 
         # Orphan sweep: DBs created before FK enforcement have no ON DELETE
@@ -278,6 +279,39 @@ class _DBBase:
                 PRIMARY KEY (owner, key)
             )
         """)
+
+    def _create_ratings_table(self, conn):
+        """Per-account 1-5 star ratings and dislikes (docs/plans/ratings-weighted-picking.md).
+
+        ``owner`` is the session_owner key ('admin' | 'player:<id>'; the shared
+        guest never rates). tracks.starred / tracks.disliked stay as the ADMIN's
+        projection (starred = rating >= 4), kept in step by db/ratings.py, so the
+        library-wide readers (star sync, suggestions, album index) are unchanged.
+        Brand-new table -> seeded once from the admin's existing stars (-> 4)
+        and dislikes."""
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        is_new = "track_ratings" not in tables
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS track_ratings (
+                owner       TEXT NOT NULL,
+                track_id    INTEGER NOT NULL,
+                rating      INTEGER,                   -- NULL = unrated, 1..5
+                disliked    INTEGER NOT NULL DEFAULT 0,
+                rating_base INTEGER,                   -- admin: Navidrome rating at last sync
+                updated_at  TEXT NOT NULL,
+                PRIMARY KEY (owner, track_id),
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_track_ratings_track "
+                     "ON track_ratings(track_id)")
+        # "Unplayed by this account" (the new-songs rule) looks plays up by path.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pe_owner_path "
+                     "ON play_events(owner, file_path)")
+        if is_new:
+            from .ratings import SEED_ADMIN_FROM_PROJECTION_SQL
+            conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)
 
     def _create_track_artists_table(self, conn):
         """Per-credited-artist links, split out of tracks.artist/album_artist

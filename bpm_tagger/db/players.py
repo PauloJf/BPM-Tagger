@@ -110,6 +110,7 @@ class PlayersMixin:
         with self._connect() as conn:
             conn.execute("DELETE FROM player_playlists WHERE player_id = ?", (player_id,))
             conn.execute("DELETE FROM player_state WHERE owner = ?", (f"player:{player_id}",))
+            conn.execute("DELETE FROM track_ratings WHERE owner = ?", (f"player:{player_id}",))
             conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
             conn.commit()
 

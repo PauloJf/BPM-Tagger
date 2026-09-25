@@ -7,8 +7,8 @@ Three detectors cross-validate every track — **deeprhythm** (CNN), **essentia*
 One container, four jobs:
 
 - **The BPM engine** — three-detector analysis, octave correction, tag writing, review queue, manual locks
-- **Run — the cadence player** — pick a step cadence and run to your own music: octave-folded queue building (starred tracks first), a pitch-preserving tempo lock, offline preloading for network dead zones, and a locked-down player/kiosk login; **Listen** is the regular non-cadence player
-- **The library companion** — playlists (Spotify / Navidrome / Local) with compare / merge / split operations and per-playlist stats, lyrics, cover & artist art, duplicate resolution, ISRCs, and two-way star sync + scrobbling back to Navidrome
+- **Run — the cadence player** — pick a step cadence and run to your own music: octave-folded queue building weighted by your 1–5 star ratings, a pitch-preserving tempo lock, offline preloading for network dead zones, and a locked-down player/kiosk login; **Listen** is the regular non-cadence player
+- **The library companion** — playlists (Spotify / Navidrome / Local) with compare / merge / split operations and per-playlist stats, lyrics, cover & artist art, duplicate resolution, ISRCs, and two-way star and rating sync + scrobbling back to Navidrome
 - **The music grabber** *(optional, off by default)* — watch your own Spotify playlists and download what's missing (Deezer via your own ARL → yt-dlp fallback), transcoded, tagged, BPM-analyzed, and filed by a path template
 
 Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/BPM-Tagger) · Licensed under [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)
@@ -99,12 +99,16 @@ docker compose up -d && docker compose logs -f
 | `RUN_PASSWORD` | _(empty)_ | Optional **shared Guest login** for locked-down player mode. For per-person accounts scoped to playlists, create **named player users** in Settings → Player access |
 | `RUN_SESSION_DAYS` | `30` | How long a player login stays signed in (days) |
 | `PLAYER_LISTEN_MODE` | `off` | What player logins get besides Run: `off` · `on` adds Listen · `default` lands on Listen · `only` pure jukebox. Named users can override |
+| `PICK_USE_RATINGS` | `true` | Weight Run / Listen shuffle & radio / similar / Subsonic picks by each account's 1–5 star ratings |
+| `PICK_WEIGHTS` | `0.1,0.5,1,1,3,6` | Relative pick weights for 1★, 2★, 3★, unrated, 4★, 5★ (`0` = only when nothing else fits) |
+| `PICK_NEW_FACTOR` | `1` | Multiplier on new (unrated + unplayed-by-you) tracks: `0` never · `0.5` less · `1` neutral · `2` more · `4` much more |
 | `RUN_STRETCH_LIMIT_PCT` | `15` | How far (%) a track may be sped up or slowed to reach the cadence — decides both queue eligibility and playback clamp |
 | `SYNC_INTERVAL_MINUTES` | `0` | Minutes between background sync passes (playlists, stars, play counts). `0` = manual only; floored to 5. Watch mode only |
 | `INSTALL_PING` / `INSTALL_PING_URL` | _(ask on first run)_ | Opt-in anonymous install ping (version only; no identifier/data/cookies) |
 | `NTFY_TOPIC` | _(empty)_ | ntfy topic (leave empty to disable) |
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
 | `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
+| `NAVIDROME_SYNC_RATINGS` | `false` | Two-way sync of the admin's 1–5 star ratings with Navidrome (Settings → Navidrome) |
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
 | `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
@@ -123,9 +127,11 @@ Set `ENABLE_UI: "true"` and a strong `UI_PASSWORD`, then open `http://your-host:
 
 The UI password is stored as a salted hash once changed in **Settings** (never plaintext), a password change logs out all other devices, and `settings.json` is written `0600`.
 
-**Library** — sortable table with BPM, confidence and detector, live search, BPM ± tolerance filter, and filter pills (Starred / Disliked / Review / Locked / No ISRC / No playlist / Deleted). Tracks | Artists | Albums browse views with cover art, per-artist and per-album pages, and a shared **Play / Shuffle / Add to queue** trio everywhere. Duplicate resolution with a recoverable trash, bulk ISRC fill, and **Find metadata** to fill a track's whole tag set from Spotify/Deezer.
+**Library** — sortable table with BPM, confidence and detector, live search, BPM ± tolerance filter, and filter pills (Unrated / Rated ≥ N / Starred / Disliked / Review / Locked / No ISRC / No playlist / Deleted). Tracks | Artists | Albums browse views with cover art, per-artist and per-album pages, and a shared **Play / Shuffle / Add to queue** trio everywhere. Duplicate resolution with a recoverable trash, bulk ISRC fill, and **Find metadata** to fill a track's whole tag set from Spotify/Deezer.
 
-**Run mode** — a full-screen tempo-run player that fits one phone screen: big target-BPM readout with the tempo-lock toggle and a `native · stretch × octave → result` breakdown, four named presets, source picker (whole library or a playlist), and a queue that auto-refills before the last track ends. Starred tracks come first, disliked never, and every song is stretched onto your cadence with pitch preserved. Save a run queue as a playlist; the **Cadence** page answers "what can I run at 165?" by the same rule.
+**Ratings** — rate tracks 1–5 stars (per account: each player user has their own ratings and dislikes). Ratings weight how often a track is picked by Run, Listen shuffle/radio and similar, tunable in Settings → Ratings & picking with a live preview; a disliked track is never picked. 4★ and up counts as starred for Navidrome and Subsonic apps (`setRating` / `userRating` supported).
+
+**Run mode** — a full-screen tempo-run player that fits one phone screen: big target-BPM readout with the tempo-lock toggle and a `native · stretch × octave → result` breakdown, four named presets, source picker (whole library or a playlist), and a queue that auto-refills before the last track ends. Picks are weighted by your ratings, your disliked tracks never come up, and every song is stretched onto your cadence with pitch preserved. Save a run queue as a playlist; the **Cadence** page answers "what can I run at 165?" by the same rule.
 
 **Listen** — the regular non-cadence player: play any playlist in order or shuffled at native speed (no BPM required), with a **radio** that keeps refilling from the same playlist, or with similar tracks from your library.
 
@@ -133,7 +139,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Playlists** — watch **Spotify** and **Navidrome** playlists or build your own **Local** ones, reconciled against your library (have / missing / new / removed) and usable as Run sources. **Compare** two, **Merge** several, or **Split** one by cadence or artist — all outputs Local, nothing ever writes back. Each detail page opens with a stats strip (runtime, BPM histogram, plays, per-preset runnable counts). Covers, descriptions, pinning, search, sort and drag-reorder included.
 
-**Navidrome integration** — two-way **star sync**, opt-in **scrobbling** at the halfway mark (reaching Last.fm/ListenBrainz through it), and **play-count import** usable as a "prefer familiar tracks" run preference. Your BPM tags also power Navidrome **smart playlists** (`.nsp` with a `bpm` range).
+**Navidrome integration** — two-way **star sync** and opt-in two-way **rating sync**, opt-in **scrobbling** at the halfway mark (reaching Last.fm/ListenBrainz through it), and **play-count import**. Your BPM tags also power Navidrome **smart playlists** (`.nsp` with a `bpm` range).
 
 **Artwork & lyrics** — embedded covers everywhere, album-wide cover setting, custom artist images (or opt-in Deezer fetching, optionally saved as `artist.jpg` for Navidrome), and LRCLIB lyrics per track or in bulk, stored embedded or as sidecars.
 

@@ -14,6 +14,8 @@ from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
 from ..auth import _check_csrf, login_required, password_stamp, verify_ui_password
 from ..state import state
+from ..weighting import (LEVELS, expected_share, parse_new_factor, parse_weights,
+                         weights_from_config)
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +67,12 @@ def api_settings_get():
             out[key] = val
     # Surface how many one-time recovery codes are left (the hashes stay masked).
     out["totp_recovery_remaining"] = len(cfg.get("totp_recovery_hashes") or [])
+    # Rating-weighted picking: normalize whatever shape the config holds (env
+    # gives a comma string; settings.json / a live update gives a list) so the
+    # Settings page always gets six floats and a bool, never a raw string.
+    out["pick_use_ratings"] = bool(cfg.get("pick_use_ratings", True))
+    out["pick_weights"] = list(parse_weights(cfg.get("pick_weights")))
+    out["pick_new_factor"] = parse_new_factor(cfg.get("pick_new_factor"))
     return jsonify(settings=out, version=__version__, env_locked=env_locked_keys())
 
 
@@ -172,6 +180,7 @@ def api_settings_navidrome():
         "navidrome_url":       str(data.get("navidrome_url", "")).strip(),
         "navidrome_user":      str(data.get("navidrome_user", "")).strip(),
         "navidrome_star_sync": bool(data.get("navidrome_star_sync")),
+        "navidrome_sync_ratings": bool(data.get("navidrome_sync_ratings")),
         "navidrome_scrobble":  bool(data.get("navidrome_scrobble")),
     }
     # Only overwrite the stored password when a non-masked value is supplied.
@@ -257,8 +266,6 @@ def api_settings_run():
     updates = {
         "run_presets":           presets,
         "run_octave_fold":       bool(data.get("run_octave_fold", True)),
-        "run_prefer_starred":    bool(data.get("run_prefer_starred", True)),
-        "run_prefer_familiar":   bool(data.get("run_prefer_familiar", False)),
         "run_queue_size":        int(_num(data.get("run_queue_size"), 1, 200, 20)),
         "run_stretch_limit_pct": _num(data.get("run_stretch_limit_pct"), 1, 50, 15.0),
         "run_preload_tracks":    int(_num(data.get("run_preload_tracks"), 1, 50, 10)),
@@ -266,6 +273,71 @@ def api_settings_run():
     st.config.update(updates)
     save_settings(st.settings_path, updates)
     return jsonify(ok=True)
+
+
+@settings_bp.route("/api/settings/ratings", methods=["POST"])
+@login_required
+def api_settings_ratings():
+    """Admin-only: the global rating-weighted-picking knobs (D7) — the "Use
+    ratings" toggle, the six level weights (order: 1,2,3,unrated,4,5), and the
+    new-songs multiplier. One shared setting applied to every account's own
+    ratings; parse_weights/parse_new_factor clamp and fall back to the
+    Moderate defaults on anything malformed, so this endpoint never 400s on a
+    bad number — it just normalizes."""
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    data = _json_body()
+    updates = {
+        "pick_use_ratings": bool(data.get("pick_use_ratings", True)),
+        "pick_weights":     list(parse_weights(data.get("pick_weights"))),
+        "pick_new_factor":  parse_new_factor(data.get("pick_new_factor")),
+    }
+    st.config.update(updates)
+    save_settings(st.settings_path, updates)
+    return jsonify(ok=True, **updates)
+
+
+@settings_bp.route("/api/settings/pick-preview")
+@login_required
+def api_settings_pick_preview():
+    """Admin-only: the expected share of picks per rating level for the current
+    (possibly unsaved) weights, over one account's library — drives the
+    Settings page's live preview bar. Unspecified query params fall back to the
+    saved config, so reopening the page previews what's actually in effect.
+
+    ``owner`` (default 'admin') lets the preview show a chosen account's own
+    distribution; the counts come from ``rating_distribution`` (D19's Stats
+    card query) plus a "new" count so the new-songs multiplier's effect shows
+    too — "new" is unrated + unplayed by that account, matching D9, and is
+    carved out of "unrated" so the two don't double count."""
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    args = request.args
+    cfg = dict(st.config)
+    if "use_ratings" in args:
+        cfg["pick_use_ratings"] = args.get("use_ratings") not in ("0", "false", "")
+    if "weights" in args:
+        cfg["pick_weights"] = args.get("weights")
+    if "new_factor" in args:
+        cfg["pick_new_factor"] = args.get("new_factor")
+    owner = str(args.get("owner") or "admin")
+    weights = weights_from_config(cfg, owner)
+
+    dist = st.db.rating_distribution(owner)
+    counts = {lvl: dist.get(lvl, 0) for lvl in LEVELS}
+    # "New" = unrated and unplayed by this account (D9); carve it out of
+    # "unrated" so expected_share's ('unrated', 'new') split adds up.
+    new = st.db.count_new_for_owner(owner)
+    counts["unrated"] = max(0, counts.get("unrated", 0) - new)
+    counts["new"] = new
+    share = expected_share(counts, weights)
+    return jsonify(counts=counts, share=share,
+                   use_ratings=weights.use_ratings, weights=list(
+                       weights.levels[lvl] for lvl in LEVELS),
+                   new_factor=weights.new_factor)
 
 
 @settings_bp.route("/api/settings/artwork", methods=["POST"])
@@ -383,6 +455,23 @@ def api_sync_stars():
     st = state()
     from ...integrations.star_sync import sync_stars
     result = sync_stars(st.db, st.config)
+    status = 200 if result.get("ok") else 502
+    return jsonify(**result), status
+
+
+@settings_bp.route("/api/settings/sync-ratings", methods=["POST"])
+@login_required
+def api_sync_ratings():
+    """Admin-only: one manual two-way rating-sync pass against Navidrome
+    (docs/plans/ratings-weighted-picking.md § "Navidrome rating sync"). Shares
+    the same full-library search3 walk as the play-count pull; runs inline on
+    this worker."""
+    _check_csrf()
+    if session.get("role") == "player":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    from ...integrations.rating_sync import sync_ratings
+    result = sync_ratings(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
 

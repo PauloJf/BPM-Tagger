@@ -40,7 +40,8 @@ export default function Album() {
   const stats = q.data?.stats;
   const aa = q.data?.album_artist || albumArtist;
   const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path),
-    artist: t.artist || "", bpm: t.bpm, loudnessLufs: t.loudness_lufs });
+    artist: t.artist || "", bpm: t.bpm, starred: !!t.starred, rating: t.rating ?? null,
+    disliked: !!t.disliked, loudnessLufs: t.loudness_lufs });
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imgV, setImgV] = useState(0);

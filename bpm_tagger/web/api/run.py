@@ -4,9 +4,11 @@ Given a target BPM, select tracks whose detected BPM — octave-folded to ×½/�
 when enabled, so a 75 BPM song serves a 150 SPM run at native speed — can be
 pulled onto the target within the max-stretch limit (``run_stretch_limit_pct``).
 That one limit is the whole eligibility rule: a track that can't reach the
-cadence within it never enters the queue. Starred tracks are preferred. Each
-returned track carries the playback rate the client applies via
-``audio.playbackRate`` (pitch preserved by the browser).
+cadence within it never enters the queue. Beyond that, picking is
+rating-weighted (web/weighting.py) rather than a strict starred-first sort —
+see docs/plans/ratings-weighted-picking.md D11. Each returned track carries the
+playback rate the client applies via ``audio.playbackRate`` (pitch preserved
+by the browser).
 
 POSTing an ``exclude`` list of file paths — the client's auto-refill sends the
 tracks already in the queue — drops those from consideration so an ongoing run
@@ -23,6 +25,7 @@ from flask import Blueprint, g, jsonify, request
 from ...config import RUN_PRESET_DEFAULTS
 from ..auth import _check_csrf, login_required, session_owner
 from ..state import state
+from ..weighting import sample, weights_from_config
 
 run_bp = Blueprint("api_run", __name__)
 
@@ -169,25 +172,34 @@ def api_run_queue():
                                      else cfg.get("run_queue_size", 20))))
     except (ValueError, TypeError):
         count = int(cfg.get("run_queue_size", 20))
-    prefer_starred = bool(cfg.get("run_prefer_starred", True))
-    prefer_familiar = bool(cfg.get("run_prefer_familiar", False))
+    owner = session_owner()
+    use_ratings = bool(cfg.get("pick_use_ratings", True)) and owner != "guest"
+    weights = weights_from_config(cfg, owner)
     # Max stretch is the single eligibility rule: how far playbackRate may move
     # from 1 to land a track on the target. Enforced here at selection so nothing
     # unreachable enters the queue, and again client-side by lockRate at playback
     # (the target slider can move a built queue, and the limit itself can drop).
     octave, limit = _run_settings(cfg)
 
-    # Eligibility is the shared _eligible rule; this adds the queue-only parts —
-    # dropping what the caller excluded, then the preference sort (starred first,
-    # then most-played first when familiarity is preferred, closest first).
+    # Eligibility is the shared _eligible rule; this adds the queue-only part —
+    # dropping what the caller excluded. Tempo closeness is no longer a
+    # preference (D11): everything within the stretch limit is equally
+    # eligible, and _pick below draws among them by rating weight.
     def _matches(cands, exclude_paths):
-        found = _eligible(
+        return _eligible(
             [t for t in cands if t["file_path"] not in exclude_paths],
             target, octave, limit)
-        found.sort(key=lambda x: (not x[0]["starred"] if prefer_starred else False,
-                                  -(x[0]["play_count"] or 0) if prefer_familiar else 0,
-                                  x[2]))
-        return found
+
+    def _pick(found, k):
+        """Rating-weighted sample of k (track, folded, dev) tuples from the
+        eligible set. annotate_marks resolves the owner's rating/disliked/is_new
+        onto a copy of each track dict, keyed by the tuple's identity."""
+        if not found:
+            return []
+        rows = [dict(t) for t, _folded, _dev in found]
+        st.db.annotate_marks(rows, owner)
+        by_path = {r["file_path"]: r for r in rows}
+        return sample(found, k, lambda m: weights.weight(by_path[m[0]["file_path"]]))
 
     def _library_pool(exclude_paths):
         """The wider pool a run tops up from (and the whole pool for a library-source
@@ -206,14 +218,15 @@ def api_run_queue():
         pool. Returns (matches, playlist_paths, topped_up) — the second item is
         the set of file paths that came from the playlist itself."""
         if playlist_id is None:
-            return _library_pool(exclude_paths), set(), False
-        pl = _matches(st.db.get_run_candidates(playlist_id), exclude_paths)
-        pl_paths = {m[0]["file_path"] for m in pl}
+            return _pick(_library_pool(exclude_paths), count), set(), False
+        pl_found = _matches(st.db.get_run_candidates(playlist_id), exclude_paths)
+        pl_paths = {t["file_path"] for t, _f, _d in pl_found}
+        pl = _pick(pl_found, count)
         if len(pl) >= count:
             return pl, pl_paths, False
         # Not enough playlist tracks match here — fill the rest from the wider
         # pool, excluding what's already picked so nothing repeats.
-        lib = _library_pool(set(exclude_paths) | pl_paths)
+        lib = _pick(_library_pool(set(exclude_paths) | pl_paths), count - len(pl))
         return pl + lib, pl_paths, bool(lib)
 
     picked, pl_paths, topped_up = _build(exclude_set)
@@ -224,19 +237,29 @@ def api_run_queue():
         picked, pl_paths, topped_up = _build(set())
         recycled = True
 
-    # Playback order shuffled (within the scored/truncated slice) so two runs
-    # at the same target don't sound identical.
+    # Playback order shuffled (the sample above only decides WHICH tracks; this
+    # decides the order they play in) so two runs at the same target don't
+    # sound identical.
     picked = picked[:count]
     random.shuffle(picked)
 
+    # One batch resolve of the owner's marks for the final, truncated slice —
+    # cheaper than a per-track lookup, and _pick already resolved marks for its
+    # own candidate sets (which this doesn't reuse, since they cover more than
+    # what was picked).
+    marked = {r["file_path"]: r for r in
+             st.db.annotate_marks([dict(t) for t, _f, _d in picked], owner)}
+
     tracks = []
     for (t, folded, _dev) in picked:
+        mark = marked[t["file_path"]]
         tracks.append({
             "path":    t["file_path"],
             "title":   t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
             "artist":  t["artist"] or "",
             "bpm":     t["bpm"],
-            "starred": bool(t["starred"]),
+            "starred": mark["starred"],
+            "rating":  mark["rating"],
             "play_count": t["play_count"],
             # Integrated loudness (LUFS) so the player can level this track; NULL
             # for anything not measured yet, which plays at full volume.
@@ -249,7 +272,7 @@ def api_run_queue():
         })
     return jsonify(tracks=tracks, target=target, count=len(tracks),
                    octave_fold=octave, stretch_limit_pct=limit * 100,
-                   prefer_starred=prefer_starred, prefer_familiar=prefer_familiar,
+                   use_ratings=use_ratings,
                    recycled=recycled, topped_up=topped_up, playlist=playlist_id)
 
 
@@ -284,8 +307,9 @@ def api_run_ready():
     if err:
         return err
     octave, limit = _run_settings(st.config)
+    owner = session_owner()
 
-    found = _eligible(st.db.get_run_candidates(None), target, octave, limit)
+    found = _eligible(st.db.get_run_candidates(None, owner=owner), target, octave, limit)
     found.sort(key=lambda x: x[2])          # closest to the target first
     tracks = [{
         "path":    t["file_path"],
@@ -318,13 +342,14 @@ def api_run_readiness():
     st = state()
     octave, limit = _run_settings(st.config)
     presets = _presets(st.config)
+    owner = session_owner()
 
     def counts(cands) -> dict:
         return preset_counts(cands, presets, octave, limit)
 
-    library = counts(st.db.get_run_candidates(None))
+    library = counts(st.db.get_run_candidates(None, owner=owner))
     playlists = [{"id": p["id"], "name": p["name"],
-                  "counts": counts(st.db.get_run_candidates(p["id"]))}
+                  "counts": counts(st.db.get_run_candidates(p["id"], owner=owner))}
                  for p in st.db.list_playlists()]
     return jsonify(presets=presets, stretch_limit_pct=limit * 100,
                    octave_fold=octave, library=library, playlists=playlists)
@@ -374,12 +399,13 @@ def api_run_playlists():
     db = state().db
     full, _allowed = _run_scope()
     playlists = db.list_playlists() if full else db.list_playlists_for_player(g.player["id"])
+    owner = session_owner()
     out = [{
         "id": p["id"],
         "name": p["name"],
         "source": p["source"],
         "image_url": p.get("image_url"),
-        "available": db.count_run_candidates(p["id"]),
+        "available": db.count_run_candidates(p["id"], owner=owner),
         "total": p.get("track_count") or p.get("indexed_count") or 0,
     } for p in playlists]
     return jsonify(playlists=out)

@@ -67,8 +67,14 @@ def _song_or_404(st, who, sid: str) -> dict:
     return track
 
 
-def _songs(st, rows) -> list:
-    return [views.song(t, st.music_dir) for t in rows]
+def _songs(st, who, rows) -> list:
+    """Song children, each carrying the caller's own ``userRating`` and its
+    derived ``starred`` (rating >= STAR_MIN, D1/D17) — never the admin's."""
+    return [views.song(t, st.music_dir) for t in st.db.annotate_marks(rows, who.owner)]
+
+
+def _song_view(st, who, track: dict) -> dict:
+    return views.song(st.db.annotate_marks([track], who.owner)[0], st.music_dir)
 
 
 def _require_admin(who, message: str = "This account can't change playlists."):
@@ -237,11 +243,11 @@ def _album(st, who, aid: str):
 
 def get_album(st, who):
     base, tracks = _album(st, who, _req("id"))
-    return ok(album={**base, "song": _songs(st, tracks)})
+    return ok(album={**base, "song": _songs(st, who, tracks)})
 
 
 def get_song(st, who):
-    return ok(song=views.song(_song_or_404(st, who, _req("id")), st.music_dir))
+    return ok(song=_song_view(st, who, _song_or_404(st, who, _req("id"))))
 
 
 def _album_list(st, who):
@@ -282,14 +288,26 @@ def get_genres(st, who):
 def get_songs_by_genre(st, who):
     rows = st.db.subsonic_genre_songs(_req("genre"), _int("count", 10, 1, 500),
                                       _int("offset", 0, 0, 10_000_000), who.scope)
-    return ok(songsByGenre={"song": _songs(st, rows)})
+    return ok(songsByGenre={"song": _songs(st, who, rows)})
+
+
+# A random draw is weighted (D17): over-fetch a pool, then sample it down to the
+# requested size so ratings shape the odds without the query itself knowing about
+# weights. The pool already drops the caller's own dislikes (subsonic_random_songs).
+RANDOM_POOL_FACTOR = 5
+RANDOM_POOL_MAX = 2000
 
 
 def get_random_songs(st, who):
-    rows = st.db.subsonic_random_songs(_int("size", 10, 1, 500), _opt_int("fromYear"),
-                                       _opt_int("toYear"), who.scope,
-                                       genre=request.values.get("genre") or None)
-    return ok(randomSongs={"song": _songs(st, rows)})
+    from ..weighting import sample, weights_from_config
+    size = _int("size", 10, 1, 500)
+    pool = st.db.subsonic_random_songs(
+        size, _opt_int("fromYear"), _opt_int("toYear"), who.scope,
+        genre=request.values.get("genre") or None, owner=who.owner,
+        pool_size=min(RANDOM_POOL_MAX, size * RANDOM_POOL_FACTOR))
+    weights = weights_from_config(st.config, who.owner)
+    rows = sample(st.db.annotate_marks(pool, who.owner), size, weights.weight)
+    return ok(randomSongs={"song": _songs(st, who, rows)})
 
 
 def _search(st, who):
@@ -308,7 +326,7 @@ def _search(st, who):
         "artist": [views.artist(a, artist_stars)
                    for a in matches[a_off:a_off + _int("artistCount", 20, 0, 1000)]],
         "album": [views.album(a, album_stars) for a in albums],
-        "song": _songs(st, songs),
+        "song": _songs(st, who, songs),
     }
 
 
@@ -331,7 +349,7 @@ def get_now_playing(st, who):
         track = st.db.get_track_by_id(p["track_id"], who.scope)
         if not track:
             continue
-        entries.append({**views.song(track, st.music_dir), "username": c["username"],
+        entries.append({**_song_view(st, who, track), "username": c["username"],
                         "minutesAgo": p["elapsed_s"] // 60, "playerId": zlib.crc32(  # stable across restarts
                             f'{c["owner"]}|{c["app"]}|{c["ip"]}'.encode()) % 1_000_000,
                         "playerName": c["app"]})
@@ -395,7 +413,7 @@ def get_indexes(st, who):
     files = st.db.subsonic_tracks_by_paths(sorted(root.files))
     return ok(indexes={
         "lastModified": int(time.time() * 1000), "ignoredArticles": views.IGNORED_ARTICLES,
-        "index": index, "child": _songs(st, [files[p] for p in sorted(root.files) if p in files]),
+        "index": index, "child": _songs(st, who, [files[p] for p in sorted(root.files) if p in files]),
     })
 
 
@@ -403,7 +421,7 @@ def get_music_directory(st, who):
     did = _req("id")
     if did.startswith("al-"):
         base, tracks = _album(st, who, did)
-        return ok(directory={"id": did, "name": base["name"], "child": _songs(st, tracks)})
+        return ok(directory={"id": did, "name": base["name"], "child": _songs(st, who, tracks)})
     if did.startswith("ar-"):
         row = _artist_or_404(st, who, did)
         return ok(directory={"id": did, "name": row["name"], "child": _artist_albums(st, who, row)})
@@ -417,7 +435,7 @@ def get_music_directory(st, who):
     songs = sorted((tracks[p] for p in folder.files if p in tracks),
                    key=lambda t: (t.get("disc_no") or 0, t.get("track_no") or 0, t["file_path"]))
     out = {"id": ids.dir_id(folder.rel), "name": folder.name or "Music",
-           "child": subdirs + _songs(st, songs)}
+           "child": subdirs + _songs(st, who, songs)}
     if folder.parent_rel is not None:
         out["parent"] = ids.dir_id(folder.parent_rel)
     return ok(directory=out)
@@ -441,13 +459,19 @@ def _run_presets(st) -> list:
 
 
 def _run_playlist_tracks(st, who, preset: dict) -> list:
+    """Up to RUN_PLAYLIST_MAX eligible tracks, rating-weighted for ``who`` (D17)
+    — a fresh draw each request, like the web Run queue; two getPlaylist calls
+    for the same preset need not return the same songs or order."""
     from ..api.run import _eligible, _run_settings
+    from ..weighting import sample, weights_from_config
     octave, _limit = _run_settings(st.config)
-    cands = (st.db.get_run_candidates(None) if who.is_admin
-             else st.db.get_run_candidates_for_playlists(who.scope or []))
+    cands = (st.db.get_run_candidates(None, owner=who.owner) if who.is_admin
+             else st.db.get_run_candidates_for_playlists(who.scope or [], owner=who.owner))
+    cands = st.db.annotate_marks(cands, who.owner)
     found = _eligible(cands, float(preset["bpm"]), octave, RUN_NATIVE_TOLERANCE)
-    found.sort(key=lambda x: (not x[0]["starred"], x[2]))
-    paths = [t["file_path"] for t, _f, _d in found[:RUN_PLAYLIST_MAX]]
+    weights = weights_from_config(st.config, who.owner)
+    picked = sample(found, min(len(found), RUN_PLAYLIST_MAX), lambda f: weights.weight(f[0]))
+    paths = [t["file_path"] for t, _f, _d in picked]
     rows = st.db.subsonic_tracks_by_paths(paths)
     return [rows[p] for p in paths if p in rows]
 
@@ -459,7 +483,8 @@ def _run_playlist_view(st, who, index: int, preset: dict, tracks=None) -> dict:
     return {
         "id": pid, "name": f"Run · {preset['name']} ({preset['bpm']} BPM)",
         "comment": f"Tracks within {int(RUN_NATIVE_TOLERANCE * 100)} % of {preset['bpm']} BPM "
-                   "(half/double time included), starred first. Plays at native speed.",
+                   "(half/double time included), rating-weighted and skipping your dislikes. "
+                   "Plays at native speed; a fresh draw each time you open it.",
         "owner": who.username, "public": False, "songCount": len(tracks),
         "duration": sum(int((t.get("duration_ms") or 0) / 1000) for t in tracks),
         "created": "1970-01-01T00:00:00.000Z",
@@ -500,7 +525,7 @@ def _playlist_view(st, who, row) -> dict:
 def _playlist_with_entries(st, who, row) -> dict:
     fresh = st.db.subsonic_playlist_summaries([row["id"]])[0]
     return {**_playlist_view(st, who, fresh),
-            "entry": _songs(st, st.db.subsonic_playlist_entries(row["id"]))}
+            "entry": _songs(st, who, st.db.subsonic_playlist_entries(row["id"]))}
 
 
 def get_playlists(st, who):
@@ -516,7 +541,7 @@ def get_playlist(st, who):
         index, p = preset
         tracks = _run_playlist_tracks(st, who, p)
         return ok(playlist={**_run_playlist_view(st, who, index, p, tracks),
-                            "entry": _songs(st, tracks)})
+                            "entry": _songs(st, who, tracks)})
     return ok(playlist=_playlist_with_entries(st, who, _playlist_or_404(st, who, raw)))
 
 
@@ -647,7 +672,7 @@ def _load_queue(st, who):
     base = {"position": saved.get("position_ms") or 0, "username": who.username,
             "changed": views.iso(saved.get("changed_at")),
             "changedBy": saved.get("changed_by") or None,
-            "entry": _songs(st, entries)}
+            "entry": _songs(st, who, entries)}
     return base, index, entries
 
 
@@ -753,26 +778,30 @@ def _seed_tracks(st, who, sid: str) -> list:
 
 def _similar(st, who, seed: list, count: int) -> list:
     """Offline "similar" — the shared rule in ``web/similar.py`` (same artist,
-    then nearby tempo), scoped to what this account may see."""
+    then nearby tempo), scoped to what this account may see, rating-weighted for
+    ``who`` and skipping its own dislikes (D17)."""
     from ..similar import similar_tracks
-    return [t for t, _reason in similar_tracks(st.db, seed, count, who.scope)]
+    from ..weighting import weights_from_config
+    weights = weights_from_config(st.config, who.owner)
+    return [t for t, _reason in similar_tracks(st.db, seed, count, who.scope,
+                                               owner=who.owner, weights=weights)]
 
 
 def get_similar_songs(st, who):
     rows = _similar(st, who, _seed_tracks(st, who, _req("id")), _int("count", 50, 1, 500))
-    return ok(similarSongs={"song": _songs(st, rows)})
+    return ok(similarSongs={"song": _songs(st, who, rows)})
 
 
 def get_similar_songs2(st, who):
     rows = _similar(st, who, _seed_tracks(st, who, _req("id")), _int("count", 50, 1, 500))
-    return ok(similarSongs2={"song": _songs(st, rows)})
+    return ok(similarSongs2={"song": _songs(st, who, rows)})
 
 
 def get_top_songs(st, who):
     norm = normalize_artist_name(_req("artist"))
     rows = sorted(st.db.subsonic_artist_tracks(norm, who.scope),
                   key=lambda t: (-(t.get("play_count") or 0), (t.get("title") or "").lower()))
-    return ok(topSongs={"song": _songs(st, rows[:_int("count", 50, 1, 500)])})
+    return ok(topSongs={"song": _songs(st, who, rows[:_int("count", 50, 1, 500)])})
 
 
 # ── Media ─────────────────────────────────────────────────────────────────────
@@ -890,12 +919,12 @@ def _song_ids() -> list[str]:
 
 
 def _set_star(st, who, starred: bool):
-    """Song stars are the library's own star (the flag the web UI, Run mode and
-    Navidrome star sync use). Album and artist stars live in subsonic_stars,
-    keyed by id. All are library-wide, like song stars; a player can only star
-    what its scope shows it."""
+    """A song star/unstar goes through the caller's own derived rating (D1):
+    star -> at least STAR_MIN, unstar a >= STAR_MIN track -> STAR_OFF — never
+    another account's. Album and artist stars live in subsonic_stars, keyed by
+    id, library-wide as before; a player can only star what its scope shows it."""
     for sid in _song_ids():
-        st.db.set_starred(_song_or_404(st, who, sid)["file_path"], starred)
+        st.db.set_owner_starred(who.owner, _song_or_404(st, who, sid)["file_path"], starred)
     for aid in [i for i in request.values.getlist("albumId") if i]:
         _album(st, who, aid)  # 70 unless visible to this account
         st.db.set_subsonic_star("album", aid, starred)
@@ -913,6 +942,27 @@ def unstar(st, who):
     return _set_star(st, who, False)
 
 
+def set_rating(st, who):
+    """OpenSubsonic setRating: the caller's own 1-5 rating on a song, 0 clears
+    it (db/ratings.py set_rating). Songs only — album and artist ratings are
+    out of scope (D17)."""
+    sid = _req("id")
+    if not sid.startswith("tr-"):
+        raise SubsonicError(E_GENERIC, "Ratings are only supported for songs.")
+    track = _song_or_404(st, who, sid)
+    raw = request.values.get("rating")
+    if raw is None or raw == "":
+        raise SubsonicError(E_MISSING_PARAM, "Required parameter is missing: rating")
+    try:
+        rating = int(raw)
+    except (TypeError, ValueError):
+        raise SubsonicError(E_GENERIC, "rating must be an integer 0-5")
+    if not 0 <= rating <= 5:
+        raise SubsonicError(E_GENERIC, "rating must be an integer 0-5")
+    st.db.set_rating(who.owner, track["file_path"], rating or None)
+    return ok()
+
+
 def _starred_body(st, who) -> dict:
     album_stars, artist_stars = _stars(st, "album"), _stars(st, "artist")
     albums = []
@@ -926,7 +976,9 @@ def _starred_body(st, who) -> dict:
                for aid in artist_stars
                if (row := artists_index.by_id(st.db, who.scope, aid)) is not None]
     return {"artist": artists, "album": albums,
-            "song": _songs(st, st.db.subsonic_starred_songs(who.scope))}
+            # Songs are the caller's own derived star (rating >= STAR_MIN); albums
+            # and artists stay the library-wide subsonic_stars above.
+            "song": _songs(st, who, st.db.subsonic_starred_songs(who.scope, owner=who.owner))}
 
 
 def get_starred2(st, who):
@@ -1002,6 +1054,7 @@ METHODS = {
     # Media
     "stream": stream, "download": download, "getCoverArt": get_cover_art,
     # Annotation
-    "star": star, "unstar": unstar, "getStarred2": get_starred2, "getStarred": get_starred,
+    "star": star, "unstar": unstar, "setRating": set_rating,
+    "getStarred2": get_starred2, "getStarred": get_starred,
     "scrobble": scrobble,
 }

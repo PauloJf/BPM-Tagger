@@ -17,6 +17,7 @@ simplification, playlist playback + queue hygiene).
 | Playlist playback + queue hygiene | [playlist-playback-and-queue-hygiene.md](playlist-playback-and-queue-hygiene.md) | ✅ Done (v2.10.0) |
 | Core decoupling (waveform toggle, import isolation, core requirements) | [core-decoupling.md](core-decoupling.md) | ✅ Done (Unreleased) |
 | Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | ✅ Phases 1–3 done (Unreleased); genres open |
+| 1–5 star ratings + rating-weighted picking | [ratings-weighted-picking.md](ratings-weighted-picking.md) | ✅ Built (Unreleased, `feat/ratings`) |
 
 ---
 
@@ -142,6 +143,17 @@ always has a non-empty queue.
 Recorded as out of scope: unifying the PlayerBar queue drawer and the Run page queue
 panel into one `<QueuePanel>`; explicitly *not* as a `/queue` page (name taken by the
 Grabber queue, and the queue is a transient surface, not a destination).
+
+---
+
+## Ratings + weighted picking (✅ built, unreleased)
+
+Plan: [ratings-weighted-picking.md](ratings-weighted-picking.md) (2026-09-25). All six
+phases built on `feat/ratings` (uncommitted); deviations are in the plan's "Build notes". Per-account 1–5 star ratings (starred derived as rating ≥ 4, existing stars → 4★),
+dislike kept as a separate per-account hard exclusion, and weighted sampling replacing
+"starred first" across Run, Listen shuffle/radio, similar and the Subsonic API, with admin
+weight settings and a new-songs multiplier. Six phases: ratings backend → weighted picking →
+UI → Subsonic `setRating`/`userRating` → opt-in Navidrome rating sync → docs.
 
 ---
 

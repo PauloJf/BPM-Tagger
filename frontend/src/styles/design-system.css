@@ -594,7 +594,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 }
 .tracks-header {
   display: grid;
-  grid-template-columns: 1fr 130px 90px 130px 70px 110px 70px;
+  grid-template-columns: 1fr 130px 90px 130px 70px 90px 110px 70px;
   padding: 11px 18px; gap: 14px;
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
@@ -611,7 +611,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .tracks-sort-btn[aria-pressed="true"] { color: var(--accent-2); }
 .tracks-row {
   display: grid;
-  grid-template-columns: 1fr 130px 90px 130px 70px 110px 70px;
+  grid-template-columns: 1fr 130px 90px 130px 70px 90px 110px 70px;
   padding: 12px 18px; gap: 14px; align-items: center;
   border-bottom: 1px solid var(--border);
   cursor: pointer; text-decoration: none; color: inherit;
@@ -637,6 +637,7 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   .tracks-row .col-conf,
   .tracks-row .col-plays,
   .tracks-row .col-detector,
+  .tracks-row .col-rating,
   .tracks-row .col-arrow,
   .tracks-row .row-extra-btn,
   .tracks-row .row-cover,

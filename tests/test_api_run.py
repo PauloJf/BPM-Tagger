@@ -2,6 +2,7 @@
 
 import sqlite3
 from urllib.parse import quote
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
 
 
 def _login(client):
@@ -90,6 +91,7 @@ def test_disliked_filter_and_count(client, base_config):
     _ = csrf
     conn = sqlite3.connect(base_config["db_path"])
     conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'a'")
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)
     conn.commit()
     conn.close()
     data = client.get("/api/tracks?filter=disliked").get_json()
@@ -196,16 +198,83 @@ def test_run_queue_tolerates_a_stale_force_param(client, base_config):
     assert "tolerance_pct" not in data
 
 
-def test_run_queue_prefers_starred_within_count(client, base_config):
+def test_run_queue_is_weighted_not_a_strict_starred_first_sort(client, base_config, app):
+    """Picking is rating-weighted (D11): with plenty of unrated tracks matching
+    and only a few starred (rating>=4) ones, an unstarred track CAN win a slot —
+    unlike the old strict starred-first sort, which always filled every slot
+    with a starred track first. Over many repeated draws a 5-star track should
+    still appear noticeably more often than an unrated one (see
+    test_weighting.py for the pure statistical check on the sampler itself)."""
     _login(client)
-    rows = [(f"plain{i}", 150.0, 0) for i in range(10)]
-    rows += [(f"fav{i}", 152.0, 1) for i in range(3)]  # worse match but starred
+    rows = [(f"plain{i}", 150.0, 0) for i in range(30)]
+    rows += [(f"fav{i}", 150.0, 0) for i in range(3)]
     _seed(base_config["db_path"], base_config["music_dir"], rows)
-    data = client.get("/api/run/queue?bpm=150&count=5").get_json()
-    titles = {t["title"] for t in data["tracks"]}
-    assert len(titles) == 5
-    # All three starred tracks selected despite closer unstarred matches.
-    assert {"fav0", "fav1", "fav2"} <= titles
+    conn = sqlite3.connect(base_config["db_path"])
+    for i in range(3):
+        conn.execute(
+            "INSERT INTO track_ratings (owner, track_id, rating, disliked, updated_at) "
+            "SELECT 'admin', id, 5, 0, datetime('now') FROM tracks WHERE title = ?",
+            (f"fav{i}",))
+    conn.commit()
+    conn.close()
+
+    fav_hits = plain_hits = 0
+    for _ in range(60):
+        data = client.get("/api/run/queue?bpm=150&count=5").get_json()
+        titles = {t["title"] for t in data["tracks"]}
+        assert len(titles) == 5
+        fav_hits += sum(1 for t in titles if t.startswith("fav"))
+        plain_hits += sum(1 for t in titles if t.startswith("plain"))
+        # A run's tracks never all come from the 3-track favourite pool alone —
+        # weighted, not exclusive.
+    # 5-star weight (6) vs unrated weight (1): a 5-star track should be picked
+    # into a slot far more often, per-track, than an unrated one. Loose
+    # tolerance — this is a statistical tendency, not an exact ratio.
+    fav_rate = fav_hits / 3
+    plain_rate = plain_hits / 30
+    assert fav_rate > plain_rate * 2
+    assert data["use_ratings"] is True
+    assert "prefer_starred" not in data
+    assert "prefer_familiar" not in data
+
+
+def test_run_queue_out_of_limit_five_star_never_queued(client, base_config, app):
+    """The stretch limit stays a hard filter regardless of rating (D11) — a
+    5-star track that can't reach the target within it is never queued."""
+    _login(client)
+    app.extensions["state"].config["run_octave_fold"] = False
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("inside", 140.0, 0), ("outside", 100.0, 0),   # 150/100 → 50% off
+    ])
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute(
+        "INSERT INTO track_ratings (owner, track_id, rating, disliked, updated_at) "
+        "SELECT 'admin', id, 5, 0, datetime('now') FROM tracks WHERE title = 'outside'")
+    conn.commit()
+    conn.close()
+    data = client.get("/api/run/queue?bpm=150").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"inside"}
+
+
+def test_run_queue_new_factor_zero_fills_new_tracks_last(client, base_config, app):
+    """Weight 0 (new-songs 'Never') means new (unrated + unplayed) tracks only
+    fill in once every positive-weight track is used — never squeezing one out
+    when the request asks for fewer than the whole pool."""
+    _login(client)
+    app.extensions["state"].config["pick_new_factor"] = 0.0
+    _seed(base_config["db_path"], base_config["music_dir"], [
+        ("rated", 150.0, 0), ("new1", 150.0, 0), ("new2", 150.0, 0),
+    ])
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute(
+        "INSERT INTO track_ratings (owner, track_id, rating, disliked, updated_at) "
+        "SELECT 'admin', id, 3, 0, datetime('now') FROM tracks WHERE title = 'rated'")
+    conn.commit()
+    conn.close()
+    # play_count NULL/0 + no rating = "new" for the admin (D9) — new1/new2 stay
+    # unplayed, so with count=1 the single positive-weight track always wins.
+    data = client.get("/api/run/queue?bpm=150&count=1").get_json()
+    assert {t["title"] for t in data["tracks"]} == {"rated"}
 
 
 def test_run_queue_excludes_disliked_tracks(client, base_config):
@@ -215,6 +284,7 @@ def test_run_queue_excludes_disliked_tracks(client, base_config):
     ])
     conn = sqlite3.connect(base_config["db_path"])
     conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'hated'")
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)
     conn.commit()
     conn.close()
     data = client.get("/api/run/queue?bpm=150").get_json()
@@ -304,6 +374,7 @@ def test_run_queue_playlist_scope_and_topup(client, base_config):
     ])
     conn = sqlite3.connect(base_config["db_path"])
     conn.execute("UPDATE tracks SET disliked = 1 WHERE title = 'hated'")
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)
     conn.commit()
     conn.close()
     pid = _make_playlist(base_config["db_path"], base_config["music_dir"], "Run", [
@@ -380,7 +451,6 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
             {"name": "X" * 40, "bpm": "junk"},      # name truncated, bpm → default
         ],
         "run_octave_fold": False,
-        "run_prefer_starred": False,
         "run_queue_size": 9999,
         "run_stretch_limit_pct": 0,
     }, headers=csrf)
@@ -393,7 +463,7 @@ def test_settings_run_sanitizes_and_persists(client, base_config, app):
         {"name": "X" * 20, "bpm": 175},
     ]
     assert cfg["run_octave_fold"] is False
-    assert cfg["run_prefer_starred"] is False
+    assert "run_prefer_starred" not in cfg              # retired in favour of pick_use_ratings (D8)
     assert cfg["run_queue_size"] == 200                # clamped
     assert cfg["run_stretch_limit_pct"] == 1.0         # clamped
 

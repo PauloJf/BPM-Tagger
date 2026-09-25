@@ -10,6 +10,7 @@ import os
 import sqlite3
 
 import pytest
+from bpm_tagger.db.ratings import SEED_ADMIN_FROM_PROJECTION_SQL
 
 
 def _app(base_config, **over):
@@ -48,6 +49,7 @@ def _seed(base_config, rows):
             cols += f", {k}"
             vals.append(v)
         conn.execute(f"INSERT INTO tracks ({cols}) VALUES ({','.join('?' * len(vals))})", vals)
+    conn.execute(SEED_ADMIN_FROM_PROJECTION_SQL)  # admin marks from the flags
     conn.commit()
     conn.close()
 

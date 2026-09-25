@@ -89,6 +89,8 @@ _PLAYER_ALLOWED = {
     # by the player_listen_mode setting, so listing it here only opens the door
     # when the admin has turned the feature on.
     "api_listen.api_listen_queue",
+    # The radio refill's rating-weighted batch draw — same gate as the queue.
+    "api_listen.api_listen_pick",
     # Offline "similar from your library" (Similar panel + similar radio) —
     # scoped to the player's own playlists inside the handler.
     "api_suggestions.related_library",
@@ -97,8 +99,14 @@ _PLAYER_ALLOWED = {
     "api_tracks.api_track", "api_tracks.api_track_cover_get",
     "api_tracks.api_waveform", "api_tracks.api_track_star",
     "api_tracks.api_track_dislike",
+    "api_tracks.api_track_rating",
     # Run presets/tolerances (returned filtered to run_* keys for players)
     "settings.api_settings_get",
+    # Per-account rating distribution + one run's played tracks: both handlers
+    # already self-scope to the caller's own account (a named player can never
+    # read another account's numbers or another run's tracks; the shared Guest
+    # gets an empty distribution and no runs of its own to look up).
+    "api_stats.api_stats_ratings", "api_stats.api_run_tracks",
 }
 
 

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import type { SettingsMap } from "../lib/types";
+import type { PickPreviewResponse, PickWeights, SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
 import PlayerUsers from "../components/PlayerUsers";
 import SubsonicSettings from "../components/SubsonicSettings";
@@ -27,6 +27,7 @@ const SIDEBAR = [
   ["sec-scan", "Scan Behavior"],
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
+  ["sec-ratings", "Ratings & picking"],
   ["sec-subsonic", "Subsonic API"],
   ["sec-playback", "Playback"],
   ["sec-run", "Run Mode"],
@@ -201,11 +202,12 @@ export default function Settings() {
   const [ntfy, setNtfy] = useState({ url: "", topic: "", batch: 10, interval: 300, notifyReview: true });
   const [scan, setScan] = useState({ workers: 1, bpmMin: 60, bpmMax: 200, useDr: true, useEs: true, writeTags: true, preserveMtime: true, waveforms: "auto", conf: 0.4 });
   const [mode, setMode] = useState("watch");
-  const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false, scrobble: false });
+  const [nav, setNav] = useState({ url: "", user: "", pass: "", starSync: false, scrobble: false, ratingSync: false });
   const [syncInterval, setSyncInterval] = useState(0);
   const [syncIntSaved, setSyncIntSaved] = useState<Saved>("");
   const [starSyncMsg, setStarSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [starSyncing, setStarSyncing] = useState(false);
+  const [ratingSyncing, setRatingSyncing] = useState(false);
   const [playPullMsg, setPlayPullMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [playPulling, setPlayPulling] = useState(false);
   const [playback, setPlayback] = useState(3);
@@ -222,9 +224,17 @@ export default function Settings() {
   const [run, setRun] = useState({
     presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
               { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
-    octave: true, preferStarred: true, preferFamiliar: false,
+    octave: true,
     queueSize: 20, stretchLimit: 15, preloadTracks: 10,
   });
+  // Ratings & picking (Settings → Ratings & picking). Weights are in the API's
+  // fixed order: 1,2,3,unrated,4,5. newFactorPreset drives the segmented
+  // control; "custom" lets the raw number stand on its own.
+  const RATING_DEFAULTS = { useRatings: true, weights: [0.1, 0.5, 1, 1, 3, 6] as [number, number, number, number, number, number], newFactor: 1 };
+  const [ratings, setRatingsCfg] = useState(RATING_DEFAULTS);
+  const [ratingsSaved, setRatingsSaved] = useState<Saved>("");
+  const [ratingsPreview, setRatingsPreview] = useState<PickPreviewResponse | null>(null);
+  const [ratingSyncMsg, setRatingSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
   const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
@@ -301,6 +311,28 @@ export default function Settings() {
     }
   }
 
+  async function syncRatings() {
+    setRatingSyncing(true);
+    setRatingSyncMsg(null);
+    try {
+      const r = await api.post<{ ok: boolean; error?: string; remote_songs?: number; matched?: number;
+                                 pulled?: number; pushed?: number; conflicts?: number; errors?: number }>(
+        "/api/settings/sync-ratings");
+      if (r.ok) {
+        const bits = [`${r.matched ?? 0} of ${r.remote_songs ?? 0} songs matched`, `pulled ${r.pulled ?? 0}`, `pushed ${r.pushed ?? 0}`];
+        if (r.conflicts) bits.push(`${r.conflicts} conflicts`);
+        if (r.errors) bits.push(`${r.errors} errors`);
+        setRatingSyncMsg({ ok: !r.errors, text: `Ratings synced — ${bits.join(", ")}` });
+      } else {
+        setRatingSyncMsg({ ok: false, text: r.error || "Sync failed" });
+      }
+    } catch (e) {
+      setRatingSyncMsg({ ok: false, text: e instanceof Error ? e.message : "Sync failed" });
+    } finally {
+      setRatingSyncing(false);
+    }
+  }
+
   function previewPath(tpl: string): string {
     const sample: Record<string, string | number> = {
       AlbumArtist: "The Weeknd", Artist: "The Weeknd", Album: "After Hours",
@@ -341,7 +373,7 @@ export default function Settings() {
     setNtfy({ url: s("ntfy_url"), topic: s("ntfy_topic"), batch: n("ntfy_batch_size", 10), interval: n("ntfy_min_interval", 300), notifyReview: b("ntfy_notify_review", true) });
     setScan({ workers: n("workers", 1), bpmMin: Math.round(n("bpm_min", 60)), bpmMax: Math.round(n("bpm_max", 200)), useDr: b("use_deeprhythm", true), useEs: b("use_essentia", true), writeTags: b("write_tags", true), preserveMtime: b("preserve_mtime", true), waveforms: s("compute_waveforms", "auto") || "auto", conf: n("review_confidence_threshold", 0.4) });
     setMode(s("mode", "watch") || "watch");
-    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false) });
+    setNav({ url: s("navidrome_url"), user: s("navidrome_user"), pass: s("navidrome_pass"), starSync: b("navidrome_star_sync", false), scrobble: b("navidrome_scrobble", false), ratingSync: b("navidrome_sync_ratings", false) });
     setSyncInterval(n("sync_interval_minutes", 0));
     setPlayback(n("playback_buffer", 3));
     setLoud({
@@ -367,11 +399,16 @@ export default function Settings() {
         return presetDefaults[i];
       }),
       octave: b("run_octave_fold", true),
-      preferStarred: b("run_prefer_starred", true),
-      preferFamiliar: b("run_prefer_familiar", false),
       queueSize: n("run_queue_size", 20),
       stretchLimit: n("run_stretch_limit_pct", 15),
       preloadTracks: n("run_preload_tracks", 10),
+    });
+    setRatingsCfg({
+      useRatings: b("pick_use_ratings", true),
+      weights: (Array.isArray(cfg.pick_weights) && cfg.pick_weights.length === 6
+        ? (cfg.pick_weights as number[]).map(Number)
+        : RATING_DEFAULTS.weights) as PickWeights,
+      newFactor: n("pick_new_factor", 1),
     });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
@@ -386,6 +423,23 @@ export default function Settings() {
       monoQuality: s("monochrome_quality") || "LOSSLESS",
     });
   }, [cfg]);
+
+  // Live expected-share preview: debounced so dragging a weight slider doesn't
+  // spray requests. Always reads the UNSAVED values in `ratings`.
+  const previewTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (previewTimer.current) window.clearTimeout(previewTimer.current);
+    previewTimer.current = window.setTimeout(() => {
+      const sp = new URLSearchParams();
+      sp.set("use_ratings", ratings.useRatings ? "1" : "0");
+      sp.set("weights", ratings.weights.join(","));
+      sp.set("new_factor", String(ratings.newFactor));
+      api.get<PickPreviewResponse>(`/api/settings/pick-preview?${sp.toString()}`)
+        .then(setRatingsPreview)
+        .catch(() => {});
+    }, 350);
+    return () => { if (previewTimer.current) window.clearTimeout(previewTimer.current); };
+  }, [ratings]);
 
   // Surface the ?spotify=... result the OAuth callback redirected back with.
   const spotifyResult = searchParams.get("spotify");
@@ -1344,7 +1398,7 @@ export default function Settings() {
               <h2>Navidrome Integration</h2>
               <p>Trigger a library rescan after every scan pass, keep stars in sync both ways, scrobble plays, and pull play counts.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync, navidrome_scrobble: nav.scrobble }, setNavSaved); }}>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync, navidrome_scrobble: nav.scrobble, navidrome_sync_ratings: nav.ratingSync }, setNavSaved); }}>
               <div className="settings-fields">
                 <div className="field-row">
                   {fieldLabel("Navidrome URL")}
@@ -1359,8 +1413,14 @@ export default function Settings() {
                   <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
                 </div>
                 <div className="field-row">
-                  {fieldLabel("Two-way star sync", "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
+                  {fieldLabel("Two-way star sync", nav.ratingSync
+                    ? "Rating sync is on, so this just mirrors the admin's derived star (rating ≥ 4) out to Navidrome — push-only while rating sync is enabled. Manual for now: save, then use Sync stars now."
+                    : "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
                   <Toggle on={nav.starSync} onChange={(v) => setNav({ ...nav, starSync: v })} label="Enable star sync" />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Two-way rating sync", "Reconcile the admin's 1-5 star ratings with Navidrome's own rating in both directions. Admin ratings only — player ratings never sync. Manual for now: save, then use Sync ratings now.")}
+                  <Toggle on={nav.ratingSync} onChange={(v) => setNav({ ...nav, ratingSync: v })} label="Enable rating sync" />
                 </div>
                 <div className="field-row">
                   {fieldLabel("Scrobble plays", "Report tracks played in the built-in player (Run mode included) to Navidrome once they pass the halfway mark — play counts and 'last played' stay accurate, and Navidrome forwards to Last.fm/ListenBrainz if you've connected them there.")}
@@ -1393,11 +1453,138 @@ export default function Settings() {
                     </button>
                   )}
                   {starSyncMsg && <span style={{ fontSize: 12, color: starSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{starSyncMsg.text}</span>}
+                  {nav.ratingSync && (
+                    <button type="button" className="btn btn-soft btn-sm" disabled={ratingSyncing || !nav.url || !nav.user} onClick={syncRatings}>
+                      {ratingSyncing ? "Syncing…" : "Sync ratings now"}
+                    </button>
+                  )}
+                  {ratingSyncMsg && <span style={{ fontSize: 12, color: ratingSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{ratingSyncMsg.text}</span>}
                   <button type="button" className="btn btn-soft btn-sm" disabled={playPulling || !nav.url || !nav.user} onClick={pullPlayCounts}>
                     {playPulling ? "Pulling…" : "Pull play counts"}
                   </button>
                   {playPullMsg && <span style={{ fontSize: 12, color: playPullMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{playPullMsg.text}</span>}
                 </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Ratings & picking */}
+          <div id="sec-ratings" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Ratings &amp; picking</h2>
+              <p>
+                How 1-5 star ratings weight the odds a track gets picked by Run, Listen shuffle/radio and
+                similar. Ratings are per account; these weights are global. "New" means unrated and never
+                played by that account. Dislikes are always excluded, and the Run stretch limit is still a
+                hard rule — this only weights what's already eligible.
+              </p>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              saveSection("/api/settings/ratings", {
+                pick_use_ratings: ratings.useRatings,
+                pick_weights: ratings.weights,
+                pick_new_factor: ratings.newFactor,
+              }, setRatingsSaved);
+            }}>
+              <div className="field-row">
+                {fieldLabel("Use ratings", "Off = every non-disliked track weighs the same (a uniform draw) — the new-songs weight below is ignored too.")}
+                <Toggle on={ratings.useRatings} onChange={(v) => setRatingsCfg({ ...ratings, useRatings: v })} label="Use ratings" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Weights", "How much more (or less) likely a level is to be picked than an unrated track (1×). 0 means that level is picked only once nothing else is left.")}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                  {(["1★", "2★", "3★", "Unrated", "4★", "5★"] as const).map((lbl, i) => (
+                    <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 4, width: 96 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>{lbl}</span>
+                      <input
+                        type="number" min={0} max={100} step={0.1}
+                        value={ratings.weights[i]}
+                        aria-label={`${lbl} weight`}
+                        disabled={!ratings.useRatings}
+                        onChange={(e) => {
+                          const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                          const next = [...ratings.weights] as PickWeights;
+                          next[i] = v;
+                          setRatingsCfg({ ...ratings, weights: next });
+                        }}
+                        style={{ width: "100%", fontFamily: "var(--mono)", textAlign: "center" }}
+                      />
+                      <div className="slider-wrap">
+                        <input
+                          type="range" min={0} max={20} step={0.1}
+                          value={Math.min(20, ratings.weights[i])}
+                          aria-label={`${lbl} weight slider`}
+                          disabled={!ratings.useRatings}
+                          onChange={(e) => {
+                            const next = [...ratings.weights] as PickWeights;
+                            next[i] = Number(e.target.value);
+                            setRatingsCfg({ ...ratings, weights: next });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("New songs", "Extra weight (multiplied onto the unrated weight) for tracks that account has never played and never rated.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div className="segmented">
+                    {[["Never", 0], ["Less", 0.5], ["Neutral", 1], ["More", 2], ["Much more", 4]].map(([lbl, v]) => (
+                      <button
+                        key={lbl as string}
+                        type="button"
+                        className={"segmented-btn" + (ratings.newFactor === v ? " active" : "")}
+                        disabled={!ratings.useRatings}
+                        onClick={() => setRatingsCfg({ ...ratings, newFactor: v as number })}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number" min={0} max={20} step={0.1}
+                    value={ratings.newFactor}
+                    aria-label="Custom new-songs weight"
+                    disabled={!ratings.useRatings}
+                    onChange={(e) => setRatingsCfg({ ...ratings, newFactor: Math.max(0, Number(e.target.value) || 0) })}
+                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
+                  />
+                </div>
+              </div>
+              {ratingsPreview && (
+                <div className="field-row">
+                  {fieldLabel("Expected share of picks", "A live preview under the values above (not yet saved) — the share each level would get, and how many tracks currently sit at that level.")}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
+                    {(["5", "4", "3", "2", "1", "unrated", "new"] as const).map((k) => {
+                      const share = ratingsPreview.share[k] ?? 0;
+                      const count = ratingsPreview.counts[k] ?? 0;
+                      return (
+                        <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 52, fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>
+                            {k === "unrated" ? "Unrated" : k === "new" ? "New" : `${k}★`}
+                          </span>
+                          <div style={{ flex: 1, height: 8, background: "var(--border)", borderRadius: 6, overflow: "hidden" }}>
+                            <div style={{ width: `${Math.round(share * 100)}%`, height: "100%", background: "var(--accent)" }} />
+                          </div>
+                          <span style={{ width: 84, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)" }}>
+                            {(share * 100).toFixed(1)}% · {count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <SaveButton state={ratingsSaved} label="Save Ratings Settings" />
+                <button
+                  type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => setRatingsCfg(RATING_DEFAULTS)}
+                >
+                  Reset to defaults
+                </button>
               </div>
             </form>
           </div>
@@ -1519,15 +1706,17 @@ export default function Settings() {
           <div id="sec-run" className="settings-card card">
             <div className="settings-card-header">
               <h2>Run Mode</h2>
-              <p>Tempo-locked playback for cadence running — configure the <code>/run</code> page's presets and how the queue is matched.</p>
+              <p>
+                Tempo-locked playback for cadence running — configure the <code>/run</code> page's presets
+                and how the queue is matched. Which tracks get picked (ratings, new-song weight) now lives
+                in <a href="#sec-ratings">Ratings &amp; picking</a> below.
+              </p>
             </div>
             <form onSubmit={(e) => {
               e.preventDefault();
               saveSection("/api/settings/run", {
                 run_presets: run.presets,
                 run_octave_fold: run.octave,
-                run_prefer_starred: run.preferStarred,
-                run_prefer_familiar: run.preferFamiliar,
                 run_queue_size: run.queueSize,
                 run_stretch_limit_pct: run.stretchLimit,
                 run_preload_tracks: run.preloadTracks,
@@ -1551,14 +1740,6 @@ export default function Settings() {
               <div className="field-row">
                 {fieldLabel("Octave matching", "Count half- and double-time tracks as matches: at a 150 cadence a 75 BPM song plays at native speed and you step on every beat. Off = only tracks whose actual BPM is near the target.")}
                 <Toggle on={run.octave} onChange={(v) => setRun({ ...run, octave: v })} label="Octave matching" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Prefer starred tracks", "Fill the queue with starred tracks first, then top up with the closest unstarred matches.")}
-                <Toggle on={run.preferStarred} onChange={(v) => setRun({ ...run, preferStarred: v })} label="Prefer starred tracks" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Prefer familiar tracks", "Among equally-starred matches, pick your most-played tracks first. Uses the play counts pulled from Navidrome (Settings → Navidrome → Pull play counts); tracks with no pulled count sort last.")}
-                <Toggle on={run.preferFamiliar} onChange={(v) => setRun({ ...run, preferFamiliar: v })} label="Prefer familiar tracks" />
               </div>
               <div className="field-row">
                 {fieldLabel("Queue size", "How many tracks a run queue preloads.")}
