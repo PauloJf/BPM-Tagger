@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   role: "admin" as string | null,
   fullAccess: true as boolean,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
-  orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; fromPlaylist?: boolean }>,
+  orderedQueue: [] as Array<{ path: string; title: string; artist?: string; bpm?: number | null; starred?: boolean; rating?: number | null; disliked?: boolean; fromPlaylist?: boolean }>,
   tempoLock: null as null | { target: number; octave: boolean; stretchLimitPct: number },
   playing: false,
   online: true,
@@ -17,7 +17,8 @@ const h = vi.hoisted(() => ({
   bufferInfo: undefined as undefined | { phase: string; pct: number; aheadSec: number; stalls: number; ready: number; net: number },
   runSource: null as number | "mine" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
-  starred: [] as Array<[string, boolean]>,   // records setTrackStarred(path, on) calls
+  ratings: [] as Array<[string, number | null]>,   // records setTrackRating(path, rating) calls
+  disliked: [] as Array<[string, boolean]>,        // records setTrackDisliked(path, on) calls
   // Ordered log of the player mutations startRun makes, plus the last value each
   // setter received — startRun's clear-then-re-set order is load-bearing.
   calls: [] as string[],
@@ -55,14 +56,16 @@ vi.mock("../lib/api", () => ({
 // fullAccess mirrors the real context's default (true until /api/me reports a
 // restricted player user) — the "Whole library" and "All my music" source options
 // are gated on it, so tests drive it via the holder.
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess }) }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role, fullAccess: h.fullAccess, isGuest: h.role === "player" && h.fullAccess }) }));
 vi.mock("../lib/player", () => ({
   lockRate: () => 1,
   usePlayer: () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
     error: null, buffering: h.buffering, bufferedPct: h.bufferedPct, bufferInfo: h.bufferInfo, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock, runSource: h.runSource,
-    updateTrackBpm() {}, setTrackStarred(path: string, on: boolean) { h.starred.push([path, on]); },
+    updateTrackBpm() {},
+    setTrackRating(path: string, rating: number | null) { h.ratings.push([path, rating]); },
+    setTrackDisliked(path: string, on: boolean) { h.disliked.push([path, on]); },
     setTempoLock(lock: typeof h.lockSet) { h.calls.push("setTempoLock"); h.lockSet = lock; },
     playQueue() { h.calls.push("playQueue"); },
     setRunSource(id: unknown) { h.calls.push("setRunSource"); h.sourceSet = id; },
@@ -108,7 +111,8 @@ beforeEach(() => {
   h.bufferedPct = 0;
   h.bufferInfo = undefined;
   h.runSource = null;
-  h.starred = [];
+  h.ratings = [];
+  h.disliked = [];
   h.calls = [];
   h.lockSet = undefined;
   h.sourceSet = "unset";
@@ -359,31 +363,42 @@ describe("Run — connection visibility", () => {
   });
 });
 
-describe("Run — queue star toggles come from the track, not the build response", () => {
-  it("renders a star button per queued track with a known star state (incl. refilled)", () => {
+describe("Run — queue rating controls come from the track, not the build response", () => {
+  it("renders a rating control per queued track (incl. refilled/unrated rows)", () => {
     // queueInfo is null here (no build this session) — the old code derived stars
-    // from queueInfo, so refilled/restored tracks showed no star button. Now the
-    // row reads t.starred, so any track carrying star state gets a toggle.
+    // from queueInfo, so refilled/restored tracks showed no control. Now the
+    // row reads t.rating, so every queued track gets one, rated or not.
     localStorage.setItem(MODE_KEY, "queue");
     h.current = { path: "/a.mp3", title: "A", bpm: 120 };
     h.orderedQueue = [
-      { path: "/a.mp3", title: "A", bpm: 120, starred: true },
-      { path: "/b.mp3", title: "B", bpm: 120, starred: false },
-      { path: "/c.mp3", title: "C", bpm: 120 },   // unknown star state → no button
+      { path: "/a.mp3", title: "A", bpm: 120, rating: 4 },
+      { path: "/b.mp3", title: "B", bpm: 120, rating: null },
+      { path: "/c.mp3", title: "C", bpm: 120 },
     ];
     render(<Run />);
-    expect(screen.getAllByLabelText("Unstar")).toHaveLength(1);   // the starred one
-    expect(screen.getAllByLabelText("Star")).toHaveLength(1);     // the unstarred one
+    expect(screen.getAllByLabelText(/Rating: \d star|Not rated/)).toHaveLength(3);
   });
 
-  it("toggling a queued track's star updates the player queue (works for any row)", () => {
+  it("hides rating/dislike controls for the guest", () => {
+    h.role = "player";
+    h.fullAccess = true;
+    localStorage.setItem(MODE_KEY, "queue");
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.orderedQueue = [{ path: "/a.mp3", title: "A", bpm: 120, rating: 4 }];
+    render(<Run />);
+    expect(screen.queryByLabelText(/Rating:|Not rated/)).toBeNull();
+    expect(screen.queryByLabelText(/Dislike|Remove dislike/)).toBeNull();
+  });
+
+  it("setting a queued track's rating updates the player queue (works for any row)", () => {
     localStorage.setItem(MODE_KEY, "queue");
     h.current = { path: "/b.mp3", title: "B", bpm: 120 };
-    h.orderedQueue = [{ path: "/b.mp3", title: "B", bpm: 120, starred: false }];
+    h.orderedQueue = [{ path: "/b.mp3", title: "B", bpm: 120, rating: null }];
     render(<Run />);
-    fireEvent.click(screen.getByLabelText("Star"));
+    fireEvent.click(screen.getByLabelText("Not rated — click to change"));
+    fireEvent.click(screen.getByLabelText("Rate 5 stars"));
     // Reflected through the player (not queueInfo), so refilled rows update too.
-    expect(h.starred).toContainEqual(["/b.mp3", true]);
+    expect(h.ratings).toContainEqual(["/b.mp3", 5]);
   });
 });
 

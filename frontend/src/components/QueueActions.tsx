@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { usePlayer, type PlayerTrack } from "../lib/player";
+import { api } from "../lib/api";
+import { usePlayer, type PlayerTrack, type ListenSource } from "../lib/player";
+import type { ListenQueueResponse } from "../lib/types";
 
 const PlayIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 4 }}><polygon points="6,4 20,12 6,20" /></svg>
@@ -19,7 +21,7 @@ const AddIcon = () => (
  *  (player.enqueueMany) without disturbing what's already playing — the one
  *  Playlist/Cadence pages already had that Artist/Album/Tracks didn't. */
 export function QueueActions({
-  tracks, getTracks, empty, label = "", disabledTitle,
+  tracks, getTracks, empty, label = "", disabledTitle, weightedSource,
 }: {
   /** The tracks to act on, when already loaded (Artist/Album/Playlist/Cadence). */
   tracks?: PlayerTrack[];
@@ -35,6 +37,11 @@ export function QueueActions({
   label?: string;
   /** Tooltip shown on all three buttons while there's nothing to queue. */
   disabledTitle?: string;
+  /** A playlist/library/mine Listen source (D12): when set, Shuffle fetches
+   *  the server's weighted order (dislikes already excluded) instead of doing
+   *  a client Fisher-Yates over `tracks`/`getTracks`. Play and Add to queue
+   *  are unaffected — in-order play still includes everything (D13). */
+  weightedSource?: ListenSource;
 }) {
   const player = usePlayer();
   const [loading, setLoading] = useState(false);
@@ -55,6 +62,30 @@ export function QueueActions({
     }
   }
 
+  async function shuffle() {
+    if (weightedSource != null) {
+      setLoading(true);
+      try {
+        const resp = await api.get<ListenQueueResponse>(
+          `/api/listen/queue?playlist=${weightedSource}&order=weighted`);
+        if (!resp?.tracks?.length) return;
+        const list: PlayerTrack[] = resp.tracks.map((t) => ({
+          path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+          starred: t.starred, rating: t.rating, disliked: t.disliked, loudnessLufs: t.loudness_lufs,
+        }));
+        // Already in the server's weighted order — no client shuffle.
+        player.playQueue(list, 0, { shuffle: false });
+        player.setListenSource(weightedSource);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    // Album/artist (and any other caller without a weightedSource): uniform
+    // client shuffle, but never surface a track the caller disliked (D13).
+    run((list) => player.playQueue(list.filter((t) => !t.disliked), undefined, { shuffle: true }));
+  }
+
   return (
     <>
       <button
@@ -69,7 +100,7 @@ export function QueueActions({
         className="btn btn-ghost btn-sm"
         disabled={disabled}
         title={disabled ? disabledTitle : undefined}
-        onClick={() => run((list) => player.playQueue(list, undefined, { shuffle: true }))}
+        onClick={shuffle}
       >
         <ShuffleIcon />Shuffle{label}
       </button>

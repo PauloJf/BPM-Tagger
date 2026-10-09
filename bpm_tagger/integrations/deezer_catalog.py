@@ -3,7 +3,7 @@
 Deezer's public API needs no account, key or OAuth. This module wraps the
 handful of endpoints the Suggestions page and the Related panel use:
 
-    search/artist        name → Deezer artist id (+ picture)
+    search/artist        name → Deezer artist id (+ picture); query → artist list
     artist/{id}/related  ~20 similar artists (with images)
     artist/{id}/top      an artist's top tracks (30-s preview URLs)
     artist/{id}/radio    ~25 tracks "in the style of" an artist
@@ -75,8 +75,9 @@ def _track_shape(t: dict) -> Optional[dict]:
 def search_artist(name: str) -> Optional[dict]:
     """Resolve an artist name to the best Deezer hit ({dz_id, name, image_url}).
 
-    Prefers a hit whose normalized name equals the query; otherwise the first
-    result (Deezer orders by relevance/fans). None when nothing resolves."""
+    Prefers a hit whose normalized name equals the query, the most-followed one
+    when several share the name (Deezer's ranking can put a tiny namesake
+    first); otherwise the first result. None when nothing resolves."""
     if not name or not name.strip():
         return None
     try:
@@ -88,10 +89,38 @@ def search_artist(name: str) -> Optional[dict]:
     if not shaped:
         return None
     want = normalize_artist(name)
-    for s in shaped:
-        if normalize_artist(s["name"]) == want:
-            return s
+    fans = {str(a.get("id")): int(a.get("nb_fan") or 0) for a in hits if isinstance(a, dict)}
+    exact = [s for s in shaped if normalize_artist(s["name"]) == want]
+    if exact:
+        return max(exact, key=lambda s: fans.get(s["dz_id"], 0))  # max keeps the first on ties
     return shaped[0]
+
+
+def search_artists(query: str, limit: int = 6) -> list[dict]:
+    """Artists matching a free-text query, best first ({dz_id, name, image_url,
+    fans}). Deezer's grey placeholder picture becomes "" so the UI shows its own
+    fallback. Empty list on failure."""
+    if not query or not query.strip():
+        return []
+    try:
+        hits = (_get("search/artist", {"q": query, "limit": limit}).get("data")) or []
+    except Exception as exc:
+        log.debug("Deezer artist search failed for %r: %s", query, exc)
+        return []
+    out = []
+    for a in hits:
+        s = _artist_shape(a)
+        if not s:
+            continue
+        if "/artist//" in s["image_url"]:  # Deezer's "no picture" placeholder
+            s["image_url"] = ""
+        s["fans"] = int(a.get("nb_fan") or 0)
+        out.append(s)
+    # Exact-name hits first, most-followed first among them (Deezer can rank a
+    # tiny namesake above the artist you meant); the rest keep Deezer's order.
+    want = normalize_artist(query)
+    out.sort(key=lambda s: (0, -s["fans"]) if normalize_artist(s["name"]) == want else (1, 0))
+    return out[:limit]
 
 
 def related_artists(dz_id: str) -> list[dict]:

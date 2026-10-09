@@ -64,7 +64,8 @@ export default function Artist() {
   const tracks = q.data?.tracks ?? [];
   const stats = q.data?.stats;
   const toPT = (t: Track) => ({ path: t.file_path, title: t.title || basename(t.file_path),
-    artist: t.artist || "", bpm: t.bpm, loudnessLufs: t.loudness_lufs });
+    artist: t.artist || "", bpm: t.bpm, starred: !!t.starred, rating: t.rating ?? null,
+    disliked: !!t.disliked, loudnessLufs: t.loudness_lufs });
 
   // Group by album, preserving the album-ordered sequence from the API.
   const albums: { album: string; tracks: Track[] }[] = [];

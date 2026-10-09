@@ -18,6 +18,13 @@ Matching is asymmetric to stay cheap at library scale:
 
 The sync baseline advances ONLY when any required remote write succeeded, so a
 failed star/unstar retries on the next run instead of being silently dropped.
+
+While ``navidrome_sync_ratings`` is on (docs/plans/ratings-weighted-picking.md
+§ "Navidrome rating sync", D16), the rating sync is authoritative for the
+admin's stars — a rating sync run always leaves ``tracks.starred`` matching
+``rating >= 4`` — so this becomes **push-only**: Navidrome's star just
+mirrors ours, and a remote star/unstar is never pulled in (it would otherwise
+fight the rating sync's own pushes over the same field).
 """
 
 import logging
@@ -112,6 +119,9 @@ def sync_stars(db, config: dict) -> dict:
     policy = str(config.get("navidrome_star_policy", "star_wins"))
     if policy not in POLICIES:
         policy = "star_wins"
+    # Rating sync owns the admin's stars while it's on (D16): push only, never
+    # pull a remote star/unstar back in.
+    push_only = bool(config.get("navidrome_sync_ratings"))
 
     try:
         remote_songs = get_starred(url, user, pwd)
@@ -131,7 +141,10 @@ def sync_stars(db, config: dict) -> dict:
         song = matched.get(row["file_path"])
         remote = song is not None
         local, base = bool(row["starred"]), bool(row["starred_base"])
-        final, action = merge_star(local, remote, base, policy)
+        if push_only:
+            final, action = local, ("none" if local == remote else "push")
+        else:
+            final, action = merge_star(local, remote, base, policy)
 
         if final != remote:
             # Remote must change — star (song absent from the starred set) needs

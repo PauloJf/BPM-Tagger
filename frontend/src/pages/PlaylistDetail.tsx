@@ -367,7 +367,7 @@ export default function PlaylistDetail() {
           Playlists
         </Link>
         <div style={{ flex: 1 }} />
-        <QueueActions tracks={playable} label={playLabel} disabledTitle={noPlayReason} />
+        <QueueActions tracks={playable} label={playLabel} disabledTitle={noPlayReason} weightedSource={Number(id)} />
         {canQueueMissing && (
           <button
             className="btn btn-soft btn-sm"

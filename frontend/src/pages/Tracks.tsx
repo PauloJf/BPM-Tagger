@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
 import { ArrowIcon, ConfBar, DecodeWarningBadge, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import { RatingStars, DislikeButton } from "../components/RatingStars";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import LibraryTabs from "../components/LibraryTabs";
 import { QueueActions } from "../components/QueueActions";
@@ -156,6 +157,18 @@ export default function Tracks() {
     });
   }
 
+  /** Same cycle for the Rating column: highest first → lowest first → default. */
+  function toggleRatingSort() {
+    const next = sort === "rating" ? "rating_asc" : sort === "rating_asc" ? "" : "rating";
+    setParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next) p.set("sort", next);
+      else p.delete("sort");
+      p.set("page", "1");
+      return p;
+    });
+  }
+
   function setFilter(f: string) {
     setParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -175,11 +188,13 @@ export default function Tracks() {
     if (bpm) { sp.set("bpm", bpm); sp.set("bpm_tol", bpmTol); if (cadence) sp.set("bpm_cadence", "1"); }
     if (sort) sp.set("sort", sort);
     const res = await api.get<{ tracks: { file_path: string; title: string | null; artist: string | null;
-      loudness_lufs: number | null }[] }>(
+      loudness_lufs: number | null; disliked?: number | null }[] }>(
       `/api/tracks/paths?${sp.toString()}`);
+    // `disliked` (the admin's — this is an admin page) lets Shuffle skip them;
+    // Play in order keeps them (D13).
     return res.tracks.map((t) => ({
       path: t.file_path, title: t.title?.trim() || basename(t.file_path), artist: t.artist || "",
-      loudnessLufs: t.loudness_lufs,
+      loudnessLufs: t.loudness_lufs, disliked: !!t.disliked,
     }));
   }
 
@@ -220,15 +235,14 @@ export default function Tracks() {
   const data = tracksQ.data;
   const tracks = data?.tracks ?? [];
 
-  async function toggleStar(path: string, starred: boolean) {
+  async function setRating(path: string, rating: number | null) {
     // Optimistic flip in the cache; the invalidate reconciles with the server.
     qc.setQueryData<TracksPage>(["tracks", search], (d) => d && {
       ...d,
-      starred_count: Math.max(0, (d.starred_count ?? 0) + (starred ? 1 : -1)),
-      tracks: d.tracks.map((t) => (t.file_path === path ? { ...t, starred: starred ? 1 : 0 } : t)),
+      tracks: d.tracks.map((t) => (t.file_path === path ? { ...t, rating, starred: rating != null && rating >= 4 ? 1 : 0 } : t)),
     });
     try {
-      await api.post("/api/track/star", { path, starred });
+      await api.post("/api/track/rating", { path, rating });
     } finally {
       qc.invalidateQueries({ queryKey: ["tracks"] });
     }
@@ -260,6 +274,12 @@ export default function Tracks() {
 
   const pills = [
     { key: "", label: "All", count: data?.all_count },
+    { key: "unrated", label: "Unrated" },
+    { key: "rated1", label: "★1+" },
+    { key: "rated2", label: "★2+" },
+    { key: "rated3", label: "★3+" },
+    { key: "rated4", label: "★4+" },
+    { key: "rated5", label: "★5" },
     { key: "starred", label: "Starred", count: data?.starred_count },
     { key: "disliked", label: "Disliked", count: data?.disliked_count },
     { key: "review", label: "Review", count: data?.review_count },
@@ -304,7 +324,7 @@ export default function Tracks() {
               onClick={() => setFilter(pl.key)}
             >
               {pl.label}
-              <span className="pill-count">{pl.count ?? 0}</span>
+              {pl.count != null && <span className="pill-count">{pl.count}</span>}
             </button>
           ))}
         </div>
@@ -406,13 +426,25 @@ export default function Tracks() {
             type="button"
             className="tracks-sort-btn"
             aria-label="Sort by plays"
-            aria-pressed={!!sort}
+            aria-pressed={sort === "plays" || sort === "plays_asc"}
             title={sort === "plays" ? "Most played first — click for least played"
               : sort === "plays_asc" ? "Least played first — click to clear the sort"
               : "Sort by play count (most played first)"}
             onClick={toggleSort}
           >
             Plays{sort === "plays" ? " ↓" : sort === "plays_asc" ? " ↑" : ""}
+          </button>
+          <button
+            type="button"
+            className="tracks-sort-btn col-rating"
+            aria-label="Sort by rating"
+            aria-pressed={sort === "rating" || sort === "rating_asc"}
+            title={sort === "rating" ? "Highest rated first — click for lowest first"
+              : sort === "rating_asc" ? "Lowest rated first — click to clear the sort"
+              : "Sort by rating (highest first)"}
+            onClick={toggleRatingSort}
+          >
+            Rating{sort === "rating" ? " ↓" : sort === "rating_asc" ? " ↑" : ""}
           </button>
           <span>Status</span>
           <span />
@@ -455,40 +487,6 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
                     </button>
-                    <button
-                      /* Stays visible on mobile only when starred (row-extra-btn hides there). */
-                      className={"row-play" + (t.starred ? "" : " row-extra-btn")}
-                      style={t.starred ? { color: "var(--warn-fg)", borderColor: "var(--warn-fg)" } : undefined}
-                      aria-label={t.starred ? "Unstar" : "Star"}
-                      aria-pressed={!!t.starred}
-                      title={t.starred ? "Unstar" : "Star — preferred when building run queues"}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleStar(t.file_path, !t.starred);
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill={t.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-                        <polygon points="12,2.5 15,9 22,9.8 17,14.6 18.2,21.6 12,18.2 5.8,21.6 7,14.6 2,9.8 9,9" />
-                      </svg>
-                    </button>
-                    <button
-                      /* Stays visible on mobile only when disliked (row-extra-btn hides there). */
-                      className={"row-play" + (t.disliked ? "" : " row-extra-btn")}
-                      style={t.disliked ? { color: "var(--err-fg)", borderColor: "var(--err-fg)" } : undefined}
-                      aria-label={t.disliked ? "Remove dislike" : "Dislike"}
-                      aria-pressed={!!t.disliked}
-                      title={t.disliked ? "Remove dislike — eligible for run queues again" : "Dislike — never picked for a run again"}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleDislike(t.file_path, !t.disliked);
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill={t.disliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-                      </svg>
-                    </button>
                     {/* Add-to-playlist: hidden on mobile (row-extra-btn) like the
                         other secondary row actions, so the tight phone row stays clean. */}
                     <AddToPlaylistMenu path={t.file_path} className="row-play row-extra-btn" title="Add to playlist" />
@@ -526,6 +524,14 @@ export default function Tracks() {
                   </div>
                   <div className="col-detector" style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {t.detector || "—"}
+                  </div>
+                  <div
+                    className="col-rating"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  >
+                    <RatingStars value={t.rating ?? null} onChange={(v) => setRating(t.file_path, v)} compact size={13} label={title} />
+                    <DislikeButton on={!!t.disliked} onToggle={() => toggleDislike(t.file_path, !!t.disliked)} size={13} />
                   </div>
                   <div className="col-plays" style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 13, color: t.play_count ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
                     {t.play_count ?? 0}

@@ -79,6 +79,10 @@ def song(track: dict, music_dir: str) -> dict:
         "playCount": track.get("play_count") or 0,
         "played": iso(track.get("last_played")),
         "starred": starred,
+        # The caller's own rating (bpm_tagger/db/ratings.py) — None (omitted) when
+        # unrated. "starred" above is already the caller's derived star, not the
+        # admin's, whenever the row went through annotate_marks (handlers._songs).
+        "userRating": track.get("rating"),
         "created": iso(track.get("analyzed_at")),
         "albumId": aid,
         "artistId": ids.artist_id(_first_artist(track)) if artist else None,

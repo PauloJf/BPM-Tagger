@@ -22,7 +22,7 @@ from ..integrations.navidrome import _trigger_navidrome_rescan
 from .matching import normalize_artist, normalize_title, score
 from .path_template import render, unique_path
 from .providers import build_providers
-from .providers.base import ProviderCandidate, TrackMeta
+from .providers.base import ProviderAuthError, ProviderCandidate, TrackMeta, exc_text
 from .tagging import embed_cover, fetch_cover, write_track_tags
 from .transcode import profile_ext, transcode
 
@@ -36,6 +36,11 @@ def _meta_from_item(item: dict) -> dict:
 
 
 class GrabPipeline:
+    # A rejected credential (expired Deezer ARL) pings ntfy at most this often
+    # per provider instance; saving new credentials rebuilds the providers, so a
+    # fresh ARL that also fails alerts again straight away.
+    AUTH_ALERT_INTERVAL = 6 * 3600
+
     def __init__(self, config, db, tagger, providers=None, notifier=None):
         self.config = config
         self.db = db
@@ -49,6 +54,7 @@ class GrabPipeline:
         self.music_dir = config["music_dir"]
         self.dry_run = bool(config.get("grab_dry_run", False))
         self.grab_tmp = os.path.join(os.path.dirname(os.path.abspath(config["db_path"])), "grab_tmp")
+        self._auth_lock = threading.Lock()  # GrabPool threads share one pipeline
 
     def _provider(self, name):
         return next((p for p in self.providers if p.name == name), None)
@@ -61,15 +67,19 @@ class GrabPipeline:
             isrc=row.get("isrc") or "", quality=row.get("quality") or "",
             url=row.get("url") or "", cover_url=row.get("cover_url") or "")
 
-    def _search_and_score(self, search_meta: TrackMeta, score_meta: TrackMeta) -> list:
+    def _search_and_score(self, search_meta: TrackMeta, score_meta: TrackMeta,
+                          item_id=None) -> list:
         """Search using `search_meta` (may be a user override), score every
         candidate against `score_meta` (always the real track)."""
         found = []
         for provider in self.providers:
             try:
                 cands = provider.search(search_meta, limit=8)
+            except ProviderAuthError as exc:
+                self._auth_failed(item_id, provider, exc)
+                continue
             except Exception as exc:
-                log.warning("Provider %s search failed: %s", provider.name, exc)
+                log.warning("Provider %s search failed: %s", provider.name, exc_text(exc))
                 continue
             for c in cands:
                 s, br = score(score_meta.as_match(), c.as_match())
@@ -87,22 +97,35 @@ class GrabPipeline:
         return found
 
     def _download_with_fallback(self, item_id, candidates, tmp_dir):
+        """(candidate, DownloadedFile, "") on success, else (None, None, reason)
+        where reason is the last error — shown in the queue and the ntfy ping."""
         tried_candidates = 0
+        rejected = set()  # providers whose credentials failed: skip their candidates
+        last_error = ""
         for c in candidates:
             provider = self._provider(c.provider)
-            if not provider:
+            if not provider or c.provider in rejected:
                 continue
             for _attempt in range(2):  # up to 2 attempts per candidate
                 try:
                     df = provider.download(c, tmp_dir,
                                            progress_cb=lambda f: self.db.update_grab(item_id, progress=f))
-                    return c, df
+                    return c, df, ""
+                except ProviderAuthError as exc:
+                    self._auth_failed(item_id, provider, exc)
+                    rejected.add(c.provider)
+                    last_error = str(exc)
+                    break
                 except Exception as exc:
-                    log.warning("Download failed (%s/%s): %s", c.provider, c.provider_track_id, exc)
+                    last_error = f"{c.provider}: {exc_text(exc)}"
+                    log.warning("Download failed (%s/%s): %s", c.provider, c.provider_track_id,
+                                exc_text(exc))
+            if c.provider in rejected:
+                continue  # not a real try: fall through to the next provider's candidates
             tried_candidates += 1
             if tried_candidates >= 3:  # fall through only a few before giving up
                 break
-        return None, None
+        return None, None, last_error
 
     @staticmethod
     def _cand_row(c) -> dict:
@@ -137,7 +160,7 @@ class GrabPipeline:
             self.db.transition(item_id, "searching")
             override = (item.get("search_override") or "").strip()
             search_meta = TrackMeta(title=override, artist="") if override else score_meta
-            candidates = self._search_and_score(search_meta, score_meta)
+            candidates = self._search_and_score(search_meta, score_meta, item_id)
             self.db.add_grab_candidates(item_id, [self._cand_row(c) for c in candidates])
             if not candidates:
                 self.db.transition(item_id, "awaiting_user", "no candidates found")
@@ -170,12 +193,13 @@ class GrabPipeline:
         """Download the best available candidate then transcode → tag → move →
         BPM → done. Shared by the auto-accept path and inbox 'choose'."""
         item_id = item["id"]
-        chosen, downloaded = self._download_with_fallback(item_id, candidates, tmp_dir)
+        chosen, downloaded, reason = self._download_with_fallback(item_id, candidates, tmp_dir)
         if not downloaded:
-            self.db.update_grab(item_id, error="all downloads failed",
+            error = f"all downloads failed — {reason}" if reason else "all downloads failed"
+            self.db.update_grab(item_id, error=error[:500],
                                 attempts=(item.get("attempts") or 0) + 1)
-            self.db.transition(item_id, "failed", "all downloads failed")
-            self._notify_failure(item)
+            self.db.transition(item_id, "failed", error[:200])
+            self._notify_failure(item, reason)
             return "failed"
         self.db.update_grab(item_id, provider=chosen.provider)
 
@@ -275,13 +299,46 @@ class GrabPipeline:
         except Exception:
             pass
 
-    def _notify_failure(self, item):
+    def _notify_failure(self, item, reason=""):
         if not self.notifier:
             return
+        body = "No provider could download this track."
+        if reason:
+            body += f"\nLast error: {reason}"
         try:
             self.notifier.send_grabber(
                 f"Grab failed: {item.get('artist')} – {item.get('title')}",
-                "No provider could download this track.", priority="high", tags="x")
+                body, priority="high", tags="x")
+        except Exception:
+            pass
+
+    def _auth_failed(self, item_id, provider, exc):
+        """A provider rejected its credentials: note it on the item, log it, and
+        ping ntfy (throttled — every queued item would hit the same wall)."""
+        msg = str(exc)
+        log.warning("%s: %s", provider.name, msg)
+        if item_id is not None:
+            try:
+                self.db.add_grab_event(item_id, "warning", msg)
+            except Exception:
+                pass
+        now = time.monotonic()
+        with self._auth_lock:
+            last = getattr(provider, "_auth_alerted_at", None)
+            if last is not None and now - last < self.AUTH_ALERT_INTERVAL:
+                return
+            provider._auth_alerted_at = now
+        if not self.notifier:
+            return
+        others = [p.name for p in self.providers if p is not provider]
+        tail = (f" Downloads fall back to {', '.join(others)} until then." if others
+                else " Nothing can be downloaded until then.")
+        url = self._click_url("/settings")
+        try:
+            self.notifier.send_grabber(
+                f"{provider.name.capitalize()} login failed", msg + "." + tail,
+                click_url=url, priority="high", tags="key",
+                actions=f"view, Open settings, {url}" if url else "")
         except Exception:
             pass
 

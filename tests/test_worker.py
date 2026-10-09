@@ -5,7 +5,8 @@ import os
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber.providers.base import DownloadedFile, Provider, ProviderCandidate
+from bpm_tagger.grabber.providers.base import (DownloadedFile, Provider, ProviderAuthError,
+                                               ProviderCandidate)
 from bpm_tagger.grabber import worker as worker_mod
 from bpm_tagger.grabber.worker import GrabPipeline
 
@@ -174,3 +175,70 @@ def test_inbox_search_override_used_for_query(tmp_path):
     db.update_grab(item_id, search_override="my custom query")
     pipe.process_item(db.get_grab_item(item_id))
     assert "my custom query" in prov.queries
+
+
+class RejectedProvider(FakeProvider):
+    """Its credentials are rejected: at search (an expired ARL), or only at
+    download (a candidate found before the ARL expired)."""
+    name = "deezer"
+
+    def __init__(self, reject_search=True):
+        super().__init__(quality_match=True)
+        self.reject_search = reject_search
+        self.downloads = 0
+
+    def search(self, meta, limit=8):
+        if self.reject_search:
+            raise ProviderAuthError("Deezer rejected the ARL (expired or invalid)")
+        cands = super().search(meta, limit)
+        for c in cands:
+            c.provider = "deezer"
+        return cands
+
+    def download(self, cand, dest_dir, progress_cb=None):
+        self.downloads += 1
+        raise ProviderAuthError("Deezer rejected the ARL (expired or invalid)")
+
+
+class FakeNotifier:
+    def __init__(self):
+        self.sent = []
+
+    def send_grabber(self, title, body, **kw):
+        self.sent.append((title, body))
+
+
+def test_rejected_credentials_fall_back_and_alert_once(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    rejected, notifier = RejectedProvider(), FakeNotifier()
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[rejected, FakeProvider()],
+                        notifier=notifier)
+
+    item_id = _enqueue(db)
+    assert pipe.process_item(db.get_grab_item(item_id)) == "done"  # fell back to "fake"
+    details = [e["detail"] for e in db.get_grab_events(item_id)]
+    assert any("rejected the ARL" in (d or "") for d in details)
+    alerts = [t for t, _ in notifier.sent if "login failed" in t]
+    assert alerts == ["Deezer login failed"]
+
+    # A second item hits the same wall: no second credential alert.
+    item2 = db.enqueue_grab({"spotify_track_id": "s2", "title": "Save Your Tears",
+                             "artist": "The Weeknd", "album": "After Hours",
+                             "album_artist": "The Weeknd", "duration_ms": 215000})
+    pipe.process_item(db.get_grab_item(item2))
+    assert [t for t, _ in notifier.sent if "login failed" in t] == ["Deezer login failed"]
+
+
+def test_rejected_credentials_only_provider_fails_with_reason(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    notifier = FakeNotifier()
+    rejected = RejectedProvider(reject_search=False)
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[rejected], notifier=notifier)
+    item_id = _enqueue(db)
+    assert pipe.process_item(db.get_grab_item(item_id)) == "failed"
+    assert rejected.downloads == 1  # no pointless retry with a dead credential
+    assert "rejected the ARL" in db.get_grab_item(item_id)["error"]
+    failed = [b for t, b in notifier.sent if t.startswith("Grab failed")]
+    assert failed and "rejected the ARL" in failed[0]

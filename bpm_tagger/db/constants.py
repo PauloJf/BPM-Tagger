@@ -12,8 +12,16 @@ GRAB_NONTERMINAL = ("pending", "searching", "awaiting_user", "downloading",
 # The alternatives end on the same deterministic tiebreakers as the default, so
 # paging a leaderboard-style order can't skip or repeat a row. Lives here (not in
 # tracks.py) because the web layer validates ?sort= against the same keys.
+_ADMIN_RATING_SORT = ("(SELECT r.rating FROM track_ratings r "
+                     "WHERE r.track_id = tracks.id AND r.owner = 'admin')")
+
 TRACK_SORTS = {
     "": "analyzed_at DESC",
     "plays": "COALESCE(play_count, 0) DESC, analyzed_at DESC, file_path",
     "plays_asc": "COALESCE(play_count, 0) ASC, analyzed_at DESC, file_path",
+    # The admin's own rating (D19); unrated sorts last either direction, via
+    # SQLite's NULLS LAST, so switching direction never hides unrated tracks
+    # at the top.
+    "rating": f"{_ADMIN_RATING_SORT} DESC NULLS LAST, analyzed_at DESC, file_path",
+    "rating_asc": f"{_ADMIN_RATING_SORT} ASC NULLS LAST, analyzed_at DESC, file_path",
 }

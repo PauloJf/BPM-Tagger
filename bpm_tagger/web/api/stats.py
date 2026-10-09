@@ -1,5 +1,6 @@
 """Aggregate stats endpoint for the Stats page."""
 
+import os
 import re
 
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
 from ...db.runs import RUN_IDLE_SECONDS, parse_stamp
-from ..auth import login_required
+from ..auth import login_required, session_owner
 from ..state import state
 
 stats_bp = Blueprint("api_stats", __name__)
@@ -239,6 +240,53 @@ def api_stats_runs():
         return jsonify(items=items, has_more=len(rows) > PAGE_SIZE)
     except Exception as exc:
         return jsonify(error=str(exc)), 500
+
+
+@stats_bp.route("/api/stats/ratings")
+@login_required
+def api_stats_ratings():
+    """Rating-distribution card (D19): counts of 1-5 stars, unrated and disliked
+    over one account's own marks. Admin may inspect any account via ?owner=
+    (defaults to its own, 'admin'); a player session always gets its own,
+    ignoring the param — it can't see another account's ratings. The shared
+    Guest login never rates (D6), so its distribution is all-unrated."""
+    owner = session_owner()
+    if owner == "guest":
+        return jsonify(owner=owner, distribution=state().db.rating_distribution(owner))
+    if owner != "admin":
+        return jsonify(owner=owner, distribution=state().db.rating_distribution(owner))
+    requested = str(request.args.get("owner") or "admin")
+    if not _OWNER_RE.match(requested):
+        return jsonify(error="owner must be admin, guest, or player:<id>"), 400
+    return jsonify(owner=requested, distribution=state().db.rating_distribution(requested))
+
+
+@stats_bp.route("/api/runs/<int:run_id>/tracks")
+@login_required
+def api_run_tracks(run_id):
+    """One finished (or open) run's tracks, played order, with the CALLER's own
+    rating/dislike marks (D19 — rate a track straight from the Run journal).
+
+    Scoped like the journal itself: admin sees any run; a player session only
+    its own (owner match); nobody else's run leaks a track list to a player."""
+    st = state()
+    owner = session_owner()
+    run = st.db.get_run(run_id)
+    if run is None:
+        return jsonify(error="not found"), 404
+    if owner != "admin" and run["owner"] != owner:
+        return jsonify(error="forbidden"), 403
+    rows = st.db.get_run_track_events(run_id)
+    marked = st.db.annotate_marks(rows, owner)
+    tracks = [{
+        "path":       r["file_path"],
+        "title":      r.get("title") or os.path.splitext(os.path.basename(r["file_path"]))[0],
+        "artist":     r.get("artist") or "",
+        "played_at":  r["played_at"],
+        "rating":     r.get("rating"),
+        "disliked":   bool(r.get("disliked")),
+    } for r in marked]
+    return jsonify(tracks=tracks)
 
 
 def _grabber_stats(st) -> dict:

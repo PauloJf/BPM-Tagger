@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   // Recorded player calls.
   played: [] as Array<{ tracks: unknown[]; shuffle?: boolean }>,
   enqueued: [] as unknown[][],
+  listenSourceSet: null as unknown,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -33,7 +34,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("../lib/api", () => ({
   api: {
-    get: vi.fn(), del: vi.fn(),
+    get: vi.fn(() => Promise.resolve({ tracks: [] })), del: vi.fn(),
     post: vi.fn(() => Promise.resolve({})),
     patch: vi.fn(() => Promise.resolve({})),
   },
@@ -62,6 +63,7 @@ vi.mock("../lib/player", () => ({
     playQueue: (tracks: unknown[], _i: number, opts?: { shuffle?: boolean }) =>
       h.played.push({ tracks, shuffle: opts?.shuffle }),
     enqueueMany: (tracks: unknown[]) => h.enqueued.push(tracks),
+    setListenSource: (id: unknown) => { h.listenSourceSet = id; },
   }),
 }));
 
@@ -97,12 +99,15 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(api.patch).mockClear();
   vi.mocked(api.post).mockClear();
+  vi.mocked(api.get).mockReset();
+  vi.mocked(api.get).mockResolvedValue({ tracks: [] });
   h.tracks = [];
   h.playlist = counts();
   h.grabber = { enabled: false, spotify: { connected: false } };
   h.role = "admin";
   h.played = [];
   h.enqueued = [];
+  h.listenSourceSet = null;
 });
 
 describe("PlaylistDetail — playback actions", () => {
@@ -148,13 +153,22 @@ describe("PlaylistDetail — playback actions", () => {
     expect((h.played[0].tracks[0] as { title: string }).title).toBe("1.mp3");
   });
 
-  it("Shuffle passes { shuffle: true }", () => {
+  it("Shuffle fetches the playlist's weighted order and plays it as-is (D12)", async () => {
     h.tracks = [have(1), have(2)];
+    vi.mocked(api.get).mockResolvedValue({
+      tracks: [
+        { path: "/music/2.mp3", title: "Have2", artist: "Have2", bpm: null, starred: false, rating: 5, disliked: false, loudness_lufs: null },
+        { path: "/music/1.mp3", title: "Have1", artist: "Have1", bpm: null, starred: false, rating: null, disliked: false, loudness_lufs: null },
+      ],
+      playlist: 1, count: 2,
+    });
     render(<PlaylistDetail />);
     fireEvent.click(btn(/^Shuffle/));
-    expect(h.played).toHaveLength(1);
-    expect(h.played[0].shuffle).toBe(true);
-    expect(h.played[0].tracks).toHaveLength(2);
+    await vi.waitFor(() => expect(h.played).toHaveLength(1));
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith("/api/listen/queue?playlist=1&order=weighted");
+    expect(h.played[0].shuffle).toBe(false);
+    expect((h.played[0].tracks as Array<{ path: string }>).map((t) => t.path)).toEqual(["/music/2.mp3", "/music/1.mp3"]);
+    expect(h.listenSourceSet).toBe(1);
   });
 
   it("Add to queue appends the whole batch through enqueueMany", () => {

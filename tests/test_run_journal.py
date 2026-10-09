@@ -493,6 +493,116 @@ def test_play_event_does_not_join_a_closed_or_stale_run(base_config):
     assert db.list_play_events(10)[0]["run_id"] not in (None, run_id, revived)
 
 
+# ── the Run journal's per-run track list (D19) ──────────────────────────────
+
+def test_run_tracks_lists_played_order_with_the_callers_marks(base_config):
+    app = _app(base_config)
+    path = _seed_track(base_config, "song")
+    client = app.test_client()
+    csrf = _login(client, password="s3cret")
+
+    run_id = _stat(client, csrf, BATCH, LIB)["run_id"]
+    client.post("/api/scrobble", json={"path": path, "run": LIB}, headers=csrf)
+    client.post("/api/track/rating", json={"path": path, "rating": 4}, headers=csrf)
+
+    r = client.get(f"/api/runs/{run_id}/tracks")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert len(data["tracks"]) == 1
+    row = data["tracks"][0]
+    assert row["path"] == path and row["title"] == "song"
+    assert row["rating"] == 4
+    assert row["disliked"] is False
+
+
+def test_run_tracks_not_found_and_admin_sees_any_owner(base_config):
+    app = _app(base_config, run_password="runner99")
+    guest = app.test_client()
+    gcsrf = _login(guest, password="runner99")
+    run_id = _stat(guest, gcsrf, BATCH, LIB)["run_id"]
+
+    admin = app.test_client()
+    _login(admin, password="s3cret")
+    assert admin.get(f"/api/runs/{run_id}/tracks").status_code == 200
+    assert admin.get("/api/runs/999999/tracks").status_code == 404
+
+
+def test_run_tracks_scoped_to_the_players_own_run(base_config):
+    app = _app(base_config)
+    db = app.extensions["state"].db
+    db.add_player("runner", generate_password_hash("runrunrun"))
+
+    admin = app.test_client()
+    acsrf = _login(admin, password="s3cret")
+    admin_run = _stat(admin, acsrf, BATCH, LIB)["run_id"]
+
+    player = app.test_client()
+    pcsrf = _login(player, username="runner", password="runrunrun")
+    own_run = _stat(player, pcsrf, BATCH, LIB)["run_id"]
+
+    assert player.get(f"/api/runs/{own_run}/tracks").status_code == 200
+    assert player.get(f"/api/runs/{admin_run}/tracks").status_code == 403
+
+
+# ── the Stats rating-distribution card ──────────────────────────────────────
+
+def test_stats_ratings_admin_default_and_owner_param(base_config):
+    app = _app(base_config)
+    db = app.extensions["state"].db
+    admin = app.test_client()
+    csrf = _login(admin, password="s3cret")
+    path = _seed_track(base_config, "song")
+    admin.post("/api/track/rating", json={"path": path, "rating": 5}, headers=csrf)
+
+    r = admin.get("/api/stats/ratings")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["owner"] == "admin"
+    assert data["distribution"]["5"] == 1
+
+    db.add_player("runner", generate_password_hash("runrunrun"))
+    r = admin.get("/api/stats/ratings?owner=" + f"player:{db.get_player_by_username('runner')['id']}")
+    assert r.status_code == 200
+    assert r.get_json()["distribution"]["5"] == 0   # that player rated nothing
+
+
+def test_stats_ratings_bad_owner_rejected_for_admin(base_config):
+    app = _app(base_config)
+    admin = app.test_client()
+    _login(admin, password="s3cret")
+    assert admin.get("/api/stats/ratings?owner=nope").status_code == 400
+
+
+def test_stats_ratings_player_gets_its_own_and_ignores_owner_param(base_config):
+    """A named player is allowed the endpoint (it self-scopes), but the
+    ?owner= param is ignored — it always gets its own distribution."""
+    app = _app(base_config)
+    db = app.extensions["state"].db
+    db.add_player("runner", generate_password_hash("runrunrun"))
+
+    player = app.test_client()
+    pcsrf = _login(player, username="runner", password="runrunrun")
+    path = _seed_track(base_config, "song")
+    player.post("/api/track/rating", json={"path": path, "rating": 3}, headers=pcsrf)
+
+    r = player.get("/api/stats/ratings?owner=admin")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["owner"] == f"player:{db.get_player_by_username('runner')['id']}"
+    assert data["distribution"]["3"] == 1
+
+
+def test_stats_ratings_guest_gets_an_empty_distribution(base_config):
+    app = _app(base_config, run_password="runner99")
+    guest = app.test_client()
+    _login(guest, password="runner99")
+    r = guest.get("/api/stats/ratings")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["owner"] == "guest"
+    assert data["distribution"]["unrated"] == data["distribution"]["total"]
+
+
 def test_scrobble_survives_a_broken_attribution(base_config, monkeypatch):
     """Attribution rides the playback path — it must never fail a play report."""
     app = _app(base_config)

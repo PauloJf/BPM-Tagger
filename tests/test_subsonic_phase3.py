@@ -138,8 +138,9 @@ def test_run_presets_listed_as_readonly_playlists(env):
     assert len(run) == 1 and run[0]["name"] == "Run · Tempo (170 BPM)"
     assert run[0]["readonly"] is True and run[0]["songCount"] == 2
     entries = _json(e["call"]("getPlaylist", id=run[0]["id"]))["playlist"]["entry"]
-    # 171 is 0.6 % off; 86 folds to 172 (1.2 %); 120 is out.
-    assert [s["title"] for s in entries] == ["fast", "half"]
+    # 171 is 0.6 % off; 86 folds to 172 (1.2 %); 120 is out. Rating-weighted (D17)
+    # draws a fresh random order each call, so only the set is asserted here.
+    assert sorted(s["title"] for s in entries) == ["fast", "half"]
 
 
 def test_run_playlists_are_not_writable(env):

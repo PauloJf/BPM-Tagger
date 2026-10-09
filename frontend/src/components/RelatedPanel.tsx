@@ -50,8 +50,10 @@ function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: bool
   );
 }
 
+const fansFmt = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+
 /** One related-artist row: badge by library track_count, opens the artist modal. */
-function ArtistRow({ a, onOpen }: { a: RelatedArtist; onOpen: () => void }) {
+export function ArtistRow({ a, onOpen }: { a: RelatedArtist; onOpen: () => void }) {
   const badge = a.track_count >= 3 ? (
     <Link className="chip chip--have" to={`/artist?name=${encodeURIComponent(a.library_name || a.name)}`} onClick={(e) => e.stopPropagation()}>✓ {a.track_count} tracks</Link>
   ) : a.track_count > 0 ? (
@@ -72,7 +74,14 @@ function ArtistRow({ a, onOpen }: { a: RelatedArtist; onOpen: () => void }) {
         ) : (
           <div className="art-thumb art-thumb--round" style={{ width: 36, height: 36, display: "grid", placeItems: "center", flexShrink: 0 }} aria-hidden>♪</div>
         )}
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.name}</span>
+          {a.fans != null && (
+            <span style={{ display: "block", fontSize: 11, color: "var(--muted)" }}>
+              {fansFmt.format(a.fans)} fan{a.fans === 1 ? "" : "s"} on Deezer
+            </span>
+          )}
+        </span>
       </button>
       {badge}
       <button className="btn btn-bare btn-sm" style={{ padding: "2px 8px" }} onClick={onOpen} title="Explore artist" aria-label="Explore artist">›</button>

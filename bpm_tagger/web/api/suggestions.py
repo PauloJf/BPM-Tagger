@@ -326,8 +326,13 @@ def related_library():
 
     ``target`` + ``stretch_pct`` (a run's cadence and stretch limit) centre the
     tempo band on the cadence instead of the seed, so every result can play on
-    cadence. A player user only gets tracks from its own playlists."""
+    cadence. A player user only gets tracks from its own playlists.
+
+    Picking is rating-weighted for the caller's own account (owner + weights),
+    and the caller's dislikes are dropped (docs/plans/ratings-weighted-picking.md)."""
+    from ..auth import session_owner
     from ..similar import similar_tracks
+    from ..weighting import weights_from_config
     from .run import _run_scope
     st = state()
     if request.method == "POST":
@@ -354,13 +359,17 @@ def related_library():
         target = tolerance = None
     exclude = body.get("exclude") if request.method == "POST" else None
     exclude = [str(p) for p in (exclude or [])[:200]] if isinstance(exclude, list) else []
-    picked = similar_tracks(st.db, [track], count, scope, exclude, target, tolerance)
+    owner = session_owner()
+    weights = weights_from_config(st.config, owner)
+    picked = similar_tracks(st.db, [track], count, scope, exclude, target, tolerance,
+                           owner=owner, weights=weights)
     return jsonify(tracks=[{
         "path": t["file_path"],
         "title": t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
         "artist": t["artist"] or "",
         "bpm": t["bpm"],
-        "starred": bool(t["starred"]),
+        "starred": bool(t.get("starred")),
+        "rating": t.get("rating"),
         "loudness_lufs": t["loudness_lufs"],
         "reason": reason,
     } for t, reason in picked])
@@ -398,6 +407,31 @@ def deezer_resolve():
         payload = {"artist": dz.search_artist(name)}
         _cache_put(ck, payload)
     return jsonify(payload)
+
+
+@suggestions_bp.route("/api/deezer/search-artists")
+@login_required
+def deezer_search_artists():
+    """Deezer artists matching a free-text query, for the Search page's artist
+    strip (each opens the catalog browser). Login-gated, read-only. Deezer hits
+    are cached; ``track_count`` (+ ``library_name``) is per request."""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify(artists=[])
+    ck = "searchartists:" + q.casefold()
+    payload = _cache_get(ck)
+    if payload is None:
+        payload = dz.search_artists(q, limit=6)
+        _cache_put(ck, payload)
+    lib = build_library_artists(state().db)
+    out = []
+    for a in payload:
+        disp, count = lib.get(normalize_artist(a["name"]), ("", 0))
+        entry = dict(a, track_count=count)
+        if count > 0:
+            entry["library_name"] = disp
+        out.append(entry)
+    return jsonify(artists=out)
 
 
 def _dedupe_albums(albums: list[dict]) -> list[dict]:
