@@ -49,7 +49,9 @@ export default function Listen() {
   const { role, fullAccess, listenMode } = useAuth();
   const playerMode = role === "player";
   const player = usePlayer();
-  const { current, playing, audioRef, radio, setRadio, listenSource, tempoLock } = player;
+  const { current, playing, audioRef, radio, setRadio, radioMode, setRadioMode, listenSource, tempoLock } = player;
+  // Similar radio needs no Listen source: it seeds from whatever is playing.
+  const radioReady = radioMode === "similar" || listenSource != null;
   const { time, dur } = useAudioTime(audioRef);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isPreview = !!current?.ephemeral;
@@ -361,13 +363,15 @@ export default function Listen() {
       </button>
       <button
         data-testid="radio-toggle"
-        style={{ ...smallCtl(radio), width: "auto", padding: "0 14px", gap: 6, opacity: listenSource == null && !radio ? 0.55 : 1 }}
+        style={{ ...smallCtl(radio), width: "auto", padding: "0 14px", gap: 6, opacity: !radioReady && !radio ? 0.55 : 1 }}
         onClick={() => setRadio(!radio)}
         aria-pressed={radio}
-        aria-label="Radio — keep playing from this source"
-        title={listenSource == null
-          ? "Radio — start a source from the picker first, then this keeps it playing past the end"
-          : radio ? "Radio on — the queue refills from this source as it runs out" : "Radio — keep the queue refilling from this source"}
+        aria-label={radioMode === "similar" ? "Radio — keep playing similar tracks" : "Radio — keep playing from this source"}
+        title={radioMode === "similar"
+          ? (radio ? "Radio on — the queue refills with similar tracks from your library" : "Radio — keep the queue refilling with similar tracks from your library")
+          : listenSource == null
+            ? "Radio — start a source from the picker first, then this keeps it playing past the end"
+            : radio ? "Radio on — the queue refills from this source as it runs out" : "Radio — keep the queue refilling from this source"}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="2" />
@@ -375,6 +379,22 @@ export default function Listen() {
         </svg>
         <span style={{ fontSize: 12, fontWeight: 600 }}>Radio</span>
       </button>
+      {radio && (
+        <span data-testid="radio-mode" role="radiogroup" aria-label="Radio refills from"
+              style={{ display: "inline-flex", border: "1px solid var(--accent-border)", borderRadius: 999, overflow: "hidden" }}>
+          {([["source", "Source", "Refill from the playlist or source you started"],
+             ["similar", "Similar", "Refill with tracks like the one playing: same artist first, then a similar tempo — from your library, any queue"]] as const)
+            .map(([mode, label, hint]) => (
+              <button key={mode} role="radio" aria-checked={radioMode === mode} title={hint}
+                      onClick={() => setRadioMode(mode)}
+                      style={{ border: 0, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                               background: radioMode === mode ? "var(--accent-soft)" : "transparent",
+                               color: radioMode === mode ? "var(--accent-2)" : "var(--muted)" }}>
+                {label}
+              </button>
+            ))}
+        </span>
+      )}
       {!playerMode && !isPreview && (
         <button
           style={smallCtl(lyricsOpen)}
@@ -434,8 +454,10 @@ export default function Listen() {
       : { padding: 0, margin: 0, position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
         <span style={{ fontWeight: 600, fontSize: 13 }}>Queue · {player.orderedQueue.length}</span>
-        {radio && listenSource != null && (
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>radio keeps this topped up</span>
+        {radio && radioReady && (
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            {radioMode === "similar" ? "radio adds similar tracks" : "radio keeps this topped up"}
+          </span>
         )}
         <button className="btn btn-bare btn-sm" style={{ marginLeft: "auto" }} onClick={player.stop} title="Stop and clear the queue">Clear</button>
       </div>

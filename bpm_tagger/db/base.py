@@ -116,9 +116,16 @@ class _DBBase:
             # Decode problems surfaced during BPM analysis (JSON array of
             # {code, detail}; NULL = clean). See bpm/pipeline.py::detect_bpm.
             ("decode_warnings", "TEXT"),
+            # Genre tag (all values, "; "-joined). Split per genre in track_genres.
+            ("genre",          "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {coldef}")
+        if "genre" not in existing:
+            # Existing libraries were indexed before genres were read: forget the
+            # tag-index hashes so the next index_tags() pass re-reads every file's
+            # tags (a cheap metadata read, no audio decode) and fills them in.
+            conn.execute("UPDATE tracks SET tags_indexed_hash = NULL")
         # Pre-v1.0.4 lock_track() didn't clear needs_review; fix stale rows.
         conn.execute(
             "UPDATE tracks SET needs_review = 0 WHERE locked = 1 AND needs_review = 1"
@@ -292,6 +299,19 @@ class _DBBase:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_track_artists_norm "
                      "ON track_artists(norm_name)")
+        # One row per genre per track (a tag like "House; Techno" gives two),
+        # maintained with the tag index — the genre analogue of track_artists.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS track_genres (
+                track_id  INTEGER NOT NULL,
+                name      TEXT NOT NULL,
+                norm_name TEXT NOT NULL,
+                PRIMARY KEY (track_id, norm_name),
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_track_genres_norm "
+                     "ON track_genres(norm_name)")
         if is_new:
             self._backfill_track_artists(conn)
 
@@ -551,5 +571,66 @@ class _DBBase:
                 key          TEXT NOT NULL,            -- artist: normalize_artist(name); track: dz track id
                 dismissed_at TEXT,
                 PRIMARY KEY (kind, key)
+            )
+        """)
+        # Optional Subsonic API (docs/plans/subsonic-api.md): per-account API
+        # credentials, separate from the web login. Inert unless SUBSONIC_ENABLED.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_credentials (
+                owner        TEXT PRIMARY KEY,         -- 'admin' | 'player:<id>'
+                api_key_hash TEXT UNIQUE,              -- sha256 hex of the OpenSubsonic apiKey
+                password     TEXT,                     -- generated Subsonic password (token auth needs it)
+                created_at   TEXT,
+                last_used_at TEXT
+            )
+        """)
+        # Album / artist stars for the Subsonic API (song stars are tracks.starred).
+        # Keyed by the stable Subsonic id (al-/ar- + hash of normalized names), so
+        # a star survives rescans for as long as the tags do.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_stars (
+                kind       TEXT NOT NULL,          -- 'album' | 'artist'
+                item_id    TEXT NOT NULL,
+                starred_at TEXT NOT NULL,
+                PRIMARY KEY (kind, item_id)
+            )
+        """)
+        # Precomputed album aggregates for the Subsonic API, rebuilt from tracks
+        # when marked dirty (triggers created only while the API is enabled —
+        # see SubsonicMixin.ensure_album_index). Inert otherwise.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_album_index (
+                album_id     TEXT NOT NULL,
+                name         TEXT NOT NULL,
+                album_artist TEXT NOT NULL,
+                artist       TEXT,
+                song_count   INTEGER,
+                duration_ms  INTEGER,
+                year         INTEGER,
+                created      TEXT,
+                play_count   INTEGER,
+                last_played  TEXT,
+                genre        TEXT,
+                sample_id    INTEGER,
+                PRIMARY KEY (name, album_artist)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_album_id ON subsonic_album_index(album_id)")
+        # Subsonic play queue per account (savePlayQueue / getPlayQueue): resume
+        # on another device. Song ids in order; duplicates allowed.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_play_queue (
+                owner         TEXT PRIMARY KEY,
+                track_ids     TEXT NOT NULL,           -- JSON array of tracks.id
+                current_index INTEGER,
+                position_ms   INTEGER DEFAULT 0,
+                changed_at    TEXT,
+                changed_by    TEXT                     -- the app (Subsonic `c`)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subsonic_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT
             )
         """)

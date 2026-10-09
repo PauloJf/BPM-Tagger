@@ -37,6 +37,7 @@ from .api.run import run_bp
 from .api.settings import settings_bp
 from .api.spotify import spotify_bp
 from .api.stats import stats_bp
+from .api.subsonic_admin import subsonic_admin_bp
 from .api.suggestions import suggestions_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token, password_stamp
@@ -57,7 +58,9 @@ _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
                           "spa", "spa_assets", "api_spotify.spotify_callback")
 
 # Path prefixes owned by the backend — never served the SPA shell.
-_API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/")
+# "rest/" is the optional Subsonic API: listed even when it's disabled, so /rest/*
+# 404s instead of being handed the SPA shell.
+_API_PREFIXES = ("api/", "audio", "healthz", "static/", "assets/", "rest/")
 
 # Player-only ("Run-only") role scope. A session that logged in with the run
 # password may reach ONLY these endpoints; every other API endpoint is 403'd by
@@ -86,6 +89,9 @@ _PLAYER_ALLOWED = {
     # by the player_listen_mode setting, so listing it here only opens the door
     # when the admin has turned the feature on.
     "api_listen.api_listen_queue",
+    # Offline "similar from your library" (Similar panel + similar radio) —
+    # scoped to the player's own playlists inside the handler.
+    "api_suggestions.related_library",
     "media.audio", "media.healthz", "media.api_scrobble",
     # Now-playing display + the two allowed track flags (star / dislike)
     "api_tracks.api_track", "api_tracks.api_track_cover_get",
@@ -210,8 +216,22 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
                run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp, playlist_ops_bp, waveform_bp):
+               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
         app.register_blueprint(bp)
+
+    # Optional Subsonic API: registered only when enabled, so a disabled install
+    # has no /rest routes at all. Imported lazily for the same reason.
+    if config.get("subsonic_enabled"):
+        from .subsonic import ENDPOINTS as SUBSONIC_ENDPOINTS
+        from .subsonic import subsonic_bp
+        app.register_blueprint(subsonic_bp)
+        csrf_exempt = _CSRF_EXEMPT_ENDPOINTS + SUBSONIC_ENDPOINTS
+        st.db.ensure_album_index()
+        log.info("Subsonic API enabled at /rest")
+    else:
+        csrf_exempt = _CSRF_EXEMPT_ENDPOINTS
+        # No API, no album-index upkeep: scans don't pay for the triggers.
+        st.db.drop_album_index_triggers()
 
     # ── SPA serving ─────────────────────────────────────────────────────────
     @app.route("/assets/<path:filename>")
@@ -260,7 +280,7 @@ def create_app(config: dict) -> Flask:
 
     @app.before_request
     def _ensure_csrf():
-        if request.endpoint not in _CSRF_EXEMPT_ENDPOINTS:
+        if request.endpoint not in csrf_exempt:
             _csrf_token()
 
     @app.before_request
@@ -306,4 +326,9 @@ def start(config: dict, progress=None, tagger=None):
     from waitress import serve
     port = int(config.get("ui_port", 5000))
     log.info("BPM UI running on http://0.0.0.0:%d", port)
-    serve(app, host="0.0.0.0", port=port, threads=12)
+    # Worker threads. 12 is plenty for the web UI; Subsonic apps are far more
+    # parallel (cover grids, look-ahead streams), and a request that finds every
+    # thread busy waits in Waitress's queue — for an audio stream, that's a
+    # playback stall. So the default doubles while the API is on.
+    threads = int(config.get("ui_threads") or (24 if config.get("subsonic_enabled") else 12))
+    serve(app, host="0.0.0.0", port=port, threads=max(4, min(64, threads)))

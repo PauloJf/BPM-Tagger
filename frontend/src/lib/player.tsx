@@ -59,6 +59,9 @@ export type RepeatMode = "off" | "all" | "one";
 /** The Listen queue's source scope: a playlist id, the pooled "mine", the
  *  whole "library", or null when the queue wasn't started from Listen. */
 export type ListenSource = number | "mine" | "library" | null;
+/** What radio refills from: the Listen source the queue was started from, or
+ *  "similar" — tracks like the one playing, from the library (any queue). */
+export type RadioMode = "source" | "similar";
 
 /** Live buffering diagnostics for the current track. Surfaced in the UI so a
  *  stall reads as the network (not the app), and so slow-link behaviour on a
@@ -155,6 +158,8 @@ interface PlayerState {
   setListenSource(id: ListenSource): void;
   radio: boolean;
   setRadio(on: boolean): void;
+  radioMode: RadioMode;
+  setRadioMode(mode: RadioMode): void;
   /** Refresh a queued track's BPM (e.g. after fixing it on the track page) so
    *  a live tempo lock re-stretches immediately instead of waiting for a rebuild. */
   updateTrackBpm(path: string, bpm: number | null): void;
@@ -201,6 +206,7 @@ export interface SavedPlayer {
   runSource?: number | "mine" | null;
   listenSource?: ListenSource;
   radio?: boolean;
+  radioMode?: RadioMode;
 }
 
 function loadSaved(): SavedPlayer | null {
@@ -324,6 +330,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [radio, setRadio] = useState(() => saved?.radio ?? false);
   const radioRef = useRef(radio);
   useEffect(() => { radioRef.current = radio; }, [radio]);
+  const [radioMode, setRadioMode] = useState<RadioMode>(() => saved?.radioMode ?? "source");
+  const radioModeRef = useRef(radioMode);
+  useEffect(() => { radioModeRef.current = radioMode; }, [radioMode]);
   const [volume, setVolumeState] = useState(() => saved?.volume ?? 1);
   const volumeRef = useRef(volume);
   const mutePrev = useRef(saved?.volume || 1);  // volume to restore when unmuting
@@ -373,6 +382,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         shuffle, repeat, volume: volumeRef.current, time: 0, playing: false,
         tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
         listenSource: listenSourceRef.current, radio: radioRef.current,
+        radioMode: radioModeRef.current,
       };
     }
     const a = audioRef.current;
@@ -386,6 +396,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume: volumeRef.current, time, playing: isPlaying,
       tempoLock: nav.current.tempoLock, runSource: runSourceRef.current,
       listenSource: listenSourceRef.current, radio: radioRef.current,
+      radioMode: radioModeRef.current,
     };
   }, []);
 
@@ -427,7 +438,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
     schedulePush();
   }, [snapshot, schedulePush]);
-  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, listenSource, radio, persist]);
+  useEffect(persist, [queue, order, pos, shuffle, repeat, volume, tempoLock, runSource, listenSource, radio, radioMode, persist]);
 
   // Take over another device's snapshot wholesale. Always lands paused — music
   // must never start by itself because a different device wrote a queue — but
@@ -445,6 +456,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setRunSource(s.runSource ?? null);
     setListenSource(s.listenSource ?? null);
     setRadio(s.radio ?? false);
+    setRadioMode(s.radioMode ?? "source");
     setIntendedPlaying(false);
     pendingPlay.current = false;
     fadeIn.current = false;
@@ -719,7 +731,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // sampling) because the source list is small and already ours to page.
   const extendingListen = useRef(false);
   useEffect(() => {
-    if (!radio || tempoLock || previewing || repeat !== "off") return;
+    if (!radio || radioMode !== "source" || tempoLock || previewing || repeat !== "off") return;
     if (listenSource == null) return;
     if (order.length === 0 || pos !== order.length - 1) return;
     if (extendingListen.current) return;
@@ -751,7 +763,43 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {})  // a failed refill just means playback ends at the queue end
       .finally(() => { extendingListen.current = false; });
-  }, [radio, listenSource, tempoLock, previewing, repeat, pos, order.length]);
+  }, [radio, radioMode, listenSource, tempoLock, previewing, repeat, pos, order.length]);
+
+  // Similar radio: the other radio mode. Reaching the last queued track asks
+  // the server for tracks like it FROM THE LIBRARY (same artist first, then a
+  // nearby tempo — /api/related/library), excluding what was queued recently,
+  // and appends them. Seeded by whatever is playing, so unlike source radio it
+  // works for any queue — an album, a search result, a single track. Each batch
+  // re-seeds from its last track, so the queue drifts gradually rather than
+  // looping one artist. Off during a run: the run refill owns a locked queue.
+  const extendingSimilar = useRef(false);
+  useEffect(() => {
+    if (!radio || radioMode !== "similar" || tempoLock || previewing || repeat !== "off") return;
+    if (order.length === 0 || pos !== order.length - 1) return;
+    if (extendingSimilar.current) return;
+    const { queue: q, order: o } = nav.current;
+    const seed = q[o[pos]];
+    if (!seed || seed.ephemeral || seed.path.startsWith("preview:")) return;
+    extendingSimilar.current = true;
+    const exclude = q.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path);
+    api.post<{ tracks: { path: string; title: string; artist?: string; bpm: number | null;
+      starred?: boolean; loudness_lufs?: number | null }[] }>(
+      "/api/related/library", { path: seed.path, count: LISTEN_REFILL_COUNT, exclude })
+      .then((resp) => {
+        const { queue, order } = nav.current;
+        const have = new Set(queue.slice(-REFILL_EXCLUDE_WINDOW).map((t) => t.path));
+        const batch: PlayerTrack[] = resp.tracks
+          .filter((t) => !have.has(t.path))
+          .map((t) => ({ path: t.path, title: t.title, artist: t.artist, bpm: t.bpm,
+            starred: t.starred, loudnessLufs: t.loudness_lufs }));
+        if (!batch.length) return;
+        const base = queue.length;
+        setQueue([...queue, ...batch]);
+        setOrder([...order, ...batch.map((_, i) => base + i)]);
+      })
+      .catch(() => {})  // a failed refill just means playback ends at the queue end
+      .finally(() => { extendingSimilar.current = false; });
+  }, [radio, radioMode, tempoLock, previewing, repeat, pos, order.length]);
 
   const cancelRamp = () => {
     if (rampRef.current != null) { cancelAnimationFrame(rampRef.current); rampRef.current = null; }
@@ -1634,7 +1682,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue, queueIndex, orderedQueue, orderPos: pos,
       hasQueue: order.length > 1, shuffle, repeat, previewing, volume, setVolume,
       tempoLock, setTempoLock, runSource, setRunSource,
-      listenSource, setListenSource, radio, setRadio, updateTrackBpm, setTrackStarred,
+      listenSource, setListenSource, radio, setRadio, radioMode, setRadioMode,
+      updateTrackBpm, setTrackStarred,
       play, playQueue, enqueue, enqueueMany, playNext, preview, endPreview,
       next: () => next(false), prev, jumpTo, removeAt, moveAt, reorderTo, toggleShuffle, cycleRepeat,
       toggle, stop, isCurrent, isQueued,

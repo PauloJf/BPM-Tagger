@@ -185,4 +185,7 @@ def delete_player(pid):
     _check_csrf()
     # delete_player also drops the player_playlists join rows (no SQLite FKs).
     state().db.delete_player(pid)
+    # …and its Subsonic credentials, so a later player reusing the id can't
+    # inherit them (auth would refuse a missing player anyway).
+    state().db.delete_subsonic_credentials(f"player:{pid}")
     return jsonify(ok=True)

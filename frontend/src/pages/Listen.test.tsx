@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   radio: false,
+  radioMode: "source" as "source" | "similar",
+  radioModeSet: null as null | string,
   listenSource: null as number | "mine" | "library" | null,
   playlists: [] as Array<{ id: number; name: string; source: string; available: number; total: number; image_url: string | null }>,
   // Ordered log of the player mutations startPlayback makes — the
@@ -53,6 +55,7 @@ vi.mock("../lib/player", () => ({
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock,
     shuffle: false, repeat: "off", volume: 1, setVolume() {},
     radio: h.radio, setRadio(on: boolean) { h.radioSet = on; },
+    radioMode: h.radioMode, setRadioMode(m: string) { h.radioModeSet = m; },
     listenSource: h.listenSource,
     setListenSource(id: unknown) { h.calls.push("setListenSource"); h.sourceSet = id; },
     playQueue(tracks: unknown[], _start: number, opts?: { shuffle?: boolean }) {
@@ -99,6 +102,8 @@ beforeEach(() => {
   h.shuffleOpt = undefined;
   h.sourceSet = "unset";
   h.radioSet = null;
+  h.radioMode = "source";
+  h.radioModeSet = null;
   h.playlists = [{ id: 1, name: "Alpha", source: "local", available: 5, total: 10, image_url: null }];
   vi.mocked(api.get).mockResolvedValue({});
 });
@@ -212,6 +217,29 @@ describe("Listen — radio toggle", () => {
     render(<Listen />);
     fireEvent.click(screen.getByTestId("radio-toggle"));
     expect(h.radioSet).toBe(true);
+  });
+});
+
+describe("Listen — radio mode", () => {
+  it("offers Source / Similar only while radio is on", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    render(<Listen />);
+    expect(screen.queryByTestId("radio-mode")).toBeNull();
+    cleanup();
+    h.radio = true;
+    render(<Listen />);
+    fireEvent.click(screen.getByRole("radio", { name: "Similar" }));
+    expect(h.radioModeSet).toBe("similar");
+  });
+
+  it("similar radio needs no Listen source", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.radio = true;
+    h.radioMode = "similar";
+    h.listenSource = null;
+    render(<Listen />);
+    expect(screen.getByText("radio adds similar tracks")).toBeTruthy();
+    expect(screen.getByTestId("radio-toggle").getAttribute("title")).toContain("similar tracks from your library");
   });
 });
 

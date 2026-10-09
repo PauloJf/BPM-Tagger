@@ -67,6 +67,10 @@ def main():
         log.info("Grabber enabled — Spotify configured=%s, connected=%s",
                  grabber.client.is_configured(), grabber.client.is_connected())
 
+    if config.get("subsonic_enabled") and not config["enable_ui"]:
+        log.warning("SUBSONIC_ENABLED=true has no effect: the Subsonic API rides the web "
+                    "server, so it also needs ENABLE_UI=true.")
+
     if config["enable_ui"]:
         from .web.app import start as web_start
         threading.Thread(target=web_start, args=(config, progress, tagger), daemon=True).start()

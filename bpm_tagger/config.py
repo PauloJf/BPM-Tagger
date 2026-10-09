@@ -344,6 +344,8 @@ def build_config() -> dict:
         # Leave 0 when port 5000 is reached directly; set 1 behind nginx/traefik
         # so the login brute-force lockout keys on the real client IP.
         "ui_trusted_proxies":         int(os.environ.get("UI_TRUSTED_PROXIES", "0")),
+        # Waitress worker threads; 0 = auto (12, or 24 while the Subsonic API is on).
+        "ui_threads":                 int(os.environ.get("UI_THREADS", "0") or 0),
         # Force the session cookie's Secure flag on even when UI_PUBLIC_URL isn't
         # an https origin — for a TLS-terminating reverse proxy that forwards
         # plain http. Leave off for direct http/local use, or login breaks there.
@@ -376,6 +378,24 @@ def build_config() -> dict:
         "sync_interval_minutes":      int(os.environ.get("SYNC_INTERVAL_MINUTES", "0")),
 
         # ── Grabber (M3+) ─────────────────────────────────────────────────────
+        # ── Optional Subsonic API (docs/plans/subsonic-api.md) ────────────────
+        # Serves /rest/* to Subsonic clients. Needs ENABLE_UI; takes effect on
+        # restart (the blueprint is registered at startup, or not at all).
+        "subsonic_enabled":           os.environ.get("SUBSONIC_ENABLED", "false").lower() == "true",
+        # Accept plaintext p= passwords from any address. Off: only over https
+        # or from a private network (token auth and API keys always work).
+        "subsonic_allow_plain_password": os.environ.get("SUBSONIC_ALLOW_PLAIN_PASSWORD", "false").lower() == "true",
+        # Re-encode on the fly (ffmpeg) when a client asks for a format/bitrate.
+        # Off: files always stream as-is. Costs CPU per play; capped concurrency.
+        "subsonic_transcode":         os.environ.get("SUBSONIC_TRANSCODE", "false").lower() == "true",
+        # When an app asks for lyrics a file doesn't have, look them up on LRCLIB
+        # and save them (LYRICS_MODE: embedded or .lrc sidecar). Writes files.
+        "subsonic_fetch_lyrics":      os.environ.get("SUBSONIC_FETCH_LYRICS", "false").lower() == "true",
+        # getArtistInfo2: biography (MusicBrainz/Wikipedia) + similar artists
+        # (Deezer) for app artist pages. Network lookups, cached 24 h.
+        "subsonic_artist_info":       os.environ.get("SUBSONIC_ARTIST_INFO", "true").lower() == "true",
+        # Expose each Run preset as a read-only "Run · <name>" playlist.
+        "subsonic_run_playlists":     os.environ.get("SUBSONIC_RUN_PLAYLISTS", "true").lower() == "true",
         "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
         "index_tags":                 os.environ.get("INDEX_TAGS", "true").lower() == "true",
         # Spotify OAuth — client id/secret are env-only, never persisted to settings.json

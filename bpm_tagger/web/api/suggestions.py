@@ -16,6 +16,7 @@ library changes, the catalog doesn't).
 """
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -312,6 +313,57 @@ def related_tracks():
     tracks = [dict(t) for t in payload]  # copy: flags must not pollute the cache
     _flag_tracks(tracks, state().db)
     return jsonify(tracks=tracks)
+
+
+@suggestions_bp.route("/api/related/library", methods=["GET", "POST"])
+@login_required
+def related_library():
+    """Similar tracks from the library itself (offline, always playable): the
+    seed's artists first, then tracks at a nearby tempo — the rule in
+    ``web/similar.py``. Serves the Similar panel's "From your library" section
+    (GET ?path=) and Listen's similar radio (POST, with the recently queued
+    paths as ``exclude``).
+
+    ``target`` + ``stretch_pct`` (a run's cadence and stretch limit) centre the
+    tempo band on the cadence instead of the seed, so every result can play on
+    cadence. A player user only gets tracks from its own playlists."""
+    from ..similar import similar_tracks
+    from .run import _run_scope
+    st = state()
+    if request.method == "POST":
+        _check_csrf()
+        body = request.get_json(silent=True) or {}
+    else:
+        body = request.args
+    path = str(body.get("path") or "")
+    track = st.db.get_track(path) if path else None
+    if not track or track.get("status") == "deleted":
+        return jsonify(tracks=[])
+    full, allowed = _run_scope()
+    scope = None if full else sorted(allowed)
+    try:
+        count = max(1, min(100, int(body.get("count") or 20)))
+    except (TypeError, ValueError):
+        count = 20
+    target = tolerance = None
+    try:
+        if body.get("target") not in (None, ""):
+            target = float(body.get("target"))
+            tolerance = max(0.01, float(body.get("stretch_pct") or 15.0) / 100.0)
+    except (TypeError, ValueError):
+        target = tolerance = None
+    exclude = body.get("exclude") if request.method == "POST" else None
+    exclude = [str(p) for p in (exclude or [])[:200]] if isinstance(exclude, list) else []
+    picked = similar_tracks(st.db, [track], count, scope, exclude, target, tolerance)
+    return jsonify(tracks=[{
+        "path": t["file_path"],
+        "title": t["title"] or os.path.splitext(os.path.basename(t["file_path"]))[0],
+        "artist": t["artist"] or "",
+        "bpm": t["bpm"],
+        "starred": bool(t["starred"]),
+        "loudness_lufs": t["loudness_lufs"],
+        "reason": reason,
+    } for t, reason in picked])
 
 
 @suggestions_bp.route("/api/related/description")

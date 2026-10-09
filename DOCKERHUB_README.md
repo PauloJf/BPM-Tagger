@@ -21,6 +21,7 @@ Source & full docs: [github.com/PauloJf/BPM-Tagger](https://github.com/PauloJf/B
 |---|---|---|---|
 | `latest` _(default)_ | essentia + librosa | ~400 MB | NAS / low-memory devices |
 | `full` | deeprhythm (CNN) + essentia + librosa | ~1.8 GB | Servers with spare RAM |
+| `beta` / `beta-full` | as `latest` / `full` | as above | Testing the next release early (see the GitHub pre-releases; back up `/data` first) |
 
 ---
 
@@ -105,6 +106,8 @@ docker compose up -d && docker compose logs -f
 | `NAVIDROME_URL` | _(empty)_ | Trigger Navidrome rescan after each scan |
 | `NAVIDROME_STAR_SYNC` | `false` | Two-way star sync toggle (Settings → Navidrome) |
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
+| `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
+| `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
 | `LYRICS_ENABLED` | `false` | Auto-fetch lyrics (LRCLIB) for grabbed tracks; manual/bulk fetch always available in the UI |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 
@@ -124,7 +127,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Run mode** — a full-screen tempo-run player that fits one phone screen: big target-BPM readout with the tempo-lock toggle and a `native · stretch × octave → result` breakdown, four named presets, source picker (whole library or a playlist), and a queue that auto-refills before the last track ends. Starred tracks come first, disliked never, and every song is stretched onto your cadence with pitch preserved. Save a run queue as a playlist; the **Cadence** page answers "what can I run at 165?" by the same rule.
 
-**Listen** — the regular non-cadence player: play any playlist in order or shuffled at native speed (no BPM required), with a **radio** toggle that keeps refilling from the same playlist.
+**Listen** — the regular non-cadence player: play any playlist in order or shuffled at native speed (no BPM required), with a **radio** that keeps refilling from the same playlist, or with similar tracks from your library.
 
 **Player** — the persistent player bar carries a drag-to-reorder queue, waveform scrubbing, tap-tempo, keyboard shortcuts, and a reload-persistent queue that **follows your account across devices**. Pop it out as a **floating mini player** (Document Picture-in-Picture), or open the **lyrics drawer** for synced LRC lyrics that follow along — click a line to seek.
 

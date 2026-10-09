@@ -420,6 +420,18 @@ export interface RelatedTrack {
   bpm?: number | null;   // set when in_library — lets "queue similar" feed the play queue
 }
 
+/** A similar track from the library itself (/api/related/library): always
+ *  playable. `reason` says why it was picked. */
+export interface LibraryRelatedTrack {
+  path: string;
+  title: string;
+  artist: string;
+  bpm: number | null;
+  starred: boolean;
+  loudness_lufs: number | null;
+  reason: "artist" | "tempo";
+}
+
 export interface DeezerArtistInfo {
   dz_id: string;
   name: string;
