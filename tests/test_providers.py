@@ -291,3 +291,63 @@ def test_build_providers_deezer_gated_on_arl():
     assert [p.name for p in provs] == ["deezer", "ytdlp"]
     provs = build_providers({"provider_order": "deezer,ytdlp"})  # no arl
     assert [p.name for p in provs] == ["ytdlp"]  # deezer skipped (unconfigured)
+
+
+# ── Deezer: ISRC-first lookup ─────────────────────────────────────────────────
+def _isrc_track(**over):
+    t = {"id": 777, "title": "Voices In My Head - Radio Edit", "readable": True,
+         "artist": {"name": "Anyma"}, "album": {"title": "Genesys", "cover_xl": "http://c"},
+         "duration": 150, "isrc": "USUG12500914"}
+    t.update(over)
+    return t
+
+
+def test_deezer_isrc_hit_leads_and_text_hits_follow(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    seen = []
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc",
+                        lambda i: seen.append(i) or _isrc_track())
+    cands = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma",
+                                       isrc="USUG12500914"))
+    assert seen == ["USUG12500914"]
+    assert [c.provider_track_id for c in cands] == ["777", "3380574911", "2"]
+    assert cands[0].isrc == "USUG12500914" and cands[0].duration_ms == 150000
+
+
+def test_deezer_isrc_hit_not_duplicated_in_text_hits(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc",
+                        lambda i: _isrc_track(id=3380574911))
+    cands = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma",
+                                       isrc="USUG12500914"))
+    assert [c.provider_track_id for c in cands] == ["3380574911", "2"]
+
+
+def test_deezer_isrc_hit_survives_a_failing_text_search(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc", lambda i: _isrc_track())
+
+    def boom(arl):
+        raise RuntimeError("deezer down")
+    p = _deezer()
+    p._client_factory = boom
+    cands = p.search(TrackMeta(title="x", artist="y", isrc="USUG12500914"))
+    assert [c.provider_track_id for c in cands] == ["777"]
+
+
+@pytest.mark.parametrize("detail", [{}, _isrc_track(readable=False)])
+def test_deezer_isrc_miss_or_unreadable_falls_back_to_text(monkeypatch, detail):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc", lambda i: detail)
+    cands = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma",
+                                       isrc="USUG12500914"))
+    assert [c.provider_track_id for c in cands] == ["3380574911", "2"]
+
+
+def test_deezer_no_isrc_skips_the_lookup(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    called = []
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc",
+                        lambda i: called.append(i) or {})
+    _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma"))
+    assert called == [""]  # asked with no ISRC → the helper returns {} without any request

@@ -270,6 +270,22 @@ def track_preview_url(dz_track_id: str) -> str:
     return d.get("preview") or ""
 
 
+def track_detail_by_isrc(isrc: str) -> dict:
+    """The raw Deezer track object for an ISRC ({} on a miss or failure).
+
+    Unlike ``track_by_isrc`` this keeps the whole object (title, artist, album,
+    duration, ``readable``), which the grabber turns into a download candidate."""
+    isrc = (isrc or "").strip().upper()
+    if not isrc:
+        return {}
+    try:
+        d = _get(f"track/isrc:{isrc}")
+    except Exception as exc:
+        log.debug("Deezer ISRC lookup failed for %s: %s", isrc, exc)
+        return {}
+    return d if d.get("id") and not d.get("error") else {}
+
+
 def track_by_isrc(isrc: str) -> dict:
     """Resolve an ISRC to {"dz_track_id": str, "preview_url": str}; {} on failure.
 

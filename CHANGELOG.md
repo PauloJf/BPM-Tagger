@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v2.18.1 — 2026-10-09
+
+- **Fixed: some tracks had no download candidates even though Deezer has them.** The grabber searched Deezer by free-text "artist title", which misses tracks whose title carries a suffix like "- Radio Edit", "(feat. X)" or "- 2011 Remaster", even though the preview (which resolves the track by ISRC) found them. When a track has an ISRC, the Deezer provider now looks it up by ISRC first, an exact match that auto-accepts, and keeps the text-search results behind it as fallbacks. A track Deezer lists but marks unstreamable from your country still falls through to the text search and yt-dlp.
+
 ## v2.18.0 — 2026-10-09
 
 - **Search & grab finds artists too.** Searching now also lists matching Deezer artists above the Spotify tracks, with their fan count and how many of their tracks you own. Click one, or any artist credit on a track result, to open the same artist popup as **Browse Deezer** (top tracks, albums, singles, preview and add to queue). Artist search works even before Spotify is connected.

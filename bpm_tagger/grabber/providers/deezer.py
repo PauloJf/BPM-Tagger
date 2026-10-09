@@ -90,16 +90,49 @@ class DeezerProvider(Provider):
     def search(self, meta: TrackMeta, limit: int = 8) -> list[ProviderCandidate]:
         if not self.arl:
             return []
+        # ISRC first: an exact id the text search below can miss (feat./remaster/
+        # edit suffixes, multi-artist credits). It leads the list, with the text
+        # hits behind it as fallbacks if its download fails. Falls through to the
+        # text search alone when Deezer has no such ISRC or the track isn't
+        # streamable from the account's country.
+        hit = self._search_isrc(meta.isrc)
+        found = [hit] if hit else []
         query = f"{meta.artist} {meta.title}".strip()
         if not query:
-            return []
+            return found
         try:
-            return asyncio.run(self._search(query, limit))
+            text = asyncio.run(self._search(query, limit))
         except ProviderAuthError:
             raise  # not a per-query miss: let the caller surface it
         except Exception as exc:
             log.warning("Deezer search failed: %s", exc_text(exc))
-            return []
+            return found
+        return found + [c for c in text if not hit or c.provider_track_id != hit.provider_track_id]
+
+    def _search_isrc(self, isrc: str) -> Optional[ProviderCandidate]:
+        from bpm_tagger.integrations import deezer_catalog
+        t = deezer_catalog.track_detail_by_isrc(isrc)
+        if not t or t.get("readable") is False:
+            return None
+        return self._candidate(t, isrc)
+
+    def _candidate(self, it: dict, isrc: str = "") -> ProviderCandidate:
+        album = it.get("album") or {}
+        if not isinstance(album, dict):
+            album = {}
+        dur = it.get("duration")
+        return ProviderCandidate(
+            provider=self.name,
+            provider_track_id=str(it.get("id", "")),
+            title=it.get("title", ""),
+            artist=(it.get("artist") or {}).get("name", ""),
+            album=album.get("title", ""),
+            duration_ms=int(dur * 1000) if isinstance(dur, (int, float)) else None,
+            isrc=it.get("isrc", "") or isrc,
+            quality=_quality_name(self.quality),
+            cover_url=(album.get("cover_xl") or album.get("cover_big")
+                       or album.get("cover_medium") or ""),
+        )
 
     async def _search(self, query: str, limit: int) -> list[ProviderCandidate]:
         client = self._make_client()
@@ -109,25 +142,7 @@ class DeezerProvider(Provider):
         finally:
             await self._close(client)
         items = results[0].get("data", []) if results else []
-        out: list[ProviderCandidate] = []
-        for it in items[:limit]:
-            if not isinstance(it, dict):
-                continue
-            album = it.get("album") or {}
-            dur = it.get("duration")
-            out.append(ProviderCandidate(
-                provider=self.name,
-                provider_track_id=str(it.get("id", "")),
-                title=it.get("title", ""),
-                artist=(it.get("artist") or {}).get("name", ""),
-                album=album.get("title", "") if isinstance(album, dict) else "",
-                duration_ms=int(dur * 1000) if isinstance(dur, (int, float)) else None,
-                isrc=it.get("isrc", "") or "",
-                quality=_quality_name(self.quality),
-                cover_url=(album.get("cover_xl") or album.get("cover_big")
-                           or album.get("cover_medium") or "") if isinstance(album, dict) else "",
-            ))
-        return out
+        return [self._candidate(it) for it in items[:limit] if isinstance(it, dict)]
 
     # ── download ───────────────────────────────────────────────────────────────
     def download(self, cand: ProviderCandidate, dest_dir: str,

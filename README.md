@@ -12,7 +12,7 @@
         bpm detection & tagging · tempo-locked player · for navidrome
 ```
 
-**v2.18.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.18.1** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 BPM Tagger started as exactly what the name says: a tool that detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes it back to the file's metadata tag — with a three-detector pipeline, a review queue for the doubtful cases, and a SQLite record of every result. It still does that. But the tags turned out to be a foundation rather than the product, and the app grew into what they make possible: **a cadence-synced running player for your own music**, wrapped in a full library companion.
 
@@ -126,7 +126,7 @@ Everything around the music itself — useful daily, running or not. Almost all 
 
 Off by default. The acquisition pipeline: watch your Spotify playlists (synced and matched by the playlist features above) and download what the library is missing.
 
-- **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first, then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
+- **Downloading** — tries **Deezer** (via [streamrip](https://github.com/nathom/streamrip), using your own Deezer ARL) first — looking the track up by its **ISRC** when it has one, then by artist + title — then falls back to **yt-dlp** (YouTube Music); provider order is configurable. Deezer also supplies ISRCs, which sharpen library matching. _(A free Deezer ARL returns full-length tracks at MP3 128 kbps; MP3 320/FLAC need a paid Deezer subscription. The Monochrome/Tidal provider is currently on hold.)_
 - **Getting your Deezer ARL** — the ARL is the `arl` login cookie from deezer.com; there's no other way to issue one. Sign in at deezer.com on a computer, open the developer tools (F12), go to **Application → Cookies** (Chrome/Edge) or **Storage → Cookies** (Firefox/Safari) → `https://www.deezer.com`, copy the `arl` value into **Settings → Grabber**, and press **Test**. The same steps are under **How do I get my ARL?** next to the field. Treat it like a password. It expires after a few months, or when you sign out of Deezer or change your password. When Deezer rejects it, the grabber says so in the queue item and the log, sends one high-priority ntfy ping (repeated at most every 6 hours), and falls back to yt-dlp until you paste a new one.
 - **One output format** — every download is transcoded via ffmpeg to a single configured profile (`mp3-128`, `mp3-320`, `flac`, or `opus-192`)
 - **Full tagging + BPM** — writes title/artist/album/track/year/ISRC + embedded cover art, then runs the same 3-detector BPM analysis and tags the result; files land under a customizable **path template** (default `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}`)
