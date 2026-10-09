@@ -4,8 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { useTitle } from "../hooks/useTitle";
 import { useGrabberStatus } from "../hooks/useGrabberStatus";
+import type { RelatedArtist } from "../lib/types";
 import PageHeader from "../components/PageHeader";
 import GrabberGate from "../components/GrabberGate";
+import ArtistModal from "../components/ArtistModal";
+import { ArtistRow } from "../components/RelatedPanel";
+
+type DzArtist = { dz_id: string; name: string; image_url: string };
+
+// Artists shown before "Show more" — enough to catch the one you meant
+// without pushing the track results off-screen.
+const ARTISTS_SHOWN = 3;
 
 interface SearchResult {
   spotify_track_id: string;
@@ -34,8 +43,41 @@ export default function Search() {
   const searchQ = useQuery({
     queryKey: ["spotify-search", query],
     queryFn: () => api.get<{ results: SearchResult[] }>(`/api/spotify/search?q=${encodeURIComponent(query)}`),
-    enabled: status.data?.enabled === true && !!query,
+    enabled: status.data?.enabled === true && !!status.data?.spotify?.connected && !!query,
   });
+
+  // Deezer artists matching the query: each opens the catalog browser (top
+  // tracks, albums, singles — the artist page's "Browse Deezer").
+  const artistsQ = useQuery({
+    queryKey: ["deezer-search-artists", query],
+    queryFn: () => api.get<{ artists: RelatedArtist[] }>(`/api/deezer/search-artists?q=${encodeURIComponent(query)}`),
+    enabled: status.data?.enabled === true && !!query,
+    staleTime: 5 * 60_000,
+  });
+  const [allArtists, setAllArtists] = useState(false);
+  const [modalArtist, setModalArtist] = useState<{ dzId: string; name: string } | null>(null);
+  const [resolving, setResolving] = useState("");
+  const [notOnDeezer, setNotOnDeezer] = useState("");
+
+  // A result row's artist credit → its Deezer artist (same lookup and cache as
+  // the artist page's Browse Deezer button), then open the browser.
+  async function openArtist(name: string) {
+    setNotOnDeezer("");
+    setResolving(name);
+    try {
+      const r = await qc.fetchQuery({
+        queryKey: ["deezer-resolve", name],
+        queryFn: () => api.get<{ artist: DzArtist | null }>(`/api/deezer/resolve?name=${encodeURIComponent(name)}`),
+        staleTime: Infinity,
+      });
+      if (r.artist) setModalArtist({ dzId: r.artist.dz_id, name: r.artist.name });
+      else setNotOnDeezer(name);
+    } catch {
+      setNotOnDeezer(name);
+    } finally {
+      setResolving("");
+    }
+  }
 
   const add = useMutation({
     mutationFn: (r: SearchResult) => api.post("/api/queue", {
@@ -50,36 +92,66 @@ export default function Search() {
     },
   });
 
+  function search() {
+    setQuery(input.trim());
+    setAllArtists(false);
+    setNotOnDeezer("");
+  }
+
   const connected = status.data?.spotify?.connected;
   const results = searchQ.data?.results ?? [];
+  const artists = artistsQ.data?.artists ?? [];
+  const shownArtists = allArtists ? artists : artists.slice(0, ARTISTS_SHOWN);
 
   return (
-    <GrabberGate title="Search & grab" subtitle="Search Spotify's catalog and queue a track for download.">
-      <PageHeader title="Search & grab" subtitle="Search Spotify's catalog and queue a track for download." />
+    <GrabberGate title="Search & grab" subtitle="Find an artist to browse on Deezer, or a track on Spotify to queue for download.">
+      <PageHeader title="Search & grab" subtitle="Find an artist to browse on Deezer, or a track on Spotify to queue for download." />
 
-      {!connected ? (
+      {/* Deezer artists need no account, so the box works without Spotify;
+          only the track results do. */}
+      {status.data && !connected && (
         <div className="flash" style={{ background: "var(--warn-bg)", borderColor: "var(--warn-bd)", color: "var(--warn-fg)" }}>
-          Spotify isn't connected. <Link to="/settings" style={{ color: "inherit", textDecoration: "underline" }}>Connect it in Settings</Link>.
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="artist – title"
-            style={{ flex: 1, minWidth: 240 }}
-            onKeyDown={(e) => { if (e.key === "Enter" && input.trim()) setQuery(input.trim()); }}
-          />
-          <button className="btn btn-primary btn-md" disabled={!input.trim()} onClick={() => setQuery(input.trim())}>Search</button>
+          Spotify isn't connected, so only artists (from Deezer) are searched. <Link to="/settings" style={{ color: "inherit", textDecoration: "underline" }}>Connect it in Settings</Link> to search tracks.
         </div>
       )}
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="artist – title"
+          style={{ flex: 1, minWidth: 240 }}
+          onKeyDown={(e) => { if (e.key === "Enter" && input.trim()) search(); }}
+        />
+        <button className="btn btn-primary btn-md" disabled={!input.trim()} onClick={search}>Search</button>
+      </div>
 
       {searchQ.isError && (
         <div className="flash error">{searchQ.error instanceof ApiError ? searchQ.error.message : "Search failed"}</div>
       )}
 
-      <div className="tracks-table">
+      {notOnDeezer && <div className="flash">“{notOnDeezer}” isn't on Deezer.</div>}
+
+      {artists.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="section-label" style={{ alignItems: "center" }}>
+            <span>Artists · Deezer</span>
+            {artists.length > ARTISTS_SHOWN && (
+              <button className="btn btn-bare btn-sm" onClick={() => setAllArtists((v) => !v)}>
+                {allArtists ? "Show fewer" : `Show ${artists.length - ARTISTS_SHOWN} more`}
+              </button>
+            )}
+          </div>
+          <div className="card" style={{ padding: 0 }}>
+            {shownArtists.map((a) => (
+              <ArtistRow key={a.dz_id} a={a} onOpen={() => setModalArtist({ dzId: a.dz_id, name: a.name })} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {connected && query && <div className="section-label"><span>Tracks · Spotify</span></div>}
+      {(connected || !query) && <div className="tracks-table">
         {results.length === 0 ? (
           <div className="tracks-row-empty">{searchQ.isFetching ? "Searching…" : query ? "No results." : "Enter a search above."}</div>
         ) : (
@@ -88,7 +160,20 @@ export default function Search() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
                 <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {r.artist}{r.album ? ` · ${r.album}` : ""}{r.year ? ` · ${r.year}` : ""}
+                  {/* Spotify joins credits with ", " — each one opens its Deezer artist. */}
+                  {r.artist.split(", ").map((name, i) => (
+                    <span key={name + i}>
+                      {i > 0 && ", "}
+                      <button
+                        type="button"
+                        className="link-btn"
+                        disabled={resolving === name}
+                        onClick={() => openArtist(name)}
+                        title={`Browse ${name} on Deezer`}
+                      >{resolving === name ? "Opening…" : name}</button>
+                    </span>
+                  ))}
+                  {r.album ? ` · ${r.album}` : ""}{r.year ? ` · ${r.year}` : ""}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -111,7 +196,14 @@ export default function Search() {
             </div>
           ))
         )}
-      </div>
+      </div>}
+      {!connected && query && !artistsQ.isFetching && artists.length === 0 && (
+        <div className="tracks-table"><div className="tracks-row-empty">No artists found.</div></div>
+      )}
+
+      {modalArtist && (
+        <ArtistModal dzId={modalArtist.dzId} name={modalArtist.name} onClose={() => setModalArtist(null)} />
+      )}
     </GrabberGate>
   );
 }

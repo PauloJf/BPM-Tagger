@@ -73,6 +73,21 @@ class DownloadedFile:
 ProgressCb = Callable[[float], None]
 
 
+class ProviderAuthError(Exception):
+    """The provider rejected its credentials (e.g. an expired Deezer ARL).
+
+    Not transient: retrying, or trying another candidate from the same
+    provider, fails the same way until the user fixes the credential. The
+    message is user-facing.
+    """
+
+
+def exc_text(exc: BaseException) -> str:
+    """str(exc), or the exception's class name when it has no message (some
+    library errors, e.g. streamrip's, are raised bare and log as blank)."""
+    return str(exc) or type(exc).__name__
+
+
 class Provider(ABC):
     name: str = "base"
     lossless: bool = False

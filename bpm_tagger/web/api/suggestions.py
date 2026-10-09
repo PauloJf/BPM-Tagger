@@ -409,6 +409,31 @@ def deezer_resolve():
     return jsonify(payload)
 
 
+@suggestions_bp.route("/api/deezer/search-artists")
+@login_required
+def deezer_search_artists():
+    """Deezer artists matching a free-text query, for the Search page's artist
+    strip (each opens the catalog browser). Login-gated, read-only. Deezer hits
+    are cached; ``track_count`` (+ ``library_name``) is per request."""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify(artists=[])
+    ck = "searchartists:" + q.casefold()
+    payload = _cache_get(ck)
+    if payload is None:
+        payload = dz.search_artists(q, limit=6)
+        _cache_put(ck, payload)
+    lib = build_library_artists(state().db)
+    out = []
+    for a in payload:
+        disp, count = lib.get(normalize_artist(a["name"]), ("", 0))
+        entry = dict(a, track_count=count)
+        if count > 0:
+            entry["library_name"] = disp
+        out.append(entry)
+    return jsonify(artists=out)
+
+
 def _dedupe_albums(albums: list[dict]) -> list[dict]:
     """Collapse Deezer's frequent duplicate/regional releases by normalized
     title, keeping the first (newest) occurrence."""

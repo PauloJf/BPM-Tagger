@@ -16,9 +16,14 @@ import logging
 import os
 from typing import Optional
 
-from .base import DownloadedFile, Provider, ProviderCandidate, ProgressCb, TrackMeta
+from .base import (DownloadedFile, Provider, ProviderAuthError, ProviderCandidate,
+                   ProgressCb, TrackMeta, exc_text)
 
 log = logging.getLogger(__name__)
+
+ARL_REJECTED = ("Deezer rejected the ARL (expired or invalid) — "
+                "paste a fresh one in Settings → Grabber")
+ARL_MISSING = "No Deezer ARL configured"
 
 # Human-readable quality → streamrip quality integer.
 _QUALITY_MAP = {"MP3_128": 0, "MP3_320": 1, "FLAC": 2}
@@ -57,6 +62,22 @@ class DeezerProvider(Provider):
         return DeezerClient(cfg)
 
     @staticmethod
+    async def _login(client):
+        """Log in, turning streamrip's bare (message-less) credential errors into
+        a ProviderAuthError with a message the user can act on. Callers wrap this
+        in their try/finally: streamrip opens its aiohttp session *before*
+        checking the ARL, so a failed login still has a session to close."""
+        try:
+            await client.login()
+        except Exception as exc:
+            name = type(exc).__name__
+            if name == "AuthenticationError":
+                raise ProviderAuthError(ARL_REJECTED) from exc
+            if name == "MissingCredentialsError":
+                raise ProviderAuthError(ARL_MISSING) from exc
+            raise
+
+    @staticmethod
     async def _close(client):
         sess = getattr(client, "session", None)
         if sess is not None:
@@ -74,14 +95,16 @@ class DeezerProvider(Provider):
             return []
         try:
             return asyncio.run(self._search(query, limit))
+        except ProviderAuthError:
+            raise  # not a per-query miss: let the caller surface it
         except Exception as exc:
-            log.warning("Deezer search failed: %s", exc)
+            log.warning("Deezer search failed: %s", exc_text(exc))
             return []
 
     async def _search(self, query: str, limit: int) -> list[ProviderCandidate]:
         client = self._make_client()
-        await client.login()
         try:
+            await self._login(client)
             results = await client.search("track", query, limit=limit)
         finally:
             await self._close(client)
@@ -115,8 +138,8 @@ class DeezerProvider(Provider):
     async def _download(self, cand: ProviderCandidate, dest_dir: str,
                         progress_cb: Optional[ProgressCb]) -> DownloadedFile:
         client = self._make_client()
-        await client.login()
         try:
+            await self._login(client)
             dl = await client.get_downloadable(cand.provider_track_id, quality=self.quality)
             ext = getattr(dl, "extension", "mp3")
             dest = os.path.join(dest_dir, f"dz_{cand.provider_track_id}.{ext}")
@@ -137,16 +160,26 @@ class DeezerProvider(Provider):
                               quality=_quality_name(self.quality))
 
     # ── health ───────────────────────────────────────────────────────────────
-    def healthcheck(self) -> bool:
+    def verify(self) -> Optional[str]:
+        """Try to log in. None when the ARL works, else a user-facing reason."""
         if not self.arl:
-            return False
+            return ARL_MISSING
         try:
-            return asyncio.run(self._healthcheck())
-        except Exception:
-            return False
+            asyncio.run(self._verify())
+            return None
+        except ProviderAuthError as exc:
+            return str(exc)
+        except Exception as exc:
+            return f"Couldn't reach Deezer: {exc_text(exc)}"
 
-    async def _healthcheck(self) -> bool:
+    async def _verify(self) -> None:
         client = self._make_client()
-        await client.login()
-        await self._close(client)
-        return bool(getattr(client, "logged_in", False))
+        try:
+            await self._login(client)
+        finally:
+            await self._close(client)
+        if not getattr(client, "logged_in", False):
+            raise ProviderAuthError(ARL_REJECTED)
+
+    def healthcheck(self) -> bool:
+        return self.verify() is None

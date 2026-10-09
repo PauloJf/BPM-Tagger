@@ -860,6 +860,21 @@ export default function Settings() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("deezer", "/api/settings/test-deezer", { deezer_arl: grabber.deezerArl })}>Test</button>
                     {testMsg.deezer && <span style={{ fontSize: 12, color: testMsg.deezer.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.deezer.text}</span>}
                   </div>
+                  {/* Deezer has no API for issuing an ARL (password login is
+                      captcha-gated), so the browser cookie is the only source. */}
+                  <details style={{ fontSize: 12, color: "var(--muted)" }}>
+                    <summary style={{ cursor: "pointer" }}>How do I get my ARL?</summary>
+                    <ol style={{ margin: "6px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 3 }}>
+                      <li>On a computer, sign in at <a href="https://www.deezer.com" target="_blank" rel="noreferrer">deezer.com</a> (a free account works).</li>
+                      <li>Open the developer tools: <kbd>F12</kbd>, or <kbd>⌥⌘I</kbd> on a Mac (in Safari, first turn on Settings → Advanced → Show features for web developers).</li>
+                      <li>Find the cookies: <b>Application</b> → Cookies in Chrome / Edge, <b>Storage</b> → Cookies in Firefox / Safari. Pick <code>https://www.deezer.com</code>.</li>
+                      <li>Copy the value of the cookie named <code>arl</code> (a long string of letters and digits), paste it above, Save, then press <b>Test</b>.</li>
+                    </ol>
+                    <p style={{ margin: "6px 0 0" }}>
+                      The ARL is a login token: keep it private. It stops working after a few months, or when you sign out of Deezer
+                      or change your password. When it does, failed grabs say "Deezer rejected the ARL" and ntfy pings you; repeat these steps.
+                    </p>
+                  </details>
                 </div>
               </div>
               <div className="field-row">

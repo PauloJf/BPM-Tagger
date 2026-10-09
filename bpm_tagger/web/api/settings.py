@@ -549,9 +549,9 @@ def api_test_deezer():
     if not arl:
         return jsonify(ok=False, error="ARL required"), 400
     from ...grabber.providers.deezer import DeezerProvider
-    ok = DeezerProvider({"deezer_arl": arl.strip()}).healthcheck()
-    return jsonify(ok=ok, message="ARL accepted" if ok else None,
-                   error=None if ok else "Login failed (ARL invalid or expired)")
+    error = DeezerProvider({"deezer_arl": arl.strip()}).verify()
+    return jsonify(ok=error is None, message="ARL accepted" if error is None else None,
+                   error=error)
 
 
 @settings_bp.route("/api/settings/install-ping", methods=["POST"])

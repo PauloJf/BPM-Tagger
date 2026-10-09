@@ -417,6 +417,7 @@ export interface RelatedArtist {
   image_url: string;
   track_count: number;   // library tracks with this artist as primary (0 = not owned)
   library_name?: string; // library's display spelling, present when track_count > 0
+  fans?: number;         // Deezer follower count (artist search only) — tells same-named artists apart
 }
 
 export interface RelatedTrack {

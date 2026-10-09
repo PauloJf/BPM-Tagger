@@ -395,6 +395,56 @@ def test_deezer_resolve_endpoint(sug, monkeypatch):
     assert client.get("/api/deezer/resolve?name=NopeUnknownXyz").get_json()["artist"] is None
 
 
+def test_deezer_search_artists_shapes_and_drops_placeholder(monkeypatch):
+    seen = {}
+
+    def fake_get(url, params=None, timeout=None):
+        seen["url"], seen["params"] = url, params
+        return _Resp({"data": [
+            {"id": 1, "name": "Anyma", "picture_xl": "https://e-cdns-images.dzcdn.net/images/artist/abc/1000x1000.jpg",
+             "nb_fan": 1234},
+            {"id": 2, "name": "Anyma Tribute", "picture_xl": "https://e-cdns-images.dzcdn.net/images/artist//1000x1000.jpg"},
+            {"error": "junk"},
+        ]})
+    monkeypatch.setattr(dc.requests, "get", fake_get)
+    out = dc.search_artists("anyma tribute")
+    assert seen["url"].endswith("/search/artist") and seen["params"]["q"] == "anyma tribute"
+    assert [a["dz_id"] for a in out] == ["2", "1"]  # exact name first
+    assert out[1]["fans"] == 1234 and out[1]["image_url"].endswith("1000x1000.jpg")
+    assert out[0]["image_url"] == "" and out[0]["fans"] == 0  # placeholder dropped
+    assert dc.search_artists("  ") == []
+
+
+def test_deezer_namesakes_prefer_most_followed(monkeypatch):
+    # Deezer can rank a tiny namesake above the artist you meant.
+    hits = {"data": [
+        {"id": 1, "name": "Anyma", "nb_fan": 18},
+        {"id": 2, "name": "Anyma (UK)", "nb_fan": 130},
+        {"id": 3, "name": "Anyma", "nb_fan": 45100},
+    ]}
+    monkeypatch.setattr(dc.requests, "get", lambda url, params=None, timeout=None: _Resp(hits))
+    assert [a["dz_id"] for a in dc.search_artists("Anyma")] == ["3", "1", "2"]
+    assert dc.search_artist("Anyma")["dz_id"] == "3"
+
+
+def test_deezer_search_artists_endpoint_flags_library(sug, monkeypatch):
+    client, st, _ = sug
+    _seed(st.db, os.path.join(st.music_dir, "owned.mp3"), "Owner", "Owner", title="Owned Song")
+    calls = {"n": 0}
+
+    def fake_search(q, limit=6):
+        calls["n"] += 1
+        return [dict(_art("Owner"), fans=5), dict(_art("Stranger"), fans=1)]
+    monkeypatch.setattr(dc, "search_artists", fake_search)
+    arts = client.get("/api/deezer/search-artists?q=Own").get_json()["artists"]
+    assert [a["name"] for a in arts] == ["Owner", "Stranger"]
+    assert arts[0]["track_count"] == 1 and arts[0]["library_name"] == "Owner"
+    assert arts[1]["track_count"] == 0 and "library_name" not in arts[1]
+    client.get("/api/deezer/search-artists?q=own")  # same query, other case → cached
+    assert calls["n"] == 1
+    assert client.get("/api/deezer/search-artists?q=").get_json() == {"artists": []}
+
+
 # ── Deezer catalog: artist / albums / album shaping ──────────────────────────
 def test_deezer_album_seconds_to_ms(monkeypatch):
     def fake_get(url, params=None, timeout=None):

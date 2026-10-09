@@ -230,6 +230,52 @@ def test_deezer_healthcheck():
     assert DeezerProvider({"deezer_arl": ""}).healthcheck() is False
 
 
+class AuthenticationError(Exception):
+    """Stand-in for streamrip's bare (message-less) AuthenticationError."""
+
+
+class FakeClosableSession:
+    closed = False
+
+    async def close(self):
+        self.closed = True
+
+
+class RejectingDeezerClient(FakeDeezerClient):
+    """Like streamrip: opens its session, then rejects the ARL."""
+    last = None
+
+    async def login(self):
+        self.session = FakeClosableSession()
+        RejectingDeezerClient.last = self
+        raise AuthenticationError
+
+
+def _rejected_deezer():
+    p = DeezerProvider({"deezer_arl": "expired-arl"})
+    p._client_factory = RejectingDeezerClient
+    return p
+
+
+def test_deezer_rejected_arl_raises_clear_error_and_closes_session(tmp_path):
+    from bpm_tagger.grabber.providers.base import ProviderAuthError
+    cand = ProviderCandidate(provider="deezer", provider_track_id="1")
+    with pytest.raises(ProviderAuthError, match="rejected the ARL"):
+        _rejected_deezer().download(cand, str(tmp_path))
+    assert RejectingDeezerClient.last.session.closed  # no "Unclosed client session"
+    # Search surfaces it too, instead of looking like "no results".
+    with pytest.raises(ProviderAuthError):
+        _rejected_deezer().search(TrackMeta(title="x", artist="y"))
+    assert RejectingDeezerClient.last.session.closed
+
+
+def test_deezer_verify_explains_failure():
+    assert _deezer().verify() is None
+    assert "rejected the ARL" in _rejected_deezer().verify()
+    assert _rejected_deezer().healthcheck() is False
+    assert DeezerProvider({"deezer_arl": ""}).verify() == "No Deezer ARL configured"
+
+
 # ── ordering ──────────────────────────────────────────────────────────────────
 def test_build_providers_monochrome_on_hold():
     # Monochrome is on hold: skipped even when it's in the order AND configured.
