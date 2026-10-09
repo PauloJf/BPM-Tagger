@@ -48,6 +48,9 @@ function Row({ item, onRetry, onCancel, onDelete }: { item: QueueItem; onRetry: 
           )}
           {item.provider ? ` · ${item.provider}` : ""}{item.error ? ` · ${item.error}` : ""}
         </div>
+        {item.note && (
+          <div className="q-note" style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>{item.note}</div>
+        )}
         {item.status === "downloading" && (
           <div className="q-prog-track"><div className="q-prog-fill" style={{ width: `${Math.round((item.progress || 0) * 100)}%` }} /></div>
         )}

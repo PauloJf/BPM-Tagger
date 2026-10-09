@@ -242,3 +242,92 @@ def test_rejected_credentials_only_provider_fails_with_reason(tmp_path):
     assert "rejected the ARL" in db.get_grab_item(item_id)["error"]
     failed = [b for t, b in notifier.sent if t.startswith("Grab failed")]
     assert failed and "rejected the ARL" in failed[0]
+
+
+# ── search note + Spotify ISRC backfill ───────────────────────────────────────
+class NotingProvider(FakeProvider):
+    def search(self, meta, limit=8):
+        from bpm_tagger.grabber.providers.base import SearchResults
+        return SearchResults(super().search(meta, limit), "ISRC X isn't in Deezer's catalogue; searched by title instead")
+
+
+def test_search_note_saved_on_item_and_event_then_cleared_on_research(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    item_id = _enqueue(db)
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[NotingProvider(quality_match=False)])
+    assert pipe.process_item(db.get_grab_item(item_id)) == "awaiting_user"
+    assert "isn't in Deezer's catalogue" in db.get_grab_item(item_id)["note"]
+    assert any(e["event"] == "note" for e in db.get_grab_events(item_id))
+    # A later search with nothing to say clears the stale note.
+    pipe.providers = [FakeProvider(quality_match=False)]
+    pipe._search_and_score(worker_mod.TrackMeta(title="t", artist="a"),
+                           worker_mod.TrackMeta(title="t", artist="a"), item_id)
+    assert not db.get_grab_item(item_id)["note"]
+
+
+class FakeSpotify:
+    def __init__(self, isrc="USUG11904206", connected=True, boom=False):
+        self.isrc, self.connected, self.boom, self.asked = isrc, connected, boom, []
+
+    def is_connected(self):
+        return self.connected
+
+    def get_track_isrc(self, track_id):
+        self.asked.append(track_id)
+        if self.boom:
+            raise RuntimeError("spotify down")
+        return self.isrc
+
+
+def _no_isrc_item(db):
+    return db.enqueue_grab({"spotify_track_id": "s9", "title": "Blinding Lights", "artist": "The Weeknd",
+                            "album": "After Hours", "duration_ms": 200000, "isrc": ""})
+
+
+def test_missing_isrc_is_backfilled_from_spotify(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    item_id = _no_isrc_item(db)
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[FakeProvider()])
+    pipe._spotify = FakeSpotify()
+    item = db.get_grab_item(item_id)
+    pipe._backfill_isrc(item)
+    assert item["isrc"] == "USUG11904206"
+    assert db.get_grab_item(item_id)["isrc"] == "USUG11904206"
+    assert any("fetched from Spotify" in (e["detail"] or "") for e in db.get_grab_events(item_id))
+
+
+@pytest.mark.parametrize("spotify", [FakeSpotify(connected=False), FakeSpotify(boom=True),
+                                     FakeSpotify(isrc="")])
+def test_isrc_backfill_is_best_effort(tmp_path, spotify):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    item_id = _no_isrc_item(db)
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[FakeProvider()])
+    pipe._spotify = spotify
+    item = db.get_grab_item(item_id)
+    pipe._backfill_isrc(item)  # must not raise
+    assert not item["isrc"]
+    assert pipe.process_item(db.get_grab_item(item_id)) == "done"
+
+
+def test_backfill_skips_items_that_already_have_an_isrc_or_no_spotify_id(tmp_path):
+    cfg = _config(tmp_path)
+    db = BPMDatabase(cfg["db_path"])
+    pipe = GrabPipeline(cfg, db, tagger=None, providers=[FakeProvider()])
+    pipe._spotify = fake = FakeSpotify()
+    pipe._backfill_isrc(db.get_grab_item(_enqueue(db)))                     # has an ISRC
+    pipe._backfill_isrc({"id": 1, "isrc": "", "spotify_track_id": ""})      # nothing to ask about
+    assert fake.asked == []
+
+
+def test_spotify_get_track_isrc_uses_single_track_endpoint(monkeypatch):
+    from bpm_tagger.grabber.spotify import SpotifyClient
+    c = SpotifyClient({}, db=None)
+    seen = []
+    monkeypatch.setattr(c, "_get", lambda path, params=None: seen.append(path) or
+                        {"external_ids": {"isrc": "usug11904206"}})
+    assert c.get_track_isrc("abc") == "USUG11904206"
+    assert seen == ["/tracks/abc"]
+    assert c.get_track_isrc("") == ""

@@ -62,6 +62,18 @@ class ProviderCandidate:
                 "duration_ms": self.duration_ms, "isrc": self.isrc}
 
 
+class SearchResults(list):
+    """A provider's candidate list plus an optional human-readable ``note`` about
+    how it was found (e.g. the ISRC lookup missed, so the title search ran). A
+    plain list subclass, so every existing caller keeps working, and the note
+    travels with the result rather than living on the shared provider instance."""
+    note: str = ""
+
+    def __init__(self, items=(), note: str = ""):
+        super().__init__(items)
+        self.note = note
+
+
 @dataclass
 class DownloadedFile:
     path: str

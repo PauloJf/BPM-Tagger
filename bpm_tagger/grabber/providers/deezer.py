@@ -17,7 +17,7 @@ import os
 from typing import Optional
 
 from .base import (DownloadedFile, Provider, ProviderAuthError, ProviderCandidate,
-                   ProgressCb, TrackMeta, exc_text)
+                   ProgressCb, SearchResults, TrackMeta, exc_text)
 
 log = logging.getLogger(__name__)
 
@@ -95,26 +95,38 @@ class DeezerProvider(Provider):
         # hits behind it as fallbacks if its download fails. Falls through to the
         # text search alone when Deezer has no such ISRC or the track isn't
         # streamable from the account's country.
-        hit = self._search_isrc(meta.isrc)
+        hit, note = self._search_isrc(meta.isrc)
         found = [hit] if hit else []
         query = f"{meta.artist} {meta.title}".strip()
         if not query:
-            return found
+            return SearchResults(found, note)
         try:
             text = asyncio.run(self._search(query, limit))
         except ProviderAuthError:
             raise  # not a per-query miss: let the caller surface it
         except Exception as exc:
             log.warning("Deezer search failed: %s", exc_text(exc))
-            return found
-        return found + [c for c in text if not hit or c.provider_track_id != hit.provider_track_id]
+            return SearchResults(found, note)
+        return SearchResults(
+            found + [c for c in text if not hit or c.provider_track_id != hit.provider_track_id],
+            note)
 
-    def _search_isrc(self, isrc: str) -> Optional[ProviderCandidate]:
+    def _search_isrc(self, isrc: str) -> tuple[Optional[ProviderCandidate], str]:
+        """(candidate, note). The note is non-empty only when an ISRC was given but
+        yielded no usable Deezer track, saying why the title search ran instead."""
+        isrc = (isrc or "").strip().upper()
+        if not isrc:
+            return None, ""
         from bpm_tagger.integrations import deezer_catalog
         t = deezer_catalog.track_detail_by_isrc(isrc)
-        if not t or t.get("readable") is False:
-            return None
-        return self._candidate(t, isrc)
+        if t is None:
+            return None, f"Couldn't reach Deezer's ISRC lookup for {isrc}; searched by title instead"
+        if not t:
+            return None, f"ISRC {isrc} isn't in Deezer's catalogue; searched by title instead"
+        if t.get("readable") is False:
+            return None, (f"Deezer lists ISRC {isrc} but it isn't streamable from your account's "
+                          "country; searched by title instead")
+        return self._candidate(t, isrc), ""
 
     def _candidate(self, it: dict, isrc: str = "") -> ProviderCandidate:
         album = it.get("album") or {}

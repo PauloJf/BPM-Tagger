@@ -331,6 +331,8 @@ export interface QueueItem {
   status: string;
   provider: string | null;
   error: string | null;
+  /** How the search went, when it's worth a line (e.g. the ISRC wasn't in Deezer's catalogue). */
+  note?: string | null;
   attempts: number;
   progress: number;
   final_path: string | null;

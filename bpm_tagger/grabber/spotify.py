@@ -223,6 +223,16 @@ class SpotifyClient:
             "norm_artist": normalize_artist(artist_str),
         }
 
+    def get_track_isrc(self, track_id: str) -> str:
+        """One track's ISRC (upper-cased), "" when Spotify doesn't return one.
+
+        Backfill for playlist rows that synced without it. Single-track GET on
+        purpose: Spotify removed the batch ``GET /tracks?ids=`` in February 2026."""
+        if not track_id:
+            return ""
+        data = self._get(f"/tracks/{track_id}")
+        return ((data.get("external_ids") or {}).get("isrc") or "").strip().upper()
+
     def get_playlist_tracks(self, playlist_id: str) -> list[dict]:
         """Return normalized playlist_tracks dicts (paginated)."""
         out: list[dict] = []

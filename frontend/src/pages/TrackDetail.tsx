@@ -25,7 +25,7 @@ export default function TrackDetail() {
   const navigate = useNavigate();
   const path = params.get("path") || "";
   const qc = useQueryClient();
-  const { isGuest } = useAuth();
+  const { isGuest, role } = useAuth();
 
   const detailQ = useQuery({
     queryKey: ["track", path],
@@ -48,6 +48,8 @@ export default function TrackDetail() {
   const [unlockMsg, setUnlockMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeMsg, setReanalyzeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [measureMsg, setMeasureMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [metaForm, setMetaForm] = useState({ title: "", artist: "", album: "", album_artist: "", track_no: "", disc_no: "", year: "", isrc: "" });
@@ -298,6 +300,35 @@ export default function TrackDetail() {
       }
     } catch {
       setUnlockMsg({ ok: false, text: "Request failed." });
+    }
+  }
+
+  // Admin-only (the server enforces it too). Soft delete: the file moves to the
+  // trash folder, recoverable until the trash is emptied in Settings.
+  async function deleteTrack() {
+    const t = detailQ.data?.track;
+    const label = t?.title || basename(path);
+    if (!window.confirm(
+      `Delete "${label}"?
+
+The file leaves your library (Navidrome drops it on its next rescan) but is kept in the trash folder until you empty it in Settings.`,
+    )) return;
+    setDeleting(true);
+    setDeleteMsg(null);
+    try {
+      const res = await api.post<{ ok: boolean; error?: string }>("/api/track/trash", { file_path: path });
+      if (!res.ok) {
+        setDeleteMsg({ ok: false, text: res.error || "Couldn't delete this track." });
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["tracks"] });
+      qc.invalidateQueries({ queryKey: ["track", path] });
+      navigate("/tracks", { replace: true });
+    } catch (e) {
+      // A locked track comes back as a 400 whose message says to unlock it first.
+      setDeleteMsg({ ok: false, text: e instanceof Error && e.message ? e.message : "Request failed." });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -687,7 +718,24 @@ export default function TrackDetail() {
                 {measuring ? "Measuring…" : "Measure loudness"}
               </button>
               {measureMsg && <div style={{ fontSize: 12, color: measureMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", display: "flex", alignItems: "center", gap: 6 }}>{measureMsg.text}</div>}
+              {role === "admin" && (
+                <>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    className="btn btn-danger btn-md"
+                    onClick={deleteTrack}
+                    disabled={deleting}
+                    title="Move this track's file to the trash (recoverable until you empty it in Settings)"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3" />
+                    </svg>
+                    {deleting ? "Deleting…" : "Delete track"}
+                  </button>
+                </>
+              )}
             </div>
+            {deleteMsg && <div style={{ fontSize: 12, color: deleteMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", marginTop: 8 }}>{deleteMsg.text}</div>}
           </div>
 
           {/* Metadata editor */}

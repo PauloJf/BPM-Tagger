@@ -163,7 +163,7 @@ function InboxCard({ item, expanded, onToggle, onChoose, onSearch, onResearch, o
             </>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded ? 14 : 0 }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: expanded && !item.note ? 14 : 0 }}>
           {/* stopPropagation: navigate without toggling the card open/closed. */}
           <ArtistLinks
             artist={item.artist}
@@ -173,6 +173,11 @@ function InboxCard({ item, expanded, onToggle, onChoose, onSearch, onResearch, o
           />
           {item.album ? ` · ${item.album}` : ""}
         </div>
+        {item.note && (
+          <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginTop: 4, marginBottom: expanded ? 14 : 0 }}>
+            {item.note}
+          </div>
+        )}
       </div>
 
       {expanded && (<>

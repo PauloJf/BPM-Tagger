@@ -530,6 +530,10 @@ class _DBBase:
                 updated_at         TEXT
             )
         """)
+        # Additive: a one-line "what happened during the search" shown on the Queue
+        # and Inbox pages (e.g. the Deezer ISRC lookup missed, so we searched by title).
+        if "note" not in {row[1] for row in conn.execute("PRAGMA table_info(grab_queue)")}:
+            conn.execute("ALTER TABLE grab_queue ADD COLUMN note TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_status ON grab_queue(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_sid ON grab_queue(spotify_track_id)")
         conn.execute("""

@@ -55,9 +55,34 @@ class GrabPipeline:
         self.dry_run = bool(config.get("grab_dry_run", False))
         self.grab_tmp = os.path.join(os.path.dirname(os.path.abspath(config["db_path"])), "grab_tmp")
         self._auth_lock = threading.Lock()  # GrabPool threads share one pipeline
+        self._spotify = None  # lazy SpotifyClient for ISRC backfill (shares its token cache)
+        self._spotify_lock = threading.Lock()
 
     def _provider(self, name):
         return next((p for p in self.providers if p.name == name), None)
+
+    def _backfill_isrc(self, item: dict) -> None:
+        """Ask Spotify for the ISRC of a queue item that synced without one, so the
+        Deezer lookup (and the exact-match score) can use it. Best effort: any
+        failure just leaves the item as it was."""
+        if (item.get("isrc") or "").strip() or not item.get("spotify_track_id"):
+            return
+        try:
+            with self._spotify_lock:
+                if self._spotify is None:
+                    from .spotify import SpotifyClient
+                    self._spotify = SpotifyClient(self.config, self.db)
+                client = self._spotify
+            if not client.is_connected():
+                return
+            isrc = client.get_track_isrc(item["spotify_track_id"])
+        except Exception as exc:
+            log.warning("Spotify ISRC backfill failed for item %s: %s", item.get("id"), exc_text(exc))
+            return
+        if isrc:
+            item["isrc"] = isrc
+            self.db.update_grab(item["id"], isrc=isrc)
+            self.db.add_grab_event(item["id"], "info", f"ISRC {isrc} fetched from Spotify")
 
     def _candidate_from_row(self, row: dict) -> ProviderCandidate:
         return ProviderCandidate(
@@ -72,6 +97,7 @@ class GrabPipeline:
         """Search using `search_meta` (may be a user override), score every
         candidate against `score_meta` (always the real track)."""
         found = []
+        notes = []
         for provider in self.providers:
             try:
                 cands = provider.search(search_meta, limit=8)
@@ -81,6 +107,8 @@ class GrabPipeline:
             except Exception as exc:
                 log.warning("Provider %s search failed: %s", provider.name, exc_text(exc))
                 continue
+            if getattr(cands, "note", ""):
+                notes.append(cands.note)
             for c in cands:
                 s, br = score(score_meta.as_match(), c.as_match())
                 if provider.name == "ytdlp" and not c.is_topic:
@@ -94,6 +122,11 @@ class GrabPipeline:
         found.sort(key=lambda c: c.score, reverse=True)
         for i, c in enumerate(found):
             c.rank = i
+        if item_id is not None:
+            note = "; ".join(notes)
+            self.db.update_grab(item_id, note=note)  # also clears a stale note on a re-search
+            if note:
+                self.db.add_grab_event(item_id, "note", note)
         return found
 
     def _download_with_fallback(self, item_id, candidates, tmp_dir):
@@ -139,6 +172,7 @@ class GrabPipeline:
     def process_item(self, item: dict) -> str:
         """Run one queue item through the pipeline. Returns the terminal status."""
         item_id = item["id"]
+        self._backfill_isrc(item)
         meta = _meta_from_item(item)
         meta["norm_title"] = normalize_title(meta.get("title"))
         meta["norm_artist"] = normalize_artist(meta.get("artist"))

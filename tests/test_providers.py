@@ -350,4 +350,49 @@ def test_deezer_no_isrc_skips_the_lookup(monkeypatch):
     monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc",
                         lambda i: called.append(i) or {})
     _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma"))
-    assert called == [""]  # asked with no ISRC → the helper returns {} without any request
+    assert called == []  # no ISRC → no lookup at all
+
+
+# ── Deezer: the note explaining why the title search ran ──────────────────────
+def test_deezer_isrc_miss_sets_note(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc", lambda i: {})
+    res = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma", isrc="usug12500914"))
+    assert res.note == "ISRC USUG12500914 isn't in Deezer's catalogue; searched by title instead"
+    assert [c.provider_track_id for c in res] == ["3380574911", "2"]  # text search still ran
+
+
+def test_deezer_isrc_unreadable_note_names_the_country_cause(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc",
+                        lambda i: _isrc_track(readable=False))
+    res = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma", isrc="USUG12500914"))
+    assert "isn't streamable from your account's country" in res.note
+
+
+def test_deezer_isrc_lookup_failure_note_is_distinct_from_a_miss(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc", lambda i: None)
+    res = _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma", isrc="USUG12500914"))
+    assert res.note.startswith("Couldn't reach Deezer's ISRC lookup")
+
+
+def test_deezer_no_note_on_hit_or_without_isrc(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog
+    monkeypatch.setattr(deezer_catalog, "track_detail_by_isrc", lambda i: _isrc_track())
+    assert _deezer().search(TrackMeta(title="x", artist="y", isrc="USUG12500914")).note == ""
+    assert _deezer().search(TrackMeta(title="Voices In My Head", artist="Anyma")).note == ""
+
+
+def test_catalog_isrc_detail_distinguishes_miss_from_failure(monkeypatch):
+    from bpm_tagger.integrations import deezer_catalog as dc
+    monkeypatch.setattr(dc, "_get", lambda path, params=None: {"error": {"code": 800}})
+    assert dc.track_detail_by_isrc("XX1") == {}
+    monkeypatch.setattr(dc, "_get", lambda path, params=None: {"id": 5, "title": "t"})
+    assert dc.track_detail_by_isrc("xx1")["id"] == 5
+
+    def boom(path, params=None):
+        raise RuntimeError("down")
+    monkeypatch.setattr(dc, "_get", boom)
+    assert dc.track_detail_by_isrc("XX1") is None
+    assert dc.track_detail_by_isrc("") == {}

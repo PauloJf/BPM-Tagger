@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v2.18.2 — 2026-10-09
+
+- **Delete a track from its page (admin only).** The track-detail page has a **Delete track** button, shown only to admin accounts. It asks first, then moves the file to the trash folder (recoverable until you empty it in Settings), marks it deleted and asks Navidrome to rescan, the same soft delete the Duplicates page uses. A locked track refuses with a message to unlock it first. Player accounts can't delete: the server refuses the request, not just the UI.
+- **A note when Deezer doesn't have the ISRC.** When a track has an ISRC but Deezer's catalogue doesn't (or lists it as unstreamable from your account's country, or the lookup couldn't reach Deezer), the item now says so — "ISRC … isn't in Deezer's catalogue; searched by title instead" — on the Queue row and the Inbox card, and in the item's history. The title search itself already ran as the fallback; the reason just wasn't visible. The note clears when the item is searched again.
+- **Missing ISRCs are fetched from Spotify.** A queued item from a Spotify playlist sync that arrives without an ISRC now asks Spotify for it (one `GET /tracks/{id}`; Spotify removed the batch endpoint in February 2026) before searching, so the exact Deezer ISRC lookup and the instant-accept score can apply. Best effort: if Spotify isn't connected or the call fails, the grab proceeds exactly as before.
+
 ## v2.18.1 — 2026-10-09
 
 - **Fixed: some tracks had no download candidates even though Deezer has them.** The grabber searched Deezer by free-text "artist title", which misses tracks whose title carries a suffix like "- Radio Edit", "(feat. X)" or "- 2011 Remaster", even though the preview (which resolves the track by ISRC) found them. When a track has an ISRC, the Deezer provider now looks it up by ISRC first, an exact match that auto-accepts, and keeps the text-search results behind it as fallbacks. A track Deezer lists but marks unstreamable from your country still falls through to the text search and yt-dlp.
