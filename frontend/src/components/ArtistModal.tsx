@@ -1,15 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { DeezerAlbumDetail, DeezerAlbumMeta, DeezerArtistResponse, RelatedTrack } from "../lib/types";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
-import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "./trackBits";
 
-function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: boolean }) {
-  const add = useSuggestionQueue();
-  const adding = add.isPending && add.variables?.dz_track_id === t.dz_track_id;
+function TrackRow({ t }: { t: RelatedTrack }) {
   return (
     <div className="pl-track-row" style={{ gridTemplateColumns: "1fr auto", gap: 8 }}>
       <div style={{ minWidth: 0 }}>
@@ -29,21 +25,13 @@ function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: bool
           ) : (
             <span className="chip chip--have sugg-action">✓ in library</span>
           )
-        ) : t.queued ? (
-          <span className="chip chip--queued sugg-action">↓ queued</span>
-        ) : grabberEnabled ? (
-          <button className="btn btn-soft btn-sm sugg-action" disabled={adding}
-            onClick={() => add.mutate({ dz_track_id: t.dz_track_id, title: t.title, artist: t.artist, album: t.album, duration_ms: t.duration_ms, cover_url: t.cover_url })}>
-            Add
-          </button>
         ) : null}
       </div>
     </div>
   );
 }
 
-function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled: boolean }) {
-  const qc = useQueryClient();
+function AlbumRow({ al }: { al: DeezerAlbumMeta }) {
   const [open, setOpen] = useState(false);
   const detailQ = useQuery({
     queryKey: ["deezer-album", al.dz_album_id],
@@ -51,16 +39,6 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
     enabled: open,
     staleTime: 60_000,
   });
-  const addAlbum = useMutation({
-    mutationFn: () => api.post<{ ok: boolean; enqueued: number; total: number }>(
-      "/api/suggestions/queue-album", { album_id: al.dz_album_id }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["queue"] });
-      qc.invalidateQueries({ queryKey: ["grabber-status"] });
-      qc.invalidateQueries({ queryKey: ["deezer-album", al.dz_album_id] });
-    },
-  });
-  const added = addAlbum.data;
   // Deezer's artist-albums list omits the track count (it's only on the full
   // album object), so it arrives as 0. Show the real count once expanded.
   const nbTracks = detailQ.data?.album.tracks.length ?? (al.nb_tracks || 0);
@@ -83,15 +61,6 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
             {[al.year, nbTracks > 0 ? `${nbTracks} track${nbTracks === 1 ? "" : "s"}` : "", al.explicit ? "explicit" : ""].filter(Boolean).join(" · ")}
           </div>
         </button>
-        {grabberEnabled && (
-          added ? (
-            <span className="chip chip--queued" title={`${added.enqueued} of ${added.total} queued`}>↓ {added.enqueued} queued</span>
-          ) : (
-            <button className="btn btn-soft btn-sm" disabled={addAlbum.isPending} onClick={() => addAlbum.mutate()}>
-              {addAlbum.isPending ? "Adding…" : "Add all"}
-            </button>
-          )
-        )}
         <button className="btn btn-bare btn-sm" style={{ padding: "2px 8px" }} aria-expanded={open} onClick={() => setOpen((o) => !o)} title={open ? "Hide tracks" : "Show tracks"}>
           {open ? "–" : "+"}
         </button>
@@ -104,7 +73,7 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
             <div className="tracks-row-empty">No tracks found.</div>
           ) : (
             detailQ.data!.album.tracks.map((t) => (
-              <TrackRow key={t.dz_track_id} t={t} grabberEnabled={grabberEnabled} />
+              <TrackRow key={t.dz_track_id} t={t} />
             ))
           )}
         </div>
@@ -113,13 +82,10 @@ function AlbumRow({ al, grabberEnabled }: { al: DeezerAlbumMeta; grabberEnabled:
   );
 }
 
-/** Full-detail popup for a Deezer artist: bio, top tracks, and discography
- *  (albums + singles/EPs) each addable to the grab queue. Opened from a
- *  suggested-artist card or a related-artist row. */
+/** Full-detail popup for a Deezer artist: bio, top tracks (with 30 s previews), and
+ *  discography (albums + singles/EPs). Opened from a related-artist row or the
+ *  artist page's Browse Deezer button. */
 export default function ArtistModal({ dzId, name, onClose }: { dzId: string; name: string; onClose: () => void }) {
-  const grabber = useGrabberStatus();
-  const grabberEnabled = grabber.data?.enabled === true;
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -183,7 +149,7 @@ export default function ArtistModal({ dzId, name, onClose }: { dzId: string; nam
               <section style={{ marginBottom: 18 }}>
                 <div className="section-label"><span>Top tracks</span></div>
                 <div className="tracks-table">
-                  {topTracks.map((t) => <TrackRow key={t.dz_track_id} t={t} grabberEnabled={grabberEnabled} />)}
+                  {topTracks.map((t) => <TrackRow key={t.dz_track_id} t={t} />)}
                 </div>
               </section>
             )}
@@ -191,7 +157,7 @@ export default function ArtistModal({ dzId, name, onClose }: { dzId: string; nam
               <section style={{ marginBottom: 18 }}>
                 <div className="section-label"><span>Albums</span></div>
                 <div className="card" style={{ padding: 0 }}>
-                  {albums.map((al) => <AlbumRow key={al.dz_album_id} al={al} grabberEnabled={grabberEnabled} />)}
+                  {albums.map((al) => <AlbumRow key={al.dz_album_id} al={al} />)}
                 </div>
               </section>
             )}
@@ -199,7 +165,7 @@ export default function ArtistModal({ dzId, name, onClose }: { dzId: string; nam
               <section>
                 <div className="section-label"><span>Singles &amp; EPs</span></div>
                 <div className="card" style={{ padding: 0 }}>
-                  {singles.map((al) => <AlbumRow key={al.dz_album_id} al={al} grabberEnabled={grabberEnabled} />)}
+                  {singles.map((al) => <AlbumRow key={al.dz_album_id} al={al} />)}
                 </div>
               </section>
             )}

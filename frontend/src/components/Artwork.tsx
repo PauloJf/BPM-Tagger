@@ -54,7 +54,7 @@ export function ArtistImage({ name, fallbackPath, size, style, v }: { name: stri
 /** Cover art from an arbitrary URL, with the same ♪ placeholder as <Cover>.
  *
  *  Used for playlist rows we don't own a local file for: the source's own
- *  artwork (Spotify's CDN — allowed by the CSP's img-src). A Navidrome row's
+ *  artwork (e.g. a Spotify playlist's CDN art — allowed by the CSP's img-src). A Navidrome row's
  *  cover_url is a bare Subsonic coverArt id rather than a URL, so it simply
  *  fails to load and falls through to the placeholder — which is why the column
  *  degrades rather than breaks. */

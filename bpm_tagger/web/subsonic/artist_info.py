@@ -31,7 +31,7 @@ _inflight: dict[str, threading.Event] = {}
 
 
 def _cache():
-    from ..api.suggestions import _cache_get, _cache_put
+    from ..api.related import _cache_get, _cache_put
     return _cache_get, _cache_put
 
 

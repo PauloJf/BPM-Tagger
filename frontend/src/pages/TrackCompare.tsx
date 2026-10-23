@@ -150,7 +150,7 @@ function ColumnHeader({ track, onTrash, onKeep, showKeep, busy, suggested }: { t
       {cands != null && (
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
           {cands.length === 0 ? (
-            <span style={{ color: "var(--muted)" }}>No ISRC found via Spotify or MusicBrainz.</span>
+            <span style={{ color: "var(--muted)" }}>No ISRC found via Deezer or MusicBrainz.</span>
           ) : (
             cands.map((c) => (
               <div key={c.source + c.isrc} style={{ display: "flex", gap: 8, alignItems: "center" }}>

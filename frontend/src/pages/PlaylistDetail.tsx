@@ -6,11 +6,9 @@ import type { Playlist, PlaylistTrack } from "../lib/types";
 import { basename } from "../lib/paths";
 import type { PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { useAuth } from "../lib/auth";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { QueueActions } from "../components/QueueActions";
-import PlaylistSuggestions from "../components/PlaylistSuggestions";
 import PlaylistStats from "../components/PlaylistStats";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import PlaylistSplit from "../components/PlaylistSplit";
@@ -126,7 +124,6 @@ export function countDupClusters(tracks: PlaylistTrack[]): number {
 
 function StatusChip({ s }: { s: string }) {
   if (s === "have") return <span className="chip chip--have">✓ have</span>;
-  if (s === "queued") return <span className="chip chip--queued">↓ queued</span>;
   if (s === "removed") return <span className="chip chip--removed">− removed</span>;
   return <span className="chip chip--missing">✗ missing</span>;
 }
@@ -212,7 +209,6 @@ export default function PlaylistDetail() {
   const [params] = useSearchParams();
   const id = params.get("id");
   const qc = useQueryClient();
-  const status = useGrabberStatus();
   const { role } = useAuth();
   const [tab, setTab] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("position");
@@ -236,15 +232,8 @@ export default function PlaylistDetail() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["playlist-tracks", id] });
     qc.invalidateQueries({ queryKey: ["playlists"] });
-    qc.invalidateQueries({ queryKey: ["grabber-status"] });
   };
   const sync = useMutation({ mutationFn: () => api.post(`/api/playlists/${id}/sync`), onSuccess: invalidate });
-  // Grabs the missing tracks via the download providers. The route keeps its
-  // original name (it's the download queue); only the button says "Download".
-  const downloadMissing = useMutation({
-    mutationFn: () => api.post<{ enqueued: number }>(`/api/playlists/${id}/enqueue-missing`),
-    onSuccess: invalidate,
-  });
   const removeTrack = useMutation({
     mutationFn: (ptId: number) => api.del(`/api/playlists/${id}/tracks/${ptId}`),
     onSuccess: invalidate,
@@ -284,19 +273,14 @@ export default function PlaylistDetail() {
   const playable = playableTracks(tracks);
   const canPlay = playable.length > 0;
   // Surface the count only when it differs from what's listed — a 50-track
-  // Spotify playlist with 12 matched must read "Play (12)", or the button looks
+  // playlist with 12 matched must read "Play (12)", or the button looks
   // broken; on the Have tab the numbers agree and a count would be noise.
   const playLabel = canPlay && playable.length !== tracks.length ? ` (${playable.length})` : "";
   const noPlayReason = "No tracks in this playlist are in your library yet";
-  const spotifyConnected = status.data?.spotify?.connected === true;
-  const grabberEnabled = status.data?.enabled === true;
-  const isSpotify = pl?.source === "spotify";
   const isLocal = pl?.source === "local";
-  const canSync = pl?.source === "navidrome" || (isSpotify && spotifyConnected);
-  // Queuing missing tracks works for any synced source now (Phase 5) — a Navidrome
-  // playlist's missing tracks are grabbed by metadata via the shared enqueue helper.
-  // Gated on the grabber being enabled; Spotify additionally needs a live connection.
-  const canQueueMissing = !isLocal && grabberEnabled && (pl?.missing_count ?? 0) > 0;
+  // Only Navidrome mirrors still sync; a Spotify playlist left over from the old
+  // grabber stays as a static, playable list.
+  const canSync = pl?.source === "navidrome";
   // Rename is Local-only (sync owns a mirror's name); the description is ours on
   // any source. Both are admin-only, like the rest of playlist management.
   const canRename = role === "admin" && isLocal && !!pl;
@@ -351,7 +335,6 @@ export default function PlaylistDetail() {
     { key: "", label: "All" },
     { key: "have", label: "Have" },
     { key: "missing", label: "Missing" },
-    ...(!isLocal ? [{ key: "queued", label: "Queued" }] : []),
     ...((pl?.removed_count ?? 0) > 0 ? [{ key: "removed", label: "Removed" }] : []),
   ];
 
@@ -368,16 +351,6 @@ export default function PlaylistDetail() {
         </Link>
         <div style={{ flex: 1 }} />
         <QueueActions tracks={playable} label={playLabel} disabledTitle={noPlayReason} weightedSource={Number(id)} />
-        {canQueueMissing && (
-          <button
-            className="btn btn-soft btn-sm"
-            disabled={downloadMissing.isPending || (isSpotify && !spotifyConnected)}
-            title={isSpotify && !spotifyConnected ? "Connect Spotify to download missing tracks" : "Grab the missing tracks via the download providers"}
-            onClick={() => downloadMissing.mutate()}
-          >
-            {downloadMissing.isPending ? "Downloading…" : `Download missing (${pl?.missing_count})`}
-          </button>
-        )}
         {role === "admin" && (pl?.have_count ?? 0) > 0 && (
           <AddToPlaylistMenu
             importFrom={Number(id)}
@@ -397,8 +370,8 @@ export default function PlaylistDetail() {
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
         )}
-        {!isLocal && (
-          <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync} onClick={() => sync.mutate()}>
+        {canSync && (
+          <button className="btn btn-ghost btn-sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
             {sync.isPending ? "Syncing…" : "Sync now"}
           </button>
         )}
@@ -456,7 +429,6 @@ export default function PlaylistDetail() {
           {pl && (
             <div className="pl-chips">
               <span className="chip chip--have">✓ {pl.have_count} have</span>
-              {pl.queued_count > 0 && <span className="chip chip--queued">↓ {pl.queued_count} queued</span>}
               <span className="chip chip--missing">✗ {pl.missing_count} missing</span>
               {pl.removed_count > 0 && <span className="chip chip--removed">− {pl.removed_count} removed</span>}
               <span className="chip chip--neutral">{pl.track_count} total</span>
@@ -532,7 +504,7 @@ export default function PlaylistDetail() {
         ) : (
           tracks.map((t, i) => {
             // 'have' rows are matched to a local file → link into the library and
-            // show its real BPM. Missing/queued/removed rows stay plain text.
+            // show its real BPM. Missing/removed rows stay plain text.
             const inLib = t.derived_status === "have" && !!t.matched_file_path;
             const label = t.title || "this track";
             const artist = trackArtist(t);
@@ -662,12 +634,6 @@ export default function PlaylistDetail() {
           })
         )}
       </div>
-
-      {/* Related-track suggestions — local playlists only, and admin-only since
-          the add endpoint is admin-scoped. */}
-      {isLocal && role === "admin" && tracks.length > 0 && (
-        <PlaylistSuggestions playlistId={id} tracks={tracks} />
-      )}
 
       {pickerOpen && (
         <ImagePicker

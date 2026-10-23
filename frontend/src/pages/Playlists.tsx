@@ -2,14 +2,13 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import type { NavidromePlaylist, Playlist, PlaylistSource, SpotifyPlaylist } from "../lib/types";
+import type { NavidromePlaylist, Playlist, PlaylistSource } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
-import { Toggle } from "../components/Toggle";
 import PageHeader from "../components/PageHeader";
 import { PlaylistCover } from "../components/Artwork";
 
 const SOURCE_META: Record<PlaylistSource, { label: string; glyph: string; cls: string }> = {
+  // Left over from the old grabber: no longer synced, still playable.
   spotify: { label: "Spotify", glyph: "●", cls: "pl-src--spotify" },
   navidrome: { label: "Navidrome", glyph: "☁", cls: "pl-src--navidrome" },
   local: { label: "Local", glyph: "♪", cls: "pl-src--local" },
@@ -24,7 +23,6 @@ function Chips({ p }: { p: Playlist }) {
   return (
     <div className="pl-chips">
       <span className="chip chip--have">✓ {p.have_count}</span>
-      {p.queued_count > 0 && <span className="chip chip--queued">↓ {p.queued_count}</span>}
       <span className="chip chip--missing">✗ {p.missing_count}</span>
       {p.new_count > 0 && <span className="chip chip--new">✦ {p.new_count} new</span>}
       {p.removed_count > 0 && <span className="chip chip--removed">− {p.removed_count} removed</span>}
@@ -81,8 +79,6 @@ function ReadinessBadges({ counts, presets, stretchPct, playlistId, name, onPick
 }
 
 type AddBody =
-  | { url: string }
-  | { id: string }
   | { source: "navidrome"; navidrome_id: string; name: string }
   | { source: "local"; name: string };
 
@@ -227,11 +223,9 @@ export default function Playlists() {
   useTitle("Playlists");
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const status = useGrabberStatus();
-  const [url, setUrl] = useState("");
   const [localName, setLocalName] = useState("");
   const [addErr, setAddErr] = useState("");
-  const [browsing, setBrowsing] = useState<null | "spotify" | "navidrome">(null);
+  const [browsing, setBrowsing] = useState<null | "navidrome">(null);
   const [op, setOp] = useState<null | "compare" | "merge">(null);
 
   const playlistsQ = useQuery({
@@ -251,15 +245,6 @@ export default function Playlists() {
   const readiness = readinessQ.data;
   const readinessById = new Map((readiness?.playlists ?? []).map((p) => [p.id, p.counts]));
 
-  const spotifyConnected = status.data?.spotify?.connected === true;
-
-  const spotifyQ = useQuery({
-    queryKey: ["spotify-playlists"],
-    queryFn: () => api.get<{ playlists: SpotifyPlaylist[] }>("/api/spotify/playlists"),
-    enabled: browsing === "spotify" && spotifyConnected,
-    staleTime: 60_000,
-  });
-
   const navidromeQ = useQuery({
     queryKey: ["navidrome-playlists"],
     queryFn: () => api.get<{ playlists: NavidromePlaylist[] }>("/api/navidrome/playlists"),
@@ -270,24 +255,18 @@ export default function Playlists() {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["playlists"] });
-    qc.invalidateQueries({ queryKey: ["grabber-status"] });
-    qc.invalidateQueries({ queryKey: ["spotify-playlists"] });
     qc.invalidateQueries({ queryKey: ["navidrome-playlists"] });
   };
 
   const add = useMutation({
     mutationFn: (body: AddBody) => api.post("/api/playlists", body),
-    onSuccess: () => { setUrl(""); setLocalName(""); setAddErr(""); invalidate(); },
+    onSuccess: () => { setLocalName(""); setAddErr(""); invalidate(); },
     onError: (e) => setAddErr(e instanceof ApiError ? e.message : "Failed to add playlist"),
   });
   const addLocal = () => {
     const name = localName.trim();
     if (name) add.mutate({ source: "local", name });
   };
-  const toggle = useMutation({
-    mutationFn: (v: { id: number; enabled: boolean }) => api.patch(`/api/playlists/${v.id}`, { enabled: v.enabled }),
-    onSuccess: invalidate,
-  });
   // Pinning is the playlist list's "custom ordering": the server sorts pinned
   // first, then alphabetically, so this only has to refetch.
   const pin = useMutation({
@@ -308,8 +287,6 @@ export default function Playlists() {
     navidromeQ.isError && navidromeQ.error instanceof ApiError &&
     navidromeQ.error.message === "navidrome_not_configured";
 
-  const canSync = (p: Playlist) => p.source === "navidrome" || (p.source === "spotify" && spotifyConnected);
-
   /** Run this playlist at that cadence: the Run page reads its source from
    *  localStorage, so set it before navigating with the target deep-linked. */
   const runPlaylistAt = (playlistId: number, bpm: number) => {
@@ -324,7 +301,7 @@ export default function Playlists() {
         subtitle={
           playlists.length > 0
             ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{playlists.length}</span> playlist{playlists.length === 1 ? "" : "s"} compared against your library</>
-            : "Spotify and Navidrome playlists compared against your library."
+            : "Navidrome and local playlists compared against your library."
         }
         actions={playlists.length >= 2 ? (
           <>
@@ -355,31 +332,13 @@ export default function Playlists() {
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="section-label"><span>Add a playlist</span></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {spotifyConnected && (
-            <>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="Spotify playlist URL or ID"
-                style={{ flex: 1, minWidth: 220, fontFamily: "var(--mono)", fontSize: 12 }}
-                onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) add.mutate({ url: url.trim() }); }}
-              />
-              <button className="btn btn-primary btn-md" disabled={!url.trim() || add.isPending} onClick={() => add.mutate({ url: url.trim() })}>
-                {add.isPending ? "Adding…" : "Add"}
-              </button>
-              <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => b === "spotify" ? null : "spotify")}>
-                {browsing === "spotify" ? "Hide Spotify" : "Browse Spotify"}
-              </button>
-            </>
-          )}
           <button className="btn btn-ghost btn-md" onClick={() => setBrowsing((b) => b === "navidrome" ? null : "navidrome")}>
             {browsing === "navidrome" ? "Hide Navidrome" : "Browse Navidrome"}
           </button>
         </div>
 
         {/* Local playlist: a name is all it takes — tracks are added later from
-            the library (track pages / rows). No source, no sync, no grabber. */}
+            the library (track pages / rows). No source, no sync. */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
           <input
             type="text"
@@ -394,32 +353,7 @@ export default function Playlists() {
             Create local playlist
           </button>
         </div>
-        {!spotifyConnected && (
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-            Spotify isn't connected — <Link to="/settings" style={{ color: "var(--accent-2)" }}>connect it in Settings</Link> to add Spotify playlists.
-          </div>
-        )}
         {addErr && <div style={{ color: "var(--err-fg)", fontSize: 12, marginTop: 8 }}>{addErr}</div>}
-
-        {browsing === "spotify" && (
-          <BrowseList
-            loading={spotifyQ.isLoading}
-            error={spotifyQ.isError ? (spotifyQ.error instanceof ApiError ? spotifyQ.error.message : "Failed to load playlists") : null}
-            empty={(spotifyQ.data?.playlists ?? []).length === 0 ? "No playlists on this Spotify account." : null}
-          >
-            {(spotifyQ.data?.playlists ?? []).map((sp) => (
-              <BrowseRow
-                key={sp.spotify_id}
-                image={sp.image_url}
-                name={sp.name}
-                sub={`${sp.owner ? `${sp.owner} · ` : ""}${sp.track_count} tracks`}
-                watched={sp.watched}
-                adding={add.isPending && !!add.variables && "id" in add.variables && add.variables.id === sp.spotify_id}
-                onAdd={() => add.mutate({ id: sp.spotify_id })}
-              />
-            ))}
-          </BrowseList>
-        )}
 
         {browsing === "navidrome" && (
           <BrowseList
@@ -525,11 +459,8 @@ export default function Playlists() {
                 >
                   📌
                 </button>
-                {p.source === "spotify" && (
-                  <Toggle on={!!p.enabled} onChange={(v) => toggle.mutate({ id: p.id, enabled: v })} label={`Auto-sync "${p.name}"`} />
-                )}
-                {p.source !== "local" && (
-                  <button className="btn btn-ghost btn-sm" disabled={sync.isPending || !canSync(p)} onClick={() => sync.mutate(p.id)}>
+                {p.source === "navidrome" && (
+                  <button className="btn btn-ghost btn-sm" disabled={sync.isPending} onClick={() => sync.mutate(p.id)}>
                     {sync.isPending && sync.variables === p.id ? "Syncing…" : "Sync"}
                   </button>
                 )}

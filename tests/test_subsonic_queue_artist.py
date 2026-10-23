@@ -14,8 +14,8 @@ ai = importlib.import_module("bpm_tagger.web.subsonic.artist_info")
 
 @pytest.fixture
 def env(base_config, monkeypatch):
-    from bpm_tagger.web.api import suggestions
-    monkeypatch.setattr(suggestions, "_CACHE", {})
+    from bpm_tagger.web.api import related
+    monkeypatch.setattr(related, "_CACHE", {})
 
     def make(**over):
         app = _app(base_config, **over)

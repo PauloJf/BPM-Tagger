@@ -6,10 +6,7 @@ requests>=2.31.0
 # Web UI + JSON API (ENABLE_UI)
 flask>=3.0
 waitress>=3.0
-# Fuzzy track matching — grabber, Navidrome playlist/star/play-count sync, suggestions
+# Fuzzy track matching — Navidrome playlist/star/play-count sync, Related panel
 rapidfuzz>=3.9.0
-# Cover-art handling — grabber tagging, playlist covers
+# Cover-art handling — tag/cover editing, playlist covers
 pillow>=10.0.0,<11
-# Download providers — grabber (GRABBER_ENABLED)
-yt-dlp>=2024.8.0
-streamrip>=2.1.0

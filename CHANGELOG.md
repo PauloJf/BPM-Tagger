@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **BREAKING for grabber users: the music grabber is gone from BPM Tagger.** Spotify playlist watching and downloading now lives in a separate project. Navidrome stays the server of record, and BPM Tagger still picks up new files from the music folder (watch mode), BPM-tags and indexes them. Gone from the UI and API: the **Add Music**, **Suggestions**, **Queue** and **Inbox** pages, connecting Spotify, adding or syncing Spotify playlists, **Download missing**, the grabber block on **Stats**, and **Settings → Grabber** (a small **Library** section keeps the tag-index toggle and the public URL). Everything else is untouched: the BPM engine, Run, Listen, Navidrome and Local playlists (compare / merge / split), the Related panel with Deezer previews and the artist catalog browser, lyrics, artwork, ratings, and the Subsonic API.
+- **Upgrading is safe.** `GRABBER_ENABLED`, `SPOTIFY_*`, `DEEZER_*`, `MONOCHROME_*`, `PROVIDER_ORDER`, `OUTPUT_FORMAT`, `GRAB_WORKERS`, `GRAB_DRY_RUN`, `AUTO_ACCEPT_THRESHOLD` and `ASK_THRESHOLD` are ignored (`GRABBER_ENABLED=true` logs one startup warning). Old keys in `settings.json` are left in place, not read. Spotify playlists added earlier stay as **static playlists** — playable, no longer synced. The grabber's database tables are left alone and never dropped.
+- **Spotify is no longer a source for cover, metadata or ISRC lookups.** Image search, **Find metadata** and **Find ISRC** use Deezer (and MusicBrainz for ISRCs), all keyless. The ISRC lookup no longer needs a Deezer ARL: it uses Deezer's public search.
+- **`SYNC_INTERVAL_MINUTES` now covers Navidrome playlists, star sync and play counts** (the Spotify pass is gone). `LYRICS_ENABLED` no longer does anything: it only gated the automatic fetch for downloads. `UI_PUBLIC_URL`, `INDEX_TAGS` and `PATH_TEMPLATE` stay.
+- **Smaller image.** `yt-dlp` and `streamrip` are no longer installed.
+- **Internal:** `matching`, `tagging` and `path_template` moved out of `grabber/` to the package root; the Related endpoints moved from `web/api/suggestions.py` to `web/api/related.py`; a layering test now fails if any module imports the removed `bpm_tagger.grabber` package.
+
 ## v2.18.2 — 2026-10-09
 
 - **Delete a track from its page (admin only).** The track-detail page has a **Delete track** button, shown only to admin accounts. It asks first, then moves the file to the trash folder (recoverable until you empty it in Settings), marks it deleted and asks Navidrome to rescan, the same soft delete the Duplicates page uses. A locked track refuses with a message to unlock it first. Player accounts can't delete: the server refuses the request, not just the UI.

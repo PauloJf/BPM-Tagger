@@ -7,7 +7,6 @@ import type { PlaylistTrack } from "../lib/types";
 const h = vi.hoisted(() => ({
   tracks: [] as unknown[],
   playlist: {} as Record<string, unknown>,
-  grabber: { enabled: false, spotify: { connected: false } } as Record<string, unknown>,
   role: "admin" as string | null,
   // Recorded player calls.
   played: [] as Array<{ tracks: unknown[]; shuffle?: boolean }>,
@@ -41,9 +40,7 @@ vi.mock("../lib/api", () => ({
   apiUpload: vi.fn(() => Promise.resolve({})),
 }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
-vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h.grabber }) }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
-vi.mock("../components/PlaylistSuggestions", () => ({ default: () => null }));
 // The stats strip owns its own fetch (this file's useQuery mock answers every
 // query with the track listing), so it's stubbed to a marker the role tests can
 // look for. Its own behaviour is covered in PlaylistStats.test.tsx.
@@ -103,7 +100,6 @@ beforeEach(() => {
   vi.mocked(api.get).mockResolvedValue({ tracks: [] });
   h.tracks = [];
   h.playlist = counts();
-  h.grabber = { enabled: false, spotify: { connected: false } };
   h.role = "admin";
   h.played = [];
   h.enqueued = [];
@@ -615,15 +611,12 @@ describe("PlaylistDetail — stats strip and per-row plays", () => {
   });
 });
 
-describe("PlaylistDetail — the grabber action is named for what it does", () => {
-  it('reads "Download missing", not "Enqueue missing"', () => {
-    // Two unrelated meanings of "queue" would otherwise sit on one page: audio
-    // playback vs the download queue. The endpoint keeps its original name.
+describe("PlaylistDetail — no download actions", () => {
+  it("offers no way to download missing tracks (the grabber is its own project now)", () => {
     h.tracks = [have(1)];
     h.playlist = counts({ have_count: 1, missing_count: 4, track_count: 5 });
-    h.grabber = { enabled: true, spotify: { connected: true } };
     render(<PlaylistDetail />);
-    expect(btn(/Download missing \(4\)/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Enqueue missing/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Download missing|Enqueue missing/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Queued$/ })).toBeNull();
   });
 });

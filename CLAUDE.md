@@ -22,17 +22,17 @@ Before taking any action that could incur charges on the team plan — including
 
 ## What It Does
 
-**Positioning (since the v2.13.x docs reframe):** the name stays "BPM Tagger", but the docs now lead with what the app became — **a cadence-synced running player for your own music**, built on the tagging engine. Four pillars, in this order: **BPM engine · Run (cadence player) · library companion · optional grabber**. New features and docs should be framed against these pillars; the app is a Navidrome *companion*, not a Navidrome replacement (Navidrome stays the server of record).
+**Positioning (since the v2.13.x docs reframe):** the name stays "BPM Tagger", but the docs now lead with what the app became — **a cadence-synced running player for your own music**, built on the tagging engine. Three pillars, in this order: **BPM engine · Run (cadence player) · library companion**. New features and docs should be framed against these pillars; the app is a Navidrome *companion*, not a Navidrome replacement (Navidrome stays the server of record).
 
 Automatically detects the BPM of every track in a [Navidrome](https://www.navidrome.org/) music library, writes the result back to the file's metadata tag, tracks everything in a SQLite database, sends batched [ntfy](https://ntfy.sh/) notifications, and exposes a password-protected **React** web UI for reviewing and correcting results. The UI installs as a **PWA** (reopens the last-used page — start_url `/run` on first launch, restore logic in `frontend/src/lib/lastPage.ts`; Media Session lock-screen controls; app shell/API never cached by design — but **audio is offline-preloadable**: the service worker serves `/audio` from a capped per-device cache filled by the player's look-ahead and the Run page's per-preset "Prepare offline" downloads, HTTPS-only since it rides the Cache API — see `frontend/src/lib/offline.ts` + `frontend/public/sw.js`) and includes **Run mode** — a tempo-run cadence player: octave-folded BPM queue building preferring **starred** tracks, and a pitch-preserving tempo lock via `playbackRate` — plus **Listen mode** (`/listen`), the regular non-cadence player: play a playlist in order or shuffled at native speed (no BPM required), with a **radio** auto-refill from the same playlist, or (**similar** mode) with related tracks from the library for any queue. Offline "similar" picks (same artist, then octave-folded tempo) live in `web/similar.py`, shared by `/api/related/library` (Similar panel + similar radio) and Subsonic `getSimilarSongs`. The kiosk (player role) gets Listen per the four-level `player_listen_mode` setting (`off`/`on`/`default`/`only` — up to a pure jukebox with no Run page), enforced server-side.
 
-Optional **Music Grabber** (`GRABBER_ENABLED=true`): watch your own Spotify playlists, reconcile them against the library (by ISRC or fuzzy score), download the missing tracks (Deezer via your own ARL → yt-dlp fallback), transcode to one format, tag + BPM-analyze, and file them by a path template — with an ambiguity inbox, download queue, and ntfy pings.
+**The grabber was detached.** The optional Music Grabber (Spotify playlist watching + downloading) no longer lives in this repo: it is a separate project (Music Grabber) that coordinates through the shared music folder — BPM Tagger picks new files up in watch mode — and optionally over HTTP. `GRABBER_ENABLED` and the other grabber settings are ignored (stale keys stay in `settings.json`); old Spotify-source playlists stay as static playlists. Don't reintroduce downloading, Spotify OAuth or provider code here, and keep the public docs free of download mechanics. Plan: `docs/plans/grabber-detach.md`.
 
 ---
 
 ## Core vs optional layers
 
-The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`, `db/`, `config.py`, `main.py`). Everything else — `web/`, `grabber/`, `integrations/`, `notify/`, `install_ping.py` — is an optional layer: off by default or inert until configured, and **never imported at module level by core code** (lazy imports behind a config check only). `tests/test_core_isolation.py` enforces this, and the `core-only` CI job runs every `pytest.mark.core` test with only `requirements-core.txt` installed. New core tests: add `pytestmark = pytest.mark.core`. New features: add an opt-in toggle. See `docs/plans/core-decoupling.md`.
+The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`, `db/`, `config.py`, `main.py`). Everything else — `web/`, `integrations/`, `notify/`, `install_ping.py` — is an optional layer: off by default or inert until configured, and **never imported at module level by core code** (lazy imports behind a config check only). `tests/test_core_isolation.py` enforces this, and the `core-only` CI job runs every `pytest.mark.core` test with only `requirements-core.txt` installed. New core tests: add `pytestmark = pytest.mark.core`. New features: add an opt-in toggle. See `docs/plans/core-decoupling.md`.
 
 ## Repository Layout
 
@@ -41,15 +41,15 @@ The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`
 | `bpm_tagger/` | Backend package — `python -m bpm_tagger` (see sub-modules below) |
 | `bpm_tagger/main.py` | Entry point: build config → dispatch on `MODE` |
 | `bpm_tagger/config.py` | env → config table, `settings.json` overrides, version discovery |
-| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py`, `playlists.py`, `suggestions.py`, `players.py`, `runs.py` (run journal + per-account play attribution), composed in `database.py`; `constants.py` holds `GRAB_*` and `TRACK_SORTS`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
+| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py` (legacy `grab_*` tables, no callers left), `playlists.py`, `suggestions.py` (legacy), `players.py`, `runs.py` (run journal + per-account play attribution), composed in `database.py`; `constants.py` holds `GRAB_*` (legacy) and `TRACK_SORTS`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
 | `bpm_tagger/bpm/` | Detection: `detectors.py`, `pipeline.py` (reconcile/normalize + `ScanProgress`), `tags.py`, `waveform.py` |
 | `bpm_tagger/scan/` | `scanner.py` (`BPMTagger`), `watcher.py` (filesystem watch mode) |
-| `bpm_tagger/grabber/` | Spotify sync + downloader: `sync_engine.py`, `worker.py`, `spotify.py`, `matching.py`, `path_template.py`, `transcode.py`, `tagging.py`, `providers/` |
 | `bpm_tagger/integrations/` | `navidrome.py` (Subsonic rescan), `isrc.py`, `musicbrainz.py` |
 | `bpm_tagger/notify/` | `ntfy.py` — `NotificationManager` |
 | `bpm_tagger/web/` | Flask app factory (`app.py`), `auth.py` (CSRF), `state.py`, and JSON API blueprints under `api/` |
 | `bpm_tagger/text.py` | Stdlib-only title/artist normalizers (`normalize_artist`, `split_artist_credits`, …) — used by the core; `matching.py` re-exports them and adds the rapidfuzz scoring |
-| `bpm_tagger/matching.py`, `tagging.py`, `path_template.py` | Shared helpers used by the optional layers (fuzzy match scoring, tag/cover writing, path templates). Root-level so removing `grabber/` cannot break them; `tests/test_core_isolation.py` keeps them free of grabber/web/integrations imports |
+| `bpm_tagger/matching.py`, `tagging.py`, `path_template.py` | Shared helpers used by the optional layers (fuzzy match scoring, tag/cover writing, path templates). Root-level and free of grabber/web/integrations imports (`tests/test_core_isolation.py` enforces it, and that nothing imports `bpm_tagger.grabber`) |
+| `bpm_tagger/library_artists.py` | `build_library_artists` — which artists the library holds, for the Related panel |
 | `bpm_tagger/hooks.py` | Neutral hooks the core fires for optional layers (`library_changed` → Navidrome rescan when configured) |
 | `bpm_tagger/trash.py` | Soft-delete / recoverable trash for duplicate resolution |
 | `frontend/` | React SPA (Vite + TypeScript + Tailwind); built to `frontend/dist`, served by Flask |
@@ -79,7 +79,6 @@ The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`
 bpm_tagger.main()  (bpm_tagger/main.py)
   ├── build_config() (env) → load_settings_override() (/data/settings.json)
   ├── creates BPMTagger (owns BPMDatabase + NotificationManager)
-  ├── if GRABBER_ENABLED: creates GrabberService (Spotify sync + download workers)
   ├── if ENABLE_UI: [daemon thread] bpm_tagger.web.app.start() ← Flask/Waitress on :5000
   └── dispatches on MODE: scan_all / scan_unscanned / scan_review / watch / watch_all / report / lock / unlock
 ```
@@ -101,30 +100,26 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 `file_hash` = `size:mtime` (not content hash) for speed. Hash is re-read after tag write to avoid re-analysis loop.
 
-### Grabber Subsystem (`bpm_tagger/grabber/`, opt-in via `GRABBER_ENABLED`)
+### Grabber (detached)
 
-`GrabberService` (`sync_engine.py`) owns Spotify sync and the download worker pool; wired in `main.py` and given to the web layer via `BPMTagger.grabber`. Flow:
-
-1. **Sync** — `spotify.py` pulls watched-playlist tracks (Authorization Code OAuth; refresh token in the `oauth_tokens` table). `matching.py` reconciles each against the indexed library by ISRC or a fuzzy title+artist+duration score → have / missing / queued.
-2. **Download** — `worker.py` (`GrabWorker`) pulls from `grab_queue`, tries providers in `PROVIDER_ORDER` (`providers/`: `deezer.py` via streamrip, `ytdlp.py`; `monochrome.py` is on hold), then `transcode.py` (ffmpeg → one `OUTPUT_FORMAT`) → `tagging.py` (tags + cover) → BPM analysis → filed via `path_template.py`. Grabbed files are marked `managed` and hash-stamped so the watcher leaves them alone.
-3. **Ambiguity** — low-confidence matches wait in the inbox (`grab_candidates`) for choose / re-search / skip, with an ntfy ping. ISRC lookups use `integrations/isrc.py` (+ `musicbrainz.py`). Duplicate resolution soft-deletes to `trash.py`.
+`bpm_tagger/grabber/` is gone; see **What It Does** above. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are still created (never dropped, so a rollback or a re-run of the export keeps working) but nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
 
 ### Database (`bpm_tagger/db/` → `BPMDatabase`)
 
 SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_migrate()` — safe on existing DBs.
 
-`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `disliked`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Grabber tag-index columns: `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
+`tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `disliked`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Tag-index columns (library matching, Subsonic, Related): `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
 
-Grabber tables: `playlists`, `playlist_tracks`, `grab_queue`, `grab_candidates` (inbox), `grab_events` (history), `oauth_tokens` (Spotify refresh token), `dismissed_dupes`.
+Legacy grabber tables (unused, kept for rollback): `grab_queue`, `grab_candidates`, `grab_events`, `oauth_tokens`, `suggestions`. Still live: `playlists` (navidrome / local rows; old `spotify` rows are static), `playlist_tracks`, `dismissed_dupes`.
 
 ### Web UI (`bpm_tagger/web/`, React SPA + Flask JSON API)
 
 - **Frontend** is a React SPA (`frontend/`, Vite + TypeScript + Tailwind) built to `frontend/dist`. Flask serves the hashed bundle, static shell, and an `index.html` catch-all for client routes; `web_ui.py` is a back-compat shim.
-- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `spotify`, `playlists`, `playlist_ops` (diff/merge/split), `queue`, `inbox`, `lyrics`, `loudness`, `images`, `run`, `listen`, `player_state`, `players`, `suggestions`, `waveform` (back-fill job), `subsonic_admin` (Subsonic toggle + credentials).
+- **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `playlists`, `playlist_ops` (diff/merge/split), `lyrics`, `loudness`, `images`, `run`, `listen`, `player_state`, `players`, `related` (Related panel + Deezer browse), `waveform` (back-fill job), `subsonic_admin` (Subsonic toggle + credentials).
 - **Optional Subsonic API** (`web/subsonic/`, `SUBSONIC_ENABLED`): a stateless `/rest/*` blueprint registered only when enabled (CSRF-exempt, no session). Own credentials per account (`subsonic_credentials` table: hashed API key + generated password); player users are scoped to their playlists via a `scope` argument on every `db/subsonic.py` query. Album lists read `subsonic_album_index`, kept current by triggers on `tracks` that exist only while the API is enabled. Genres are in the core tag index (`tracks.genre` + `track_genres`). Queries in `db/subsonic.py`. Plan: `docs/plans/subsonic-api.md`.
 - Shared request state lives in `web/state.py` (`AppState`, on `app.extensions["state"]`) — holds `db`, `progress`, `tagger`, config, `settings_path`.
 - All state-changing routes require a per-session CSRF token (`web/auth.py`; SPA fetches it from `/api/me`). File paths are validated against `MUSIC_DIR`.
-- Security: `SameSite=Lax` + `HttpOnly` cookies (`Secure` when `UI_PUBLIC_URL` is https), CSP restricting to same-origin (Spotify image CDNs allowed for cover art), standard hardening headers.
+- Security: `SameSite=Lax` + `HttpOnly` cookies (`Secure` when `UI_PUBLIC_URL` is https), CSP restricting to same-origin (Spotify/Deezer image CDNs allowed for cover art), standard hardening headers.
 - Runtime settings saved to `/data/settings.json` (`config.save_settings`) — no restart needed for most changes.
 - Restart via the settings API uses `os.execv()` (in-place process replacement).
 - Waveform cache: in-memory dict → DB `waveform_peaks` → on-demand librosa recompute (deduplicated via `threading.Event`).

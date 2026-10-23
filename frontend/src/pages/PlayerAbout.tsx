@@ -5,7 +5,7 @@ import { useTitle } from "../hooks/useTitle";
  *  person on a run — not the admin — so it explains what Run mode does and how
  *  to drive it, and stays clear of the library/tagging internals the player
  *  can't reach. Self-contained: it only reads `version` from /api/me (the one
- *  endpoint players are allowed), never the admin-only version/grabber APIs. */
+ *  endpoint players are allowed), never the admin-only version API. */
 
 const HOW: [string, string][] = [
   ["Target BPM", "The big number is your goal cadence — steps per minute. Set it with the presets, the ±1 / ±5 buttons, or tap it in."],

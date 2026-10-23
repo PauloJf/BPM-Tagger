@@ -146,7 +146,7 @@ export const ArrowIcon = () => (
  *    when the row is backed by a library file, so preview isn't limited to the
  *    30-second Deezer clip when we already have the whole song.
  *  - `preview_url` — a pre-known 30 s clip URL (Deezer).
- *  - `resolveUrl()` — lazy path (the inbox resolves Deezer preview URLs on
+ *  - `resolveUrl()` — lazy path (resolve a Deezer preview URL on
  *    demand): the first click fetches the URL *and* starts playback (no
  *    click-twice). A resolved-but-empty result disables the button as "No
  *    preview available". */

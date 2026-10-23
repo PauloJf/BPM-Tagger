@@ -2,22 +2,23 @@
 
 One page tracking every plan in `docs/plans/`: what shipped, what's open, and loose
 follow-ups that never got their own plan doc. **Update this file whenever a plan phase
-ships or a new plan lands.** Last updated: 2026-07-26 (both v2.10.0 plans shipped: run-settings
-simplification, playlist playback + queue hygiene).
+ships or a new plan lands.** Last updated: 2026-10-23 (grabber detach: steps 1–3 and 5 built on
+branches, release gated on the separate project reaching 1.0.0).
 
 ## Overview
 
 | Plan | Doc | Status |
 |---|---|---|
-| Suggestions page + Related panels + previews + queue-similar | [suggestions-page.md](suggestions-page.md) | ✅ Done (v2.5.0 / v2.5.1) |
+| Suggestions page + Related panels + previews + queue-similar | [suggestions-page.md](suggestions-page.md) | ✅ Done (v2.5.0 / v2.5.1); the Suggestions page went with the grabber detach, Related panels stayed |
 | Navidrome star sync | [navidrome-star-sync.md](navidrome-star-sync.md) | ✅ Done (v2.5.2); follow-ups open |
 | Multi-source playlists + Run-mode integration | [playlists-integration.md](playlists-integration.md) | ✅ Phases 1–5 done |
-| Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ✅ Done (Unreleased) |
+| Inbox candidate previews | [inbox-candidate-previews.md](inbox-candidate-previews.md) | ✅ Done; removed with the grabber detach |
 | Run settings — single "max stretch" slider | [run-settings-single-stretch-slider.md](run-settings-single-stretch-slider.md) | ✅ Done (v2.10.0, breaking) |
 | Playlist playback + queue hygiene | [playlist-playback-and-queue-hygiene.md](playlist-playback-and-queue-hygiene.md) | ✅ Done (v2.10.0) |
 | Core decoupling (waveform toggle, import isolation, core requirements) | [core-decoupling.md](core-decoupling.md) | ✅ Done (Unreleased) |
 | Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | ✅ Phases 1–3 done (Unreleased); genres open |
 | 1–5 star ratings + rating-weighted picking | [ratings-weighted-picking.md](ratings-weighted-picking.md) | ✅ Built (Unreleased, `feat/ratings`) |
+| Detach the music grabber | [grabber-detach.md](grabber-detach.md) | 🔶 Built on branches (not released); schema step + release open |
 
 ---
 
@@ -143,6 +144,24 @@ always has a non-empty queue.
 Recorded as out of scope: unifying the PlayerBar queue drawer and the Run page queue
 panel into one `<QueuePanel>`; explicitly *not* as a `/queue` page (name taken by the
 Grabber queue, and the queue is a transient surface, not a destination).
+
+---
+
+## Grabber detach (🔶 built on branches, not released)
+
+Plan: [grabber-detach.md](grabber-detach.md) (2026-10-23). The grabber lives on as a
+separate project; this repo drops it.
+
+- ✅ **Step 1 — neutral modules** (`refactor/neutral-modules`, PR #16): shared helpers moved
+  to the package root; layering test extended.
+- ✅ **Step 2 — wiring removed** (`refactor/remove-grabber-backend`): `bpm_tagger/grabber/`
+  deleted, blueprints and settings endpoints gone, Related split out as `web/api/related.py`.
+- ✅ **Step 3 — frontend** and **step 5 — dependencies/docs**: same branch.
+- ⬜ **Step 4 — schema:** stop creating `grab_*` / `oauth_tokens` / `suggestions` for new DBs;
+  never drop them from existing ones.
+- ⬜ **Release:** beta first; the final `VERSION` bump waits for the separate project to be
+  stable (≥ 1.0.0, import tool verified on a real migrated DB, intake verified end to end),
+  because that bump publishes `:latest`.
 
 ---
 

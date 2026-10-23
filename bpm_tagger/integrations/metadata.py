@@ -1,8 +1,7 @@
 """Track-metadata candidate gathering for the "Find metadata" editor action.
 
-Queries Deezer (keyless) and Spotify (when the grabber is connected) for
-complete tag sets — title, artist, album, album artist, track/disc number,
-year, ISRC, duration — either directly **by ISRC** (both services support it)
+Queries Deezer (keyless) for complete tag sets — title, artist, album, album artist, track/disc number,
+year, ISRC, duration — either directly **by ISRC** (Deezer supports it)
 or by an artist/title text search. Every source is best-effort: failures are
 logged and skipped, mirroring integrations.isrc.
 """
@@ -54,7 +53,7 @@ def _deezer_by_isrc(isrc: str) -> list[dict]:
     return [cand] if cand else []
 
 
-def _deezer_search(artist: str, title: str, q: str) -> list[dict]:
+def deezer_search(artist: str, title: str, q: str) -> list[dict]:
     query = q or (f'artist:"{artist}" track:"{title}"' if artist and title
                   else f"{artist} {title}".strip())
     deezer_limiter.acquire()
@@ -74,53 +73,16 @@ def _deezer_search(artist: str, title: str, q: str) -> list[dict]:
     return out
 
 
-def _spotify_normalize(t: dict) -> dict:
-    sid = t.get("spotify_track_id")
-    return {
-        "source": "spotify",
-        "title": t.get("title") or "",
-        "artist": t.get("artist") or "",
-        "album": t.get("album") or "",
-        "album_artist": t.get("album_artist") or "",
-        "track_no": t.get("track_no"),
-        "disc_no": t.get("disc_no"),
-        "year": t.get("year"),
-        "isrc": (t.get("isrc") or "").upper(),
-        "duration_ms": t.get("duration_ms"),
-        "cover_url": t.get("cover_url") or "",
-        "url": f"https://open.spotify.com/track/{sid}" if sid else "",
-    }
-
-
-def gather_metadata(spotify_client, artist: str = "", title: str = "",
+def gather_metadata(artist: str = "", title: str = "",
                     isrc: str = "", q: str = "") -> list[dict]:
-    """Metadata candidates from Deezer + Spotify. With an ISRC both services
-    are asked for that exact recording; otherwise an artist/title (or free
-    ``q``) search runs. Spotify results come first (they carry a real album
-    artist)."""
+    """Metadata candidates from Deezer. With an ISRC it is asked for that exact
+    recording; otherwise an artist/title (or free ``q``) search runs."""
     out: list[dict] = []
-
-    spotify_ok = spotify_client is not None
-    try:
-        spotify_ok = spotify_ok and spotify_client.is_connected()
-    except Exception:
-        spotify_ok = False
-
-    if spotify_ok:
-        try:
-            query = f"isrc:{isrc}" if isrc else (q or f"{artist} {title}".strip())
-            if query:
-                out.extend(_spotify_normalize(t)
-                           for t in spotify_client.search_tracks(query, limit=_SEARCH_LIMIT))
-        except Exception as exc:
-            log.warning("Spotify metadata lookup failed: %s", exc)
-
     try:
         if isrc:
             out.extend(_deezer_by_isrc(isrc))
         elif artist or title or q:
-            out.extend(_deezer_search(artist, title, q))
+            out.extend(deezer_search(artist, title, q))
     except Exception as exc:
         log.warning("Deezer metadata lookup failed: %s", exc)
-
     return out

@@ -161,19 +161,8 @@ def test_core_never_imports_an_optional_layer_at_module_level():
 
 # Modules the optional layers share (matching, cover/tag writing, path templates).
 # They sit at the package root so deleting ``bpm_tagger/grabber/`` cannot break them
-# (docs/plans/ in the Music-Grabber repo, extraction §5.2 step 1).
+# (Music-Grabber extraction plan §5.2).
 SHARED_MODULES = ("matching.py", "tagging.py", "path_template.py", "text.py")
-
-# Modules outside ``grabber/`` that still import it — the work list for the wiring
-# removal. This only shrinks: a new entry means new coupling to the grabber.
-GRABBER_IMPORTERS = {
-    "integrations/isrc.py",
-    "main.py",
-    "web/api/playlists.py",
-    "web/api/settings.py",
-    "web/api/suggestions.py",
-}
-
 
 def _imported_modules(tree: ast.AST, file: Path):
     """Every absolute module name imported anywhere in ``file`` (lazy imports included)."""
@@ -200,16 +189,9 @@ def test_shared_modules_do_not_depend_on_the_grabber():
     assert not bad, "shared modules reach into an optional layer:\n" + "\n".join(bad)
 
 
-def test_grabber_importers_only_shrink():
-    found = set()
-    for f in PKG.rglob("*.py"):
-        rel = f.relative_to(PKG).as_posix()
-        if rel.startswith("grabber/"):
-            continue
-        tree = ast.parse(f.read_text(encoding="utf-8"))
-        if any(_imports_grabber(n) for n in _imported_modules(tree, f)):
-            found.add(rel)
-    assert found <= GRABBER_IMPORTERS, (
-        "new modules import the grabber package: " + ", ".join(sorted(found - GRABBER_IMPORTERS)))
-    assert found == GRABBER_IMPORTERS, (
-        "grabber coupling shrank, trim GRABBER_IMPORTERS: " + ", ".join(sorted(GRABBER_IMPORTERS - found)))
+def test_nothing_imports_the_removed_grabber_package():
+    """The grabber lives in its own project (Music Grabber); no module may reach for it."""
+    found = [f.relative_to(PKG).as_posix() for f in PKG.rglob("*.py")
+             if any(_imports_grabber(n) for n in _imported_modules(
+                 ast.parse(f.read_text(encoding="utf-8")), f))]
+    assert not found, "imports of bpm_tagger.grabber: " + ", ".join(sorted(found))

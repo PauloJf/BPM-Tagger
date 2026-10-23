@@ -33,7 +33,7 @@ class _FakeResp:
         return self._json
 
 
-# ── gather_metadata (Deezer, no Spotify) ─────────────────────────────────────
+# ── gather_metadata (Deezer) ─────────────────────────────────────
 
 def test_gather_by_isrc_normalizes_deezer_track(monkeypatch):
     calls = []
@@ -44,7 +44,7 @@ def test_gather_by_isrc_normalizes_deezer_track(monkeypatch):
         return _FakeResp(DEEZER_TRACK)
 
     monkeypatch.setattr(metadata_mod.requests, "get", fake_get)
-    cands = gather_metadata(None, isrc="SEPQA7600014")
+    cands = gather_metadata(isrc="SEPQA7600014")
     assert len(cands) == 1
     c = cands[0]
     assert c == {
@@ -60,7 +60,7 @@ def test_gather_by_isrc_normalizes_deezer_track(monkeypatch):
 def test_gather_by_isrc_miss_returns_empty(monkeypatch):
     monkeypatch.setattr(metadata_mod.requests, "get",
                         lambda url, **kw: _FakeResp({"error": {"code": 800}}))
-    assert gather_metadata(None, isrc="XXAAA0000000") == []
+    assert gather_metadata(isrc="XXAAA0000000") == []
 
 
 def test_gather_search_fetches_details_per_hit(monkeypatch):
@@ -73,29 +73,8 @@ def test_gather_search_fetches_details_per_hit(monkeypatch):
         return _FakeResp({"error": {"code": 800}})  # second hit gone → skipped
 
     monkeypatch.setattr(metadata_mod.requests, "get", fake_get)
-    cands = gather_metadata(None, artist="ABBA", title="Dancing Queen")
+    cands = gather_metadata(artist="ABBA", title="Dancing Queen")
     assert len(cands) == 1 and cands[0]["track_no"] == 2
-
-
-def test_gather_uses_spotify_isrc_query(monkeypatch):
-    class FakeClient:
-        def is_connected(self):
-            return True
-
-        def search_tracks(self, query, limit=4):
-            assert query == "isrc:SEPQA7600014"
-            return [{"spotify_track_id": "sp1", "title": "Dancing Queen", "artist": "ABBA",
-                     "album": "Arrival", "album_artist": "ABBA", "duration_ms": 230000,
-                     "isrc": "SEPQA7600014", "track_no": 2, "disc_no": 1, "year": 1976,
-                     "cover_url": "https://i.scdn.co/arrival.jpg"}]
-
-    monkeypatch.setattr(metadata_mod.requests, "get",
-                        lambda url, **kw: _FakeResp({"error": {"code": 800}}))
-    cands = gather_metadata(FakeClient(), isrc="SEPQA7600014")
-    spotify = [c for c in cands if c["source"] == "spotify"]
-    assert len(spotify) == 1
-    assert spotify[0]["url"] == "https://open.spotify.com/track/sp1"
-    assert spotify[0]["album_artist"] == "ABBA"
 
 
 # ── endpoint ──────────────────────────────────────────────────────────────────
@@ -122,7 +101,7 @@ def test_lookup_requires_login(meta_client):
 def test_lookup_passes_params(meta_client, monkeypatch):
     seen = {}
 
-    def fake_gather(client, artist="", title="", isrc="", q=""):
+    def fake_gather(artist="", title="", isrc="", q=""):
         seen.update(artist=artist, title=title, isrc=isrc, q=q)
         return [{"source": "deezer", "title": "SOS"}]
 
@@ -136,7 +115,7 @@ def test_lookup_passes_params(meta_client, monkeypatch):
 def test_lookup_normalizes_and_validates_isrc(meta_client, monkeypatch):
     seen = {}
     monkeypatch.setattr(tracks_mod, "gather_metadata",
-                        lambda client, **kw: seen.update(kw) or [])
+                        lambda **kw: seen.update(kw) or [])
     r = meta_client.get("/api/metadata/lookup?isrc=se-pqa 76-00014")
     assert r.status_code == 200
     assert seen["isrc"] == "SEPQA7600014"

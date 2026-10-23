@@ -421,9 +421,8 @@ def api_track_trash():
 @tracks_bp.route("/api/isrc/lookup")
 @login_required
 def api_isrc_lookup():
-    """Find candidate ISRCs for an artist+title from Spotify (if connected) and
+    """Find candidate ISRCs for an artist+title from Deezer and
     MusicBrainz — used by the 'Find ISRC' action in the compare view."""
-    st = state()
     artist = request.args.get("artist", "").strip()
     title = request.args.get("title", "").strip()
     query = f"{artist} {title}".strip()
@@ -431,9 +430,7 @@ def api_isrc_lookup():
     if not query:
         return jsonify(candidates=[], spotify_search_url=spotify_search_url)
 
-    g = getattr(st.tagger, "grabber", None) if st.tagger else None
-    client = g.client if g else None
-    candidates = gather_candidates(st.config, client, artist, title)
+    candidates = gather_candidates(artist, title)
     return jsonify(candidates=candidates, spotify_search_url=spotify_search_url)
 
 
@@ -441,9 +438,8 @@ def api_isrc_lookup():
 @login_required
 def api_metadata_lookup():
     """Full-tag candidates for the metadata editor's 'Find metadata' action.
-    With ?isrc= both sources resolve that exact recording; otherwise
+    With ?isrc= Deezer resolves that exact recording; otherwise
     ?artist=/&title= (or free ?q=) run a text search."""
-    st = state()
     isrc = _normalize_isrc(request.args.get("isrc", ""))
     if isrc and _isrc_error(isrc):
         return jsonify(candidates=[], error=_isrc_error(isrc)), 400
@@ -452,10 +448,7 @@ def api_metadata_lookup():
     q = request.args.get("q", "").strip()
     if not (isrc or artist or title or q):
         return jsonify(candidates=[])
-    g = getattr(st.tagger, "grabber", None) if st.tagger else None
-    client = g.client if g else None
-    return jsonify(candidates=gather_metadata(client, artist=artist, title=title,
-                                              isrc=isrc, q=q))
+    return jsonify(candidates=gather_metadata(artist=artist, title=title, isrc=isrc, q=q))
 
 
 def _set_track_isrc(st, file_path: str, isrc: str) -> bool:
@@ -511,13 +504,11 @@ def _run_isrc_fill(st):
         tracks = st.db.get_tracks_missing_isrc(limit=2000)
         with _isrc_fill_lock:
             _isrc_fill.update(running=True, total=len(tracks), done=0, filled=0, unresolved=[], cancel=False)
-        g = getattr(st.tagger, "grabber", None)
-        client = g.client if g else None
         for t in tracks:
             with _isrc_fill_lock:
                 if _isrc_fill["cancel"]:
                     break
-            cands = gather_candidates(st.config, client, t.get("artist") or "", t.get("title") or "")
+            cands = gather_candidates(t.get("artist") or "", t.get("title") or "")
             isrc = pick_confident(cands, t.get("duration_ms"))
             if isrc:
                 try:

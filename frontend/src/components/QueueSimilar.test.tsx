@@ -32,8 +32,6 @@ vi.mock("../lib/player", () => ({
     enqueueMany(ts: unknown[]) { h.enqueuedMany.push(ts); },
   }),
 }));
-vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: { enabled: false } }) }));
-vi.mock("../hooks/useSuggestionQueue", () => ({ useSuggestionQueue: () => ({ mutate() {}, isPending: false }) }));
 vi.mock("./trackBits", () => ({ PreviewButton: () => null }));
 
 import QueueSimilar from "./QueueSimilar";
