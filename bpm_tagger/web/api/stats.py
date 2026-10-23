@@ -51,8 +51,6 @@ def api_stats():
             "top_artists_more": len(top_artists) > PAGE_SIZE,
             "total_plays": st.db.get_total_plays(),
         }
-        if st.config.get("grabber_enabled"):
-            payload["grabber"] = _grabber_stats(st)
         return jsonify(**payload)
     except Exception as exc:
         return jsonify(error=str(exc)), 500
@@ -287,26 +285,3 @@ def api_run_tracks(run_id):
         "disliked":   bool(r.get("disliked")),
     } for r in marked]
     return jsonify(tracks=tracks)
-
-
-def _grabber_stats(st) -> dict:
-    """Library-source rollup shown on Stats when the grabber is on."""
-    sources = st.db.get_source_stats()
-    dup_groups = st.db.get_duplicates()
-    playlists = st.db.list_playlists()
-    return {
-        "managed": sources["managed"],
-        "unmanaged": sources["unmanaged"],
-        "grabbed_total": st.db.get_grabbed_total(),
-        "providers": sources["providers"],
-        "queue": st.db.get_queue_counts(),
-        "duplicate_groups": len(dup_groups),
-        "duplicate_tracks": sum(g.get("count", 0) for g in dup_groups),
-        "playlists": {
-            "total": len(playlists),
-            "watched": sum(1 for p in playlists if p.get("enabled")),
-            "have": sum(p.get("have_count", 0) for p in playlists),
-            "missing": sum(p.get("missing_count", 0) for p in playlists),
-            "queued": sum(p.get("queued_count", 0) for p in playlists),
-        },
-    }

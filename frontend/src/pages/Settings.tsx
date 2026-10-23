@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -8,7 +7,6 @@ import { Toggle } from "../components/Toggle";
 import PlayerUsers from "../components/PlayerUsers";
 import SubsonicSettings from "../components/SubsonicSettings";
 import { useTitle } from "../hooks/useTitle";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import PageHeader from "../components/PageHeader";
 import { ACCENT_PRESETS, DEFAULT_ACCENT_HUE, accentSwatch, applyAccentHue, initialAccentHue } from "../lib/accent";
 import { cacheStats, clearOffline, offlineSupported, reconcileIndex } from "../lib/offline";
@@ -18,7 +16,7 @@ type Saved = "" | "saving" | "ok" | "err";
 
 const SIDEBAR = [
   ["sec-appearance", "Appearance"],
-  ["sec-grabber", "Grabber"],
+  ["sec-library", "Library"],
   ["sec-password", "Admin sign-in"],
   ["sec-2fa", "Two-factor"],
   ["sec-login-protection", "Login protection"],
@@ -80,8 +78,6 @@ export default function Settings() {
   useTitle("Settings");
   const qc = useQueryClient();
   const { version } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const grabberStatus = useGrabberStatus();
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => api.get<{ settings: SettingsMap; env_locked?: string[] }>("/api/settings") });
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: () => api.get<{ count: number; bytes: number }>("/api/trash") });
   const [purging, setPurging] = useState(false);
@@ -237,7 +233,7 @@ export default function Settings() {
   const [ratingSyncMsg, setRatingSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [fetchArtistImages, setFetchArtistImages] = useState(false);
   const [artistImagesToLibrary, setArtistImagesToLibrary] = useState(false);
-  const [lyricsCfg, setLyricsCfg] = useState({ enabled: false, mode: "embed" });
+  const [lyricsCfg, setLyricsCfg] = useState({ mode: "embed" });
   const [lyricsRetryNotFound, setLyricsRetryNotFound] = useState(false);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   // Optional admin login username — an identifier so password managers have a
@@ -248,13 +244,8 @@ export default function Settings() {
   const [runPw, setRunPw] = useState({ next: "", confirm: "" });
   const [runSessionDays, setRunSessionDays] = useState(30);
   const [listenModeCfg, setListenModeCfg] = useState("off");
-  const [grabber, setGrabber] = useState({
-    enabled: false, syncMinutes: 30, publicUrl: "", dryRun: false,
-    outputFormat: "mp3-128", pathTemplate: "", providerOrder: "deezer,ytdlp",
-    deezerArl: "", deezerQuality: "MP3_128",
-    monoUrl: "", monoKey: "", monoQuality: "LOSSLESS",
-  });
-  const [grabberSaved, setGrabberSaved] = useState<Saved>("");
+  const [library, setLibrary] = useState({ publicUrl: "", pathTemplate: "" });
+  const [librarySaved, setLibrarySaved] = useState<Saved>("");
   const [testMsg, setTestMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
 
   async function testConn(kind: string, path: string, body: unknown) {
@@ -337,7 +328,7 @@ export default function Settings() {
     const sample: Record<string, string | number> = {
       AlbumArtist: "The Weeknd", Artist: "The Weeknd", Album: "After Hours",
       Title: "Blinding Lights", TrackNo: 3, DiscNo: 1, Year: 2020,
-      ext: (grabber.outputFormat.split("-")[0] === "opus" ? "opus" : grabber.outputFormat.split("-")[0]),
+      ext: "mp3",
     };
     return tpl.replace(/\{(\w+)(?::0(\d)d)?\}/g, (_m, k, pad) => {
       let v = sample[k] ?? "";
@@ -412,16 +403,8 @@ export default function Settings() {
     });
     setFetchArtistImages(b("fetch_artist_images", false));
     setArtistImagesToLibrary(b("artist_images_to_library", false));
-    setLyricsCfg({ enabled: b("lyrics_enabled", false), mode: s("lyrics_mode", "embed") || "embed" });
-    setGrabber({
-      enabled: b("grabber_enabled", false), syncMinutes: n("spotify_sync_minutes", 30),
-      publicUrl: s("ui_public_url"), dryRun: b("grab_dry_run", false),
-      outputFormat: s("output_format") || "mp3-128", pathTemplate: s("path_template"),
-      providerOrder: s("provider_order") || "deezer,ytdlp",
-      deezerArl: s("deezer_arl"), deezerQuality: s("deezer_quality") || "MP3_128",
-      monoUrl: s("monochrome_base_url"), monoKey: s("monochrome_api_key"),
-      monoQuality: s("monochrome_quality") || "LOSSLESS",
-    });
+    setLyricsCfg({ mode: s("lyrics_mode", "embed") || "embed" });
+    setLibrary({ publicUrl: s("ui_public_url"), pathTemplate: s("path_template") });
   }, [cfg]);
 
   // Live expected-share preview: debounced so dragging a weight slider doesn't
@@ -440,27 +423,6 @@ export default function Settings() {
     }, 350);
     return () => { if (previewTimer.current) window.clearTimeout(previewTimer.current); };
   }, [ratings]);
-
-  // Surface the ?spotify=... result the OAuth callback redirected back with.
-  const spotifyResult = searchParams.get("spotify");
-  function clearSpotifyResult() {
-    const p = new URLSearchParams(searchParams);
-    p.delete("spotify");
-    setSearchParams(p, { replace: true });
-  }
-
-  async function connectSpotify() {
-    try {
-      const { url } = await api.get<{ url: string }>("/api/spotify/authorize-url");
-      window.location.href = url;
-    } catch {
-      /* surfaced via status */
-    }
-  }
-  async function disconnectSpotify() {
-    await api.post("/api/spotify/disconnect").catch(() => {});
-    qc.invalidateQueries({ queryKey: ["grabber-status"] });
-  }
 
   async function saveSection(path: string, body: unknown, setSaved: (s: Saved) => void) {
     setSaved("saving");
@@ -763,168 +725,42 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Grabber */}
-          <div id="sec-grabber" className="settings-card card">
+          {/* Library */}
+          <div id="sec-library" className="settings-card card">
             <div className="settings-card-header">
-              <h2>Grabber</h2>
-              <p>Spotify playlist sync + downloader. Client ID/secret are set via environment variables.</p>
+              <h2>Library</h2>
+              <p>Where this UI is reachable, and how files are named when you edit a track's tags.</p>
             </div>
-            {spotifyResult && (
-              <div
-                className="flash"
-                style={
-                  spotifyResult === "connected"
-                    ? { background: "var(--ok-bg)", borderColor: "var(--ok-bd)", color: "var(--ok-fg)" }
-                    : { background: "var(--err-bg)", borderColor: "var(--err-bd)", color: "var(--err-fg)" }
-                }
-                onClick={clearSpotifyResult}
-              >
-                {spotifyResult === "connected" ? "Spotify connected ✓" : `Spotify connect failed (${spotifyResult})`}
-              </div>
-            )}
             <div className="settings-fields">
               <div className="field-row">
-                {fieldLabel("Enabled", "Turn the grabber subsystem on. Requires a restart to take effect.")}
-                <Toggle on={grabber.enabled} onChange={(v) => setGrabber({ ...grabber, enabled: v })} label="Enable grabber" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Spotify")}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  {(() => {
-                    const sp = grabberStatus.data?.spotify;
-                    if (!grabberStatus.data?.enabled)
-                      return <span style={{ color: "var(--muted)", fontSize: 13 }}>Enable + restart first</span>;
-                    if (!sp?.configured)
-                      // overflowWrap: the env-var run is one unbreakable "word"
-                      // that otherwise forces sideways scrolling on narrow screens.
-                      return <span style={{ color: "var(--warn-fg)", fontSize: 13, overflowWrap: "anywhere" }}>Set SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URI</span>;
-                    if (sp.connected)
-                      return (
-                        <>
-                          <span className="chip chip--have">connected</span>
-                          <button className="btn btn-danger btn-sm" onClick={disconnectSpotify}>Disconnect</button>
-                        </>
-                      );
-                    return <button className="btn btn-primary btn-sm" onClick={connectSpotify}>Connect Spotify</button>;
-                  })()}
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Sync interval (min)", "How often watched playlists are re-synced in watch mode")}
-                <input type="number" min={1} max={1440} value={grabber.syncMinutes}
-                       onChange={(e) => setGrabber({ ...grabber, syncMinutes: +e.target.value })} style={{ width: 90 }} />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Dry run", "Match + plan downloads but don't actually download (routes to the inbox)")}
-                <Toggle on={grabber.dryRun} onChange={(v) => setGrabber({ ...grabber, dryRun: v })} label="Dry run" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Output format", "Every download is transcoded to this single format")}
-                <select value={grabber.outputFormat} onChange={(e) => setGrabber({ ...grabber, outputFormat: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                  <option value="mp3-128">mp3-128</option>
-                  <option value="mp3-320">mp3-320</option>
-                  <option value="flac">flac</option>
-                  <option value="opus-192">opus-192</option>
-                </select>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Path template", "Destination path for downloaded files")}
-                <div style={{ width: "100%", maxWidth: 360 }}>
-                  <input type="text" value={grabber.pathTemplate} placeholder="{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
-                         onChange={(e) => setGrabber({ ...grabber, pathTemplate: e.target.value })}
-                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                    → {previewPath(grabber.pathTemplate || "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}")}
-                  </div>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Provider order", "Comma-separated; tried in order (deezer,ytdlp)")}
-                <input type="text" value={grabber.providerOrder} onChange={(e) => setGrabber({ ...grabber, providerOrder: e.target.value })}
-                       style={{ maxWidth: 240, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Deezer ARL", "Your Deezer ARL token (leave blank to use yt-dlp only). Free ARL = 128 kbps full tracks.")}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
-                  <input type="password" value={grabber.deezerArl} placeholder="ARL token"
-                         onChange={(e) => setGrabber({ ...grabber, deezerArl: e.target.value })}
-                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                  {/* flexWrap: quality select + Test just miss the squeezed
-                      field cell around the ~700px layout — fold, don't overflow. */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <select value={grabber.deezerQuality} onChange={(e) => setGrabber({ ...grabber, deezerQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                      <option value="MP3_128">MP3_128 (free)</option>
-                      <option value="MP3_320">MP3_320 (paid)</option>
-                      <option value="FLAC">FLAC (paid)</option>
-                    </select>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("deezer", "/api/settings/test-deezer", { deezer_arl: grabber.deezerArl })}>Test</button>
-                    {testMsg.deezer && <span style={{ fontSize: 12, color: testMsg.deezer.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.deezer.text}</span>}
-                  </div>
-                  {/* Deezer has no API for issuing an ARL (password login is
-                      captcha-gated), so the browser cookie is the only source. */}
-                  <details style={{ fontSize: 12, color: "var(--muted)" }}>
-                    <summary style={{ cursor: "pointer" }}>How do I get my ARL?</summary>
-                    <ol style={{ margin: "6px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 3 }}>
-                      <li>On a computer, sign in at <a href="https://www.deezer.com" target="_blank" rel="noreferrer">deezer.com</a> (a free account works).</li>
-                      <li>Open the developer tools: <kbd>F12</kbd>, or <kbd>⌥⌘I</kbd> on a Mac (in Safari, first turn on Settings → Advanced → Show features for web developers).</li>
-                      <li>Find the cookies: <b>Application</b> → Cookies in Chrome / Edge, <b>Storage</b> → Cookies in Firefox / Safari. Pick <code>https://www.deezer.com</code>.</li>
-                      <li>Copy the value of the cookie named <code>arl</code> (a long string of letters and digits), paste it above, Save, then press <b>Test</b>.</li>
-                    </ol>
-                    <p style={{ margin: "6px 0 0" }}>
-                      The ARL is a login token: keep it private. It stops working after a few months, or when you sign out of Deezer
-                      or change your password. When it does, failed grabs say "Deezer rejected the ARL" and ntfy pings you; repeat these steps.
-                    </p>
-                  </details>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Monochrome URL", "Self-hosted Tidal proxy — provider currently on hold")}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 360 }}>
-                  <input type="text" value={grabber.monoUrl} placeholder="http://monochrome:8080"
-                         onChange={(e) => setGrabber({ ...grabber, monoUrl: e.target.value })}
-                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                  <input type="password" value={grabber.monoKey} placeholder="API key"
-                         onChange={(e) => setGrabber({ ...grabber, monoKey: e.target.value })}
-                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <select value={grabber.monoQuality} onChange={(e) => setGrabber({ ...grabber, monoQuality: e.target.value })} style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                      <option value="LOSSLESS">LOSSLESS</option>
-                      <option value="HIGH">HIGH</option>
-                      <option value="LOW">LOW</option>
-                    </select>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("mono", "/api/settings/test-monochrome", { monochrome_base_url: grabber.monoUrl, monochrome_api_key: grabber.monoKey })}>Test</button>
-                    {testMsg.mono && <span style={{ fontSize: 12, color: testMsg.mono.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.mono.text}</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Public URL", "Base URL used in ntfy click links (e.g. https://bpm.example.com)")}
-                <input type="text" value={grabber.publicUrl}
-                       onChange={(e) => setGrabber({ ...grabber, publicUrl: e.target.value })}
+                {fieldLabel("Public URL", "Public address of this UI. Marks the session cookie Secure over https and builds the links in ntfy notifications (e.g. https://bpm.example.com)")}
+                <input type="text" value={library.publicUrl}
+                       onChange={(e) => setLibrary({ ...library, publicUrl: e.target.value })}
                        placeholder="https://bpm.example.com"
                        style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Path template", "File layout used when editing a track's tags renames the file")}
+                <div style={{ width: "100%", maxWidth: 360 }}>
+                  <input type="text" value={library.pathTemplate} placeholder="{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
+                         onChange={(e) => setLibrary({ ...library, pathTemplate: e.target.value })}
+                         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                    → {previewPath(library.pathTemplate || "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}")}
+                  </div>
+                </div>
               </div>
               <div>
                 <button
                   type="button"
-                  className={"btn btn-sm " + (grabberSaved === "ok" ? "btn-ghost" : "btn-primary")}
-                  disabled={grabberSaved === "saving"}
-                  onClick={() => saveSection("/api/settings/grabber", {
-                    grabber_enabled: grabber.enabled,
-                    spotify_sync_minutes: grabber.syncMinutes,
-                    ui_public_url: grabber.publicUrl,
-                    grab_dry_run: grabber.dryRun,
-                    output_format: grabber.outputFormat,
-                    path_template: grabber.pathTemplate,
-                    provider_order: grabber.providerOrder,
-                    deezer_arl: grabber.deezerArl,
-                    deezer_quality: grabber.deezerQuality,
-                    monochrome_base_url: grabber.monoUrl,
-                    monochrome_api_key: grabber.monoKey,
-                    monochrome_quality: grabber.monoQuality,
-                  }, setGrabberSaved)}
+                  className={"btn btn-sm " + (librarySaved === "ok" ? "btn-ghost" : "btn-primary")}
+                  disabled={librarySaved === "saving"}
+                  onClick={() => saveSection("/api/settings/library", {
+                    ui_public_url: library.publicUrl,
+                    path_template: library.pathTemplate,
+                  }, setLibrarySaved)}
                 >
-                  {grabberSaved === "saving" ? "Saving…" : grabberSaved === "ok" ? "Saved ✓ (restart to apply)" : "Save Grabber Settings"}
+                  {librarySaved === "saving" ? "Saving…" : librarySaved === "ok" ? "Saved ✓" : "Save Library Settings"}
                 </button>
               </div>
             </div>
@@ -1442,7 +1278,7 @@ export default function Settings() {
                   <Toggle on={nav.scrobble} onChange={(v) => setNav({ ...nav, scrobble: v })} label="Scrobble plays" />
                 </div>
                 <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  {fieldLabel("Background sync", "Minutes between automatic sync passes for playlists (Spotify + Navidrome), stars, and play counts. 0 = off (use the manual buttons only). Applies on the next restart; runs only in watch mode.")}
+                  {fieldLabel("Background sync", "Minutes between automatic sync passes for Navidrome playlists, stars, and play counts. 0 = off (use the manual buttons only). Applies on the next restart; runs only in watch mode.")}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input
                       type="number" min={0} max={1440} step={5} value={syncInterval}
@@ -1810,11 +1646,7 @@ export default function Settings() {
               <h2>Lyrics</h2>
               <p>Lyrics come from <a href="https://lrclib.net" target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>LRCLIB</a> — a free, community-run lyrics database (no account needed). Synced (LRC) lyrics are preferred when available; Navidrome and most players pick them up.</p>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/lyrics", { lyrics_enabled: lyricsCfg.enabled, lyrics_mode: lyricsCfg.mode }, setLyricsSaved); }}>
-              <div className="field-row">
-                {fieldLabel("Auto-fetch for downloaded tracks", "When the Music Grabber downloads a track, also fetch its lyrics from LRCLIB and embed them. Manual fetching from a track's page always works regardless of this toggle.")}
-                <Toggle on={lyricsCfg.enabled} onChange={(v) => setLyricsCfg({ ...lyricsCfg, enabled: v })} label="Auto-fetch lyrics for downloaded tracks" />
-              </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/lyrics", { lyrics_mode: lyricsCfg.mode }, setLyricsSaved); }}>
               <div className="field-row">
                 {fieldLabel("Storage", "Embed writes the lyrics into the file's tag (travels with the file). Sidecar writes a .lrc text file next to the audio file instead — the file itself is untouched.")}
                 <select value={lyricsCfg.mode} onChange={(e) => setLyricsCfg({ ...lyricsCfg, mode: e.target.value })}>
@@ -1859,7 +1691,7 @@ export default function Settings() {
           <div id="sec-isrc" className="settings-card card">
             <div className="settings-card-header">
               <h2>Fill missing ISRCs</h2>
-              <p>Look up the ISRC for every library track that's missing one (Deezer / Spotify / MusicBrainz) and write it to the tag. A confident, duration-matched single result is filled automatically; anything uncertain or not found is listed below for you to choose.</p>
+              <p>Look up the ISRC for every library track that's missing one (Deezer / MusicBrainz) and write it to the tag. A confident, duration-matched single result is filled automatically; anything uncertain or not found is listed below for you to choose.</p>
             </div>
             {(() => {
               const f = fillQ.data;

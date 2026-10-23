@@ -14,8 +14,8 @@ interface Props {
   onReset?: () => Promise<void>;
 }
 
-/** Modal picker for artist/album/track images: searches Spotify (when
- *  connected) + Deezer via /api/images/search, and accepts a pasted image URL
+/** Modal picker for artist/album/track images: searches Deezer via
+ *  /api/images/search, and accepts a pasted image URL
  *  or a local file upload. */
 export function ImagePicker({ kind, title, initialQuery, onPick, onClose, onReset }: Props) {
   const [query, setQuery] = useState(initialQuery);
@@ -82,7 +82,7 @@ export function ImagePicker({ kind, title, initialQuery, onPick, onClose, onRese
 
         <form onSubmit={(e) => { e.preventDefault(); search(query); }} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Spotify / Deezer…" style={{ flex: 1 }} />
+            placeholder="Search Deezer…" style={{ flex: 1 }} />
           <button className="btn btn-primary btn-sm" type="submit" disabled={searching || busy}>
             {searching ? "Searching…" : "Search"}
           </button>

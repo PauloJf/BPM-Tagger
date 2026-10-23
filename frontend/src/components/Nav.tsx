@@ -3,7 +3,6 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
 import type { Progress } from "../lib/types";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
 import { applyTheme, type Theme } from "../lib/theme";
 import BpmMark from "./BpmMark";
 
@@ -26,18 +25,6 @@ const IconListen = () => (
 );
 const IconDuplicates = () => (
   <svg {...ic}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
-);
-const IconAddMusic = () => (
-  <svg {...ic}><path d="M9 17V5l10-1.5V11" /><circle cx="6.5" cy="17" r="2.5" /><path d="M18 15v6M15 18h6" /></svg>
-);
-const IconSuggestions = () => (
-  <svg {...ic}><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5 10.1 7.6z" /><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>
-);
-const IconQueue = () => (
-  <svg {...ic}><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
-);
-const IconInbox = () => (
-  <svg {...ic}><path d="M22 13h-5l-2 3h-6l-2-3H2" /><path d="M5.5 5h13L22 13v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5z" /></svg>
 );
 const IconStats = () => (
   <svg {...ic}><path d="M4 21v-8M10 21V4M16 21v-12M22 21v-5" /></svg>
@@ -86,17 +73,17 @@ function ThemeToggle({ mobile }: { mobile?: boolean }) {
   );
 }
 
-interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" | "inbox" }
+interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" }
 interface NavSection { label: string; items: NavItem[] }
 
-/** Grouped navigation: tagging, grabber and app chrome each get a section. */
-function buildSections(grabberEnabled: boolean): NavSection[] {
+/** Grouped navigation: library, tagging and app chrome each get a section. */
+function buildSections(): NavSection[] {
   const library: NavItem[] = [
     { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
     { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
     { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
+    { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
   ];
-  if (grabberEnabled) library.push({ to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] });
 
   const sections: NavSection[] = [
     { label: "Library", items: library },
@@ -108,17 +95,6 @@ function buildSections(grabberEnabled: boolean): NavSection[] {
       ],
     },
   ];
-  if (grabberEnabled) {
-    sections.push({
-      label: "Grabber",
-      items: [
-        { to: "/search", label: "Add Music", icon: IconAddMusic, match: ["/search"] },
-        { to: "/suggestions", label: "Suggestions", icon: IconSuggestions, match: ["/suggestions"] },
-        { to: "/queue", label: "Queue", icon: IconQueue, match: ["/queue"] },
-        { to: "/inbox", label: "Inbox", icon: IconInbox, match: ["/inbox"], badge: "inbox" },
-      ],
-    });
-  }
   sections.push({
     label: "System",
     items: [
@@ -262,7 +238,7 @@ function Logo({ to = "/tracks", sub = "for navidrome" }: { to?: string; sub?: st
 
 /* Player ("Run-only") chrome. The kiosk role reaches only its own pages — Run,
  * optionally Listen (the admin's listen-mode setting), and a player-specific
- * About — so it gets a stripped-down nav: no scan controls, no grabber/tagging
+ * About — so it gets a stripped-down nav: no scan controls, no tagging
  * sections, no data-fetching hooks (the backend 403s those endpoints for
  * players anyway). Desktop shows a slim sidebar; below 1100px the
  * PlayerMobileBar takes over (mirroring the admin sidebar/top-bar split). */
@@ -371,12 +347,9 @@ export default function Nav() {
   const panelRef = useRef<HTMLDivElement>(null);
   const { state, act, progress } = useScan();
   const dot = stateColor(state);
-  const grabber = useGrabberStatus();
 
-  const sections = buildSections(!!grabber.data?.enabled);
-  const inboxCount = grabber.data?.inbox_count || 0;
-  const badgeCount = (item: NavItem) =>
-    item.badge === "review" ? reviewCount : item.badge === "inbox" ? inboxCount : 0;
+  const sections = buildSections();
+  const badgeCount = (item: NavItem) => (item.badge === "review" ? reviewCount : 0);
 
   // The collapsed state lives on <body> so .app-main and .player-bar (outside
   // this component) can follow the sidebar width via --sidebar-w.

@@ -135,42 +135,15 @@ services:
       NAVIDROME_USER: ""            # Navidrome admin username
       NAVIDROME_PASS: ""            # Navidrome admin password
 
-      # -----------------------------------------------------------------------
-      # Grabber — Spotify playlist sync + downloader (M3+). Disabled by default.
-      # -----------------------------------------------------------------------
-      # Turn the whole subsystem on. Requires ENABLE_UI=true to connect Spotify.
-      GRABBER_ENABLED: "false"
-
-      # Spotify Web API (Authorization Code flow). Create an app at
-      # https://developer.spotify.com/dashboard and add the redirect URI below
-      # to its allow-list *byte-for-byte*. Use https:// in production, or the
-      # loopback literal http://127.0.0.1:5000/... for local (NOT "localhost").
-      # Client id/secret are env-only — never written to settings.json.
-      SPOTIFY_CLIENT_ID: ""
-      SPOTIFY_CLIENT_SECRET: ""
-      SPOTIFY_REDIRECT_URI: ""      # e.g. https://bpm.example.com/api/spotify/callback
-      SPOTIFY_SYNC_MINUTES: "30"    # how often watched playlists re-sync (watch mode)
-
-      # Base URL used in ntfy click links (e.g. the inbox deep link)
+      # Public URL of this UI: marks the session cookie Secure over https and
+      # builds the links in ntfy notifications
       UI_PUBLIC_URL: ""             # e.g. https://bpm.example.com
 
       # Read file tags into the DB for library matching (leave on)
       INDEX_TAGS: "true"
 
-      # Download providers / pipeline. PROVIDER_ORDER is tried in order;
-      # OUTPUT_FORMAT is the single transcode target for every download.
-      # DEEZER_ARL: ""              # your Deezer ARL token — enables the Deezer provider
-      # DEEZER_QUALITY: "MP3_128"   # MP3_128 (free) | MP3_320 | FLAC (paid subscription)
-      # MONOCHROME_BASE_URL: ""     # self-hosted Tidal proxy base URL (provider on hold)
-      # MONOCHROME_API_KEY: ""
-      # MONOCHROME_QUALITY: "LOSSLESS"
-      # PROVIDER_ORDER: "deezer,ytdlp"
-      # OUTPUT_FORMAT: "mp3-128"    # mp3-128 | mp3-320 | flac | opus-192
+      # Layout used when editing a track's tags renames the file
       # PATH_TEMPLATE: "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"
-      # GRAB_WORKERS: "1"           # download/transcode workers (max 3)
-      # GRAB_DRY_RUN: "false"       # match + plan without downloading
-      # AUTO_ACCEPT_THRESHOLD: "0.85"
-      # ASK_THRESHOLD: "0.55"
 
       # -----------------------------------------------------------------------
       # Run mode (tempo-locked cadence playback on the /run page).
@@ -253,8 +226,8 @@ services:
     # user: "1000:1000"
 
   # ---------------------------------------------------------------------------
-  # Optional: a self-hosted ntfy server for notifications (grabber ambiguity
-  # pings, scan summaries). Point NTFY_URL above at http://ntfy:80 if you use it.
+  # Optional: a self-hosted ntfy server for notifications (scan summaries
+  # and review reports). Point NTFY_URL above at http://ntfy:80 if you use it.
   # ---------------------------------------------------------------------------
   # ntfy:
   #   image: binwiederhier/ntfy:latest

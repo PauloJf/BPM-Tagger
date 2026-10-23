@@ -14,14 +14,13 @@ from .scan.scanner import BPMTagger
 log = logging.getLogger(__name__)
 
 
-def _start_periodic_sync(config, tagger, grabber):
+def _start_periodic_sync(config, tagger):
     """Launch the background sync scheduler (playlists + stars + play counts) in the
-    long-lived watch modes. Owned here, not by the grabber, so it runs with the grabber
-    disabled. No-op when sync_interval_minutes <= 0."""
+    long-lived watch modes. No-op when sync_interval_minutes <= 0."""
     if int(config.get("sync_interval_minutes", 0) or 0) <= 0:
         return
     from .integrations.periodic_sync import PeriodicSync
-    PeriodicSync(config, tagger.db, grabber).start()
+    PeriodicSync(config, tagger.db).start()
 
 
 def main():
@@ -59,13 +58,9 @@ def main():
     progress = ScanProgress()
     tagger = BPMTagger(config, progress)
 
-    grabber = None
-    if config.get("grabber_enabled"):
-        from .grabber.sync_engine import GrabberService
-        grabber = GrabberService(config, tagger.db, tagger, tagger.notifier)
-        tagger.grabber = grabber
-        log.info("Grabber enabled — Spotify configured=%s, connected=%s",
-                 grabber.client.is_configured(), grabber.client.is_connected())
+    if os.environ.get("GRABBER_ENABLED", "false").lower() == "true":
+        log.warning("GRABBER_ENABLED=true has no effect: the music grabber now lives in its "
+                    "own project (Music Grabber). See the README for how to move over.")
 
     if config.get("subsonic_enabled") and not config["enable_ui"]:
         log.warning("SUBSONIC_ENABLED=true has no effect: the Subsonic API rides the web "
@@ -88,16 +83,12 @@ def main():
 
     elif mode == "watch":
         tagger.scan_directory(force=False)
-        if grabber:
-            grabber.start_background()
-        _start_periodic_sync(config, tagger, grabber)
+        _start_periodic_sync(config, tagger)
         tagger.watch()
 
     elif mode == "watch_all":
         tagger.scan_directory(force=True)
-        if grabber:
-            grabber.start_background()
-        _start_periodic_sync(config, tagger, grabber)
+        _start_periodic_sync(config, tagger)
         tagger.watch()
 
     elif mode == "report":

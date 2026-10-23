@@ -1,5 +1,5 @@
 """Playlist endpoints (§3): list/add/patch/delete, tracks (have|missing|queued),
-manual sync. Also the consolidated grabber status poll."""
+manual sync."""
 
 import hashlib
 import io
@@ -9,23 +9,12 @@ import re
 
 from flask import Blueprint, Response, abort, jsonify, request, send_file
 
-from ...config import __version__
-from ...grabber.spotify import SpotifyError, parse_playlist_id
 from ...tagging import read_cover
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 from .images import _image_from_request
 from .run import _presets, _run_settings, preset_counts
 
-
-def _versions() -> dict:
-    v = {"app": __version__, "yt_dlp": None}
-    try:
-        import yt_dlp
-        v["yt_dlp"] = getattr(getattr(yt_dlp, "version", None), "__version__", None)
-    except Exception:
-        pass
-    return v
 
 log = logging.getLogger(__name__)
 
@@ -41,30 +30,6 @@ _BPM_BUCKET = 5
 _TOP_PLAYED = 3
 
 
-def _grabber():
-    st = state()
-    return getattr(st.tagger, "grabber", None) if st.tagger else None
-
-
-@playlists_bp.route("/api/grabber/status")
-@login_required
-def grabber_status():
-    g = _grabber()
-    if not g:
-        return jsonify(enabled=False)
-    db = state().db
-    counts = db.get_queue_counts()
-    return jsonify(
-        enabled=True,
-        spotify=g.status(),
-        queue_counts=counts,
-        active=db.get_active_grabs(),
-        inbox_count=counts.get("awaiting_user", 0),
-        last_change=db.get_last_change(),
-        versions=_versions(),
-    )
-
-
 @playlists_bp.route("/api/playlists", methods=["GET"])
 @login_required
 def list_playlists():
@@ -76,16 +41,16 @@ def list_playlists():
 def add_playlist():
     _check_csrf()
     data = request.get_json(force=True, silent=True) or {}
-    source = str(data.get("source") or "spotify").lower()
+    source = str(data.get("source") or "local").lower()
     if source == "navidrome":
         return _add_navidrome_playlist(data)
     if source == "local":
         return _add_local_playlist(data)
-    return _add_spotify_playlist(data)
+    return jsonify(error="Unsupported playlist source."), 400
 
 
 def _add_local_playlist(data):
-    """Create an empty Local playlist. No grabber/Spotify needed — Local is authored
+    """Create an empty Local playlist. Local is authored
     in-app by adding library tracks (see add_local_track), never synced from a source."""
     name = str(data.get("name") or "").strip()
     if not name:
@@ -93,25 +58,6 @@ def _add_local_playlist(data):
     db = state().db
     row_id = db.add_local_playlist(name)
     return jsonify(ok=True, playlist=db.get_playlist(row_id))
-
-
-def _add_spotify_playlist(data):
-    g = _grabber()
-    if not g:
-        return jsonify(error="grabber_disabled"), 409
-    if not g.client.is_connected():
-        return jsonify(error="not_connected"), 400
-    pid = parse_playlist_id(str(data.get("url") or data.get("id") or ""))
-    if not pid:
-        return jsonify(error="A Spotify playlist URL or ID is required."), 400
-    try:
-        meta = g.client.get_playlist_meta(pid)
-    except SpotifyError as exc:
-        return jsonify(error=str(exc)), 400
-    row_id = state().db.add_playlist(meta["spotify_id"], meta["name"],
-                                     meta["image_url"], meta["track_count"])
-    g.request_sync()
-    return jsonify(ok=True, playlist=state().db.get_playlist(row_id))
 
 
 def _add_navidrome_playlist(data):
@@ -136,7 +82,7 @@ def _add_navidrome_playlist(data):
 @login_required
 def navidrome_my_playlists():
     """Importable Navidrome playlists (the configured user's own + public),
-    flagged with watched state. Independent of the grabber."""
+    flagged with watched state."""
     from ...integrations.navidrome_playlists import list_navidrome_playlists, navidrome_configured
     cfg = state().config
     if not navidrome_configured(cfg):
@@ -621,14 +567,4 @@ def sync_playlist(pid):
             log.warning("Navidrome playlist sync failed: %s", exc)
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, playlist=pl)
-    # Spotify (default): needs the grabber + a live connection.
-    g = _grabber()
-    if not g:
-        return jsonify(error="grabber_disabled"), 409
-    if not g.client.is_connected():
-        return jsonify(error="not_connected"), 400
-    try:
-        pl = g.sync.sync_playlist(pid)
-    except SpotifyError as exc:
-        return jsonify(error=str(exc)), 400
-    return jsonify(ok=True, playlist=pl)
+    return jsonify(error="This playlist source no longer syncs."), 400

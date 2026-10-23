@@ -1,7 +1,6 @@
-"""Image search (Spotify + Deezer) and artist / album / track image editing.
+"""Image search (Deezer) and artist / album / track image editing.
 
-Search returns candidate image URLs from Deezer (keyless) and Spotify (when the
-grabber is connected); apply endpoints accept either a candidate URL (fetched
+Search returns candidate image URLs from Deezer (keyless); apply endpoints accept either a candidate URL (fetched
 server-side) or raw uploaded bytes. Album covers are embedded into every track
 of the album; artist images land in the on-disk custom store that
 ``/api/artist/image`` serves first. Every file write refreshes the DB hash so
@@ -134,33 +133,6 @@ def _search_deezer(kind: str, query: str) -> list[dict]:
     return out
 
 
-def _search_spotify(kind: str, query: str) -> list[dict]:
-    st = state()
-    g = getattr(st.tagger, "grabber", None) if st.tagger else None
-    client = g.client if g else None
-    if client is None or not client.is_connected():
-        return []
-    out = []
-    try:
-        if kind == "artist":
-            for a in client.search_artists(query, limit=_SEARCH_LIMIT):
-                out.append({"source": "spotify", "name": a["name"], "detail": "",
-                            "image_url": a["image_url"], "thumb_url": a["thumb_url"]})
-        elif kind == "album":
-            for al in client.search_albums(query, limit=_SEARCH_LIMIT):
-                out.append({"source": "spotify", "name": al["name"], "detail": al["artist"],
-                            "image_url": al["image_url"], "thumb_url": al["thumb_url"]})
-        else:
-            for t in client.search_tracks(query, limit=_SEARCH_LIMIT):
-                if t.get("cover_url"):
-                    out.append({"source": "spotify", "name": t.get("title", ""),
-                                "detail": t.get("artist", ""),
-                                "image_url": t["cover_url"], "thumb_url": t["cover_url"]})
-    except Exception as exc:
-        log.warning("Spotify image search failed: %s", exc)
-    return out
-
-
 @images_bp.route("/api/images/search")
 @login_required
 def api_images_search():
@@ -181,7 +153,7 @@ def api_images_search():
     if not q:
         return jsonify(candidates=[])
 
-    candidates = _search_spotify(kind, q) + _search_deezer(kind, q)
+    candidates = _search_deezer(kind, q)
     # Dedupe (several Deezer tracks share one album cover).
     seen: set[str] = set()
     unique = [c for c in candidates

@@ -2,11 +2,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { Playlist } from "../lib/types";
 
-// Playlists pulls in router/query/grabber context; mock them so the card grid
+// Playlists pulls in router/query context; mock them so the card grid
 // renders in isolation and its PATCH calls can be asserted on.
 const h = vi.hoisted(() => ({
   playlists: [] as unknown[],
-  grabber: { enabled: false, spotify: { connected: false } } as Record<string, unknown>,
   readiness: undefined as unknown,
   navigated: [] as string[],
 }));
@@ -37,7 +36,6 @@ vi.mock("../lib/api", () => ({
   api: { get: vi.fn(), post: vi.fn(), del: vi.fn(), patch: vi.fn(() => Promise.resolve({})) },
   ApiError: class ApiError extends Error {},
 }));
-vi.mock("../hooks/useGrabberStatus", () => ({ useGrabberStatus: () => ({ data: h.grabber }) }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../components/PageHeader", () => ({ default: () => null }));
 
@@ -58,7 +56,6 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(api.patch).mockClear();
   h.playlists = [];
-  h.grabber = { enabled: false, spotify: { connected: false } };
   h.readiness = undefined;
   h.navigated = [];
 });
@@ -207,5 +204,20 @@ describe("Playlists — merge reporting", () => {
 
   it("pluralizes the cross-source duplicate skip", () => {
     expect(mergeSummary(c({ skipped_duplicate: 2 }))).toBe("Added 0 · 2 duplicates");
+  });
+});
+
+describe("Playlists — sources", () => {
+  it("offers Navidrome and Local, with no Spotify add or sync controls", () => {
+    h.playlists = [pl({ id: 4, source: "spotify", name: "Old Spotify mix" })];
+    render(<Playlists />);
+
+    expect(screen.getByRole("button", { name: /Browse Navidrome/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Create local playlist/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Browse Spotify/ })).toBeNull();
+    expect(screen.queryByPlaceholderText(/Spotify playlist/)).toBeNull();
+    // A leftover Spotify playlist is listed (still playable) but never syncs.
+    expect(screen.getByText("Old Spotify mix")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sync" })).toBeNull();
   });
 });

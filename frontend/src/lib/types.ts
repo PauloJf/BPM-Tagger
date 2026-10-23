@@ -17,7 +17,7 @@ export interface Track {
   reviewed: number;
   locked: number;
   waveform_peaks?: string | null;
-  // Tag-index columns (grabber, M3+)
+  // Tag-index columns
   title?: string | null;
   artist?: string | null;
   album?: string | null;
@@ -282,69 +282,6 @@ export interface Stats {
 
 export type SettingsMap = Record<string, unknown>;
 
-// ── Grabber (M3) ──────────────────────────────────────────────────────────
-export interface SpotifyStatus {
-  enabled?: boolean;
-  configured: boolean;
-  connected: boolean;
-  scope?: string;
-  redirect_uri?: string;
-  last_error?: string;
-}
-
-export interface GrabberStatus {
-  enabled: boolean;
-  spotify?: SpotifyStatus;
-  queue_counts?: Record<string, number>;
-  active?: { id: number; status: string; progress: number; title: string; artist: string }[];
-  inbox_count?: number;
-  last_change?: string;
-  versions?: { app?: string; yt_dlp?: string | null };
-}
-
-export interface GrabCandidate {
-  id: number;
-  provider: string;
-  provider_track_id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration_ms: number | null;
-  isrc: string | null;
-  quality: string | null;
-  score: number | null;
-  score_breakdown: string | null;
-  url: string | null;
-  cover_url: string | null;
-  rank: number;
-}
-
-export interface QueueItem {
-  id: number;
-  spotify_track_id: string | null;
-  title: string | null;
-  artist: string | null;
-  album: string | null;
-  album_artist?: string | null;
-  duration_ms: number | null;
-  isrc?: string | null;
-  status: string;
-  provider: string | null;
-  error: string | null;
-  /** How the search went, when it's worth a line (e.g. the ISRC wasn't in Deezer's catalogue). */
-  note?: string | null;
-  attempts: number;
-  progress: number;
-  final_path: string | null;
-  priority: number;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface InboxItem extends QueueItem {
-  candidates: GrabCandidate[];
-}
-
 export type PlaylistSource = "spotify" | "navidrome" | "local";
 
 export interface Playlist {
@@ -377,42 +314,7 @@ export interface NavidromePlaylist {
   watched: boolean;
 }
 
-// ── Suggestions & Related (Deezer-derived) ─────────────────────────────────
-export interface SuggestedArtist {
-  id: number;
-  dz_id: string;
-  name: string;
-  image_url: string;
-  have_tracks: number;   // library tracks already owned (0-2; >=3 is filtered out)
-  seeds: string[];
-  score: number;
-}
-
-export interface SuggestedTrack {
-  id: number;
-  dz_track_id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration_ms: number | null;
-  cover_url: string;
-  preview_url: string;
-  seeds: string[];
-  in_library?: boolean;
-  queued?: boolean;
-  file_path?: string;
-}
-
-export interface SuggestionsResponse {
-  enabled: boolean;
-  artists?: SuggestedArtist[];
-  tracks?: SuggestedTrack[];
-  refreshing?: boolean;
-  last_error?: string;
-  computed_at?: string | null;
-  seed_count?: number;
-}
-
+// ── Related (Deezer-derived) ───────────────────────────────────────────────
 export interface RelatedArtist {
   dz_id: string;
   name: string;
@@ -431,7 +333,6 @@ export interface RelatedTrack {
   cover_url: string;
   preview_url: string;
   in_library?: boolean;
-  queued?: boolean;
   file_path?: string;
   bpm?: number | null;   // set when in_library — lets "queue similar" feed the play queue
 }
@@ -511,15 +412,6 @@ export interface DeezerArtistResponse {
 export interface DeezerAlbumDetail extends DeezerAlbumMeta {
   artist: string;
   tracks: RelatedTrack[];
-}
-
-export interface SpotifyPlaylist {
-  spotify_id: string;
-  name: string;
-  image_url: string;
-  track_count: number;
-  owner: string;
-  watched: boolean;
 }
 
 export interface PlaylistTrack {

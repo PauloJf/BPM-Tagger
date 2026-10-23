@@ -3,15 +3,11 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { RelatedArtist, RelatedTrack } from "../lib/types";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
-import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "./trackBits";
 import ArtistModal from "./ArtistModal";
 
-/** A single similar/related track row (Search-page style). */
-function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: boolean }) {
-  const add = useSuggestionQueue();
-  const adding = add.isPending && add.variables?.dz_track_id === t.dz_track_id;
+/** A single similar/related track row. */
+function TrackRow({ t }: { t: RelatedTrack }) {
   return (
     <div className="pl-track-row" style={{ gridTemplateColumns: "1fr auto", gap: 8 }}>
       <div style={{ minWidth: 0 }}>
@@ -33,17 +29,6 @@ function TrackRow({ t, grabberEnabled }: { t: RelatedTrack; grabberEnabled: bool
           ) : (
             <span className="chip chip--have sugg-action">✓ in library</span>
           )
-        ) : t.queued ? (
-          <span className="chip chip--queued sugg-action">↓ queued</span>
-        ) : grabberEnabled ? (
-          <button
-            className="btn btn-soft btn-sm sugg-action"
-            disabled={adding}
-            onClick={() => add.mutate({
-              dz_track_id: t.dz_track_id, title: t.title, artist: t.artist,
-              album: t.album, duration_ms: t.duration_ms, cover_url: t.cover_url,
-            })}
-          >Add to queue</button>
         ) : null}
       </div>
     </div>
@@ -91,13 +76,10 @@ export function ArtistRow({ a, onOpen }: { a: RelatedArtist; onOpen: () => void 
 
 /** Shared "Related · powered by Deezer" panel for the Artist / Album / Track
  *  pages: collapsed by default, live similar-artists + similar-tracks lookups
- *  fetched only on first expand. Read-only (works with the grabber off); the
- *  Add-to-queue action only appears when the grabber is enabled. */
+ *  fetched only on first expand. Read-only. */
 export default function RelatedPanel({ artist }: { artist: string; context?: "artist" | "album" | "track" }) {
   const [open, setOpen] = useState(false);
   const [modalArtist, setModalArtist] = useState<{ dzId: string; name: string } | null>(null);
-  const grabber = useGrabberStatus();
-  const grabberEnabled = grabber.data?.enabled === true;
   const name = (artist || "").trim();
 
   const artistsQ = useQuery({
@@ -162,7 +144,7 @@ export default function RelatedPanel({ artist }: { artist: string; context?: "ar
                   <div style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 6 }}>Similar tracks</div>
                   <div className="tracks-table">
                     {tracks.map((t) => (
-                      <TrackRow key={t.dz_track_id} t={t} grabberEnabled={grabberEnabled} />
+                      <TrackRow key={t.dz_track_id} t={t} />
                     ))}
                   </div>
                 </div>

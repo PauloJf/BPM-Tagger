@@ -29,7 +29,6 @@ vi.mock("@tanstack/react-query", () => ({
     if (k === "lyrics-fill") return { data: { running: false, total: 0, done: 0, filled: 0, not_found: 0 } };
     if (k === "loudness-fill") return { data: { running: false, total: 0, done: 0, measured: 0, tagged: 0, failed: 0, remaining: 0 } };
     if (k === "waveform-fill") return { data: { running: false, total: 0, done: 0, filled: 0, failed: 0, remaining: 0 } };
-    if (k === "grabber-status") return { data: { enabled: false } };
     return { data: undefined, isLoading: false };
   },
 }));

@@ -12,8 +12,6 @@ as a Spotify problem. PeriodicSync was always fine — it dispatches per source
 itself — so the filter is opt-in rather than baked into the shared query.
 """
 
-import logging
-
 import pytest
 
 from bpm_tagger.db import BPMDatabase
@@ -51,23 +49,3 @@ def test_disabled_playlists_are_excluded_by_the_filter_too(db):
 
 
 # ── the guard inside the syncer ──────────────────────────────────────────────
-
-class _FailingClient:
-    """Any request at all is a bug for a playlist with no Spotify id."""
-
-    def get_playlist_meta(self, spotify_id):
-        raise AssertionError(f"Spotify was called with id={spotify_id!r}")
-
-
-def test_sync_one_skips_a_row_without_a_spotify_id(caplog):
-    from bpm_tagger.grabber.sync_engine import SpotifySync
-
-    svc = SpotifySync.__new__(SpotifySync)   # no __init__: no thread, no network
-    svc.client = _FailingClient()
-
-    with caplog.at_level(logging.DEBUG):
-        svc._sync_one({"id": 2, "name": "MyRun", "source": "local", "spotify_id": None})
-
-    assert "MyRun" in caplog.text
-    # And nothing was recorded as a Spotify error for the UI to show.
-    assert not getattr(svc, "last_error", "")

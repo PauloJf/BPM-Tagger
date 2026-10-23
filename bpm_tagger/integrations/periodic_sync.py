@@ -1,14 +1,12 @@
 """PeriodicSync — one background scheduler for the otherwise manual-only syncs
 (Phase 5, docs/plans/phase5-player-users.md §6).
 
-Owned by ``main.py``, deliberately NOT by ``GrabberService``: Navidrome playlist sync
-and star / play-count sync must run with the grabber disabled (the parent plan's
-"decouple from the grabber" rule). A single interval thread runs whichever jobs are
-enabled each tick:
+Owned by ``main.py``. A single interval thread runs whichever jobs are enabled each
+tick:
 
-  * **playlists** — enabled Spotify (needs grabber + live connection) and Navidrome
-    (needs creds) playlists; **Local never syncs**. Each source self-gates; a failure
-    on one playlist doesn't abort the tick.
+  * **playlists** — enabled Navidrome playlists (needs creds); **Local never syncs**,
+    and Spotify playlists left over from the old grabber are static. A failure on one
+    playlist doesn't abort the tick.
   * **ratings** — when ``navidrome_sync_ratings`` is on (opt-in, admin only —
     docs/plans/ratings-weighted-picking.md § "Navidrome rating sync"). Runs
     BEFORE stars each tick so a pulled rating's star projection is already in
@@ -30,11 +28,10 @@ MIN_INTERVAL_MINUTES = 5   # floor — nothing here needs to run more often
 
 
 class PeriodicSync(threading.Thread):
-    def __init__(self, config, db, grabber=None):
+    def __init__(self, config, db):
         super().__init__(daemon=True, name="PeriodicSync")
         self.config = config
         self.db = db
-        self.grabber = grabber
         self._stop = threading.Event()
 
     def stop(self):
@@ -46,8 +43,7 @@ class PeriodicSync(threading.Thread):
             return
         interval = max(MIN_INTERVAL_MINUTES, minutes) * 60
         log.info("PeriodicSync started (every %d min)", interval // 60)
-        # First tick after one interval — boot already runs the grabber's initial sync,
-        # so let the app settle before the periodic pass.
+        # First tick after one interval, so the app settles before the periodic pass.
         while not self._stop.wait(interval):
             try:
                 self._tick()
@@ -65,17 +61,11 @@ class PeriodicSync(threading.Thread):
         for pl in self.db.get_enabled_playlists():
             if self._stop.is_set():
                 return
-            source = pl.get("source") or "spotify"
-            if source == "local":
+            if pl.get("source") != "navidrome":
                 continue
             try:
-                if source == "navidrome":
-                    if navidrome_configured(self.config):
-                        sync_navidrome_playlist(self.db, self.config, pl["id"])
-                elif source == "spotify":
-                    g = self.grabber
-                    if g and g.client.is_connected():
-                        g.sync.sync_playlist(pl["id"])
+                if navidrome_configured(self.config):
+                    sync_navidrome_playlist(self.db, self.config, pl["id"])
             except Exception as exc:
                 log.warning("PeriodicSync: playlist '%s' sync failed: %s", pl.get("name"), exc)
 

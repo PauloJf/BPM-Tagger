@@ -1,9 +1,8 @@
-"""Unit tests for path_template + transcode profile/arg logic."""
+"""Unit tests for path_template."""
 
 import os
 
 from bpm_tagger import path_template as pt
-from bpm_tagger.grabber import transcode as tc
 
 
 def _meta(**kw):
@@ -66,28 +65,3 @@ def test_unique_path_suffixes_on_collision(tmp_path):
     (tmp_path / "a" / "b (2).mp3").write_bytes(b"x")
     p3 = pt.unique_path(str(tmp_path), "a/b.mp3")
     assert p3.endswith("b (3).mp3")
-
-
-# ── transcode ─────────────────────────────────────────────────────────────────
-
-def test_profile_ext():
-    assert tc.profile_ext("mp3-320") == "mp3"
-    assert tc.profile_ext("flac") == "flac"
-    assert tc.profile_ext("opus-192") == "opus"
-    assert tc.profile_ext("bogus") == "mp3"  # falls back
-
-
-def test_ffmpeg_args_include_codec_and_bitrate():
-    args = tc.build_ffmpeg_args("in.flac", "out.mp3", "mp3-320")
-    assert args[0] == "ffmpeg"
-    assert "libmp3lame" in args and "320k" in args
-    assert args[-1] == "out.mp3"
-
-
-def test_transcode_same_format_copies(tmp_path):
-    src = tmp_path / "song.mp3"
-    src.write_bytes(b"ID3fakecontent")
-    dest, warn = tc.transcode(str(src), str(tmp_path / "out"), "mp3-320", "track")
-    assert dest.endswith("track.mp3")
-    assert warn is None
-    assert os.path.exists(dest)  # copied, no ffmpeg needed

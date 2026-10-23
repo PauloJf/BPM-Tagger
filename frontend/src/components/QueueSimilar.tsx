@@ -3,8 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { LibraryRelatedTrack, RelatedTrack } from "../lib/types";
 import { usePlayer, type PlayerTrack, type TempoLock } from "../lib/player";
-import { useGrabberStatus } from "../hooks/useGrabberStatus";
-import { useSuggestionQueue } from "../hooks/useSuggestionQueue";
 import { PreviewButton } from "./trackBits";
 
 /** The octave candidate (×½ / ×1 / ×2) closest to the target — same fold the
@@ -36,8 +34,8 @@ const EMPTY: React.CSSProperties = { padding: "6px 12px 10px", fontSize: 12, col
  *    — the same artist first, then a similar tempo (the run's cadence while a
  *    tempo lock is active, so everything offered fits the run). Always playable.
  *  - **From Deezer** (Part D): the artist's Deezer radio. In-library matches
- *    append to the play queue (cadence-filtered under a lock); missing tracks go
- *    to the grab queue via the grabber-gated suggestion flow.
+ *    append to the play queue (cadence-filtered under a lock); the rest can only
+ *    be previewed.
  *
  *  Purely presentational panel — the host (PlayerBar popover, Run page card)
  *  provides the chrome and positioning. */
@@ -49,9 +47,6 @@ export default function QueueSimilar({ artist, path, onClose }: { artist: string
   // TrackDetail/TrackCompare "leaving resumes the queue" behaviour, and makes
   // dismissing the panel a reliable escape hatch from a stray preview.
   useEffect(() => () => endPreview(), [endPreview]);
-  const add = useSuggestionQueue();
-  const grabber = useGrabberStatus();
-  const grabberEnabled = grabber.data?.enabled === true;
   const name = (artist || "").trim();
   const lock = player.tempoLock;
 
@@ -195,18 +190,6 @@ export default function QueueSimilar({ artist, path, onClose }: { artist: string
                     ) : (
                       <button className="btn btn-soft btn-sm sugg-action" onClick={() => enqueue(t)}>Queue</button>
                     )
-                  ) : t.queued ? (
-                    <span className="chip chip--queued sugg-action">↓ queued</span>
-                  ) : grabberEnabled ? (
-                    <button
-                      className="btn btn-soft btn-sm sugg-action"
-                      disabled={add.isPending && add.variables?.dz_track_id === t.dz_track_id}
-                      onClick={() => add.mutate({
-                        dz_track_id: t.dz_track_id, title: t.title, artist: t.artist,
-                        album: t.album, duration_ms: t.duration_ms, cover_url: t.cover_url,
-                      })}
-                      title="Not in your library — add to the download queue"
-                    >Grab</button>
                   ) : null}
                 </span>
               </div>

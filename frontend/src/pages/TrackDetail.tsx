@@ -62,7 +62,7 @@ export default function TrackDetail() {
   const [metaCands, setMetaCands] = useState<MetadataCandidate[] | null>(null);
   const [detailCand, setDetailCand] = useState<MetadataCandidate | null>(null);
 
-  // Look up full tag sets from Spotify/Deezer — directly by ISRC when the
+  // Look up full tag sets from Deezer — directly by ISRC when the
   // field is filled, else by artist+title, else by the filename.
   async function findMetadata() {
     setMetaFinding(true);
@@ -762,7 +762,7 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
                 {isrcFinding ? "Finding ISRC…" : "Find ISRC"}
               </button>
               <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                Find metadata fills every field from Spotify/Deezer — by ISRC when set, else by artist + title (or the filename). Find ISRC looks up just the ISRC.
+                Find metadata fills every field from Deezer — by ISRC when set, else by artist + title (or the filename). Find ISRC looks up just the ISRC.
               </span>
             </div>
             {metaCands != null && (

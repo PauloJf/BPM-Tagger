@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * Centered "nothing here" card — the ✓ success/empty panel shared by
- * Duplicates, Inbox, and Review. Pass a different `icon` for non-success
+ * Duplicates and Review. Pass a different `icon` for non-success
  * empties; `message` is usually `loading ? "Loading…" : "…"`.
  */
 export default function EmptyState({ icon = "✓", message }: { icon?: ReactNode; message: ReactNode }) {

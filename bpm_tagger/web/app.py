@@ -27,18 +27,15 @@ from .api.lyrics import lyrics_bp
 from .api.media import media_bp
 from .api.scan import scan_bp
 from .api.waveform import waveform_bp
-from .api.inbox import inbox_bp
 from .api.player_state import player_state_bp
 from .api.players import players_bp
 from .api.playlist_ops import playlist_ops_bp
 from .api.playlists import playlists_bp
-from .api.queue import queue_bp
+from .api.related import related_bp
 from .api.run import run_bp
 from .api.settings import settings_bp
-from .api.spotify import spotify_bp
 from .api.stats import stats_bp
 from .api.subsonic_admin import subsonic_admin_bp
-from .api.suggestions import suggestions_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token, password_stamp
 from .state import AppState
@@ -55,7 +52,7 @@ _FRONTEND_DIST = _ROOT / "frontend" / "dist"
 # The SPA obtains its token from /api/me, so /api/login and the static shell are
 # exempt.
 _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
-                          "spa", "spa_assets", "api_spotify.spotify_callback")
+                          "spa", "spa_assets")
 
 # Path prefixes owned by the backend — never served the SPA shell.
 # "rest/" is the optional Subsonic API: listed even when it's disabled, so /rest/*
@@ -93,7 +90,7 @@ _PLAYER_ALLOWED = {
     "api_listen.api_listen_pick",
     # Offline "similar from your library" (Similar panel + similar radio) —
     # scoped to the player's own playlists inside the handler.
-    "api_suggestions.related_library",
+    "api_related.related_library",
     "media.audio", "media.healthz", "media.api_scrobble",
     # Now-playing display + the two allowed track flags (star / dislike)
     "api_tracks.api_track", "api_tracks.api_track_cover_get",
@@ -222,8 +219,8 @@ def create_app(config: dict) -> Flask:
                 "never sent over plain http")
 
     for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
-               spotify_bp, playlists_bp, queue_bp, inbox_bp, lyrics_bp, images_bp,
-               run_bp, suggestions_bp, players_bp, player_state_bp, loudness_bp,
+               playlists_bp, lyrics_bp, images_bp,
+               run_bp, related_bp, players_bp, player_state_bp, loudness_bp,
                listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
         app.register_blueprint(bp)
 

@@ -18,10 +18,6 @@ import Albums from "./pages/Albums";
 import Playlists from "./pages/Playlists";
 import PlaylistDetail from "./pages/PlaylistDetail";
 import PlaylistDiff from "./pages/PlaylistDiff";
-import Queue from "./pages/Queue";
-import Inbox from "./pages/Inbox";
-import Search from "./pages/Search";
-import Suggestions from "./pages/Suggestions";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
 import Listen from "./pages/Listen";
@@ -165,11 +161,6 @@ export default function App() {
         {/* Playlist operations are admin-side (the API is outside the
             default-deny player allowlist), so this lives here only. */}
         <Route path="/playlist-diff" element={<PlaylistDiff />} />
-        <Route path="/queue" element={<Queue />} />
-        <Route path="/inbox" element={<Inbox />} />
-        <Route path="/inbox/:id" element={<Inbox />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/suggestions" element={<Suggestions />} />
         <Route path="/review" element={<Review />} />
         <Route path="/run" element={<Run />} />
         <Route path="/listen" element={<Listen />} />

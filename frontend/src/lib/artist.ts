@@ -1,4 +1,4 @@
-// Mirrors bpm_tagger.grabber.matching.split_artist_credits — conservative on
+// Mirrors bpm_tagger.text.split_artist_credits — conservative on
 // purpose: only ','/';'/'/' reliably mark separate artist credits. '&'/'x'/
 // 'and' routinely appear inside real act names ("Chase & Status", "Dimitri
 // Vegas & Like Mike"), so splitting on them would break those apart.

@@ -84,8 +84,16 @@ def env_locked_keys() -> list:
 # v2.10.0: max stretch became the single run-queue authority.
 # v2.18: ratings-weighted picking replaced the two run preference toggles —
 # translated once by _migrate_pick_settings before the sweep.
+# The music grabber moved to its own project (Music Grabber): its keys are swept from
+# the in-memory config but left in settings.json, so `music_grabber import-env` can
+# still read the Deezer ARL and the rest from it.
 _DEAD_SETTINGS = ("run_tolerance_pct", "run_force_tempo",
-                  "run_prefer_starred", "run_prefer_familiar")
+                  "run_prefer_starred", "run_prefer_familiar",
+                  "grabber_enabled", "spotify_client_id", "spotify_client_secret",
+                  "spotify_redirect_uri", "spotify_sync_minutes", "monochrome_base_url",
+                  "monochrome_api_key", "monochrome_quality", "deezer_arl", "deezer_quality",
+                  "provider_order", "output_format", "grab_workers", "grab_dry_run",
+                  "auto_accept_threshold", "ask_threshold", "lyrics_enabled")
 
 
 def _env_bool(name: str) -> "bool | None":
@@ -337,9 +345,7 @@ def build_config() -> dict:
         # folder (Navidrome convention) instead of only the app cache. Only
         # writes when the layout has a folder exclusive to the artist.
         "artist_images_to_library":   os.environ.get("ARTIST_IMAGES_TO_LIBRARY", "false").lower() == "true",
-        # Lyrics: lyrics_enabled gates the automatic fetch for grabbed tracks;
-        # manual per-track fetch/edit in the UI is always available.
-        "lyrics_enabled":             os.environ.get("LYRICS_ENABLED", "false").lower() == "true",
+        # Lyrics: manual per-track fetch/edit in the UI is always available.
         "lyrics_mode":                os.environ.get("LYRICS_MODE", "embed"),  # embed | sidecar
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
@@ -440,28 +446,8 @@ def build_config() -> dict:
         "subsonic_artist_info":       os.environ.get("SUBSONIC_ARTIST_INFO", "true").lower() == "true",
         # Expose each Run preset as a read-only "Run · <name>" playlist.
         "subsonic_run_playlists":     os.environ.get("SUBSONIC_RUN_PLAYLISTS", "true").lower() == "true",
-        "grabber_enabled":            os.environ.get("GRABBER_ENABLED", "false").lower() == "true",
         "index_tags":                 os.environ.get("INDEX_TAGS", "true").lower() == "true",
-        # Spotify OAuth — client id/secret are env-only, never persisted to settings.json
-        "spotify_client_id":          os.environ.get("SPOTIFY_CLIENT_ID", ""),
-        "spotify_client_secret":      os.environ.get("SPOTIFY_CLIENT_SECRET", ""),
-        "spotify_redirect_uri":       os.environ.get("SPOTIFY_REDIRECT_URI", ""),
-        "spotify_sync_minutes":       int(os.environ.get("SPOTIFY_SYNC_MINUTES", "30")),
         "ui_public_url":              os.environ.get("UI_PUBLIC_URL", ""),
-        # Providers / pipeline (used from M4; declared here so settings.json can hold them)
-        "monochrome_base_url":        os.environ.get("MONOCHROME_BASE_URL", ""),
-        "monochrome_api_key":         os.environ.get("MONOCHROME_API_KEY", ""),
-        "monochrome_quality":         os.environ.get("MONOCHROME_QUALITY", "LOSSLESS"),
-        # Deezer (streamrip): free-tier ARL yields full tracks at MP3 128 kbps;
-        # MP3_320 / FLAC require a paid Deezer subscription. ARL is env/config only.
-        "deezer_arl":                 os.environ.get("DEEZER_ARL", ""),
-        "deezer_quality":             os.environ.get("DEEZER_QUALITY", "MP3_128"),
-        "provider_order":             os.environ.get("PROVIDER_ORDER", "deezer,ytdlp"),
-        "output_format":              os.environ.get("OUTPUT_FORMAT", "mp3-128"),
         "path_template":              os.environ.get(
             "PATH_TEMPLATE", "{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}"),
-        "grab_workers":               int(os.environ.get("GRAB_WORKERS", "1")),
-        "grab_dry_run":               os.environ.get("GRAB_DRY_RUN", "false").lower() == "true",
-        "auto_accept_threshold":      float(os.environ.get("AUTO_ACCEPT_THRESHOLD", "0.85")),
-        "ask_threshold":              float(os.environ.get("ASK_THRESHOLD", "0.55")),
     }
