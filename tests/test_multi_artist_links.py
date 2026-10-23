@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber.matching import normalize_artist_name, split_artist_credits
+from bpm_tagger.matching import normalize_artist_name, split_artist_credits
 
 
 # ── split_artist_credits / normalize_artist_name ────────────────────────────

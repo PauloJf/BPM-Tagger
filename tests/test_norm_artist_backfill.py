@@ -1,5 +1,5 @@
 """One-time repair of stored norm_artist values written by the old, buggy
-normalize_artist() (see bpm_tagger.grabber.matching) — it used to split on
+normalize_artist() (see bpm_tagger.matching) — it used to split on
 bare 'x'/'and'/'ft'/'with' wherever they appeared, even mid-word, mangling
 names like "Axwell" into "a"+"well". Existing rows carry the old mangled
 value until this migration recomputes them once."""

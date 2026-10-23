@@ -9,7 +9,7 @@ import sqlite3
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.integrations import navidrome as nd
 from bpm_tagger.integrations import play_sync as ps
 

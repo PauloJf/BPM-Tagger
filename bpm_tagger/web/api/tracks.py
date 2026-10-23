@@ -16,9 +16,9 @@ from flask import Blueprint, Response, abort, jsonify, request, send_file
 from ...bpm.tags import get_file_hash, read_audio_quality, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
 from ...db import TRACK_SORTS
-from ...grabber.matching import normalize_artist, normalize_title
-from ...grabber.path_template import render, unique_path
-from ...grabber.tagging import embed_cover, read_cover, resize_cover, write_track_tags
+from ...matching import normalize_artist, normalize_title
+from ...path_template import render, unique_path
+from ...tagging import embed_cover, read_cover, resize_cover, write_track_tags
 from ...integrations.isrc import gather_candidates, pick_confident
 from ...integrations.metadata import gather_metadata
 from ...integrations.navidrome import _trigger_navidrome_rescan

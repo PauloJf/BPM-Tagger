@@ -1139,7 +1139,7 @@ class TracksMixin:
 
     def find_candidates_by_norm(self, norm_artist: str, norm_title: str) -> list[dict]:
         """Cheap SQL prefilter: rows sharing the normalized artist OR title.
-        The fuzzy scorer in grabber.matching does the final decision."""
+        The fuzzy scorer in matching does the final decision."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM tracks WHERE status != 'deleted' AND "

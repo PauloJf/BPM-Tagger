@@ -1,8 +1,8 @@
-"""Unit tests for grabber.matching — normalization, scoring, library match."""
+"""Unit tests for matching — normalization, scoring, library match."""
 
 import pytest
 
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 
 
 # ── Normalization ─────────────────────────────────────────────────────────────

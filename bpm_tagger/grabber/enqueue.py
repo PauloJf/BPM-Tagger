@@ -21,7 +21,7 @@ null it; see the design doc §8).
 import logging
 from typing import Optional
 
-from .matching import score
+from ..matching import score
 
 log = logging.getLogger(__name__)
 

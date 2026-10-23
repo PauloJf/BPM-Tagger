@@ -9,7 +9,7 @@ module namespace and run against a real temp BPMDatabase, per the plan
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.integrations import star_sync as ss
 
 # ── merge_star: the pure three-way merge ─────────────────────────────────────

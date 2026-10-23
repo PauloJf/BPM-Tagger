@@ -48,7 +48,8 @@ The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`
 | `bpm_tagger/integrations/` | `navidrome.py` (Subsonic rescan), `isrc.py`, `musicbrainz.py` |
 | `bpm_tagger/notify/` | `ntfy.py` — `NotificationManager` |
 | `bpm_tagger/web/` | Flask app factory (`app.py`), `auth.py` (CSRF), `state.py`, and JSON API blueprints under `api/` |
-| `bpm_tagger/text.py` | Stdlib-only title/artist normalizers (`normalize_artist`, `split_artist_credits`, …) — used by the core; `grabber/matching.py` re-exports them and adds the rapidfuzz scoring |
+| `bpm_tagger/text.py` | Stdlib-only title/artist normalizers (`normalize_artist`, `split_artist_credits`, …) — used by the core; `matching.py` re-exports them and adds the rapidfuzz scoring |
+| `bpm_tagger/matching.py`, `tagging.py`, `path_template.py` | Shared helpers used by the optional layers (fuzzy match scoring, tag/cover writing, path templates). Root-level so removing `grabber/` cannot break them; `tests/test_core_isolation.py` keeps them free of grabber/web/integrations imports |
 | `bpm_tagger/hooks.py` | Neutral hooks the core fires for optional layers (`library_changed` → Navidrome rescan when configured) |
 | `bpm_tagger/trash.py` | Soft-delete / recoverable trash for duplicate resolution |
 | `frontend/` | React SPA (Vite + TypeScript + Tailwind); built to `frontend/dist`, served by Flask |

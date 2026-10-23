@@ -10,7 +10,7 @@ import secrets
 
 from flask import Blueprint, jsonify, redirect, request, session
 
-from ...grabber.matching import library_match
+from ...matching import library_match
 from ..auth import _check_csrf, login_required
 from ..state import state
 

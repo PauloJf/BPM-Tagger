@@ -157,3 +157,59 @@ def test_core_never_imports_an_optional_layer_at_module_level():
                 if hit:
                     bad.append(f"{f.relative_to(ROOT)}:{node.lineno} imports {name}")
     assert not bad, "core → optional-layer imports at module level:\n" + "\n".join(bad)
+
+
+# Modules the optional layers share (matching, cover/tag writing, path templates).
+# They sit at the package root so deleting ``bpm_tagger/grabber/`` cannot break them
+# (docs/plans/ in the Music-Grabber repo, extraction §5.2 step 1).
+SHARED_MODULES = ("matching.py", "tagging.py", "path_template.py", "text.py")
+
+# Modules outside ``grabber/`` that still import it — the work list for the wiring
+# removal. This only shrinks: a new entry means new coupling to the grabber.
+GRABBER_IMPORTERS = {
+    "integrations/isrc.py",
+    "main.py",
+    "web/api/playlists.py",
+    "web/api/settings.py",
+    "web/api/suggestions.py",
+}
+
+
+def _imported_modules(tree: ast.AST, file: Path):
+    """Every absolute module name imported anywhere in ``file`` (lazy imports included)."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            yield from (a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            yield from _resolve(file, node)
+
+
+def _imports_grabber(name: str) -> bool:
+    return name == "bpm_tagger.grabber" or name.startswith("bpm_tagger.grabber.")
+
+
+def test_shared_modules_do_not_depend_on_the_grabber():
+    bad = []
+    for rel in SHARED_MODULES:
+        f = PKG / rel
+        for name in _imported_modules(ast.parse(f.read_text(encoding="utf-8")), f):
+            if _imports_grabber(name) or any(
+                    name == f"bpm_tagger.{m}" or name.startswith(f"bpm_tagger.{m}.")
+                    for m in ("web", "integrations", "notify")):
+                bad.append(f"{rel} imports {name}")
+    assert not bad, "shared modules reach into an optional layer:\n" + "\n".join(bad)
+
+
+def test_grabber_importers_only_shrink():
+    found = set()
+    for f in PKG.rglob("*.py"):
+        rel = f.relative_to(PKG).as_posix()
+        if rel.startswith("grabber/"):
+            continue
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        if any(_imports_grabber(n) for n in _imported_modules(tree, f)):
+            found.add(rel)
+    assert found <= GRABBER_IMPORTERS, (
+        "new modules import the grabber package: " + ", ".join(sorted(found - GRABBER_IMPORTERS)))
+    assert found == GRABBER_IMPORTERS, (
+        "grabber coupling shrank, trim GRABBER_IMPORTERS: " + ", ".join(sorted(GRABBER_IMPORTERS - found)))

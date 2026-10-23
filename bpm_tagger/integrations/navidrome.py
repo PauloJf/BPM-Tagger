@@ -20,7 +20,7 @@ import secrets
 
 import requests
 
-from ..grabber.matching import score
+from ..matching import score
 
 log = logging.getLogger(__name__)
 

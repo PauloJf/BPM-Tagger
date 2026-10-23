@@ -33,7 +33,7 @@ class TrackMeta:
         )
 
     def as_match(self) -> dict:
-        """Shape expected by grabber.matching.score()."""
+        """Shape expected by matching.score()."""
         return {"title": self.title, "artist": self.artist, "album": self.album,
                 "duration_ms": self.duration_ms, "isrc": self.isrc}
 

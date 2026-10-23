@@ -3,7 +3,7 @@ manual sync — with a fake Spotify client (no network)."""
 
 import pytest
 
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.grabber.sync_engine import GrabberService
 from bpm_tagger.web.app import create_app
 

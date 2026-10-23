@@ -22,7 +22,7 @@ from typing import Optional
 
 import requests
 
-from ..grabber.matching import normalize_artist
+from ..matching import normalize_artist
 from .ratelimit import deezer_limiter
 
 log = logging.getLogger(__name__)

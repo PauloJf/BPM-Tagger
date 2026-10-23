@@ -5,7 +5,7 @@ import pytest
 
 from bpm_tagger.bpm.tags import get_file_hash
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.integrations import navidrome_playlists as np
 from bpm_tagger.web.app import create_app
 

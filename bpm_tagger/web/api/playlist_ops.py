@@ -18,7 +18,7 @@ here:
 
 * **Identity** — whether two playlist rows are the same recording. The chain is
   matched library file → ISRC → normalized artist+title, built on the same
-  ``norm_artist``/``norm_title`` columns and ``grabber.matching`` normalizers the
+  ``norm_artist``/``norm_title`` columns and ``matching`` normalizers the
   duplicates view and the library matcher use (see ``identity_keys``).
 * **Cadence eligibility** — which tracks a run at some BPM could actually use.
   That is ``api.run._eligible`` over ``get_run_candidates()``, the one rule the
@@ -33,7 +33,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from ...grabber.matching import normalize_artist, normalize_title
+from ...matching import normalize_artist, normalize_title
 from ..auth import _check_csrf, login_required
 from ..state import state
 from .run import _eligible, _presets, _run_settings
@@ -124,7 +124,7 @@ def identity_keys(row: dict) -> list[str]:
     list — the caller keeps it as its own singleton rather than merging every such
     row into one bucket.
 
-    Normalization reuses ``grabber.matching`` — the stored ``norm_artist`` /
+    Normalization reuses ``matching`` — the stored ``norm_artist`` /
     ``norm_title`` columns are what the scanner and the Spotify sync wrote with
     those same functions, so the fallback for a row that predates them lands on
     the identical value."""

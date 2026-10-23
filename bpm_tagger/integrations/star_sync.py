@@ -29,7 +29,7 @@ fight the rating sync's own pushes over the same field).
 
 import logging
 
-from ..grabber.matching import library_match
+from ..matching import library_match
 from .navidrome import _norm_path, _paths_match, _to_match_dict, get_starred, resolve_id, set_star
 
 log = logging.getLogger(__name__)

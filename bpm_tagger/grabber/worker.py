@@ -19,11 +19,11 @@ from ..bpm.pipeline import detect_bpm
 from ..bpm.tags import get_file_hash, write_bpm_tag
 from ..integrations.lrclib import fetch_lyrics
 from ..integrations.navidrome import _trigger_navidrome_rescan
-from .matching import normalize_artist, normalize_title, score
-from .path_template import render, unique_path
+from ..matching import normalize_artist, normalize_title, score
+from ..path_template import render, unique_path
 from .providers import build_providers
 from .providers.base import ProviderAuthError, ProviderCandidate, TrackMeta, exc_text
-from .tagging import embed_cover, fetch_cover, write_track_tags
+from ..tagging import embed_cover, fetch_cover, write_track_tags
 from .transcode import profile_ext, transcode
 
 log = logging.getLogger(__name__)
