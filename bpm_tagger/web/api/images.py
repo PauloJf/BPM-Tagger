@@ -18,7 +18,7 @@ import requests
 from flask import Blueprint, jsonify, request
 
 from ...bpm.tags import get_file_hash
-from ...grabber.tagging import embed_cover, resize_cover
+from ...tagging import embed_cover, resize_cover
 from ...integrations.ratelimit import deezer_limiter
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state

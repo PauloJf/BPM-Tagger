@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from bpm_tagger.grabber.matching import normalize_artist_name, split_artist_credits
+from bpm_tagger.matching import normalize_artist_name, split_artist_credits
 
 
 def _login(client):

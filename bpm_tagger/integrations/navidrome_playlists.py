@@ -10,7 +10,7 @@ Independent of the grabber: needs only the Navidrome URL/credentials in config.
 
 import logging
 
-from ..grabber.matching import library_match, normalize_artist, normalize_title
+from ..matching import library_match, normalize_artist, normalize_title
 from .navidrome import get_playlist, get_playlists
 
 log = logging.getLogger(__name__)

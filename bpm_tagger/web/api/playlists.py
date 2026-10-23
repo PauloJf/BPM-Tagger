@@ -11,7 +11,7 @@ from flask import Blueprint, Response, abort, jsonify, request, send_file
 
 from ...config import __version__
 from ...grabber.spotify import SpotifyError, parse_playlist_id
-from ...grabber.tagging import read_cover
+from ...tagging import read_cover
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 from .images import _image_from_request

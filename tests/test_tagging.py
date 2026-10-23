@@ -9,7 +9,7 @@ from mutagen.flac import FLAC
 from PIL import Image
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber.tagging import (embed_cover, read_cover, resize_cover,
+from bpm_tagger.tagging import (embed_cover, read_cover, resize_cover,
                                         write_track_tags)
 
 

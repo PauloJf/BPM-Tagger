@@ -2,7 +2,7 @@
 
 Lives outside ``grabber`` on purpose: the core (``db``, ``scan``) needs these
 keys for the tag index and artist browsing, and must import without the
-grabber's dependencies (``rapidfuzz``). ``grabber.matching`` re-exports every
+grabber's dependencies (``rapidfuzz``). ``matching`` re-exports every
 name here, so existing imports keep working.
 """
 

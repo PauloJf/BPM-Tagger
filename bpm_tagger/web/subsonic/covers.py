@@ -60,7 +60,7 @@ def _folder_cover(directory: str):
 
 def _source(path: str):
     """(bytes, mime) of a track's art — embedded first, then a folder image."""
-    from ...grabber.tagging import read_cover
+    from ...tagging import read_cover
     cover = read_cover(path) or _folder_cover(os.path.dirname(path))
     if cover and not (cover[1] or "").lower().startswith("image/"):
         cover = (cover[0], "application/octet-stream")

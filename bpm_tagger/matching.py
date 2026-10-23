@@ -10,8 +10,8 @@ from typing import Optional
 from rapidfuzz import fuzz
 
 # Normalizers live in bpm_tagger.text (stdlib-only, importable by the core);
-# re-exported so every existing `from ...grabber.matching import X` still works.
-from ..text import (  # noqa: F401
+# re-exported so `from bpm_tagger.matching import X` keeps working for every caller.
+from .text import (  # noqa: F401
     _ARTIST_SPLIT,
     _CREDIT_SPLIT,
     _FEAT,

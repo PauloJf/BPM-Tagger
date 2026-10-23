@@ -7,7 +7,7 @@ tests/test_star_sync.py — see docs/plans/ratings-weighted-picking.md §
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.integrations import periodic_sync as ps
 from bpm_tagger.integrations import rating_sync as rs
 from bpm_tagger.integrations import star_sync as ss

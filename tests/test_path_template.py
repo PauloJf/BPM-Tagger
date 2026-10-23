@@ -1,8 +1,8 @@
-"""Unit tests for grabber.path_template + transcode profile/arg logic."""
+"""Unit tests for path_template + transcode profile/arg logic."""
 
 import os
 
-from bpm_tagger.grabber import path_template as pt
+from bpm_tagger import path_template as pt
 from bpm_tagger.grabber import transcode as tc
 
 

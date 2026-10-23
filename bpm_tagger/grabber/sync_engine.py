@@ -11,7 +11,7 @@ import logging
 import threading
 import time
 
-from .matching import library_match
+from ..matching import library_match
 from .spotify import SpotifyAuthError, SpotifyClient, SpotifyError
 
 log = logging.getLogger(__name__)

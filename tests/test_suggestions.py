@@ -5,7 +5,7 @@ import os
 import pytest
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 from bpm_tagger.grabber.suggestions import SuggestionsEngine, build_library_artists, primary_artist
 from bpm_tagger.integrations import deezer_catalog as dc
 from bpm_tagger.web.app import create_app

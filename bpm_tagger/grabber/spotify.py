@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from .matching import normalize_artist, normalize_title
+from ..matching import normalize_artist, normalize_title
 
 log = logging.getLogger(__name__)
 

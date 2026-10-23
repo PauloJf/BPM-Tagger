@@ -16,7 +16,7 @@ import logging
 import re
 import threading
 
-from .matching import extract_feat, library_match, normalize_artist, normalize_title
+from ..matching import extract_feat, library_match, normalize_artist, normalize_title
 
 log = logging.getLogger(__name__)
 

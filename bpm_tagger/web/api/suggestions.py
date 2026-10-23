@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 
 from ...grabber.enqueue import enqueue_track
-from ...grabber.matching import library_match, normalize_artist, normalize_title
+from ...matching import library_match, normalize_artist, normalize_title
 from ...grabber.suggestions import SEED_LIMIT, TTL_DAYS, build_library_artists
 from ...integrations import deezer_catalog as dz
 from ..auth import _check_csrf, login_required

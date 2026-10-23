@@ -6,7 +6,7 @@ databases that predate ON DELETE CASCADE.
 """
 
 from bpm_tagger.db import BPMDatabase
-from bpm_tagger.grabber import matching as m
+from bpm_tagger import matching as m
 
 
 def _db(tmp_path):
