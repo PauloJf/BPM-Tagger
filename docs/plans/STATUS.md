@@ -157,8 +157,9 @@ separate project; this repo drops it.
 - ✅ **Step 2 — wiring removed** (`refactor/remove-grabber-backend`): `bpm_tagger/grabber/`
   deleted, blueprints and settings endpoints gone, Related split out as `web/api/related.py`.
 - ✅ **Step 3 — frontend** and **step 5 — dependencies/docs**: same branch.
-- ⬜ **Step 4 — schema:** stop creating `grab_*` / `oauth_tokens` / `suggestions` for new DBs;
-  never drop them from existing ones.
+- ✅ **Step 4 — schema** (`refactor/legacy-tables`): `grab_*` / `oauth_tokens` / `suggestions`
+  are no longer created for new DBs and are never dropped from existing ones; the dead DB
+  mixins are deleted and playlists no longer derive a `queued` status.
 - ⬜ **Release:** beta first; the final `VERSION` bump waits for the separate project to be
   stable (≥ 1.0.0, import tool verified on a real migrated DB, intake verified end to end),
   because that bump publishes `:latest`.

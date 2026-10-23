@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from .constants import GRAB_NONTERMINAL
 
 class PlaylistsMixin:
     # ── Playlists ─────────────────────────────────────────────────────────────
@@ -93,35 +92,33 @@ class PlaylistsMixin:
             conn.execute(f"UPDATE playlists SET {', '.join(sets)} WHERE id = ?", vals)
             conn.commit()
 
-    def _attach_counts(self, conn, p: dict, queued: set, queued_pt: set) -> None:
-        """Fold a playlist's live rows into coverage counts (have / missing / queued /
-        new / removed / indexed) on the dict in place. Tombstones (removed_at set) are
-        out of the coverage totals. `queued` / `queued_pt` are the in-flight-grab sets,
-        computed once by the caller so a bulk listing needn't recompute them per row."""
+    def _attach_counts(self, conn, p: dict) -> None:
+        """Fold a playlist's live rows into coverage counts (have / missing / new /
+        removed / indexed) on the dict in place. Tombstones (removed_at set) are out of
+        the coverage totals. `queued_count` stays in the payload, always 0, for clients
+        that still read it: downloads no longer happen here."""
         rows = conn.execute(
-            "SELECT id, spotify_track_id, match_status, is_new, removed_at "
+            "SELECT match_status, is_new, removed_at "
             "FROM playlist_tracks WHERE playlist_id = ?",
             (p["id"],),
         ).fetchall()
-        have = miss = q = new = removed = 0
+        have = miss = new = removed = 0
         for r in rows:
             if r["removed_at"]:            # tombstone: out of coverage totals
                 removed += 1
                 continue
             if r["is_new"]:
                 new += 1
-            if r["spotify_track_id"] in queued or r["id"] in queued_pt:
-                q += 1
-            elif r["match_status"] == "have":
+            if r["match_status"] == "have":
                 have += 1
             else:
                 miss += 1
         p["have_count"] = have
         p["missing_count"] = miss
-        p["queued_count"] = q
+        p["queued_count"] = 0
         p["new_count"] = new
         p["removed_count"] = removed
-        p["indexed_count"] = have + miss + q   # live tracks only
+        p["indexed_count"] = have + miss   # live tracks only
 
     def list_playlists(self) -> list[dict]:
         with self._connect() as conn:
@@ -131,10 +128,8 @@ class PlaylistsMixin:
             playlists = [dict(r) for r in conn.execute(
                 "SELECT * FROM playlists ORDER BY pinned DESC, name COLLATE NOCASE"
             ).fetchall()]
-            queued = self._queued_sids(conn)
-            queued_pt = self._queued_pt_ids(conn)
             for p in playlists:
-                self._attach_counts(conn, p, queued, queued_pt)
+                self._attach_counts(conn, p)
         return playlists
 
     def playlist_names(self) -> dict:
@@ -155,7 +150,7 @@ class PlaylistsMixin:
                 return None
             p = dict(row)
             if with_counts:
-                self._attach_counts(conn, p, self._queued_sids(conn), self._queued_pt_ids(conn))
+                self._attach_counts(conn, p)
         return p
 
     def get_playlist_by_spotify_id(self, spotify_id: str) -> Optional[dict]:
@@ -570,26 +565,8 @@ class PlaylistsMixin:
         stamps = [s for s in (row["added"], row["removed"]) if s]
         return max(stamps) if stamps else None
 
-    def _queued_sids(self, conn) -> set:
-        return {r["spotify_track_id"] for r in conn.execute(
-            f"SELECT DISTINCT spotify_track_id FROM grab_queue "
-            f"WHERE status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
-            GRAB_NONTERMINAL,
-        ).fetchall()}
-
-    def _queued_pt_ids(self, conn) -> set:
-        """playlist_track_ids with a non-terminal grab in flight — lets a queued
-        non-Spotify track (no spotify_track_id) still read as 'queued' on its
-        playlist row, via the grab's playlist_track_id link (Phase 5)."""
-        return {r["playlist_track_id"] for r in conn.execute(
-            f"SELECT DISTINCT playlist_track_id FROM grab_queue "
-            f"WHERE playlist_track_id IS NOT NULL "
-            f"AND status IN ({','.join('?' * len(GRAB_NONTERMINAL))})",
-            GRAB_NONTERMINAL,
-        ).fetchall()}
-
     def get_playlist_tracks(self, playlist_id: int, status: str = "") -> list[dict]:
-        """Playlist tracks with a derived per-row status (have|queued|missing|removed).
+        """Playlist tracks with a derived per-row status (have|missing|removed).
 
         Tombstones (removed_at set) get derived_status 'removed' so they never match
         the coverage filters and only appear in the unfiltered detail view."""
@@ -619,15 +596,9 @@ class PlaylistsMixin:
                 "WHERE pt.playlist_id = ? ORDER BY pt.position",
                 (playlist_id,),
             ).fetchall()]
-            queued = self._queued_sids(conn)
-            queued_pt = self._queued_pt_ids(conn)
         for r in rows:
             if r["removed_at"]:
                 r["derived_status"] = "removed"
-            elif r["spotify_track_id"] in queued or r["id"] in queued_pt:
-                # A non-Spotify track (Navidrome) has no spotify_track_id to match on,
-                # so also honour the playlist_track_id link the grab carries (Phase 5).
-                r["derived_status"] = "queued"
             elif r["match_status"] == "have":
                 r["derived_status"] = "have"
             else:

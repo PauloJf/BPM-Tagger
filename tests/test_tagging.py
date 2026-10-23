@@ -8,7 +8,6 @@ import soundfile as sf
 from mutagen.flac import FLAC
 from PIL import Image
 
-from bpm_tagger.db import BPMDatabase
 from bpm_tagger.tagging import (embed_cover, read_cover, resize_cover,
                                         write_track_tags)
 
@@ -87,10 +86,3 @@ def test_embed_cover_bumps_mtime_when_disabled(tmp_path):
     old = _flac(f)
     assert embed_cover(str(f), resize_cover(_png(2000)), preserve_mtime=False) is None
     assert os.stat(str(f)).st_mtime != old
-
-
-def test_last_change_updates_on_enqueue(tmp_path):
-    db = BPMDatabase(str(tmp_path / "bpm.db"))
-    before = db.get_last_change()
-    db.enqueue_grab({"spotify_track_id": "s1", "title": "X"})
-    assert db.get_last_change() != before

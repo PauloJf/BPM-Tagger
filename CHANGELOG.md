@@ -7,6 +7,7 @@
 - **Spotify is no longer a source for cover, metadata or ISRC lookups.** Image search, **Find metadata** and **Find ISRC** use Deezer (and MusicBrainz for ISRCs), all keyless. The ISRC lookup no longer needs a Deezer ARL: it uses Deezer's public search.
 - **`SYNC_INTERVAL_MINUTES` now covers Navidrome playlists, star sync and play counts** (the Spotify pass is gone). `LYRICS_ENABLED` no longer does anything: it only gated the automatic fetch for downloads. `UI_PUBLIC_URL`, `INDEX_TAGS` and `PATH_TEMPLATE` stay.
 - **Smaller image.** `yt-dlp` and `streamrip` are no longer installed.
+- **New databases no longer get the grabber's tables** (`grab_queue`, `grab_candidates`, `grab_events`, `oauth_tokens`, `suggestions`). An existing database keeps them exactly as they were, so rolling back to a release with the grabber still works. Playlists no longer show a *queued* state, since nothing downloads from here.
 - **Internal:** `matching`, `tagging` and `path_template` moved out of `grabber/` to the package root; the Related endpoints moved from `web/api/suggestions.py` to `web/api/related.py`; a layering test now fails if any module imports the removed `bpm_tagger.grabber` package.
 
 ## v2.18.2 — 2026-10-09

@@ -902,28 +902,17 @@ class TracksMixin:
         return {"avg": r["avg"], "min": r["mn"], "max": r["mx"],
                 "median": round(median, 1), "count": r["n"]}
 
-    def get_source_stats(self) -> dict:
-        """Where the library came from: grabber-managed vs pre-existing tracks,
-        plus completed downloads per provider. For the Stats page (grabber on)."""
+    def get_artist_index_rows(self) -> list[dict]:
+        """(artist, album_artist, starred) for every non-deleted track — feeds the
+        library-artist presence map behind the Related panel."""
         with self._connect() as conn:
-            src = conn.execute("""
-                SELECT
-                    COUNT(CASE WHEN managed=1 THEN 1 END) AS managed,
-                    COUNT(CASE WHEN managed IS NULL OR managed=0 THEN 1 END) AS unmanaged
-                FROM tracks WHERE status != 'deleted'
-            """).fetchone()
-            providers = conn.execute(
-                "SELECT COALESCE(provider, 'unknown') AS p, COUNT(*) AS n "
-                "FROM grab_queue WHERE status='done' GROUP BY p ORDER BY n DESC"
+            rows = conn.execute(
+                "SELECT artist, album_artist, starred FROM tracks WHERE status != 'deleted'"
             ).fetchall()
-        return {
-            "managed": src["managed"],
-            "unmanaged": src["unmanaged"],
-            "providers": [{"provider": r["p"], "count": r["n"]} for r in providers],
-        }
+        return [dict(r) for r in rows]
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Grabber (M3+)
+    # Tag index
     # ══════════════════════════════════════════════════════════════════════════
 
     # ── Tag indexing ──────────────────────────────────────────────────────────

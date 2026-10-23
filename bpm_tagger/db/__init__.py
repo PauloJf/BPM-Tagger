@@ -1,9 +1,8 @@
 """SQLite database package (split from the former monolithic db.py).
 
-Public surface is unchanged: import BPMDatabase and the GRAB_* constants
-straight from ``bpm_tagger.db`` exactly as before."""
+Public surface: import BPMDatabase and TRACK_SORTS straight from ``bpm_tagger.db``."""
 
-from .constants import GRAB_NONTERMINAL, GRAB_TERMINAL, TRACK_SORTS
+from .constants import TRACK_SORTS
 from .database import BPMDatabase
 
-__all__ = ["BPMDatabase", "GRAB_TERMINAL", "GRAB_NONTERMINAL", "TRACK_SORTS"]
+__all__ = ["BPMDatabase", "TRACK_SORTS"]

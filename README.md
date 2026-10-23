@@ -179,7 +179,7 @@ The optional music grabber (Spotify playlist watching and downloading) was remov
 - **Settings are ignored, not erased.** `GRABBER_ENABLED`, `SPOTIFY_*`, `DEEZER_*`, `MONOCHROME_*`, `PROVIDER_ORDER`, `OUTPUT_FORMAT`, `GRAB_WORKERS`, `GRAB_DRY_RUN`, `AUTO_ACCEPT_THRESHOLD` and `ASK_THRESHOLD` no longer do anything (with `GRABBER_ENABLED=true` the app logs one warning at startup). Old keys already in `/data/settings.json` are left in place, just not read.
 - **Old Spotify playlists stay as static playlists.** Tracks already matched to your library remain playable (Run, Listen, `.m3u` export); they simply stop syncing. Navidrome and Local playlists are unaffected.
 - **Gone from the UI:** the Add Music, Suggestions, Queue and Inbox pages, Spotify connect, **Download missing**, and the grabber block on Stats. Cover, metadata and ISRC lookups now use Deezer (and MusicBrainz for ISRCs) with no account.
-- **Your database is untouched.** The old grabber tables stay in `bpm_tagger.db`, unused and never dropped, so you can roll back.
+- **Your database is untouched.** The old grabber tables stay in `bpm_tagger.db`, unused and never dropped, so you can roll back (a fresh install doesn't create them).
 
 ## Hardware / Memory
 

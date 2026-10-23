@@ -41,7 +41,7 @@ The core is **BPM detection + tag writing + the SQLite record** (`bpm/`, `scan/`
 | `bpm_tagger/` | Backend package — `python -m bpm_tagger` (see sub-modules below) |
 | `bpm_tagger/main.py` | Entry point: build config → dispatch on `MODE` |
 | `bpm_tagger/config.py` | env → config table, `settings.json` overrides, version discovery |
-| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `grabber.py` (legacy `grab_*` tables, no callers left), `playlists.py`, `suggestions.py` (legacy), `players.py`, `runs.py` (run journal + per-account play attribution), composed in `database.py`; `constants.py` holds `GRAB_*` (legacy) and `TRACK_SORTS`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
+| `bpm_tagger/db/` | `BPMDatabase` — SQLite, WAL, additive migrations. Split into domain mixins: `base.py` (connect + schema/migrations), `tracks.py`, `playlists.py`, `players.py`, `runs.py` (run journal + per-account play attribution), composed in `database.py`; `constants.py` holds `TRACK_SORTS`. Import surface unchanged (`from bpm_tagger.db import BPMDatabase`) |
 | `bpm_tagger/bpm/` | Detection: `detectors.py`, `pipeline.py` (reconcile/normalize + `ScanProgress`), `tags.py`, `waveform.py` |
 | `bpm_tagger/scan/` | `scanner.py` (`BPMTagger`), `watcher.py` (filesystem watch mode) |
 | `bpm_tagger/integrations/` | `navidrome.py` (Subsonic rescan), `isrc.py`, `musicbrainz.py` |
@@ -102,7 +102,7 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 ### Grabber (detached)
 
-`bpm_tagger/grabber/` is gone; see **What It Does** above. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are still created (never dropped, so a rollback or a re-run of the export keeps working) but nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
+`bpm_tagger/grabber/` is gone; see **What It Does** above. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are no longer created for new databases, and existing databases keep theirs untouched (never dropped, so a rollback or a re-run of the export keeps working) — nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
 
 ### Database (`bpm_tagger/db/` → `BPMDatabase`)
 
@@ -110,7 +110,7 @@ SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_m
 
 `tracks` key columns: `file_path`, `file_hash`, `bpm` / `bpm_dr` / `bpm_es` / `bpm_lb`, `bpm_confidence`, `detector`, `status` (`pending` / `done` / `error` / `deleted`), `needs_review`, `reviewed`, `locked`, `starred`, `disliked`, `isrc`, `managed`, `waveform_peaks` (JSON, lazy-computed). Tag-index columns (library matching, Subsonic, Related): `title` / `artist` / `album` / `album_artist` / `norm_artist` / `norm_title` / `duration_ms` / `spotify_track_id`.
 
-Legacy grabber tables (unused, kept for rollback): `grab_queue`, `grab_candidates`, `grab_events`, `oauth_tokens`, `suggestions`. Still live: `playlists` (navidrome / local rows; old `spotify` rows are static), `playlist_tracks`, `dismissed_dupes`.
+Legacy grabber tables (not created for new DBs; left untouched in existing ones for rollback): `grab_queue`, `grab_candidates`, `grab_events`, `oauth_tokens`, `suggestions`, `suggestion_dismissed`. `tests/test_legacy_tables.py` pins both behaviours. Still live: `playlists` (navidrome / local rows; old `spotify` rows are static), `playlist_tracks`, `dismissed_dupes`.
 
 ### Web UI (`bpm_tagger/web/`, React SPA + Flask JSON API)
 
