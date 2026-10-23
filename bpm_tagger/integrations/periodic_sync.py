@@ -22,6 +22,8 @@ follow-up with playlist sync so there is one loop, not three.
 import logging
 import threading
 
+from ..activity import track as track_activity
+
 log = logging.getLogger(__name__)
 
 MIN_INTERVAL_MINUTES = 5   # floor — nothing here needs to run more often
@@ -51,10 +53,11 @@ class PeriodicSync(threading.Thread):
                 log.exception("PeriodicSync tick failed: %s", exc)
 
     def _tick(self):
-        self._sync_playlists()
-        self._sync_ratings()
-        self._sync_stars()
-        self._pull_play_counts()
+        with track_activity("sync", "Syncing with Navidrome"):
+            self._sync_playlists()
+            self._sync_ratings()
+            self._sync_stars()
+            self._pull_play_counts()
 
     def _sync_playlists(self):
         from .navidrome_playlists import navidrome_configured, sync_navidrome_playlist

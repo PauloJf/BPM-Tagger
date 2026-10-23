@@ -9,6 +9,7 @@ import re
 
 from flask import Blueprint, Response, abort, jsonify, request, send_file
 
+from ...activity import track as track_activity
 from ...tagging import read_cover
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
@@ -562,7 +563,8 @@ def sync_playlist(pid):
         if not navidrome_configured(cfg):
             return jsonify(error="navidrome_not_configured"), 400
         try:
-            pl = sync_navidrome_playlist(db, cfg, pid)
+            with track_activity("sync", "Syncing with Navidrome"):
+                pl = sync_navidrome_playlist(db, cfg, pid)
         except Exception as exc:
             log.warning("Navidrome playlist sync failed: %s", exc)
             return jsonify(error=str(exc)), 400

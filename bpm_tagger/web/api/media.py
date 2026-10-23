@@ -118,7 +118,8 @@ def api_progress():
         return jsonify(is_scanning=False, is_paused=False, is_stopping=False,
                        completed=0, total=0, cumulative_completed=0,
                        current_file="", current_step="",
-                       step_index=0, step_total=3, last_file="", last_bpm=None)
+                       step_index=0, step_total=3, last_file="", last_bpm=None,
+                       watching=False, batch_total=0, batch_done=0, batch_file="")
     return jsonify(**st.progress.snapshot())
 
 

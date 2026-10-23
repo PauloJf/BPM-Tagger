@@ -19,6 +19,7 @@ from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 from flask.sessions import SecureCookieSessionInterface
 
 from ..db import BPMDatabase
+from .api.activity import activity_bp
 from .api.auth import api_auth_bp
 from .api.images import images_bp
 from .api.listen import listen_bp
@@ -218,7 +219,7 @@ def create_app(config: dict) -> Flask:
                 "https origin (or UI_FORCE_SECURE_COOKIE=true) so the cookie is "
                 "never sent over plain http")
 
-    for bp in (api_auth_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
+    for bp in (api_auth_bp, activity_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                playlists_bp, lyrics_bp, images_bp,
                run_bp, related_bp, players_bp, player_state_bp, loudness_bp,
                listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
