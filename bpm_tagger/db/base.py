@@ -144,22 +144,16 @@ class _DBBase:
             )
         """)
 
-        # Lifetime counters that must survive clearing queue history (e.g. the
-        # all-time "tracks grabbed" tally). Seed grabbed_total once from the
-        # current managed-track count so upgrades start with a meaningful number
-        # rather than zero; it only ever grows from there (per successful grab).
+        # Lifetime counters / one-shot migration markers.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS app_counters (
                 key   TEXT PRIMARY KEY,
                 value INTEGER NOT NULL DEFAULT 0
             )
         """)
-        if conn.execute("SELECT 1 FROM app_counters WHERE key='grabbed_total'").fetchone() is None:
-            seed = conn.execute("SELECT COUNT(*) FROM tracks WHERE managed=1").fetchone()[0]
-            conn.execute("INSERT INTO app_counters (key, value) VALUES ('grabbed_total', ?)", (seed,))
 
         self._migrate_playlists_schema(conn)
-        self._create_grabber_tables(conn)
+        self._create_playlist_tables(conn)
         self._migrate_playlists_schema(conn, finish=True)
         self._create_player_tables(conn)
         self._create_run_tables(conn)
@@ -167,14 +161,9 @@ class _DBBase:
         self._create_ratings_table(conn)
         self._fix_normalize_artist_word_boundary_bug(conn)
 
-        # Orphan sweep: DBs created before FK enforcement have no ON DELETE
-        # CASCADE (added to the CREATE statements above, so only fresh DBs get
-        # it). Clean up any child rows an older DB left behind when a parent was
-        # removed. Cheap and idempotent — safe to run on every start.
-        conn.execute("DELETE FROM grab_candidates "
-                     "WHERE queue_item_id NOT IN (SELECT id FROM grab_queue)")
-        conn.execute("DELETE FROM grab_events "
-                     "WHERE queue_item_id NOT IN (SELECT id FROM grab_queue)")
+        # Orphan sweep: DBs created before FK enforcement have no ON DELETE CASCADE.
+        # Clean up playlist rows an older DB left behind when a playlist was removed.
+        # Cheap and idempotent — safe to run on every start.
         conn.execute("DELETE FROM playlist_tracks "
                      "WHERE playlist_id NOT IN (SELECT id FROM playlists)")
 
@@ -393,9 +382,9 @@ class _DBBase:
         multi-source shape (adds `source`, relaxes `spotify_id NOT NULL/UNIQUE`,
         adds membership columns). SQLite can't drop a NOT NULL/UNIQUE in place, so
         this rebuilds via rename → recreate → copy → drop, preserving row ids (and
-        thus grab_queue.playlist_track_id references).
+        thus any playlist_track_id references).
 
-        Called twice around _create_grabber_tables: the first pass renames legacy
+        Called twice around _create_playlist_tables: the first pass renames legacy
         tables out of the way so the recreate makes the new schema; the ``finish``
         pass copies the old rows in and drops the temporaries."""
         tables = {r[0] for r in conn.execute(
@@ -433,8 +422,10 @@ class _DBBase:
             """)
             conn.execute("DROP TABLE _playlist_tracks_old")
 
-    def _create_grabber_tables(self, conn):
-        """New grabber tables (§2). All CREATE ... IF NOT EXISTS — safe to re-run."""
+    def _create_playlist_tables(self, conn):
+        """Playlist, dismissed-duplicate and Subsonic tables. All CREATE ... IF NOT EXISTS —
+        safe to re-run. The grabber's tables (grab_*, oauth_tokens, suggestions) are no longer
+        created: existing DBs keep theirs untouched, new DBs never get them."""
         # `source` generalizes playlists beyond Spotify (navidrome | local). spotify_id
         # is nullable now (only Spotify rows carry one); NULLs are distinct under the
         # UNIQUE index, so many non-Spotify rows coexist. Older DBs are rebuilt into
@@ -502,113 +493,8 @@ class _DBBase:
         # playlist_tracks by matched_file_path for every track row.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_matched ON playlist_tracks(matched_file_path)")
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS grab_queue (
-                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-                playlist_track_id  INTEGER,
-                spotify_track_id   TEXT,
-                title              TEXT,
-                artist             TEXT,
-                album              TEXT,
-                album_artist       TEXT,
-                duration_ms        INTEGER,
-                isrc               TEXT,
-                track_no           INTEGER,
-                disc_no            INTEGER,
-                year               INTEGER,
-                cover_url          TEXT,
-                status             TEXT DEFAULT 'pending',
-                provider           TEXT,
-                chosen_candidate_id INTEGER,
-                search_override    TEXT,
-                error              TEXT,
-                attempts           INTEGER DEFAULT 0,
-                progress           REAL DEFAULT 0,
-                tmp_path           TEXT,
-                final_path         TEXT,
-                priority           INTEGER DEFAULT 0,
-                created_at         TEXT,
-                updated_at         TEXT
-            )
-        """)
-        # Additive: a one-line "what happened during the search" shown on the Queue
-        # and Inbox pages (e.g. the Deezer ISRC lookup missed, so we searched by title).
-        if "note" not in {row[1] for row in conn.execute("PRAGMA table_info(grab_queue)")}:
-            conn.execute("ALTER TABLE grab_queue ADD COLUMN note TEXT")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_status ON grab_queue(status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_gq_sid ON grab_queue(spotify_track_id)")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS grab_candidates (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                queue_item_id    INTEGER NOT NULL,
-                provider         TEXT,
-                provider_track_id TEXT,
-                title            TEXT,
-                artist           TEXT,
-                album            TEXT,
-                duration_ms      INTEGER,
-                isrc             TEXT,
-                quality          TEXT,
-                score            REAL,
-                score_breakdown  TEXT,
-                url              TEXT,
-                cover_url        TEXT,
-                rank             INTEGER,
-                FOREIGN KEY (queue_item_id) REFERENCES grab_queue(id) ON DELETE CASCADE
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_gc_item ON grab_candidates(queue_item_id)")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS grab_events (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                queue_item_id INTEGER NOT NULL,
-                event         TEXT,
-                detail        TEXT,
-                created_at    TEXT,
-                FOREIGN KEY (queue_item_id) REFERENCES grab_queue(id) ON DELETE CASCADE
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_item ON grab_events(queue_item_id)")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS oauth_tokens (
-                service       TEXT UNIQUE NOT NULL,
-                access_token  TEXT,
-                refresh_token TEXT,
-                expires_at    TEXT,
-                scope         TEXT
-            )
-        """)
-        conn.execute("""
             CREATE TABLE IF NOT EXISTS dismissed_dupes (
                 signature TEXT PRIMARY KEY
-            )
-        """)
-        # ── Suggestions (Deezer-derived artist/track recommendations) ─────────
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS suggestions (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                kind         TEXT NOT NULL,            -- 'artist' | 'track'
-                dz_id        TEXT NOT NULL,            -- deezer artist id or track id
-                name         TEXT,                     -- artist name / track title
-                artist       TEXT DEFAULT '',          -- tracks only
-                album        TEXT DEFAULT '',
-                duration_ms  INTEGER,
-                image_url    TEXT DEFAULT '',
-                preview_url  TEXT DEFAULT '',
-                score        REAL DEFAULT 0,
-                have_tracks  INTEGER DEFAULT 0,        -- artists only: library tracks owned (0-2; >=3 filtered)
-                seeds        TEXT DEFAULT '[]',        -- JSON: seed artist names this came from
-                computed_at  TEXT,
-                queued_at    TEXT,                     -- set when user enqueues (until next refresh)
-                UNIQUE(kind, dz_id)
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sug_kind ON suggestions(kind)")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS suggestion_dismissed (
-                kind         TEXT NOT NULL,            -- 'artist' | 'track'
-                key          TEXT NOT NULL,            -- artist: normalize_artist(name); track: dz track id
-                dismissed_at TEXT,
-                PRIMARY KEY (kind, key)
             )
         """)
         # Optional Subsonic API (docs/plans/subsonic-api.md): per-account API

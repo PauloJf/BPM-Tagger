@@ -17,7 +17,7 @@ from the music folder in watch mode.
 | 1 | **Neutral modules first.** `grabber/matching|tagging|path_template` → `bpm_tagger/matching|tagging|path_template`, importers repointed, layering test extended. No behaviour change. | ✅ Done (branch `refactor/neutral-modules`, PR #16) |
 | 2 | **Remove the wiring.** `main.py`, `scanner.grabber`, restart hook, `PeriodicSync` Spotify branch, grabber blueprints (`spotify`, `queue`, `inbox`, the Suggestions half of `suggestions`), settings endpoints, `send_grabber`, config keys; delete `bpm_tagger/grabber/`; Related endpoints → `web/api/related.py`; ISRC / metadata / image lookups drop Spotify and the Deezer ARL. | ✅ Done (branch `refactor/remove-grabber-backend`) |
 | 3 | **Frontend.** Delete the grabber-only pages and components (Inbox, Queue, Suggestions, Add Music, GrabberGate, the playlist suggestions panel), edit the mixed ones (Playlists, Settings, Stats, Related), remove nav entries. | ✅ Done (same branch) |
-| 4 | **Schema.** Stop creating `grab_*`, `oauth_tokens` and `suggestions` for *new* databases. **Never drop them from existing ones** (rollback safety). | ⬜ Open |
+| 4 | **Schema.** Stop creating `grab_*`, `oauth_tokens` and `suggestions` for *new* databases. **Never drop them from existing ones** (rollback safety). | ✅ Done (branch `refactor/legacy-tables`) |
 | 5 | **Dependencies and image.** `yt-dlp` and `streamrip` out of `requirements.txt` (done in step 2); keep `rapidfuzz` and `pillow`. Docs: README, DOCKERHUB_README, CLAUDE.md, compose, `.env.example`. | ✅ Done (same branch) |
 | 6 | **Beta, then release.** Test the removal on the beta channel (`vX.Y.Z-beta.N`), then ship as a breaking release. | ⬜ Open |
 
