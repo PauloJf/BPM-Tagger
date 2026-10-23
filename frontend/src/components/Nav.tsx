@@ -3,6 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useScan, type ScanState } from "../hooks/useScan";
 import type { Progress } from "../lib/types";
+import { useActivity } from "../hooks/useActivity";
+import ActivityList from "./ActivityList";
 import { applyTheme, type Theme } from "../lib/theme";
 import BpmMark from "./BpmMark";
 
@@ -113,6 +115,7 @@ function isActivePath(pathname: string, match: string[]): boolean {
 function stateColor(s: ScanState): { color: string; pulsing: boolean; label: string; labelColor: string } {
   switch (s) {
     case "analysing":
+    case "watching":
       return { color: "var(--accent)", pulsing: true, label: "Analyzing", labelColor: "var(--accent-2)" };
     case "paused":
       return { color: "var(--warn-fg)", pulsing: false, label: "Paused", labelColor: "var(--warn-fg)" };
@@ -180,16 +183,24 @@ function ScanControls({ state, act, mobile }: { state: ScanState; act: (a: "star
 function SidebarScan({ state, act, progress }: { state: ScanState; act: (a: "start" | "pause" | "resume" | "stop") => void; progress: Progress | null }) {
   const info = stateColor(state);
   const scanning = state === "analysing" && !!progress && progress.total > 0;
-  const pct = scanning ? Math.round((progress!.completed / progress!.total) * 100) : 0;
+  const watching = state === "watching" && !!progress && (progress.batch_total ?? 0) > 0;
+  const done = watching ? (progress!.batch_done ?? 0) : scanning ? progress!.completed : 0;
+  const total = watching ? progress!.batch_total! : scanning ? progress!.total : 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <div className="sidebar-scan">
       <div className="sidebar-scan-head">
         <Dot color={info.color} pulsing={info.pulsing} />
         <span className="scan-label" style={{ color: info.labelColor, fontWeight: 500, fontSize: 12 }}>{info.label}</span>
-        {scanning && <span className="sidebar-scan-count">{progress!.completed} / {progress!.total}</span>}
+        {(scanning || watching) && <span className="sidebar-scan-count">{done} / {total}</span>}
       </div>
-      {scanning && (
+      {(scanning || watching) && (
         <div className="sidebar-scan-track"><div className="sidebar-scan-fill" style={{ width: `${pct}%` }} /></div>
+      )}
+      {watching && (
+        <div className="sidebar-scan-file" title={progress!.batch_file || "New files in the music folder"}>
+          {progress!.batch_file || "New files in the music folder"}
+        </div>
       )}
       <div className="sidebar-scan-btns">
         {state === "idle" && (
@@ -346,7 +357,10 @@ export default function Nav() {
   const location = useLocation();
   const panelRef = useRef<HTMLDivElement>(null);
   const { state, act, progress } = useScan();
+  const activity = useActivity();
   const dot = stateColor(state);
+  // Idle scan but background work running: the dot still says so.
+  const dotColor = !dot.pulsing && activity.length > 0 ? "var(--accent)" : dot.color;
 
   const sections = buildSections();
   const badgeCount = (item: NavItem) => (item.badge === "review" ? reviewCount : 0);
@@ -414,6 +428,7 @@ export default function Nav() {
         </button>
         <div className="sidebar-footer">
           <SidebarScan state={state} act={act} progress={progress} />
+          <ActivityList items={activity} />
           <a
             href="https://ko-fi.com/paulojf"
             target="_blank"
@@ -444,8 +459,9 @@ export default function Nav() {
       <nav className="app-nav">
         <Logo />
         <span
-          className="scan-dot nav-scan-dot-mobile"
-          style={{ background: dot.color, marginLeft: "auto", marginRight: 10, boxShadow: `0 0 0 3px ${dot.color}33` }}
+          className={"scan-dot nav-scan-dot-mobile" + (dot.pulsing || activity.length > 0 ? " pulsing" : "")}
+          title={[dot.label, ...activity.map((a) => a.label)].join(" · ")}
+          style={{ background: dotColor, marginLeft: "auto", marginRight: 10, boxShadow: `0 0 0 3px ${dotColor}33` }}
         />
         <button
           id="nav-hamburger"
@@ -494,6 +510,7 @@ export default function Nav() {
           <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <ScanControls state={state} act={act} mobile />
           </div>
+          <div style={{ padding: "0 10px 6px" }}><ActivityList items={activity} /></div>
           <div className="nav-mobile-sep" />
           <ThemeToggle mobile />
           <a

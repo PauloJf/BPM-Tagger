@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { Progress } from "../lib/types";
 
-export type ScanState = "idle" | "analysing" | "paused" | "stopping";
+/** "watching" = watch mode is analysing new files: shown like a scan, but read-only. */
+export type ScanState = "idle" | "analysing" | "paused" | "stopping" | "watching";
 
-function deriveState(d: Progress): ScanState {
+export function deriveState(d: Progress): ScanState {
   if (d.is_stopping) return "stopping";
-  if (!d.is_scanning) return "idle";
+  if (!d.is_scanning) return d.watching ? "watching" : "idle";
   if (d.is_paused) return "paused";
   return "analysing";
 }

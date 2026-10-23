@@ -533,8 +533,11 @@ The sidebar footer shows the current scan state at all times and lets you contro
 - **Analysing** (pulsing green dot) — scan in progress; **⏸ Pause** and **■ Stop** buttons are shown
 - **Stopping…** (pulsing red dot) — stop requested; the current track is finishing before the scan exits
 - **Paused** (yellow dot) — scan is suspended; **▶ Resume** resumes from where it left off
+- **Analysing a new file** (pulsing dot, no buttons) — in watch mode, files that arrive in the music folder are analysed without a scan: the card shows the batch count, a thin bar and the file being analysed. It's read-only, so there's nothing to pause or stop; the card returns to **Stopped** when the batch is done
 
 Pausing and stopping both take effect between tracks, not mid-file, so the current track always completes cleanly.
+
+**Background activity.** Under the scan card, a quiet list shows whatever else is running and disappears when nothing is: **Measuring loudness**, **Building waveforms**, **Fetching lyrics** and **Looking up ISRCs** (the bulk fills in Settings, with a count and a thin bar once they know their total), and **Syncing with Navidrome** (a manual or scheduled sync of playlists, stars, ratings and play counts). On a small screen the top-bar dot pulses while any of it runs, and the menu lists it. Admin only; the player kiosk doesn't see it.
 
 ### Settings (`/settings`)
 

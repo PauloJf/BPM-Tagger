@@ -9,6 +9,7 @@ import re
 import requests
 from flask import Blueprint, current_app, jsonify, request, session
 
+from ...activity import track as track_activity
 from ...config import WAVEFORM_MODES, __version__, env_locked_keys, save_settings
 from ...integrations.navidrome import ping_navidrome
 from ...notify.ntfy import NotificationManager
@@ -416,7 +417,8 @@ def api_sync_stars():
     _check_csrf()
     st = state()
     from ...integrations.star_sync import sync_stars
-    result = sync_stars(st.db, st.config)
+    with track_activity("sync", "Syncing with Navidrome"):
+        result = sync_stars(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
 
@@ -433,7 +435,8 @@ def api_sync_ratings():
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     from ...integrations.rating_sync import sync_ratings
-    result = sync_ratings(st.db, st.config)
+    with track_activity("sync", "Syncing with Navidrome"):
+        result = sync_ratings(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
 
@@ -447,7 +450,8 @@ def api_sync_play_counts():
     _check_csrf()
     st = state()
     from ...integrations.play_sync import pull_play_counts
-    result = pull_play_counts(st.db, st.config)
+    with track_activity("sync", "Syncing with Navidrome"):
+        result = pull_play_counts(st.db, st.config)
     status = 200 if result.get("ok") else 502
     return jsonify(**result), status
 

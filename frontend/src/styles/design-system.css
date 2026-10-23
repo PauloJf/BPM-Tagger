@@ -252,6 +252,17 @@ body.sidebar-collapsed { --sidebar-w: 62px; }
 .sidebar-scan-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 2px; transition: width 0.6s ease; }
 .sidebar-scan-btns { display: flex; gap: 6px; margin-top: 9px; }
 .sidebar-scan-btns .btn { flex: 1; justify-content: center; }
+/* Read-only line under the bar while watch mode analyses new files. */
+.sidebar-scan-file { margin-top: 7px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Background jobs that aren't the scan (fills, Navidrome syncs): a quiet list under the scan block. */
+.sidebar-activity { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 12px; }
+.sidebar-activity-head { display: flex; align-items: center; gap: 7px; }
+.sidebar-activity-label { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-activity .sidebar-scan-track { margin-top: 6px; }
+body.sidebar-collapsed .sidebar-activity { padding: 6px 0; border: none; align-items: center; }
+body.sidebar-collapsed .sidebar-activity-label,
+body.sidebar-collapsed .sidebar-activity .sidebar-scan-count,
+body.sidebar-collapsed .sidebar-activity .sidebar-scan-track { display: none; }
 /* Collapsed rail: strip the block chrome down to a centered dot + stacked icons. */
 body.sidebar-collapsed .sidebar-scan { padding: 6px 0 0; background: transparent; border: none; }
 body.sidebar-collapsed .sidebar-scan-head { justify-content: center; }

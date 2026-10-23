@@ -51,6 +51,30 @@ class WatchHandler(FileSystemEventHandler):
                 log.info("File moved — old path marked as deleted: %s",
                          Path(event.src_path).name)
 
+    def _process_batch(self, ready: list) -> bool:
+        """Analyse the files that came due. Reports them to ScanProgress as a read-only
+        batch, so the UI shows the watcher working. Returns True if any was tagged."""
+        progress = getattr(self._tagger, "progress", None)
+        any_tagged = False
+        if ready and progress is not None:
+            progress.begin_batch(len(ready))
+        try:
+            for path in ready:
+                if self._tagger._stop_event.is_set():
+                    break
+                self._tagger._pause_event.wait()
+                if progress is not None:
+                    progress.batch_start_file(path)
+                result = self._tagger.process_file(path, force=False)
+                if progress is not None:
+                    progress.batch_finish_file()
+                if result.get("status") == "tagged":
+                    any_tagged = True
+        finally:
+            if progress is not None:
+                progress.end_batch()
+        return any_tagged
+
     def drain_pending(self):
         idle_release_secs = 300  # release model after 5 min with no new files
         last_work_time = 0.0
@@ -64,13 +88,8 @@ class WatchHandler(FileSystemEventHandler):
                     ready = [p for p, deadline in self._pending.items() if deadline <= now]
                     for p in ready:
                         del self._pending[p]
-                for path in ready:
-                    if self._tagger._stop_event.is_set():
-                        break
-                    self._tagger._pause_event.wait()
-                    result = self._tagger.process_file(path, force=False)
-                    if result.get("status") == "tagged":
-                        any_tagged = True
+                if self._process_batch(ready):
+                    any_tagged = True
                 if ready:
                     last_work_time = time.monotonic()
                 else:

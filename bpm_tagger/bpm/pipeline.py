@@ -22,6 +22,12 @@ class ScanProgress:
     def __init__(self):
         self._lock = threading.Lock()
         self.cumulative_completed = 0
+        # Watch mode analyses new files without a scan: a read-only "batch" the UI can
+        # show. Separate from the scan fields so a scan's reset never clears it, and so
+        # the card never offers Pause/Stop for it (Stop would end the watcher).
+        self.batch_total = 0
+        self.batch_done = 0
+        self.batch_file = ""
         self._reset()
 
     def _reset(self):
@@ -67,6 +73,22 @@ class ScanProgress:
             self.is_scanning = False; self.is_stopping = False
             self.current_file = ""; self.current_step = ""
 
+    def begin_batch(self, total: int):
+        with self._lock:
+            self.batch_total = total; self.batch_done = 0; self.batch_file = ""
+
+    def batch_start_file(self, path: str):
+        with self._lock:
+            self.batch_file = Path(path).name
+
+    def batch_finish_file(self):
+        with self._lock:
+            self.batch_done += 1; self.batch_file = ""
+
+    def end_batch(self):
+        with self._lock:
+            self.batch_total = 0; self.batch_done = 0; self.batch_file = ""
+
     def snapshot(self) -> dict:
         with self._lock:
             si = (self.STEPS.index(self.current_step) + 1
@@ -77,7 +99,9 @@ class ScanProgress:
                         current_step=self.current_step, step_index=si,
                         step_total=len(self.STEPS), completed=self.completed,
                         total=self.total, cumulative_completed=self.cumulative_completed,
-                        last_file=self.last_file, last_bpm=self.last_bpm)
+                        last_file=self.last_file, last_bpm=self.last_bpm,
+                        watching=self.batch_total > 0, batch_total=self.batch_total,
+                        batch_done=self.batch_done, batch_file=self.batch_file)
 
 
 # ---------------------------------------------------------------------------

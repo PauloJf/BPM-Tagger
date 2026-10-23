@@ -267,6 +267,19 @@ export interface Progress {
   step_total?: number;
   last_file: string;
   last_bpm: number | null;
+  /** Watch mode is analysing newly arrived files (read-only: no scan to pause/stop). */
+  watching?: boolean;
+  batch_total?: number;
+  batch_done?: number;
+  batch_file?: string;
+}
+
+/** One running background job from /api/activity. `total` is null while it is still counting. */
+export interface ActivityItem {
+  id: string;
+  label: string;
+  done: number | null;
+  total: number | null;
 }
 
 export interface Stats {
