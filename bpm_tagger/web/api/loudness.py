@@ -16,6 +16,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from ...activity import track as track_activity
 from ...bpm.loudness import analyze_loudness
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
@@ -118,7 +119,8 @@ def api_track_loudness_measure():
     _assert_in_music_dir(path)
     if not st.db.get_track(path):
         return jsonify(ok=False, error="not found"), 404
-    lufs, source = analyze_loudness(path, prefer_tag=False)
+    with track_activity(f"loudness:{path}", f"Measuring loudness of {Path(path).name}"):
+        lufs, source = analyze_loudness(path, prefer_tag=False)
     if lufs is None:
         return jsonify(ok=False, error="Could not measure this file's loudness."), 500
     st.db.save_loudness(path, lufs, source)

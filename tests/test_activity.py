@@ -2,6 +2,7 @@
 registry, and /api/activity (loudness/waveform/lyrics/ISRC fills + syncs)."""
 
 import threading
+from pathlib import Path
 
 from bpm_tagger import activity
 from bpm_tagger.bpm.pipeline import ScanProgress
@@ -127,3 +128,96 @@ def test_activity_is_not_available_to_a_player(base_config):
     resp, _ = _login(client, "guest")
     assert resp.status_code == 200
     assert client.get("/api/activity").status_code == 403
+
+
+# ── inline jobs: listed while they run ───────────────────────────────────────
+def _csrf(client):
+    return {"X-CSRF-Token": client.get("/api/me").get_json()["csrf_token"]}
+
+
+def test_reanalyze_is_listed_while_it_runs(client, base_config):
+    _login(client)
+    st = client.application.extensions["state"]
+    path = str(Path(base_config["music_dir"]) / "Song One.mp3")
+    labels = {}
+
+    class Tagger:
+        progress = None
+
+        def process_file(self, p, force=False):
+            labels["during"] = [a["label"] for a in activity.snapshot()]
+            return {"status": "tagged"}
+
+    st.tagger = Tagger()
+    r = client.post("/api/scan/reanalyze", json={"file_path": path}, headers=_csrf(client))
+    assert r.status_code == 200
+    assert labels["during"] == ["Re-analysing Song One.mp3"]
+    assert activity.snapshot() == []                       # gone once it returns
+
+
+def test_reanalyze_clears_the_item_when_the_job_raises(client, base_config):
+    _login(client)
+    st = client.application.extensions["state"]
+    path = str(Path(base_config["music_dir"]) / "x.mp3")
+
+    class Tagger:
+        progress = None
+
+        def process_file(self, p, force=False):
+            raise RuntimeError("boom")
+
+    st.tagger = Tagger()
+    client.application.config["PROPAGATE_EXCEPTIONS"] = False
+    r = client.post("/api/scan/reanalyze", json={"file_path": path}, headers=_csrf(client))
+    assert r.status_code == 500
+    assert activity.snapshot() == []
+
+
+def test_refresh_hashes_and_reindex_are_listed(client, monkeypatch):
+    _login(client)
+    st = client.application.extensions["state"]
+    seen = {}
+
+    class Tagger:
+        progress = None
+
+        def index_tags(self):
+            seen["reindex"] = [a["label"] for a in activity.snapshot()]
+            return 0
+
+    st.tagger = Tagger()
+
+    real = st.db.refresh_hashes
+
+    def spy_hashes():
+        seen["hashes"] = [a["label"] for a in activity.snapshot()]
+        return real()
+
+    monkeypatch.setattr(st.db, "refresh_hashes", spy_hashes)
+    assert client.post("/api/scan/refresh_hashes", json={}, headers=_csrf(client)).status_code == 200
+    assert seen["hashes"] == ["Refreshing file hashes"]
+
+    assert client.post("/api/scan/reindex_tags", json={}, headers=_csrf(client)).status_code == 200
+    for _ in range(100):                        # the reindex runs on its own thread
+        if "reindex" in seen:
+            break
+        threading.Event().wait(0.05)
+    assert seen["reindex"] == ["Re-reading file tags"]
+
+
+def test_loudness_remeasure_is_listed(client, base_config, monkeypatch):
+    _login(client)
+    st = client.application.extensions["state"]
+    path = str(Path(base_config["music_dir"]) / "Quiet.flac")
+    st.db.upsert_track(path, "1:2", 120.0, None, None, 120.0, 0.9, "librosa", "done")
+    seen = {}
+
+    def fake_analyze(p, prefer_tag=True):
+        seen["during"] = [a["label"] for a in activity.snapshot()]
+        return -14.2, "measured"
+
+    monkeypatch.setattr(loudness, "analyze_loudness", fake_analyze)
+    r = client.post("/api/track/loudness/measure", json={"file_path": path}, headers=_csrf(client))
+    assert r.status_code == 200
+    assert seen["during"] == ["Measuring loudness of Quiet.flac"]
+    assert activity.snapshot() == []

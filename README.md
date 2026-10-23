@@ -537,7 +537,7 @@ The sidebar footer shows the current scan state at all times and lets you contro
 
 Pausing and stopping both take effect between tracks, not mid-file, so the current track always completes cleanly.
 
-**Background activity.** Under the scan card, a quiet list shows whatever else is running and disappears when nothing is: **Measuring loudness**, **Building waveforms**, **Fetching lyrics** and **Looking up ISRCs** (the bulk fills in Settings, with a count and a thin bar once they know their total), and **Syncing with Navidrome** (a manual or scheduled sync of playlists, stars, ratings and play counts). On a small screen the top-bar dot pulses while any of it runs, and the menu lists it. Admin only; the player kiosk doesn't see it.
+**Background activity.** Under the scan card, a quiet list shows whatever else is running and disappears when nothing is: **Measuring loudness**, **Building waveforms**, **Fetching lyrics** and **Looking up ISRCs** (the bulk fills in Settings, with a count and a thin bar once they know their total), **Syncing with Navidrome** (a manual or scheduled sync of playlists, stars, ratings and play counts), and the one-off jobs you start yourself: **Re-analysing** a track, **Re-reading file tags**, **Refreshing file hashes** and **Measuring loudness** of a single track. On a small screen the top-bar dot pulses while any of it runs, and the menu lists it. Admin only; the player kiosk doesn't see it.
 
 ### Settings (`/settings`)
 
