@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from ...activity import track as track_activity
 from ..auth import _check_csrf, login_required
 from ..state import _assert_in_music_dir, state
 
@@ -66,7 +67,8 @@ def api_reanalyze():
     if not file_path:
         return jsonify(ok=False, error="file_path required")
     _assert_in_music_dir(file_path)
-    result = st.tagger.process_file(file_path, force=True)
+    with track_activity(f"reanalyze:{file_path}", f"Re-analysing {Path(file_path).name}"):
+        result = st.tagger.process_file(file_path, force=True)
     log.info("UI: re-analyzed %s → %s", Path(file_path).name, result.get("status"))
     return jsonify(ok=result.get("status") != "error", **result)
 
@@ -80,7 +82,8 @@ def api_refresh_hashes():
         return jsonify(ok=False, error="tagger not available")
     if st.progress and st.progress.is_scanning:
         return jsonify(ok=False, error="cannot refresh hashes while a scan is running")
-    updated, missing = st.db.refresh_hashes()
+    with track_activity("hashes", "Refreshing file hashes"):
+        updated, missing = st.db.refresh_hashes()
     log.info("Manual hash refresh: %d updated, %d not found on disk", updated, missing)
     return jsonify(ok=True, updated=updated, missing=missing)
 
@@ -101,7 +104,8 @@ def api_reindex_tags():
     cleared = st.db.clear_tag_index()
 
     def _run():
-        updated = st.tagger.index_tags()
+        with track_activity("reindex", "Re-reading file tags"):
+            updated = st.tagger.index_tags()
         log.info("Manual tag reindex: cleared %d, re-read %d", cleared, updated)
 
     threading.Thread(target=_run, daemon=True).start()
