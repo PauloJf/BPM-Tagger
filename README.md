@@ -24,7 +24,7 @@ One container, three jobs:
 
 It was built by a runner who needed BPM-tagged music for cadence-synced running — which is why the tagger came first, and the player is what it became.
 
-> **The optional music grabber has moved out of BPM Tagger (v2.19).** It is now a separate project, **Music Grabber**, with its own releases, so BPM Tagger can stay focused on the tagger and the player. Details on getting Music Grabber will follow. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder (watch mode). See [Upgrading](#upgrading-from-a-release-with-the-grabber).
+> **The optional music grabber has moved out of BPM Tagger (v2.19).** It is now a separate project, **Music Grabber**, with its own releases, so BPM Tagger can stay focused on the tagger and the player. It is published as a Docker image, [`gatoserio/music-grabber`](https://hub.docker.com/r/gatoserio/music-grabber) on Docker Hub. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder (watch mode). See [Upgrading](#upgrading-from-a-release-with-the-grabber).
 
 ## Screenshots
 

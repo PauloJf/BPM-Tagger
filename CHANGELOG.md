@@ -1,10 +1,10 @@
 # Changelog
 
-## v2.19.0 — 2026-10-23
+## v2.19.0 — 2026-10-25
 
 **The music grabber has moved out of BPM Tagger.**
 
-Spotify playlist watching and downloading is no longer part of this project. It now lives in a separate project, **Music Grabber**, with its own releases, so BPM Tagger can stay focused on the tagger and the player. Details on getting Music Grabber will follow. Nothing here changes for you if you never turned the grabber on, and if you did, upgrading is safe: your settings, playlists and database are left as they are.
+Spotify playlist watching and downloading is no longer part of this project. It now lives in a separate project, **Music Grabber**, with its own releases, so BPM Tagger can stay focused on the tagger and the player. Music Grabber is published as a Docker image, [`gatoserio/music-grabber`](https://hub.docker.com/r/gatoserio/music-grabber) on Docker Hub. Nothing here changes for you if you never turned the grabber on, and if you did, upgrading is safe: your settings, playlists and database are left as they are.
 
 - **BREAKING for grabber users: the music grabber is gone from BPM Tagger.** Spotify playlist watching and downloading now lives in a separate project, **Music Grabber**. Navidrome stays the server of record, and BPM Tagger still picks up new files from the music folder (watch mode), BPM-tags and indexes them. Gone from the UI and API: the **Add Music**, **Suggestions**, **Queue** and **Inbox** pages, connecting Spotify, adding or syncing Spotify playlists, **Download missing**, the grabber block on **Stats**, and **Settings → Grabber** (a small **Library** section keeps the tag-index toggle and the public URL). Everything else is untouched: the BPM engine, Run, Listen, Navidrome and Local playlists (compare / merge / split), the Related panel with Deezer previews and the artist catalog browser, lyrics, artwork, ratings, and the Subsonic API.
 - **Upgrading is safe.** `GRABBER_ENABLED`, `SPOTIFY_*`, `DEEZER_*`, `MONOCHROME_*`, `PROVIDER_ORDER`, `OUTPUT_FORMAT`, `GRAB_WORKERS`, `GRAB_DRY_RUN`, `AUTO_ACCEPT_THRESHOLD` and `ASK_THRESHOLD` are ignored (`GRABBER_ENABLED=true` logs one startup warning). Old keys in `settings.json` are left in place, not read. Spotify playlists added earlier stay as **static playlists** — playable, no longer synced. The grabber's database tables are left alone and never dropped.
