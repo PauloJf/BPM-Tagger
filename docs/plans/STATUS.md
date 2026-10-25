@@ -160,7 +160,7 @@ separate project; this repo drops it.
 - ✅ **Step 4 — schema** (`refactor/legacy-tables`): `grab_*` / `oauth_tokens` / `suggestions`
   are no longer created for new DBs and are never dropped from existing ones; the dead DB
   mixins are deleted and playlists no longer derive a `queued` status.
-- ⬜ **Release:** beta first; the final `VERSION` bump waits for the separate project to be
+- 🔶 **Release:** `v2.19.0-beta.1`–`3` published; the 2.19.0 release PR is prepared and unmerged. Beta first; the final `VERSION` bump waits for the separate project to be
   stable (≥ 1.0.0, import tool verified on a real migrated DB, intake verified end to end),
   because that bump publishes `:latest`.
 

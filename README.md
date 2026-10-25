@@ -12,7 +12,7 @@
         bpm detection & tagging · tempo-locked player · for navidrome
 ```
 
-**v2.18.2** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
+**v2.19.0** · [Changelog](CHANGELOG.md) · [![Docker Pulls](https://img.shields.io/docker/pulls/gatoserio/bpm-tagger)](https://hub.docker.com/r/gatoserio/bpm-tagger)
 
 BPM Tagger started as exactly what the name says: a tool that detects the BPM of every song in your [Navidrome](https://www.navidrome.org/) music library and writes it back to the file's metadata tag — with a three-detector pipeline, a review queue for the doubtful cases, and a SQLite record of every result. It still does that. But the tags turned out to be a foundation rather than the product, and the app grew into what they make possible: **a cadence-synced running player for your own music**, wrapped in a full library companion.
 
@@ -24,7 +24,7 @@ One container, three jobs:
 
 It was built by a runner who needed BPM-tagged music for cadence-synced running — which is why the tagger came first, and the player is what it became.
 
-> **The optional music grabber is gone.** Spotify playlist watching and downloading was removed from BPM Tagger and now lives in a separate project. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder (watch mode). See [Upgrading](#upgrading-from-a-release-with-the-grabber).
+> **The optional music grabber has moved out of BPM Tagger (v2.19).** It is now a separate project, **Music Grabber**, with its own releases, so BPM Tagger can stay focused on the tagger and the player. It is published as a Docker image, [`gatoserio/music-grabber`](https://hub.docker.com/r/gatoserio/music-grabber) on Docker Hub. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder (watch mode). See [Upgrading](#upgrading-from-a-release-with-the-grabber).
 
 ## Screenshots
 
@@ -174,7 +174,7 @@ MODE=scan_unscanned MUSIC_DIR=/path/to/music DB_PATH=./bpm.db python -m bpm_tagg
 
 ### Upgrading from a release with the grabber
 
-The optional music grabber (Spotify playlist watching and downloading) was removed in this release and now lives in a separate project. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder as before (watch mode), BPM-tags them and indexes them. Upgrading is safe:
+The optional music grabber (Spotify playlist watching and downloading) was removed in v2.19 and now lives in a separate project, **Music Grabber**. Navidrome stays your server of record, and BPM Tagger still picks up new files from the music folder as before (watch mode), BPM-tags them and indexes them. Upgrading is safe:
 
 - **Settings are ignored, not erased.** `GRABBER_ENABLED`, `SPOTIFY_*`, `DEEZER_*`, `MONOCHROME_*`, `PROVIDER_ORDER`, `OUTPUT_FORMAT`, `GRAB_WORKERS`, `GRAB_DRY_RUN`, `AUTO_ACCEPT_THRESHOLD` and `ASK_THRESHOLD` no longer do anything (with `GRABBER_ENABLED=true` the app logs one warning at startup). Old keys already in `/data/settings.json` are left in place, just not read.
 - **Old Spotify playlists stay as static playlists.** Tracks already matched to your library remain playable (Run, Listen, `.m3u` export); they simply stop syncing. Navidrome and Local playlists are unaffected.

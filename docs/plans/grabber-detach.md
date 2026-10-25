@@ -19,7 +19,7 @@ from the music folder in watch mode.
 | 3 | **Frontend.** Delete the grabber-only pages and components (Inbox, Queue, Suggestions, Add Music, GrabberGate, the playlist suggestions panel), edit the mixed ones (Playlists, Settings, Stats, Related), remove nav entries. | ✅ Done (same branch) |
 | 4 | **Schema.** Stop creating `grab_*`, `oauth_tokens` and `suggestions` for *new* databases. **Never drop them from existing ones** (rollback safety). | ✅ Done (branch `refactor/legacy-tables`) |
 | 5 | **Dependencies and image.** `yt-dlp` and `streamrip` out of `requirements.txt` (done in step 2); keep `rapidfuzz` and `pillow`. Docs: README, DOCKERHUB_README, CLAUDE.md, compose, `.env.example`. | ✅ Done (same branch) |
-| 6 | **Beta, then release.** Test the removal on the beta channel (`vX.Y.Z-beta.N`), then ship as a breaking release. | ⬜ Open |
+| 6 | **Beta, then release.** Test the removal on the beta channel (`vX.Y.Z-beta.N`), then ship as a breaking release. | 🔶 Betas 1–3 published and tested; Music Grabber 1.0.0 released 2026-10-25; release PR `release/v2.19.0` prepared (VERSION 2.19.0, notice in README / Docker Hub README / CHANGELOG), **not merged** — merging it publishes `:latest` |
 
 ## Release rule (hard)
 
