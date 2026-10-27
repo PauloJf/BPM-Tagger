@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **A Home page: pick a pace and go.** The first item in **Play**, and where the browser now lands (it used to open on the library table; the page you last had open still wins, and the installed app still starts on Run). A card per run preset shows how many tracks are ready at that cadence and opens **Run** already set to it, with a **Custom** card for any other cadence. **Needs attention** lists tracks waiting for a BPM check, files with decode problems and a scan in progress, and is hidden when there is nothing to do. With nothing analysed yet it offers to start a scan instead. Admin and guest only; the player kiosk is unchanged. Built from existing data, so no server change.
 - **The sidebar is grouped by what you want to do.** **Play** (Run, Listen), **Library** (Library, Playlists), **Maintain** (BPM Review, Duplicates, Stats) and **System** (Settings, About). Same pages and addresses as before; Stats moved next to the tagging pages and Run and Listen moved out from under Library. The mobile menu follows.
 
 ## v2.19.0 — 2026-10-25

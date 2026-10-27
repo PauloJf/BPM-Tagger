@@ -19,6 +19,9 @@ const IconPlaylists = () => (
 const IconReview = () => (
   <svg {...ic}><path d="M22 12h-4l-3 8L9 4l-3 8H2" /></svg>
 );
+const IconHome = () => (
+  <svg {...ic}><path d="M3 11l9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
+);
 const IconRun = () => (
   <svg {...ic}><circle cx="12" cy="14" r="7" /><path d="M12 14v-4M9 2h6M12 2v3" /></svg>
 );
@@ -85,6 +88,7 @@ export function buildSections(): NavSection[] {
     {
       label: "Play",
       items: [
+        { to: "/home", label: "Home", icon: IconHome, match: ["/home"] },
         { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
         { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
       ],
@@ -239,7 +243,7 @@ function SidebarScan({ state, act, progress }: { state: ScanState; act: (a: "sta
   );
 }
 
-function Logo({ to = "/tracks", sub = "for navidrome" }: { to?: string; sub?: string }) {
+function Logo({ to = "/home", sub = "for navidrome" }: { to?: string; sub?: string }) {
   return (
     <NavLink to={to} className="nav-logo">
       <div className="nav-logo-tile">

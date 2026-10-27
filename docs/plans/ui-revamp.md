@@ -2,7 +2,7 @@
 
 > Current status of all plans is tracked in [STATUS.md](STATUS.md).
 
-Status: **Proposal** (2026-10-25). Nothing built. Steps 1–2 are frontend-only.
+Status: **In progress** (proposed 2026-10-25). Steps 1 (navigation regroup) and 2 (Home v0: *Start a run*, *Needs attention*, first-run call to action, `/home` landing) are built on `feature/ui-revamp-nav`; steps 3–6 are open. Steps 1–2 are frontend-only.
 
 Evidence: a UI audit on a copy of a real 1,455-track library (desktop and mobile).
 Findings that drive this plan:

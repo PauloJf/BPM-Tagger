@@ -60,7 +60,7 @@ export default function Login() {
     setCodeError(false);
     try {
       await login(password, username, totpStep ? totp : undefined);
-      navigate(from && from !== "/login" ? from : "/tracks", { replace: true });
+      navigate(from && from !== "/login" ? from : "/home", { replace: true });
     } catch (err) {
       const code = err instanceof ApiError ? err.message : "";
       if (err instanceof ApiError && err.status === 429) {

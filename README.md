@@ -523,7 +523,9 @@ Housekeeping is automatic: the cache is capped (default 500 MB, **Settings → P
 
 ### Navigation & scan controls
 
-On desktop the UI uses a **sidebar** grouped by intent — **Play** (Run, Listen), **Library** (Library, Playlists), **Maintain** (BPM Review, Duplicates, Stats), and **System** (Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
+On desktop the UI uses a **sidebar** grouped by intent — **Play** (Home, Run, Listen), **Library** (Library, Playlists), **Maintain** (BPM Review, Duplicates, Stats), and **System** (Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
+
+**Home** is where the browser opens (or the last page you had open): a card per run preset with how many tracks are ready at that cadence — tap one to open **Run** already set to it — plus a **Needs attention** list (tracks waiting for a BPM check, files with decode problems, a scan in progress) that disappears when there's nothing to do. On a brand-new library it offers to scan instead. The installed app still reopens on **Run**.
 
 The first time the admin UI opens on a **new version** it shows a one-time **What's new** popup with that release's notes; the **About** page shows the running version with a **What's new** link that opens the full in-app changelog anytime. It's per-device, never shown to the player kiosk, and never pops over an actively-playing run.
 
