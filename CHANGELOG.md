@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The sidebar is grouped by what you want to do.** **Play** (Run, Listen), **Library** (Library, Playlists), **Maintain** (BPM Review, Duplicates, Stats) and **System** (Settings, About). Same pages and addresses as before; Stats moved next to the tagging pages and Run and Listen moved out from under Library. The mobile menu follows.
+
 ## v2.19.0 — 2026-10-25
 
 **The music grabber has moved out of BPM Tagger.**

@@ -523,7 +523,7 @@ Housekeeping is automatic: the cache is capped (default 500 MB, **Settings → P
 
 ### Navigation & scan controls
 
-On desktop the UI uses a **sidebar** grouped into sections — **Library** (Library, Playlists), **Tagging** (BPM Review, Duplicates), and **System** (Stats, Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
+On desktop the UI uses a **sidebar** grouped by intent — **Play** (Run, Listen), **Library** (Library, Playlists), **Maintain** (BPM Review, Duplicates, Stats), and **System** (Settings, About). A button at the bottom **collapses it to an icon-only rail** (remembered across visits); the player bar always starts past the sidebar so nothing is covered. Small screens get a top bar with a hamburger menu carrying the same sections.
 
 The first time the admin UI opens on a **new version** it shows a one-time **What's new** popup with that release's notes; the **About** page shows the running version with a **What's new** link that opens the full in-app changelog anytime. It's per-device, never shown to the player kiosk, and never pops over an actively-playing run.
 

@@ -78,34 +78,40 @@ function ThemeToggle({ mobile }: { mobile?: boolean }) {
 interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" }
 interface NavSection { label: string; items: NavItem[] }
 
-/** Grouped navigation: library, tagging and app chrome each get a section. */
-function buildSections(): NavSection[] {
-  const library: NavItem[] = [
-    { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
-    { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
-    { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
-    { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
-  ];
-
-  const sections: NavSection[] = [
-    { label: "Library", items: library },
+/** Grouped navigation by intent: Play (the runner's side), Library (browse and
+ *  organise), Maintain (the tagger's side) and System (app chrome). */
+export function buildSections(): NavSection[] {
+  return [
     {
-      label: "Tagging",
+      label: "Play",
+      items: [
+        { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
+        { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
+      ],
+    },
+    {
+      label: "Library",
+      items: [
+        { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
+        { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
+      ],
+    },
+    {
+      label: "Maintain",
       items: [
         { to: "/review", label: "BPM Review", icon: IconReview, match: ["/review"], badge: "review" },
         { to: "/duplicates", label: "Duplicates", icon: IconDuplicates, match: ["/duplicates", "/compare"] },
+        { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
+        { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
       ],
     },
   ];
-  sections.push({
-    label: "System",
-    items: [
-      { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
-      { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
-      { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
-    ],
-  });
-  return sections;
 }
 
 function isActivePath(pathname: string, match: string[]): boolean {
