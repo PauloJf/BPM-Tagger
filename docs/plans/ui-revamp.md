@@ -10,6 +10,8 @@ The **Artists** view follows the mockup: a per-artist tempo mix, "N of M" fit co
 
 **Step 3 is built too:** one shared run-readiness query (`useRunReadiness`) feeds Playlists, Home and Run; the Run preset buttons show "N ready" for the chosen source (hidden for named player accounts, whose API access doesn't include the numbers); and Home gains a **Resume** card (from the player's own queue) and **Recent runs** (the last three journal rows). Not built: the mockup's per-run cadence trace (the journal stores only an average), a "Start over" button, and the library-snapshot block (v2 in the plan).
 
+**Step 5 is built:** Settings is regrouped as the plan lists it, reorder only (a script moved whole section blocks and checked no line was lost; the page's own test pins the group order and that every jump link has a target). One placement the plan left open: **Notifications (ntfy)** sits in *Library & integrations*, after the Subsonic API. The jump list gained a heading per group.
+
 **Albums** follows its mockup too: a cover grid with an "N of M fit" badge (or "N half-time" when every match needed folding), a fit bar, the shared Tempo strip, the fit filter and a sort menu. `/api/albums` gains `fit` and `fit_folded` for a tempo window. Not built: the mockup's "Has starred" and "Needs review" chips, and the header's "Shuffle N albums".
 
 Evidence: a UI audit on a copy of a real 1,455-track library (desktop and mobile).

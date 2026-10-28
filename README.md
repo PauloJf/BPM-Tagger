@@ -543,6 +543,8 @@ Pausing and stopping both take effect between tracks, not mid-file, so the curre
 
 ### Settings (`/settings`)
 
+The page is grouped by what you're trying to do, with a jump list down the side (a scrolling tab strip on phones): **Run & Player** (Playback, Run Mode, Ratings & picking, Player access), **Library & integrations** (Library, Navidrome, Subsonic API, Notifications, Artwork, Lyrics, ISRC), **Security** (Admin sign-in, Two-factor, Login protection), **Maintenance** (Scan behavior, Operating mode, Trash, Deleted tracks, Version, Restart) and **Appearance**. The sections themselves are unchanged, so paths like *Settings → Run Mode* still point where they did.
+
 All settings can be changed at runtime — no container restart required. Changes are saved to `/data/settings.json` and survive restarts. Configurable from the UI:
 
 - **Library** — the tag-index toggle and the public URL (used for the `Secure` cookie flag and ntfy links)

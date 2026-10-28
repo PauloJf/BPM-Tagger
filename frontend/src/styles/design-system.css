@@ -674,6 +674,10 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
 .settings-sidebar {
   position: sticky; top: 16px; align-self: flex-start;
   display: flex; flex-direction: column; gap: 2px;
+  /* Grouped, the list is taller than a laptop screen: scroll it in place so the
+     last links (Restart, Appearance) are always reachable. */
+  max-height: calc(100vh - 32px - var(--player-bar-h, 52px)); overflow-y: auto;
+  scrollbar-width: thin;
 }
 .settings-sidebar a {
   padding: 8px 12px; border-radius: 8px;
@@ -681,6 +685,19 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   transition: color 0.15s, background 0.15s; display: block; cursor: pointer;
 }
 .settings-sidebar a:hover { color: var(--text); background: var(--surface); }
+/* Settings is grouped by intent: the jump list gets a heading per group and the
+   page gets a matching heading above each group's cards. */
+.settings-sidebar-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.settings-sidebar .settings-sidebar-title {
+  padding: 6px 12px 4px; font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text);
+}
+.settings-sidebar .settings-sidebar-title:hover { background: none; }
+.settings-group-title {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); margin: 8px 2px 12px; scroll-margin-top: 16px;
+}
+.settings-card { scroll-margin-top: 16px; }
 .settings-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; padding: 20px 22px; margin-bottom: 18px;
@@ -706,10 +723,13 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   /* Sidebar becomes a horizontal scroll tab strip */
   .settings-sidebar {
     position: static !important; display: flex !important; flex-direction: row !important;
+    max-height: none !important;
     gap: 4px; overflow-x: auto; padding: 2px 0 8px;
     scrollbar-width: none; -ms-overflow-style: none;
   }
   .settings-sidebar::-webkit-scrollbar { display: none; }
+  .settings-sidebar-group { display: contents; }
+  .settings-sidebar .settings-sidebar-title { display: none; }
   .settings-sidebar a {
     flex-shrink: 0; white-space: nowrap; padding: 6px 12px; border-radius: 999px;
     border: 1px solid var(--border); font-size: 12px; background: var(--chip-bg);
