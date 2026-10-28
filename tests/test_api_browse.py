@@ -170,3 +170,59 @@ def test_fit_agrees_with_the_track_listing_filter(client, base_config):
         solo_fit = sum(by_name[n]["fit"] for n in ("ABBA", "Solo Act"))
         guest_fit = sum(by_name[n]["fit"] for n in ("Guest Star", "Other Guest"))
         assert solo_fit + guest_fit == listed
+
+
+# ── Tempo fit on the album index ──────────────────────────────────────────────
+
+def _albums(client, **params):
+    resp = client.get("/api/albums", query_string=params)
+    assert resp.status_code == 200
+    return {(a["album"], a["album_artist"]): a for a in resp.get_json()["albums"]}
+
+
+def test_albums_have_no_fit_without_a_tempo_filter(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    comp = _albums(client)[("Comp", "Various Artists")]
+
+    assert "fit" not in comp and "fit_folded" not in comp
+    assert comp["tracks"] == 2  # the existing fields are untouched
+
+
+def test_album_fit_counts_the_tracks_inside_the_window(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    albums = _albums(client, bpm=120, bpm_tol=5)
+
+    assert albums[("Comp", "Various Artists")]["fit"] == 1   # the 120, not the 140
+    assert albums[("Arrival", "ABBA")]["fit"] == 0
+    assert albums[("Waterloo", "ABBA")]["fit"] == 0          # bpm 0 is "no tempo"
+    assert all(a["fit_folded"] == 0 for a in albums.values())
+
+
+def test_album_fit_separates_half_time_matches(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    plain = _albums(client, bpm=240, bpm_tol=5)
+    folded = _albums(client, bpm=240, bpm_tol=5, bpm_cadence=1)
+
+    assert plain[("Comp", "Various Artists")]["fit"] == 0
+    comp = folded[("Comp", "Various Artists")]
+    assert (comp["fit"], comp["fit_folded"]) == (1, 1)  # 120 is half of 240, no direct hit
+
+
+def test_album_fit_agrees_with_the_track_listing_filter(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    for params in ({"bpm": 120, "bpm_tol": 5}, {"bpm": 240, "bpm_tol": 5, "bpm_cadence": 1},
+                   {"bpm": 100, "bpm_tol": 25}):
+        albums = _albums(client, **params)
+        # Every seeded track with a tempo is on a tagged album except Solo Act's
+        # (no album tag), so album fits plus Solo Act's own track equal the listing.
+        solo = client.get("/api/tracks", query_string={**params, "q": "tagless"}).get_json()["total"]
+        listed = client.get("/api/tracks", query_string=params).get_json()["total"]
+        assert sum(a["fit"] for a in albums.values()) + solo == listed

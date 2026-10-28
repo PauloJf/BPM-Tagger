@@ -336,8 +336,14 @@ def api_artists():
 @tracks_bp.route("/api/albums")
 @login_required
 def api_albums():
-    """Album index for the library browse view."""
-    return jsonify(albums=state().db.list_albums())
+    """Album index for the library browse view.
+
+    With the library's tempo filter (``bpm``, ``bpm_tol``, ``bpm_cadence``) each
+    album also carries ``fit`` and ``fit_folded``: the tracks that match, and how
+    many of those only match at half/double time."""
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
+    return jsonify(albums=state().db.list_albums_tempo(bpm_target, bpm_tol, cadence))
 
 
 @tracks_bp.route("/api/artist")

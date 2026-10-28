@@ -8,7 +8,7 @@ const TABS = [
 
 /** The tempo filter follows you between the views that can use it. */
 const TEMPO_KEYS = ["bpm", "bpm_tol", "bpm_cadence"];
-const TEMPO_VIEWS = ["/tracks", "/artists"];
+const TEMPO_VIEWS = ["/tracks", "/artists", "/albums"];
 
 /** Segmented Tracks | Artists | Albums switcher shown on the Library views. */
 export default function LibraryTabs() {

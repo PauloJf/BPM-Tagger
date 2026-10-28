@@ -728,6 +728,36 @@ class TracksMixin:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_albums_tempo(self, bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
+                          bpm_cadence: bool = False) -> list[dict]:
+        """``list_albums`` plus, for a tempo filter, how many of each album's tracks
+        fit it: ``fit`` (all matches) and ``fit_folded`` (the ones that only match
+        at half or double time, so the page can say "1 half-time" rather than
+        counting a slow song as a direct hit). Absent without a ``bpm_target``.
+        Same window rule as the track table and the Artists page."""
+        albums = self.list_albums()
+        if bpm_target is None:
+            return albums
+        with self._connect() as conn:
+            pairs = conn.execute(
+                "SELECT album, COALESCE(album_artist, '') AS album_artist, bpm FROM tracks "
+                "WHERE status != 'deleted' AND COALESCE(album, '') != '' AND bpm IS NOT NULL AND bpm != 0"
+            ).fetchall()
+        fits: dict[tuple, int] = {}
+        folded: dict[tuple, int] = {}
+        for r in pairs:
+            if not bpm_in_window(r["bpm"], bpm_target, bpm_tol, bpm_cadence):
+                continue
+            key = (r["album"], r["album_artist"])
+            fits[key] = fits.get(key, 0) + 1
+            if not bpm_in_window(r["bpm"], bpm_target, bpm_tol, False):
+                folded[key] = folded.get(key, 0) + 1
+        for a in albums:
+            key = (a["album"], a["album_artist"])
+            a["fit"] = fits.get(key, 0)
+            a["fit_folded"] = folded.get(key, 0)
+        return albums
+
     def set_lyrics_state(self, file_path: str, status: str | None, synced: bool = False) -> None:
         """Record a track's lyrics state (embedded/fetched/not_found/instrumental)."""
         with self._connect() as conn:

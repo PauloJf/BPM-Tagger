@@ -25,23 +25,26 @@ describe("LibraryTabs — the tempo filter follows you", () => {
     expect([href("Tracks"), href("Artists"), href("Albums")]).toEqual(["/tracks", "/artists", "/albums"]);
   });
 
-  it("carries the tempo filter between Tracks and Artists", () => {
+  it("carries the tempo filter (and nothing else) to every view", () => {
     h.search = "?bpm=155&bpm_tol=5&bpm_cadence=1&filter=starred&page=3";
     render(<LibraryTabs />);
-    expect(href("Artists")).toBe("/artists?bpm=155&bpm_tol=5&bpm_cadence=1");
-    expect(href("Tracks")).toBe("/tracks?bpm=155&bpm_tol=5&bpm_cadence=1");
+    const tempo = "?bpm=155&bpm_tol=5&bpm_cadence=1";
+    expect([href("Tracks"), href("Artists"), href("Albums")])
+      .toEqual([`/tracks${tempo}`, `/artists${tempo}`, `/albums${tempo}`]);
   });
 
-  it("leaves Albums alone, since it has no tempo filter", () => {
+  it("keeps carrying it when you are on Albums or Artists", () => {
+    h.pathname = "/albums";
     h.search = "?bpm=155&bpm_tol=5";
     render(<LibraryTabs />);
-    expect(href("Albums")).toBe("/albums");
+    expect(href("Tracks")).toBe("/tracks?bpm=155&bpm_tol=5");
+    expect(href("Artists")).toBe("/artists?bpm=155&bpm_tol=5");
   });
 
-  it("carries nothing out of Albums", () => {
-    h.pathname = "/albums";
-    h.search = "?bpm=155";
+  it("does not drag a tempo onto the single-artist or single-album pages' tabs", () => {
+    h.pathname = "/artist";
+    h.search = "?name=ABBA&bpm=155";
     render(<LibraryTabs />);
-    expect(href("Artists")).toBe("/artists");
+    expect(href("Tracks")).toBe("/tracks");
   });
 });

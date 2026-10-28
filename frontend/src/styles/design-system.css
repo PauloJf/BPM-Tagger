@@ -978,6 +978,27 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
   .artist-tools .search-wrap { flex: 1 1 100%; order: -1; }
 }
 
+/* Albums: a cover grid, each card saying how many of its tracks fit the tempo. */
+.album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 18px; }
+.album-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-decoration: none; color: inherit; }
+.album-cover {
+  position: relative; display: block; aspect-ratio: 1 / 1; border-radius: 12px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 4px; transition: transform 0.15s, border-color 0.15s;
+}
+.album-card:hover .album-cover { transform: translateY(-2px); border-color: var(--border-strong); }
+.album-cover .art-thumb { display: block; border-radius: 0; border: 0; object-fit: cover; }
+.album-cover-blank { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; color: var(--muted); background: var(--accent-soft); }
+.album-badge {
+  position: absolute; left: 8px; bottom: 8px; padding: 3px 9px; border-radius: 999px;
+  background: rgba(8, 10, 12, 0.78); color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 600;
+}
+.album-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.album-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.album-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+@media (max-width: 700px) { .album-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 12px; } }
+
 /* ── Library browse (artists/albums index) ────────────────────────────────── */
 .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .browse-card {

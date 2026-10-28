@@ -6,7 +6,9 @@ Status: **In progress** (proposed 2026-10-25). Steps 1 (navigation regroup) and 
 
 Beyond the plan's list, the Library page also got the **Tempo strip** (a clickable library BPM histogram plus run-preset chips, replacing the loose BPM/± inputs), a **More filters** popover (four filters stay on the toolbar), and the step-4 table density work (no detector column, no "ok" badge, hover-only row actions). That covers step 4 except the optional detector toggle: the column is simply removed, since the track page already shows it.
 
-The **Artists** view follows the mockup: a per-artist tempo mix, "N of M" fit counts, the shared Tempo strip (carried between Tracks and Artists through `LibraryTabs`), a sort menu and an A–Z rail. It needed one backend change: `/api/artists` now returns `mix` per artist and, given a tempo window, `fit`. Not built from the Artists mockup: the per-row play button and the header's "Shuffle N artists". **Albums** (the "N of M fit" badges) is still the old card grid.
+The **Artists** view follows the mockup: a per-artist tempo mix, "N of M" fit counts, the shared Tempo strip (carried between Tracks and Artists through `LibraryTabs`), a sort menu and an A–Z rail. It needed one backend change: `/api/artists` now returns `mix` per artist and, given a tempo window, `fit`. Not built from the Artists mockup: the per-row play button and the header's "Shuffle N artists".
+
+**Albums** follows its mockup too: a cover grid with an "N of M fit" badge (or "N half-time" when every match needed folding), a fit bar, the shared Tempo strip, the fit filter and a sort menu. `/api/albums` gains `fit` and `fit_folded` for a tempo window. Not built: the mockup's "Has starred" and "Needs review" chips, and the header's "Shuffle N albums".
 
 Evidence: a UI audit on a copy of a real 1,455-track library (desktop and mobile).
 Findings that drive this plan:
