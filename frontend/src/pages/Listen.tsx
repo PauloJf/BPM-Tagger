@@ -57,6 +57,11 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
   // Re-read as tracks change: the look-ahead fills the cache while you listen.
   const offline = useMemo(() => (offlineSupported() ? cacheStats() : { tracks: 0, bytes: 0 }), [current?.path]);
   const isPreview = !!current?.ephemeral;
+  // While a preview clip ducks the queue, `current` is the clip, but the queue's
+  // own position never moves: that track is what you will be back on. The cover
+  // stays on it (so the page keeps its shape and the player's state stays visible)
+  // and the title block says what is previewing and offers the way back.
+  const queueTrack = isPreview ? player.orderedQueue[player.orderPos] ?? null : null;
   const { time, dur, canvasRef, glow } = usePlaybackSurface(audioRef, {
     path: current?.path || "", waveform: !!current && !isPreview, glowPath: current && !isPreview ? current.path : null,
   });
@@ -272,6 +277,23 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
           </div>
         )
       )}
+      {isPreview && (
+        <div data-testid="preview-note" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent-2)", border: "1px solid var(--accent-border)", borderRadius: 999, padding: "2px 8px" }}>
+            Preview
+          </span>
+          {queueTrack && player.previewing && (
+            <button
+              className="btn btn-bare btn-sm"
+              onClick={player.endPreview}
+              title="Stop the preview and go back to the queue"
+              style={{ fontSize: 12, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              Back to {queueTrack.title}
+            </button>
+          )}
+        </div>
+      )}
       {tempoLockChip}
     </div>
   );
@@ -291,14 +313,14 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
       </div>
       <WaveformStrip canvasRef={canvasRef} time={time} dur={dur} />
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 18, marginTop: 10 }}>
-        {!isGuest && (
+        {!isGuest && !isPreview && (
           <RatingStars value={currentRating} onChange={setRating} compact label={current?.title} />
         )}
         <TransportButtons
           playing={playing} onPrev={player.prev} onToggle={player.toggle} onNext={player.next}
           sideSize={52} playSize={mobile ? 64 : 72} iconSize={26}
         />
-        {!isGuest && <DislikeButton on={currentDisliked} onToggle={toggleDislike} size={16} />}
+        {!isGuest && !isPreview && <DislikeButton on={currentDisliked} onToggle={toggleDislike} size={16} />}
       </div>
     </div>
   );
@@ -484,11 +506,9 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
           <div className="run-desktop-body">
             <div className="run-player-col">
               <div className="listen-cockpit">
-                {!isPreview && (
-                  <div style={{ marginBottom: 18 }}>
-                    <PlayerCover path={current.path} coverSize={desktopCoverSize} />
-                  </div>
-                )}
+                <div style={{ marginBottom: 18 }}>
+                  <PlayerCover path={queueTrack?.path ?? current.path} coverSize={desktopCoverSize} />
+                </div>
                 {titleBlock}
               </div>
               {transportBlock}
@@ -534,11 +554,9 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
         )}
         {current && view === "playing" && (
           <>
-            {!isPreview && (
-              <div className="run-cover-slot" data-testid="cover-slot">
-                <PlayerCover path={current.path} fillHeight />
-              </div>
-            )}
+            <div className="run-cover-slot" data-testid="cover-slot">
+              <PlayerCover path={queueTrack?.path ?? current.path} fillHeight />
+            </div>
             <div style={{ marginTop: 10 }}>{titleBlock}</div>
             {modeRow}
           </>

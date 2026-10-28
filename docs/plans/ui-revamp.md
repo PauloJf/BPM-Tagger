@@ -49,7 +49,7 @@ Proposed:
 
 | Section | Items | Note |
 |---|---|---|
-| **Play** | Home · Run · Listen | the runner's side; first |
+| **Play** | Home · Listen (Run is the page's switch) | the runner's side; first |
 | **Library** | Library (tracks / artists / albums) · Playlists | browsing and organising |
 | **Maintain** | BPM Review (badge) · Duplicates · Stats | the tagger's side |
 | System | Settings · About | |

@@ -89,8 +89,10 @@ export function buildSections(): NavSection[] {
       label: "Play",
       items: [
         { to: "/home", label: "Home", icon: IconHome, match: ["/home"] },
-        { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
-        { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
+        // One entry for the player: Run and Listen are one page with a switch, so
+        // it stays lit in both modes (Home's run cards and the PWA start page
+        // still open /run directly).
+        { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen", "/run"] },
       ],
     },
     {

@@ -25,7 +25,7 @@ export default function ModeSwitch({ mode, onChange, fill = false }: {
       role="tablist"
       aria-label="Player mode"
       data-testid="mode-switch"
-      style={fill ? { display: "flex", width: "100%", flexShrink: 0 } : undefined}
+      style={fill ? { display: "flex", width: "100%", flexShrink: 0, marginBottom: 12 } : undefined}
     >
       {MODES.map((m) => (
         <button

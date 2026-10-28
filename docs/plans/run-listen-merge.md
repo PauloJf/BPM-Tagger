@@ -56,10 +56,10 @@ that fit", because that is what the refill does while the lock is on.
 - `/run` and `/listen` stay, as deep links that open the Player in that mode.
   The installed app's `start_url` (`/run`), Home's preset cards, `?bpm=` and the
   Settings anchor all keep working, and nothing in docs or bookmarks breaks.
-- Navigation: **two items, one page.** Run and Listen stay as separate entries
-  under Play (Home · Run · Listen); each opens the page in its mode and the
-  active one follows the switch. Nothing is renamed, and the kiosk keeps just
-  the labels that fit its mode.
+- Navigation: **one item, one page** (revised 2026-10-28 after trying two). The
+  admin nav has a single **Listen** entry under Play (Home · Listen); it opens
+  `/listen` and stays lit on `/run` too, and the switch on the page is the way to
+  Run. The kiosk keeps its own Run / Listen tabs, which fit its mode.
 - The last mode used is remembered per device, so reopening the Player lands
   where you left it.
 
@@ -176,7 +176,7 @@ the in-app browser pane.
 
 Settled with the owner on 2026-10-28.
 
-- **Name: two nav items, one page.** Run and Listen stay as entries; the page
+- **Name: two nav items, one page.** *Superseded: one Listen item, see Navigation.* Run and Listen stay as entries; the page
   title follows the mode. (Rejected: a single "Player" item, "Now playing".)
 - **Radio and the lock: refill with tracks that fit.** Locking to a pace keeps the
   queue topping up, but with the Run rule (tracks that can reach the cadence)

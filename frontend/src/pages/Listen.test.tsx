@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   radio: false,
+  previewing: false,
+  endedPreview: 0,
   radioMode: "source" as "source" | "similar",
   radioModeSet: null as null | string,
   listenSource: null as number | "mine" | "library" | null,
@@ -53,6 +55,7 @@ vi.mock("../lib/player", () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
     error: null, buffering: h.buffering, bufferedPct: 0, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock,
+    previewing: h.previewing, endPreview() { h.endedPreview += 1; },
     shuffle: false, repeat: "off", volume: 1, setVolume() {},
     radio: h.radio, setRadio(on: boolean) { h.radioSet = on; },
     radioMode: h.radioMode, setRadioMode(m: string) { h.radioModeSet = m; },
@@ -75,7 +78,7 @@ vi.mock("../components/PageHeader", () => ({
 }));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/BpmDisplay", () => ({ BpmDisplay: () => null }));
-vi.mock("../components/PlayerCover", () => ({ default: () => <div data-testid="cover" /> }));
+vi.mock("../components/PlayerCover", () => ({ default: ({ path }: { path: string }) => <div data-testid="cover" data-path={path} /> }));
 vi.mock("../components/QueueList", () => ({ default: () => <div data-testid="queue-list" /> }));
 
 // Import after the mocks are registered.
@@ -98,6 +101,8 @@ beforeEach(() => {
   h.online = true;
   h.buffering = false;
   h.radio = false;
+  h.previewing = false;
+  h.endedPreview = 0;
   h.listenSource = null;
   h.calls = [];
   h.queued = null;
@@ -288,6 +293,47 @@ describe("Listen — the offline note", () => {
     seed({ "/x.mp3": { size: 3 * 1024 * 1024 } });
     render(<Listen />);
     expect(screen.queryByTestId("offline-note")).toBeNull();
+  });
+});
+
+describe("Listen — while a preview clip ducks the queue", () => {
+  const clip = { path: "preview:dz:9", title: "Clip", artist: "Someone", bpm: null, ephemeral: true };
+  beforeEach(() => {
+    h.current = clip;
+    h.previewing = true;
+    h.orderedQueue = [{ path: "/q.mp3", title: "Queue Song" }];
+  });
+
+  it("keeps the cover on the queue's track, so the page keeps its shape", () => {
+    render(<Listen />);
+    expect(screen.getByTestId("cover").getAttribute("data-path")).toBe("/q.mp3");
+  });
+
+  it("keeps the phone's cover slot too", () => {
+    h.mobile = true;
+    render(<Listen />);
+    expect(screen.getByTestId("cover-slot")).toBeTruthy();
+    expect(screen.getByTestId("cover").getAttribute("data-path")).toBe("/q.mp3");
+  });
+
+  it("says it is a preview and offers the way back to the queue's track", () => {
+    render(<Listen />);
+    expect(screen.getByTestId("preview-note").textContent).toContain("Preview");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Queue Song" }));
+    expect(h.endedPreview).toBe(1);
+  });
+
+  it("does not offer to rate or dislike the clip", () => {
+    render(<Listen />);
+    expect(screen.queryByLabelText(/dislike/i)).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /rating/i })).toBeNull();
+  });
+
+  it("shows none of that for an ordinary track", () => {
+    h.current = { path: "/q.mp3", title: "Queue Song", bpm: 120 };
+    h.previewing = false;
+    render(<Listen />);
+    expect(screen.queryByTestId("preview-note")).toBeNull();
   });
 });
 
