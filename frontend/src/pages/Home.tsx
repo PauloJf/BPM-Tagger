@@ -2,17 +2,12 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { usePlayer } from "../lib/player";
 import { useScan } from "../hooks/useScan";
 import { useTitle } from "../hooks/useTitle";
+import { useRunReadiness } from "../hooks/useRunReadiness";
 import PageHeader from "../components/PageHeader";
-
-/** Same payload (and query key) the Playlists cadence strip reads, so the two
- *  share one cached fetch. */
-interface Readiness {
-  presets: Array<{ name: string; bpm: number }>;
-  stretch_limit_pct: number;
-  library: Record<string, number>;
-}
+import { fmtRunDur, fmtRunWhen, type RunJournalPage } from "../components/RunJournal";
 
 interface StatsSummary {
   summary: { total: number; done: number; decode_problems: number };
@@ -33,21 +28,25 @@ export default function Home() {
   useTitle("Home");
   const { reviewCount } = useAuth();
   const { state, act, progress } = useScan();
+  const player = usePlayer();
 
-  // Per-preset runnable counts. Failure is silent (retry off): the page is still
-  // useful without the cards, and Run itself works without them.
-  const readinessQ = useQuery({
-    queryKey: ["run-readiness"],
-    queryFn: () => api.get<Readiness>("/api/run/readiness"),
-    staleTime: 60_000,
-    retry: false,
-  });
+  // Per-preset runnable counts, shared with Playlists and Run.
+  const readinessQ = useRunReadiness();
   const statsQ = useQuery({
     queryKey: ["stats", "home"],
     queryFn: () => api.get<StatsSummary>("/api/stats"),
     staleTime: 30_000,
     retry: false,
   });
+
+  // The last few runs from the journal. Failure is silent, like the cards.
+  const runsQ = useQuery({
+    queryKey: ["runs", "home"],
+    queryFn: () => api.get<RunJournalPage>("/api/stats/runs?offset=0"),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const runs = (runsQ.data?.items ?? []).slice(0, 3);
 
   const readiness = readinessQ.data;
   const summary = statsQ.data?.summary;
@@ -57,6 +56,16 @@ export default function Home() {
   // Nothing analysed yet: the cards would all read "0 ready", so offer the one
   // thing that helps. Only once the numbers are in, so it never flashes up.
   const firstRun = !!summary && analysed === 0;
+
+  // A queue to pick back up: the player's own (it restores from this device or the
+  // account's synced snapshot), not a copy. A one-off preview clip isn't one.
+  const cur = player.current;
+  const resumable = !!cur && !cur.ephemeral && !player.previewing && player.orderedQueue.length > 0;
+  const lock = player.tempoLock;
+  const lockPreset = lock ? readiness?.presets.find((p) => p.bpm === lock.target) : undefined;
+  const resumeKind = lock
+    ? (lockPreset ? `${lockPreset.name} ${lock.target}` : `${lock.target} steps/min`)
+    : "Listening";
 
   const attention: AttentionItem[] = [];
   if (reviewCount > 0) {
@@ -114,7 +123,25 @@ export default function Home() {
         </section>
       ) : (
         <div className="home-grid">
-          <section aria-label="Start a run" className="home-main">
+          <div className="home-main">
+          {resumable && cur && (
+            <section aria-label="Resume" className="home-resume">
+              <div className="home-resume-text">
+                <span className="home-resume-label">{player.playing ? "Playing now" : "Pick up where you left off"}</span>
+                <span className="home-resume-title" title={cur.title}>{cur.title}</span>
+                <span className="home-resume-sub">
+                  {cur.artist ? `${cur.artist} · ` : ""}{resumeKind} · track {player.orderPos + 1} of {player.orderedQueue.length}
+                </span>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => player.toggle()}>
+                {player.playing ? "Pause" : "Resume"}
+              </button>
+              <Link to={lock ? "/run" : "/listen"} className="btn btn-ghost">
+                {lock ? "Open Run" : "Open Listen"}
+              </Link>
+            </section>
+          )}
+          <section aria-label="Start a run">
             <div className="home-section-head">
               <h2>Start a run</h2>
               <span>Starred tracks come first</span>
@@ -150,6 +177,29 @@ export default function Home() {
               </p>
             ) : null}
           </section>
+
+          {runs.length > 0 && (
+            <section aria-label="Recent runs">
+              <div className="home-section-head">
+                <h2>Recent runs</h2>
+                <Link to="/stats">All runs</Link>
+              </div>
+              <div className="home-runs">
+                {runs.map((r) => (
+                  <Link key={r.id} to="/stats" className="home-run-row">
+                    <span className="home-run-when">{r.open ? "Running now" : fmtRunWhen(r.started_at)}</span>
+                    <span className="home-run-dur">{fmtRunDur(r.duration_ms)}</span>
+                    <span className="home-run-cad">
+                      <b>{r.avg_cadence != null ? Math.round(r.avg_cadence) : "—"}</b> spm avg
+                      {r.target_bpm != null && <small> · target {r.target_bpm}</small>}
+                    </span>
+                    <span className="home-run-src">{r.source_label}</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+          </div>
 
           {attention.length > 0 && (
             <section aria-label="Needs attention" className="home-side">

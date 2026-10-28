@@ -10,6 +10,16 @@ const h = vi.hoisted(() => ({
   reviewCount: 0,
   scan: { state: "idle", progress: null as unknown },
   act: vi.fn(),
+  runs: undefined as unknown,
+  toggle: vi.fn(),
+  player: {
+    current: null as null | { path: string; title: string; artist?: string; ephemeral?: boolean },
+    playing: false,
+    previewing: false,
+    orderedQueue: [] as unknown[],
+    orderPos: 0,
+    tempoLock: null as null | { target: number },
+  },
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -23,6 +33,8 @@ vi.mock("@tanstack/react-query", () => ({
       return { data: h.readiness, isLoading: false, isError: h.readinessError };
     if (queryKey[0] === "stats")
       return { data: h.stats, isLoading: false, isError: false };
+    if (queryKey[0] === "runs")
+      return { data: h.runs, isLoading: false, isError: false };
     return { data: undefined, isLoading: false, isError: false };
   },
 }));
@@ -33,6 +45,9 @@ vi.mock("../hooks/useScan", () => ({
   useScan: () => ({ state: h.scan.state, progress: h.scan.progress, act: h.act }),
 }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
+vi.mock("../lib/player", () => ({
+  usePlayer: () => ({ ...h.player, toggle: h.toggle }),
+}));
 
 import Home from "./Home";
 
@@ -54,6 +69,9 @@ beforeEach(() => {
   h.reviewCount = 0;
   h.scan = { state: "idle", progress: null };
   h.act.mockClear();
+  h.toggle.mockClear();
+  h.runs = undefined;
+  h.player = { current: null, playing: false, previewing: false, orderedQueue: [], orderPos: 0, tempoLock: null };
 });
 
 describe("Home — start a run", () => {
@@ -162,5 +180,108 @@ describe("Home — first run", () => {
     h.stats = undefined;
     render(<Home />);
     expect(screen.queryByText("Scan your library")).toBeNull();
+  });
+});
+
+describe("Home — resume", () => {
+  const queue = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `/m/${i}.mp3`, title: `T${i}` }));
+
+  it("is absent when there is no queue", () => {
+    render(<Home />);
+    expect(screen.queryByRole("region", { name: "Resume" })).toBeNull();
+  });
+
+  it("offers to pick a run back up, naming the preset and the position", () => {
+    h.player = { ...h.player, current: { path: "/m/1.mp3", title: "Don't Stop Me Now", artist: "Queen" },
+      orderedQueue: queue(38), orderPos: 13, tempoLock: { target: 155 } };
+    render(<Home />);
+    const r = screen.getByRole("region", { name: "Resume" });
+    expect(within(r).getByText("Don't Stop Me Now")).toBeTruthy();
+    expect(r.textContent).toContain("Queen");
+    expect(r.textContent).toContain("Easy 155");
+    expect(r.textContent).toContain("track 14 of 38");
+    expect(within(r).getByRole("link", { name: "Open Run" }).getAttribute("href")).toBe("/run");
+  });
+
+  it("falls back to the raw cadence for a target that is not a preset", () => {
+    h.player = { ...h.player, current: { path: "/m/1.mp3", title: "A" }, orderedQueue: queue(5), tempoLock: { target: 142 } };
+    render(<Home />);
+    expect(screen.getByRole("region", { name: "Resume" }).textContent).toContain("142 steps/min");
+  });
+
+  it("points a plain Listen queue at Listen", () => {
+    h.player = { ...h.player, current: { path: "/m/1.mp3", title: "A" }, orderedQueue: queue(5), tempoLock: null };
+    render(<Home />);
+    const r = screen.getByRole("region", { name: "Resume" });
+    expect(r.textContent).toContain("Listening");
+    expect(within(r).getByRole("link", { name: "Open Listen" }).getAttribute("href")).toBe("/listen");
+  });
+
+  it("Resume starts the player, and reads Pause while it is playing", () => {
+    h.player = { ...h.player, current: { path: "/m/1.mp3", title: "A" }, orderedQueue: queue(5) };
+    const { rerender } = render(<Home />);
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(h.toggle).toHaveBeenCalledTimes(1);
+    h.player = { ...h.player, playing: true };
+    rerender(<Home />);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(screen.getByText("Playing now")).toBeTruthy();
+  });
+
+  it("ignores a one-off preview clip", () => {
+    h.player = { ...h.player, current: { path: "preview:dz:1", title: "Clip", ephemeral: true }, orderedQueue: queue(1) };
+    render(<Home />);
+    expect(screen.queryByRole("region", { name: "Resume" })).toBeNull();
+  });
+
+  it("is left out of the first-run screen", () => {
+    h.stats = statsWith({ done: 0, total: 0 });
+    h.player = { ...h.player, current: { path: "/m/1.mp3", title: "A" }, orderedQueue: queue(5) };
+    render(<Home />);
+    expect(screen.queryByRole("region", { name: "Resume" })).toBeNull();
+  });
+});
+
+describe("Home — recent runs", () => {
+  const run = (id: number, over: Record<string, unknown> = {}) => ({
+    id, owner: "admin", owner_label: "Admin", started_at: "2026-10-27T07:12:00", ended_at: "2026-10-27T07:54:00",
+    open: false, duration_ms: 42 * 60_000, played_ms: 40 * 60_000, source: "library", source_label: "Whole library",
+    target_bpm: 155, tracks: 11, avg_cadence: 154.2, stretched_pct: 3, ...over,
+  });
+
+  it("is absent with no runs", () => {
+    h.runs = { items: [], has_more: false };
+    render(<Home />);
+    expect(screen.queryByRole("region", { name: "Recent runs" })).toBeNull();
+  });
+
+  it("lists the last three runs with duration, cadence and source", () => {
+    h.runs = { items: [run(1), run(2, { avg_cadence: 164.4, target_bpm: 165, source_label: "Long Runs" }), run(3), run(4)], has_more: true };
+    render(<Home />);
+    const r = screen.getByRole("region", { name: "Recent runs" });
+    expect(within(r).getAllByRole("link", { name: /spm avg/ })).toHaveLength(3);
+    expect(r.textContent).toContain("42m");
+    expect(r.textContent).toContain("154");
+    expect(r.textContent).toContain("164");
+    expect(r.textContent).toContain("target 165");
+    expect(r.textContent).toContain("Long Runs");
+  });
+
+  it("says Running now for an open run", () => {
+    h.runs = { items: [run(1, { open: true })], has_more: false };
+    render(<Home />);
+    expect(screen.getByText("Running now")).toBeTruthy();
+  });
+
+  it("shows a dash when a run has no cadence yet", () => {
+    h.runs = { items: [run(1, { avg_cadence: null })], has_more: false };
+    render(<Home />);
+    expect(screen.getByRole("region", { name: "Recent runs" }).textContent).toContain("—");
+  });
+
+  it("links through to the journal on Stats", () => {
+    h.runs = { items: [run(1)], has_more: false };
+    render(<Home />);
+    expect(screen.getByRole("link", { name: "All runs" }).getAttribute("href")).toBe("/stats");
   });
 });

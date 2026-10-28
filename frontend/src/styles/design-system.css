@@ -1250,6 +1250,40 @@ a.lead-name:hover { color: var(--accent-2); }
 .home-bar { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .home-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
 
+.home-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+
+.home-resume {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+}
+.home-resume-text { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-resume-label { font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.home-resume-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-resume-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-resume .btn { text-decoration: none; }
+
+.home-runs { display: flex; flex-direction: column; }
+.home-run-row {
+  display: grid; grid-template-columns: 150px 70px minmax(0, 1fr) minmax(0, 140px); column-gap: 14px; align-items: center;
+  padding: 10px 12px; border-top: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: inherit; font-size: 13px;
+}
+.home-run-row:first-child { border-top: 0; }
+.home-run-row:hover { background: var(--row-hover); }
+.home-run-when { font-weight: 600; }
+.home-run-dur { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.home-run-cad { color: var(--muted); font-size: 12px; }
+.home-run-cad b { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
+.home-run-cad small { font-size: 12px; }
+.home-run-src { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.home-section-head a { font-size: 12px; color: var(--accent-2); text-decoration: none; }
+@media (max-width: 700px) {
+  .home-run-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .home-run-when { grid-column: 1; }
+  .home-run-dur { grid-column: 2; text-align: right; }
+  .home-run-cad { grid-column: 1; }
+  .home-run-src { grid-column: 2; }
+}
+
 .home-attn { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 14px 6px; }
 .home-attn .home-section-head { margin-bottom: 4px; padding: 0 4px; }
 .home-attn-count {

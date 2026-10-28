@@ -8,6 +8,7 @@ import { usePlayer, lockRate, type BufferInfo } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
 import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
+import { readyCount, useRunReadiness } from "../hooks/useRunReadiness";
 import { LyricsPanel } from "../components/LyricsPanel";
 import QueueSimilar from "../components/QueueSimilar";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
@@ -208,6 +209,10 @@ export default function Run() {
   // the same limits; this just keeps the UI honest.
   const { role, fullAccess, isGuest } = useAuth();
   const playerMode = role === "player";
+  // How many tracks are runnable at each preset. The server refuses this to named
+  // player accounts (their pages are a locked-down subset), so only ask when it
+  // will answer; without it the buttons simply show no count.
+  const readinessQ = useRunReadiness({ enabled: role === "admin" || isGuest });
   const player = usePlayer();
   const mini = useMiniPlayer();
   const { current, playing, audioRef } = player;
@@ -803,11 +808,15 @@ export default function Run() {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
       {presets.map((p, i) => {
         const active = target === p.bpm;
+        // For the source the run will draw from. The pooled "all my music" source
+        // is a scoped-player thing the readiness numbers don't cover: no count.
+        const ready = pooled ? null : readyCount(readinessQ.data, p.bpm, selectedPlaylistId);
         return (
           <button
             key={i}
             onClick={() => setTarget(p.bpm)}
             aria-pressed={active}
+            aria-label={ready == null ? undefined : `${p.name}, ${p.bpm} BPM, ${ready} ${ready === 1 ? "track" : "tracks"} ready`}
             style={{
               padding: "9px 14px", borderRadius: 12, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
@@ -816,7 +825,15 @@ export default function Run() {
               color: "var(--text)",
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, marginRight: "auto" }}>{p.name}</span>
+            {ready != null && (
+              <span
+                title={`${ready} ${ready === 1 ? "track" : "tracks"} runnable at ${p.bpm} BPM from this source`}
+                style={{ fontSize: 11, flexShrink: 0, whiteSpace: "nowrap", color: ready === 0 ? "var(--warn-fg)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}
+              >
+                {ready.toLocaleString()} ready
+              </span>
+            )}
             <span style={{ fontFamily: "var(--mono)", fontSize: 12, flexShrink: 0, color: active ? "var(--accent-2)" : "var(--muted)" }}>{p.bpm}</span>
           </button>
         );

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import type { NavidromePlaylist, Playlist, PlaylistSource } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
+import { useRunReadiness } from "../hooks/useRunReadiness";
 import PageHeader from "../components/PageHeader";
 import { PlaylistCover } from "../components/Artwork";
 
@@ -29,15 +30,6 @@ function Chips({ p }: { p: Playlist }) {
       <span className="chip chip--neutral">{p.track_count} total</span>
     </div>
   );
-}
-
-/** Per-preset runnable counts for the library and each playlist. One fetch
- *  serves both the cadence strip and the per-card badges. */
-interface Readiness {
-  presets: Array<{ name: string; bpm: number }>;
-  stretch_limit_pct: number;
-  library: Record<string, number>;
-  playlists: Array<{ id: number; name: string; counts: Record<string, number> }>;
 }
 
 const RUN_SOURCE_KEY = "bpm.run.source";
@@ -236,12 +228,7 @@ export default function Playlists() {
 
   // Cadence readiness — one fetch feeding both the strip above the grid and the
   // per-card badges. Failure is silent: these are extras, not the page.
-  const readinessQ = useQuery({
-    queryKey: ["run-readiness"],
-    queryFn: () => api.get<Readiness>("/api/run/readiness"),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const readinessQ = useRunReadiness();
   const readiness = readinessQ.data;
   const readinessById = new Map((readiness?.playlists ?? []).map((p) => [p.id, p.counts]));
 
