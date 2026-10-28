@@ -230,6 +230,16 @@ describe("Listen — radio toggle", () => {
 });
 
 describe("Listen — radio mode", () => {
+  it("puts the lyrics button before the Source | Similar pill, which wraps on a phone", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.radio = true;
+    h.mobile = true;
+    render(<Listen />);
+    const lyrics = screen.getByLabelText("Show lyrics");
+    const pill = screen.getByTestId("radio-mode");
+    expect(lyrics.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("offers Source / Similar only while radio is on", () => {
     h.current = { path: "/a.mp3", title: "A", bpm: 120 };
     render(<Listen />);

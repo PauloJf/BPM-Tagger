@@ -369,6 +369,22 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
         </svg>
         <span style={{ fontSize: 12, fontWeight: 600 }}>Radio</span>
       </button>
+      {/* Lyrics sits before the Source | Similar pill: on a phone the pill wraps to
+          its own row, and the button should stay up with the rest of the controls. */}
+      {!playerMode && !isPreview && (
+        <button
+          style={smallCtl(lyricsOpen)}
+          onClick={() => setLyricsOpen((o) => !o)}
+          aria-label="Show lyrics"
+          aria-expanded={lyricsOpen}
+          title="Lyrics"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+          </svg>
+        </button>
+      )}
       {radio && (
         <span data-testid="radio-mode" role="radiogroup" aria-label="Radio refills from"
               style={{ display: "inline-flex", border: "1px solid var(--accent-border)", borderRadius: 999, overflow: "hidden" }}>
@@ -384,20 +400,6 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } =
               </button>
             ))}
         </span>
-      )}
-      {!playerMode && !isPreview && (
-        <button
-          style={smallCtl(lyricsOpen)}
-          onClick={() => setLyricsOpen((o) => !o)}
-          aria-label="Show lyrics"
-          aria-expanded={lyricsOpen}
-          title="Lyrics"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
-          </svg>
-        </button>
       )}
       {!mobile && (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={`Volume ${Math.round(player.volume * 100)}%`}>
