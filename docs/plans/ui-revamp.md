@@ -100,7 +100,8 @@ Each step ships alone and leaves the app working.
    Subsonic API, Artwork, Lyrics, ISRC) · Security (Admin sign-in, Two-factor,
    Login protection) · Maintenance (Scan Behavior, Operating Mode, Trash, Deleted
    Tracks, Version, Restart) · Appearance last. No section content changes.
-6. **Merge Run and Listen into one player.** Own design doc first.
+6. **Merge Run and Listen into one player.** Own design doc first:
+   [run-listen-merge.md](run-listen-merge.md) (proposal, mockups made, nothing built).
 
 ## 4. Verification (every step)
 
