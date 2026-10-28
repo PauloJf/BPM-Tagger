@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 // Listen is a thin view over the player context; mock the context/hooks so the
@@ -244,6 +244,50 @@ describe("Listen — radio mode", () => {
     render(<Listen />);
     expect(screen.getByText("radio adds similar tracks")).toBeTruthy();
     expect(screen.getByTestId("radio-toggle").getAttribute("title")).toContain("similar tracks from your library");
+  });
+});
+
+describe("Listen — radio under a tempo lock", () => {
+  it("says it tops up with tracks that fit the pace", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.radio = true;
+    h.listenSource = 7;
+    h.tempoLock = { target: 165, octave: true, stretchLimitPct: 15 };
+    render(<Listen />);
+    expect(screen.getByText("radio tops up with tracks that fit the pace")).toBeTruthy();
+    expect(screen.queryByText("radio keeps this topped up")).toBeNull();
+  });
+});
+
+describe("Listen — the offline note", () => {
+  const seed = (entries: Record<string, { size: number }>) =>
+    localStorage.setItem("bpm.offline.index", JSON.stringify(entries));
+  beforeEach(() => { vi.stubGlobal("caches", {}); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("appears only when something is cached", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    render(<Listen />);
+    expect(screen.queryByTestId("offline-note")).toBeNull();
+    cleanup();
+    seed({ "/x.mp3": { size: 8 * 1024 * 1024 }, "/y.mp3": { size: 4 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.getByTestId("offline-note").textContent).toBe("2 tracks saved offline · 12.0 MB");
+  });
+
+  it("says track, not tracks, for one", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    seed({ "/x.mp3": { size: 3 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.getByTestId("offline-note").textContent).toBe("1 track saved offline · 3.0 MB");
+  });
+
+  it("stays away where the browser has no offline cache (plain http)", () => {
+    vi.unstubAllGlobals();
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    seed({ "/x.mp3": { size: 3 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.queryByTestId("offline-note")).toBeNull();
   });
 });
 

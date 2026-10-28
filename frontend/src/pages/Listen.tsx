@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, type ListenSource, type PlayerTrack } from "../lib/player";
+import { cacheStats, fmtBytes, offlineSupported } from "../lib/offline";
 import type { ListenQueueResponse, RunPlaylistOption, TrackDetailResponse } from "../lib/types";
 import { usePlaybackSurface } from "../hooks/usePlaybackSurface";
 import { useTitle } from "../hooks/useTitle";
@@ -55,6 +56,10 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ListenModeSwitchSl
   const { current, playing, audioRef, radio, setRadio, radioMode, setRadioMode, listenSource, tempoLock } = player;
   // Similar radio needs no Listen source: it seeds from whatever is playing.
   const radioReady = radioMode === "similar" || listenSource != null;
+  // Offline chips are per-cadence downloads, so they live in Run. Here, one quiet
+  // line, only when the look-ahead or a Run download has actually cached something.
+  // Re-read as tracks change: the look-ahead fills the cache while you listen.
+  const offline = useMemo(() => (offlineSupported() ? cacheStats() : { tracks: 0, bytes: 0 }), [current?.path]);
   const isPreview = !!current?.ephemeral;
   const { time, dur, canvasRef, glow } = usePlaybackSurface(audioRef, {
     path: current?.path || "", waveform: !!current && !isPreview, glowPath: current && !isPreview ? current.path : null,
@@ -424,16 +429,26 @@ export default function Listen({ modeSwitch }: { modeSwitch?: ListenModeSwitchSl
           <span style={{ fontWeight: 600, fontSize: 13 }}>Queue · {player.orderedQueue.length}</span>
           {radio && radioReady && (
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              {radioMode === "similar" ? "radio adds similar tracks" : "radio keeps this topped up"}
+              {tempoLock ? "radio tops up with tracks that fit the pace"
+                : radioMode === "similar" ? "radio adds similar tracks" : "radio keeps this topped up"}
             </span>
           )}
           <button className="btn btn-bare btn-sm" style={{ marginLeft: "auto" }} onClick={player.stop} title="Stop and clear the queue">Clear</button>
         </div>
       }
-      between={sourcePicker && (
-        <div data-testid="queue-source" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          {sourcePicker}
-        </div>
+      between={(sourcePicker || offline.tracks > 0) && (
+        <>
+          {sourcePicker && (
+            <div data-testid="queue-source" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              {sourcePicker}
+            </div>
+          )}
+          {offline.tracks > 0 && (
+            <div data-testid="offline-note" style={{ padding: "6px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0, fontSize: 11, color: "var(--muted)" }}>
+              {offline.tracks} track{offline.tracks === 1 ? "" : "s"} saved offline · {fmtBytes(offline.bytes)}
+            </div>
+          )}
+        </>
       )}
     >
       <QueueList />

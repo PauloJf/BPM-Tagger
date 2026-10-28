@@ -16,7 +16,10 @@ import Listen from "./Listen";
  *  switch is just navigation with the one piece of behaviour that matters:
  *
  *  - **Run → Listen** releases the tempo lock and keeps the queue playing, so the
- *    music carries on at native speed. Nothing is lost, so nothing is confirmed.
+ *    music carries on at native speed. Nothing is lost, so nothing is confirmed. A
+ *    queue Run built has no Listen source (starting a run clears it), so the run's
+ *    source becomes the Listen source: Radio then picks up where the run's refill
+ *    left off, from the same playlist or library, instead of going quiet.
  *  - **Listen → Run** with a queue playing asks first (SwitchToRunDialog): build a
  *    queue for a pace, or keep this one and stretch it. It always asks, because it
  *    is the only warning that a queue may be replaced. With nothing queued there is
@@ -28,13 +31,16 @@ import Listen from "./Listen";
 export default function Player({ mode }: { mode: PlayerMode }) {
   const navigate = useNavigate();
   const { role } = useAuth();
-  const { tempoLock, setTempoLock, orderedQueue } = usePlayer();
+  const { tempoLock, setTempoLock, orderedQueue, runSource, listenSource, setListenSource } = usePlayer();
   const [asking, setAsking] = useState(false);
   const kiosk = role === "player";
 
   function switchTo(next: PlayerMode) {
     if (next === mode) return;
-    if (next === "listen" && tempoLock) setTempoLock(null);
+    if (next === "listen" && tempoLock) {
+      if (listenSource == null && orderedQueue.length > 0) setListenSource(runSource ?? "library");
+      setTempoLock(null);
+    }
     if (next === "run" && !tempoLock && orderedQueue.length > 0) { setAsking(true); return; }
     navigate(next === "run" ? "/run" : "/listen");
   }

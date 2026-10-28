@@ -8,12 +8,16 @@ const h = vi.hoisted(() => ({
   lock: null as null | { target: number },
   setLock: vi.fn(),
   queue: [] as Array<{ path: string }>,
+  runSource: null as number | "mine" | null,
+  listenSource: null as number | "mine" | "library" | null,
+  setListenSource: vi.fn(),
   navigated: [] as string[],
 }));
 
 vi.mock("react-router-dom", () => ({ useNavigate: () => (to: string) => { h.navigated.push(to); } }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
-vi.mock("../lib/player", () => ({ usePlayer: () => ({ tempoLock: h.lock, setTempoLock: h.setLock, orderedQueue: h.queue }) }));
+vi.mock("../lib/player", () => ({ usePlayer: () => ({ tempoLock: h.lock, setTempoLock: h.setLock, orderedQueue: h.queue,
+    runSource: h.runSource, listenSource: h.listenSource, setListenSource: h.setListenSource }) }));
 // The dialog has its own tests; here it only has to appear, and report back.
 vi.mock("../components/SwitchToRunDialog", () => ({
   default: ({ onCancel, onStarted }: { onCancel: () => void; onStarted: () => void }) =>
@@ -37,6 +41,9 @@ beforeEach(() => {
   h.role = "admin";
   h.lock = null;
   h.queue = [];
+  h.runSource = null;
+  h.listenSource = null;
+  h.setListenSource.mockClear();
   h.setLock.mockClear();
   h.navigated = [];
 });
@@ -72,6 +79,40 @@ describe("Player — Run to Listen", () => {
     fireEvent.click(tab("Listen"));
     expect(h.setLock).toHaveBeenCalledWith(null);
     expect(h.navigated).toEqual(["/listen"]);
+  });
+
+  it("hands the run's source to Listen so Radio carries on from it", () => {
+    h.lock = { target: 155 };
+    h.queue = [{ path: "a.mp3" }];
+    h.runSource = 7;
+    render(<Player mode="run" />);
+    fireEvent.click(tab("Listen"));
+    expect(h.setListenSource).toHaveBeenCalledWith(7);
+  });
+
+  it("maps a whole-library run to the library", () => {
+    h.lock = { target: 155 };
+    h.queue = [{ path: "a.mp3" }];
+    render(<Player mode="run" />);
+    fireEvent.click(tab("Listen"));
+    expect(h.setListenSource).toHaveBeenCalledWith("library");
+  });
+
+  it("keeps a Listen source the queue already has", () => {
+    h.lock = { target: 155 };
+    h.queue = [{ path: "a.mp3" }];
+    h.runSource = 7;
+    h.listenSource = 12;
+    render(<Player mode="run" />);
+    fireEvent.click(tab("Listen"));
+    expect(h.setListenSource).not.toHaveBeenCalled();
+  });
+
+  it("sets no source when the queue is empty", () => {
+    h.lock = { target: 155 };
+    render(<Player mode="run" />);
+    fireEvent.click(tab("Listen"));
+    expect(h.setListenSource).not.toHaveBeenCalled();
   });
 
   it("has no lock to release when there isn't one", () => {

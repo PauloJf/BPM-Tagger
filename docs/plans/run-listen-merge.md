@@ -126,8 +126,21 @@ Each step ships on its own and leaves both pages working.
    to the stretch limit, and Run already marks them ⚠, so the dialog says that.
    The Run page's presets, source and stretch settings moved to `lib/runSettings.ts`
    so the dialog and the page read them the same way.
-4. **Navigation and Home**: the single Player item, Home's Resume card linking to
-   the right mode, the remembered mode.
+4. **Navigation, Home and the loose ends.** *Done (2026-10-28).* An audit found
+   most of this already true: the nav items are the routes, so the active one
+   follows the switch; Home's Resume card links to Run while a lock is on and to
+   Listen otherwise; and the installed app's start page already reopens the last
+   page (`lib/lastPage.ts`), which *is* the remembered mode. What was missing and
+   is now built: (a) **Run → Listen hands the run's source to Listen**, because
+   starting a run clears the Listen source, which would have silenced Radio on the
+   way back (a whole-library run becomes the `library` source); (b) the **queue
+   header says "radio tops up with tracks that fit the pace"** under a lock, since
+   the run refill, not the native-speed one, is what is topping it up; (c) the
+   **offline note in Listen**, "N tracks saved offline · X MB", shown only when
+   something is cached (so never over plain http, where there is no cache).
+   The refill rule itself needed no engine change: the run refill already owns a
+   locked queue, and the Listen radio refills are gated off by the lock and resume
+   on release.
 5. **Remove the duplicated pages and CSS**; update README and screenshots.
 
 ## Risks
