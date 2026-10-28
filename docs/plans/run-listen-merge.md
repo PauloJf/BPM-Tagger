@@ -90,10 +90,17 @@ switch is a full-width pill under the title.
 
 Each step ships on its own and leaves both pages working.
 
-1. **Extract a shared shell.** Pull the cover, waveform, transport, queue panel
-   and the one-screen mobile machinery out of `Run.tsx` (1,367 lines) and
-   `Listen.tsx` (568) into shared components, with no visible change and the
-   existing 52 Run and Listen tests as the safety net.
+1. **Extract a shared shell.** *Done (2026-10-28).* The glow layer, lyrics
+   drawer, waveform strip, previous/play/next buttons and queue card moved into
+   `components/PlayerShell.tsx`, and the audio-time / waveform / glow wiring into
+   `hooks/usePlaybackSurface.ts`. Sizes that differ between the pages (button
+   diameters, the queue card's bottom gap) are props, so nothing shifts. Proof of
+   "no visible change": both pages were rendered in 45 states and their HTML
+   compared before and after (identical, ignoring only CSS property order), on top
+   of the existing Run and Listen tests. What is *not* shared yet, deliberately:
+   the status notes (the two pills differ), the rating and dislike handlers (Listen
+   keeps local optimistic state), and the rows inside each queue. Those differ in
+   behaviour, so unifying them belongs with the mode switch, not before it.
 2. **Add the mode switch** by rendering one page with two decks, behind the
    same routes. `/run` and `/listen` both mount it.
 3. **The switch dialog**, with the lock-and-stretch counts computed from the
@@ -132,4 +139,4 @@ Settled with the owner on 2026-10-28.
   they stay beside the presets. In Listen a one-line note ("10 tracks saved
   offline · 82 MB") appears only when something is cached.
 
-No open questions remain; the next step is build step 1, the shared shell.
+No open questions remain; build step 1 (the shared shell) is done and the next step is 2, the mode switch.
