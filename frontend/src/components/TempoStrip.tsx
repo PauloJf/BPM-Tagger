@@ -8,6 +8,39 @@ interface Preset { name: string; bpm: number }
 const overlaps = (aLo: number, aHi: number, bLo: number, bHi: number) => aLo < bHi && aHi > bLo;
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
+/** How a BPM range [lo, hi) relates to a tempo window: 1 = inside it, 2 = only by
+ *  half/double time (when that's on), 0 = outside. With no window (`target` not
+ *  positive) everything counts as inside. One rule for the library histogram and
+ *  every other chart that lights "what fits", so they never disagree. */
+export function windowReach(
+  lo: number, hi: number,
+  w: { target: number; tol: number; cadence: boolean },
+): 0 | 1 | 2 {
+  if (!(w.target > 0)) return 1;
+  const wLo = w.target - w.tol;
+  const wHi = w.target + w.tol;
+  if (overlaps(lo, hi, wLo, wHi)) return 1;
+  if (w.cadence && (overlaps(lo, hi, wLo / 2, wHi / 2) || overlaps(lo, hi, wLo * 2, wHi * 2))) return 2;
+  return 0;
+}
+
+/** The URL after setting the tempo filter: an empty BPM clears it (and its
+ *  tolerance), anything else sets both. Resets paging. Shared by every Library
+ *  view that hosts a TempoStrip. */
+export function tempoParams(prev: URLSearchParams, next: { bpm: string; tol: string }): URLSearchParams {
+  const p = new URLSearchParams(prev);
+  const bv = next.bpm.trim();
+  if (bv) {
+    p.set("bpm", bv);
+    p.set("bpm_tol", next.tol.trim() || "5");
+  } else {
+    p.delete("bpm");
+    p.delete("bpm_tol");
+  }
+  if (p.has("page")) p.set("page", "1");
+  return p;
+}
+
 /** The Library's tempo filter: the whole library's BPM histogram with the current
  *  window lit, run-preset chips, and the exact BPM / ± inputs.
  *
@@ -17,12 +50,14 @@ const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
  *  Bars the window reaches only by half/double time (when that's on) are drawn
  *  softer than direct hits, so "why is this 77 BPM song here" is answered by the
  *  chart itself. */
-export default function TempoStrip({ bpm, tol, cadence, total, onApply, onCadence }: {
+export default function TempoStrip({ bpm, tol, cadence, total, fitLabel, onApply, onCadence }: {
   bpm: string;
   tol: string;
   cadence: boolean;
   /** Tracks matching the whole current view, for the "N tracks" readout. */
   total: number | undefined;
+  /** Replaces the "N tracks fit" readout, for views that count something else. */
+  fitLabel?: string;
   onApply: (next: { bpm: string; tol: string }) => void;
   onCadence: (on: boolean) => void;
 }) {
@@ -61,14 +96,7 @@ export default function TempoStrip({ bpm, tol, cadence, total, onApply, onCadenc
   const lo = target - t;
   const hi = target + t;
 
-  /** 1 = inside the window, 2 = only by half/double time, 0 = outside. */
-  function reach(bucketLo: number): 0 | 1 | 2 {
-    if (!active) return 1;
-    const bucketHi = bucketLo + BUCKET;
-    if (overlaps(bucketLo, bucketHi, lo, hi)) return 1;
-    if (cadence && (overlaps(bucketLo, bucketHi, lo / 2, hi / 2) || overlaps(bucketLo, bucketHi, lo * 2, hi * 2))) return 2;
-    return 0;
-  }
+  const reach = (bucketLo: number) => windowReach(bucketLo, bucketLo + BUCKET, { target, tol: t, cadence });
 
   const bars = fill(distQ.data ?? []);
   const maxCount = bars.length ? Math.max(1, ...bars.map((b) => b.count)) : 1;
@@ -80,7 +108,8 @@ export default function TempoStrip({ bpm, tol, cadence, total, onApply, onCadenc
         <div className="tempo-read">
           <span className="tempo-label">Tempo</span>
           <span className="tempo-range">{active ? `${fmt(lo)}–${fmt(hi)} BPM` : "Any tempo"}</span>
-          {active && total != null && <span className="tempo-fit">{total.toLocaleString()} {total === 1 ? "track" : "tracks"} fit</span>}
+          {active && fitLabel != null && <span className="tempo-fit">{fitLabel}</span>}
+          {active && fitLabel == null && total != null && <span className="tempo-fit">{total.toLocaleString()} {total === 1 ? "track" : "tracks"} fit</span>}
         </div>
         <div className="tempo-presets">
           {presets.map((p) => (

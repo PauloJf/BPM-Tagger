@@ -7,7 +7,7 @@ from typing import Optional
 
 from ..bpm.tags import get_file_hash
 from ..text import normalize_artist_name, normalize_genre, split_artist_credits, split_genres
-from .constants import TRACK_SORTS
+from .constants import MIX_BINS, TRACK_SORTS, bpm_in_window, mix_bin
 from .ratings import not_disliked_sql
 
 def _dupe_signature(paths) -> str:
@@ -680,6 +680,38 @@ class TracksMixin:
                 GROUP BY l.norm_name ORDER BY name COLLATE NOCASE
             """).fetchall()
         return [dict(r) for r in rows]
+
+    def list_artists_tempo(self, bpm_target: Optional[float] = None, bpm_tol: float = 5.0,
+                           bpm_cadence: bool = False) -> list[dict]:
+        """``list_artists`` plus each artist's tempo picture, for the Artists page.
+
+        Every row gains ``mix`` (track counts per tempo bin, see MIX_* in
+        constants) and, when a ``bpm_target`` is given, ``fit``: how many of that
+        artist's tracks match the tempo filter. Tracks without a BPM count towards
+        neither. One extra pass over (artist, bpm) pairs, grouped in Python — the
+        rows are already in memory and the window rule matches the listing's."""
+        artists = self.list_artists()
+        with self._connect() as conn:
+            pairs = conn.execute(
+                "SELECT ta.norm_name AS norm_name, t.bpm AS bpm "
+                "FROM track_artists ta JOIN tracks t ON t.id = ta.track_id "
+                "WHERE t.status != 'deleted'"
+            ).fetchall()
+        mixes: dict[str, list[int]] = {}
+        fits: dict[str, int] = {}
+        for r in pairs:
+            bpm = r["bpm"]
+            if not bpm:
+                continue
+            mixes.setdefault(r["norm_name"], [0] * MIX_BINS)[mix_bin(bpm)] += 1
+            if bpm_target is not None and bpm_in_window(bpm, bpm_target, bpm_tol, bpm_cadence):
+                fits[r["norm_name"]] = fits.get(r["norm_name"], 0) + 1
+        for a in artists:
+            key = normalize_artist_name(a["name"])
+            a["mix"] = mixes.get(key, [0] * MIX_BINS)
+            if bpm_target is not None:
+                a["fit"] = fits.get(key, 0)
+        return artists
 
     def list_albums(self) -> list[dict]:
         """Album index: one row per album + album artist pair."""

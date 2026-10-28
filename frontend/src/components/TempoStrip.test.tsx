@@ -16,7 +16,47 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 vi.mock("../lib/api", () => ({ api: { get: vi.fn() } }));
 
-import TempoStrip from "./TempoStrip";
+import TempoStrip, { tempoParams, windowReach } from "./TempoStrip";
+
+describe("windowReach — the shared 'what fits' rule", () => {
+  const w = { target: 155, tol: 5, cadence: false };
+  it("is inside for any overlap with the window, outside otherwise", () => {
+    expect(windowReach(150, 155, w)).toBe(1);
+    expect(windowReach(158, 165, w)).toBe(1);
+    expect(windowReach(160, 165, w)).toBe(0); // touches the edge only
+    expect(windowReach(100, 110, w)).toBe(0);
+  });
+  it("reaches half and double time only when asked", () => {
+    expect(windowReach(75, 80, w)).toBe(0);
+    expect(windowReach(75, 80, { ...w, cadence: true })).toBe(2);
+    expect(windowReach(300, 320, { ...w, cadence: true })).toBe(2);
+  });
+  it("counts everything as inside when no tempo is set", () => {
+    expect(windowReach(100, 110, { target: 0, tol: 5, cadence: false })).toBe(1);
+  });
+});
+
+describe("tempoParams — the tempo filter in the URL", () => {
+  it("sets the target and tolerance, and goes back to page one", () => {
+    const next = tempoParams(new URLSearchParams("page=4&q=abba"), { bpm: "155", tol: "7" });
+    expect(next.get("bpm")).toBe("155");
+    expect(next.get("bpm_tol")).toBe("7");
+    expect(next.get("page")).toBe("1");
+    expect(next.get("q")).toBe("abba");
+  });
+  it("doesn't invent a page param for views that have no paging", () => {
+    expect(tempoParams(new URLSearchParams(), { bpm: "155", tol: "5" }).has("page")).toBe(false);
+  });
+  it("defaults a blank tolerance to 5", () => {
+    expect(tempoParams(new URLSearchParams(), { bpm: "120", tol: " " }).get("bpm_tol")).toBe("5");
+  });
+  it("clears the tempo, leaving the half/double switch alone", () => {
+    const next = tempoParams(new URLSearchParams("bpm=155&bpm_tol=5&bpm_cadence=1"), { bpm: "", tol: "5" });
+    expect(next.has("bpm")).toBe(false);
+    expect(next.has("bpm_tol")).toBe(false);
+    expect(next.get("bpm_cadence")).toBe("1");
+  });
+});
 
 const DIST = [{ bpm: 75, count: 4 }, { bpm: 150, count: 10 }, { bpm: 155, count: 20 }, { bpm: 160, count: 6 }];
 const PRESETS = [{ name: "Easy", bpm: 155 }, { name: "Steady", bpm: 165 }];

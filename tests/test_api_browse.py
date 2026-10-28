@@ -52,7 +52,8 @@ def test_artists_index(client, base_config):
     _seed(base_config["db_path"])
 
     artists = client.get("/api/artists").get_json()["artists"]
-    by_name = {a["name"]: a for a in artists}
+    # The tempo mix has its own tests below; this one is about the index itself.
+    by_name = {a["name"]: {k: v for k, v in a.items() if k != "mix"} for a in artists}
 
     # One card per individually-credited artist (via track_artists) — compilation
     # guests get their own entry alongside the "Various Artists" credit itself;
@@ -88,3 +89,84 @@ def test_albums_index(client, base_config):
     assert comp["avg_bpm"] == 130.0
     # Every album row carries a representative file for cover-art thumbnails.
     assert comp["sample_path"] == "/m/va/guest.mp3"
+
+
+# ── Tempo mix and tempo-fit counts (the Artists page) ─────────────────────────
+
+def _artist(client, **params):
+    resp = client.get("/api/artists", query_string=params)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    return {a["name"]: a for a in body["artists"]}, body
+
+
+def test_artists_carry_a_tempo_mix_over_a_fixed_range(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    by_name, body = _artist(client)
+
+    assert body["mix_range"] == [70.0, 190.0]
+    # 16 bins of 7.5 BPM from 70: 100 → bin 4, 120 → bin 6, 140 → bin 9.
+    abba = by_name["ABBA"]["mix"]
+    assert len(abba) == 16 and sum(abba) == 1  # the bpm=0 track has no tempo to place
+    assert abba[4] == 1
+    va = by_name["Various Artists"]["mix"]
+    assert (va[6], va[9], sum(va)) == (1, 1, 2)
+    # Without a tempo filter there is no fit count at all.
+    assert "fit" not in by_name["ABBA"]
+
+
+def test_artists_without_any_bpm_get_an_empty_mix(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("UPDATE tracks SET bpm = NULL WHERE artist = 'Solo Act'")
+    conn.commit()
+    conn.close()
+
+    by_name, _ = _artist(client)
+
+    assert by_name["Solo Act"]["mix"] == [0] * 16
+
+
+def test_fit_counts_the_tracks_inside_the_tempo_window(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    by_name, _ = _artist(client, bpm=120, bpm_tol=5)
+
+    assert by_name["Guest Star"]["fit"] == 1      # 120
+    assert by_name["Other Guest"]["fit"] == 0     # 140
+    assert by_name["Various Artists"]["fit"] == 1  # 120 of its two tracks
+    assert by_name["ABBA"]["fit"] == 0            # 100 and an untimed track
+
+
+def test_fit_matches_half_and_double_time_only_when_asked(client, base_config):
+    _login(client)
+    _seed(base_config["db_path"])
+
+    plain, _ = _artist(client, bpm=240, bpm_tol=5)
+    folded, _ = _artist(client, bpm=240, bpm_tol=5, bpm_cadence=1)
+
+    assert plain["Guest Star"]["fit"] == 0
+    assert folded["Guest Star"]["fit"] == 1   # 120 is half of 240
+    assert folded["Other Guest"]["fit"] == 0  # 140 isn't within ±5 of 120
+
+
+def test_fit_agrees_with_the_track_listing_filter(client, base_config):
+    """The Artists page and the Tracks table must never disagree about which
+    tracks a tempo window holds."""
+    _login(client)
+    _seed(base_config["db_path"])
+
+    for params in ({"bpm": 120, "bpm_tol": 5}, {"bpm": 240, "bpm_tol": 5, "bpm_cadence": 1},
+                   {"bpm": 100, "bpm_tol": 25}):
+        by_name, _ = _artist(client, **params)
+        listed = client.get("/api/tracks", query_string=params).get_json()["total"]
+        # Each seeded artist except the compilation's two guests and VA has one
+        # credit per track, so summing artist fits would double count the VA
+        # tracks; compare against the distinct artists that hold the tracks.
+        solo_fit = sum(by_name[n]["fit"] for n in ("ABBA", "Solo Act"))
+        guest_fit = sum(by_name[n]["fit"] for n in ("Guest Star", "Other Guest"))
+        assert solo_fit + guest_fit == listed

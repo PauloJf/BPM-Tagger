@@ -931,6 +931,53 @@ a.segmented-btn { text-decoration: none; display: inline-flex; align-items: cent
   .tempo-bars { height: 44px; }
 }
 
+/* Artists: a list with each artist's tempo mix, lit against the tempo window. */
+.artist-wrap { display: flex; gap: 12px; align-items: flex-start; }
+.artist-list { flex: 1; min-width: 0; }
+.artist-head, .artist-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 190px 96px; column-gap: 16px; align-items: center; padding: 0 12px; }
+.artist-head {
+  height: 34px; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+}
+.artist-row { padding-top: 8px; padding-bottom: 8px; border-radius: 10px; text-decoration: none; color: inherit; scroll-margin-top: 12px; transition: background 0.12s; }
+.artist-row:hover { background: var(--row-hover); }
+.artist-avatar {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-2); font-weight: 600; font-size: 14px;
+}
+.artist-name-cell { min-width: 0; display: flex; flex-direction: column; }
+.artist-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artist-meta { font-size: 12px; color: var(--muted); }
+.artist-mix { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+.artist-mix span { flex: 1; min-width: 2px; border-radius: 2px 2px 0 0; background: var(--border-strong); }
+.artist-mix span[data-empty="true"] { background: var(--border); }
+.artist-mix span[data-reach="1"] { background: var(--accent); }
+.artist-mix span[data-reach="2"] { background: var(--accent-border); }
+.artist-mix span[data-reach="off"] { background: var(--accent-soft-strong); }
+.artist-mix span[data-reach="off"][data-empty="true"] { background: var(--border); }
+.artist-fit { text-align: right; white-space: nowrap; }
+.artist-fit b { font-family: var(--mono); font-size: 18px; font-weight: 600; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+.artist-fit b.artist-fit--muted { font-size: 14px; color: var(--text); }
+.artist-fit small { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.artist-foot { padding: 12px 12px 0; font-size: 12px; color: var(--muted); }
+.artist-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.artist-sort select { font-size: 12px; }
+.az-rail { position: sticky; top: 16px; display: flex; flex-direction: column; align-items: center; padding-top: 40px; flex-shrink: 0; width: 22px; }
+.az-rail button {
+  width: 22px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--muted); line-height: 16px;
+}
+.az-rail button:hover:not(:disabled) { color: var(--accent-2); background: var(--row-hover); border-radius: 6px; }
+.az-rail button:disabled { opacity: 0.3; cursor: default; }
+@media (max-width: 700px) {
+  .artist-head, .artist-row { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 12px; }
+  .artist-head-mix, .artist-mix { display: none; }
+  .az-rail { display: none; }
+  /* Sort and the art toggle share a line; search gets one to itself. */
+  .artist-tools { flex-wrap: wrap; }
+  .artist-tools .search-wrap { flex: 1 1 100%; order: -1; }
+}
+
 /* ── Library browse (artists/albums index) ────────────────────────────────── */
 .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .browse-card {

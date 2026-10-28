@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
 import { ConfBar, DecodeWarningBadge, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
-import TempoStrip from "../components/TempoStrip";
+import TempoStrip, { tempoParams } from "../components/TempoStrip";
 import { RatingStars, DislikeButton } from "../components/RatingStars";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import LibraryTabs from "../components/LibraryTabs";
@@ -125,19 +125,7 @@ export default function Tracks() {
 
   /** The tempo filter's one way into the URL: an empty BPM clears it. */
   function applyTempo(next: { bpm: string; tol: string }) {
-    setParams((prev) => {
-      const p = new URLSearchParams(prev);
-      const bv = next.bpm.trim();
-      if (bv) {
-        p.set("bpm", bv);
-        p.set("bpm_tol", next.tol.trim() || "5");
-      } else {
-        p.delete("bpm");
-        p.delete("bpm_tol");
-      }
-      p.set("page", "1");
-      return p;
-    }, { replace: true });
+    setParams((prev) => tempoParams(prev, next), { replace: true });
   }
 
   function setPage(next: number) {
