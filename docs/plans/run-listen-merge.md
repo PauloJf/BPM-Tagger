@@ -3,7 +3,7 @@
 > Current status of all plans is tracked in [STATUS.md](STATUS.md). This is step 6
 > of [ui-revamp.md](ui-revamp.md).
 
-Status: **Design agreed** (2026-10-28), nothing built. The four open questions are
+Status: **Built** (2026-10-28), steps 1–5 on `feature/ui-revamp-nav`. The four open questions are
 answered (see Decisions at the end). Mockups: a private
 Design canvas, "BPM Tagger Player Mockup" (desktop with a working Run/Listen
 switch, phone Run, phone Listen, and the switch dialog).
@@ -141,7 +141,25 @@ Each step ships on its own and leaves both pages working.
    The refill rule itself needed no engine change: the run refill already owns a
    locked queue, and the Listen radio refills are gated off by the lock and resume
    on release.
-5. **Remove the duplicated pages and CSS**; update README and screenshots.
+5. **Remove the duplication.** *Done (2026-10-28), smaller than planned.* Looked
+   for what was still written twice and found little worth merging: the CSS was
+   already shared (Listen uses Run's `run-*` shell classes; there is no Listen-only
+   copy), and the code left over differs in behaviour on purpose. Run's rating and
+   dislike handlers act on queue rows and don't revert on a failed write; Listen's
+   act on the current track through a local map, because the player's
+   `setTrackRating` updates the queue but not `current`. The two source pickers
+   validate against different remembered keys, and the mobile layouts differ by
+   design (Run's top Presets/Steps/Queue tabs, Listen's bottom Playing | Queue).
+   Forcing those into one component would trade a little duplication for a risky
+   rewrite of the most heavily tested page, so it was left alone. What was merged:
+   the two copies of the switch-slot type became `ModeSwitchSlot`. Run and Listen
+   remain two decks under the `Player` wrapper, which is what the design called
+   for. README text is current; the screenshots are not refreshed (see below).
+
+**Screenshots.** `docs/screenshots/11` and `12` show the kiosk's Run page, which has
+no switch and is unchanged. `02` and `09` (the library) predate the nav regroup and
+the tempo strip and want a re-shoot, which needs a proper capture tool rather than
+the in-app browser pane.
 
 ## Risks
 
@@ -173,4 +191,4 @@ Settled with the owner on 2026-10-28.
   they stay beside the presets. In Listen a one-line note ("10 tracks saved
   offline · 82 MB") appears only when something is cached.
 
-No open questions remain; build step 1 (the shared shell) is done and the next step is 2, the mode switch.
+No open questions remain; all five build steps are done.

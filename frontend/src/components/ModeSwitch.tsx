@@ -1,5 +1,10 @@
 export type PlayerMode = "run" | "listen";
 
+/** What the Player page hands down to Run or Listen: the switch, drawn inline for
+ *  the desktop header (`fill` false) or as a full-width row on a phone (`fill`
+ *  true). Absent when the page is mounted without it (the kiosk shell). */
+export type ModeSwitchSlot = (fill: boolean) => React.ReactNode;
+
 const MODES: ReadonlyArray<{ mode: PlayerMode; label: string; hint: string }> = [
   { mode: "run", label: "Run", hint: "Lock every track onto your cadence" },
   { mode: "listen", label: "Listen", hint: "Your music at native speed, nothing stretched" },

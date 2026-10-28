@@ -16,6 +16,7 @@ import { usePlaybackSurface } from "../hooks/usePlaybackSurface";
 import { useTitle } from "../hooks/useTitle";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
+import type { ModeSwitchSlot } from "../components/ModeSwitch";
 import { EqBars } from "../components/EqBars";
 import PlayerCover from "../components/PlayerCover";
 import PrepareOffline from "../components/PrepareOffline";
@@ -190,12 +191,7 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
   );
 }
 
-/** What the Player page hands down: the Run | Listen switch, drawn inline for the
- *  desktop header (`fill` false) or as a full-width row on a phone (`fill` true).
- *  Absent when the page is mounted without it (the kiosk shell). */
-export type RunModeSwitchSlot = (fill: boolean) => React.ReactNode;
-
-export default function Run({ modeSwitch }: { modeSwitch?: RunModeSwitchSlot } = {}) {
+export default function Run({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } = {}) {
   useTitle("Run");
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
