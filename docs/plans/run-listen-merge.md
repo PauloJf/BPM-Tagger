@@ -3,7 +3,8 @@
 > Current status of all plans is tracked in [STATUS.md](STATUS.md). This is step 6
 > of [ui-revamp.md](ui-revamp.md).
 
-Status: **Design proposal** (2026-10-28). Nothing built. Mockups: a private
+Status: **Design agreed** (2026-10-28), nothing built. The four open questions are
+answered (see Decisions at the end). Mockups: a private
 Design canvas, "BPM Tagger Player Mockup" (desktop with a working Run/Listen
 switch, phone Run, phone Listen, and the switch dialog).
 
@@ -22,7 +23,8 @@ tempo lock is on.** `tempoLock` is already a field of the player's saved state, 
 
 ## The model
 
-One **Player** page with a `Run | Listen` switch at the top. Everything is shared
+One page with a `Run | Listen` switch at the top. Its title follows the mode (the
+page reads "Run" or "Listen"), so it never needs a name of its own. Everything is shared
 except one control deck:
 
 | Shared | Run deck (lock on) | Listen deck (lock off) |
@@ -31,7 +33,8 @@ except one control deck:
 
 The queue panel is the same panel in both: rows read `native · fold · stretch →
 result` in Run and duration in Listen; the header action is **Rebuild** in Run and
-**Add more** in Listen.
+**Add more** in Listen. In Run the header says the queue "tops up with tracks
+that fit", because that is what the refill does while the lock is on.
 
 ## Switching modes
 
@@ -43,7 +46,8 @@ result` in Run and duration in Listen; the header action is **Rebuild** in Run a
   that fit, starred first) or **keep this queue and stretch it** (tracks that
   can't reach the target within the stretch limit play at native speed and are
   marked *off cadence*; the dialog says how many). Picking a preset inside the
-  dialog changes the count live.
+  dialog changes the count live. The dialog always appears, with the previous
+  answer pre-selected, so repeating a choice is one tap on **Start**.
 - Starting from Home's preset cards (`/run?bpm=N`) skips the dialog: that is an
   explicit "start a run", as it is today.
 
@@ -52,8 +56,10 @@ result` in Run and duration in Listen; the header action is **Rebuild** in Run a
 - `/run` and `/listen` stay, as deep links that open the Player in that mode.
   The installed app's `start_url` (`/run`), Home's preset cards, `?bpm=` and the
   Settings anchor all keep working, and nothing in docs or bookmarks breaks.
-- Navigation: one **Player** item under Play (Home · Player) once both modes
-  live in it. The kiosk (below) keeps whichever labels fit its mode.
+- Navigation: **two items, one page.** Run and Listen stay as separate entries
+  under Play (Home · Run · Listen); each opens the page in its mode and the
+  active one follows the switch. Nothing is renamed, and the kiosk keeps just
+  the labels that fit its mode.
 - The last mode used is remembered per device, so reopening the Player lands
   where you left it.
 
@@ -107,15 +113,23 @@ Each step ships on its own and leaves both pages working.
 - The synced snapshot already carries `tempoLock`, so another device adopting a
   queue lands in the right mode without new fields.
 
-## Open questions
+## Decisions
 
-- **Name.** "Player" is accurate but generic; the app's own words are Run and
-  Listen. Alternatives: keep both nav items pointing at the one page, or call the
-  page "Now playing".
-- **Radio and the lock.** Radio refills at native speed from the source; Run
-  refills with tracks that fit. Does turning the lock on switch the refill, or
-  does Radio simply turn itself off?
-- **Remember the dialog choice?** A "don't ask again" would make Listen → Run
-  one tap for people who always choose the same thing, at the cost of surprise.
-- **Offline chips** belong to a cadence, so they live in the Run deck; check they
-  still make sense when the lock is off and a queue is already downloaded.
+Settled with the owner on 2026-10-28.
+
+- **Name: two nav items, one page.** Run and Listen stay as entries; the page
+  title follows the mode. (Rejected: a single "Player" item, "Now playing".)
+- **Radio and the lock: refill with tracks that fit.** Locking to a pace keeps the
+  queue topping up, but with the Run rule (tracks that can reach the cadence)
+  instead of native-speed picks. Radio stays on and quietly changes what it
+  picks; releasing the lock puts the Listen rule back. (Rejected: turning Radio
+  off, which can end a long run with the queue; keeping native-speed refills,
+  which would bring off-pace tracks into a run.)
+- **The Listen → Run dialog always asks, remembering the last choice.** No
+  "don't ask again" and no silent rebuild: the dialog is the only warning that a
+  queue is about to be replaced.
+- **Offline chips live in the Run deck only.** They are per-cadence downloads, so
+  they stay beside the presets. In Listen a one-line note ("10 tracks saved
+  offline · 82 MB") appears only when something is cached.
+
+No open questions remain; the next step is build step 1, the shared shell.
