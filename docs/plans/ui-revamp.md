@@ -4,6 +4,8 @@
 
 Status: **In progress** (proposed 2026-10-25). Steps 1 (navigation regroup) and 2 (Home v0: *Start a run*, *Needs attention*, first-run call to action, `/home` landing) are built on `feature/ui-revamp-nav`; steps 3–6 are open. Steps 1–2 are frontend-only.
 
+Beyond the plan's list, the Library page also got the **Tempo strip** (a clickable library BPM histogram plus run-preset chips, replacing the loose BPM/± inputs), a **More filters** popover (four filters stay on the toolbar), and the step-4 table density work (no detector column, no "ok" badge, hover-only row actions). That covers step 4 except the optional detector toggle: the column is simply removed, since the track page already shows it.
+
 Evidence: a UI audit on a copy of a real 1,455-track library (desktop and mobile).
 Findings that drive this plan:
 

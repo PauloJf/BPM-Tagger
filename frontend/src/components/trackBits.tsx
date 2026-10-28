@@ -75,7 +75,7 @@ export function ConfBar({ value }: { value: number | null }) {
 const Dot = () => <span className="badge-dot" />;
 
 /** Status badge matching the Jinja precedence order exactly. */
-export function StatusBadge({ track }: { track: Track }) {
+export function StatusBadge({ track, quietOk = false }: { track: Track; quietOk?: boolean }) {
   const t = track;
   if (t.status === "error")
     return (
@@ -107,6 +107,8 @@ export function StatusBadge({ track }: { track: Track }) {
         locked
       </span>
     );
+  // A table of mostly-fine tracks reads better when only the exceptions speak.
+  if (quietOk) return null;
   return <span className="badge badge--ok">ok</span>;
 }
 

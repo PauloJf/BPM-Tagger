@@ -17,7 +17,7 @@ export interface BpmBucket {
   count: number;
 }
 
-const BUCKET = 5;
+export const BUCKET = 5;
 
 /** The buckets to draw: the backend only returns the ones that hold tracks, so
  *  the gaps between them are filled in here before anything is laid out.
@@ -28,7 +28,7 @@ const BUCKET = 5;
  *  its peak over the wrong label, and a bimodal library would draw its two
  *  clumps touching. Filling makes position linear in BPM, which is what lets the
  *  axis labels below be read off the range. */
-function fill(dist: BpmBucket[]): BpmBucket[] {
+export function fill(dist: BpmBucket[]): BpmBucket[] {
   if (!dist.length) return [];
   const lo = dist[0].bpm;
   const span = Math.max(0, dist[dist.length - 1].bpm - lo);
