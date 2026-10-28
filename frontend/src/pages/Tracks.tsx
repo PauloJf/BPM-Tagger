@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
-import { ArrowIcon, ConfBar, DecodeWarningBadge, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import { ConfBar, DecodeWarningBadge, FolderIcon, QueueButton, StatusBadge, trackSubtitle, trackTitle } from "../components/trackBits";
+import TempoStrip, { tempoParams } from "../components/TempoStrip";
 import { RatingStars, DislikeButton } from "../components/RatingStars";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
 import LibraryTabs from "../components/LibraryTabs";
@@ -80,40 +81,51 @@ export default function Tracks() {
   // "" (the unchanged default: newest analyzed first) → "plays" → "plays_asc" → "".
   const sort = params.get("sort") || "";
 
-  // Local input state (debounced into the URL).
+  // Local search text (debounced into the URL). The tempo inputs live in TempoStrip.
   const [searchText, setSearchText] = useState(q);
-  const [bpmText, setBpmText] = useState(bpm);
-  const [tolText, setTolText] = useState(bpmTol);
-  // Mobile only: the advanced filters (BPM/cadence, per-page, artwork toggle)
-  // collapse behind a "Filters" button; on desktop they're always inline.
+  // Mobile only: the secondary controls (per-page, artwork toggle) collapse
+  // behind a "Filters" button; on desktop they're always inline.
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // The "More filters" popover (rating and library-health filters).
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
-  // Keep local inputs in sync when the URL changes externally (e.g. Clear).
+  // Keep the local search box in sync when the URL changes externally (e.g. Clear).
   useEffect(() => setSearchText(q), [q]);
-  useEffect(() => setBpmText(bpm), [bpm]);
+
+  // Close the popover on an outside click or Escape.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMoreOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
 
   const debounce = useRef<number | undefined>(undefined);
-  function scheduleApply(next: { q?: string; bpm?: string; tol?: string }) {
+  function scheduleApply(next: { q?: string }) {
     window.clearTimeout(debounce.current);
     debounce.current = window.setTimeout(() => {
       setParams((prev) => {
         const p = new URLSearchParams(prev);
         const qv = (next.q ?? searchText).trim();
-        const bv = (next.bpm ?? bpmText).trim();
-        const tv = (next.tol ?? tolText).trim() || "5";
         if (qv) p.set("q", qv);
         else p.delete("q");
-        if (bv) {
-          p.set("bpm", bv);
-          p.set("bpm_tol", tv);
-        } else {
-          p.delete("bpm");
-          p.delete("bpm_tol");
-        }
         p.set("page", "1");
         return p;
       }, { replace: true });
     }, 300);
+  }
+
+  /** The tempo filter's one way into the URL: an empty BPM clears it. */
+  function applyTempo(next: { bpm: string; tol: string }) {
+    setParams((prev) => tempoParams(prev, next), { replace: true });
   }
 
   function setPage(next: number) {
@@ -272,23 +284,46 @@ export default function Tracks() {
     return `/track?${sp.toString()}`;
   }
 
-  const pills = [
+  // The four filters people reach for sit on the toolbar; the rest (rating
+  // thresholds and the library-health checks) live behind "More filters".
+  interface Pill { key: string; label: string; count?: number }
+  const primaryPills: Pill[] = [
     { key: "", label: "All", count: data?.all_count },
+    { key: "starred", label: "Starred", count: data?.starred_count },
     { key: "unrated", label: "Unrated" },
+    { key: "review", label: "Review", count: data?.review_count },
+  ];
+  const ratingPills: Pill[] = [
     { key: "rated1", label: "★1+" },
     { key: "rated2", label: "★2+" },
     { key: "rated3", label: "★3+" },
     { key: "rated4", label: "★4+" },
     { key: "rated5", label: "★5" },
-    { key: "starred", label: "Starred", count: data?.starred_count },
     { key: "disliked", label: "Disliked", count: data?.disliked_count },
-    { key: "review", label: "Review", count: data?.review_count },
+  ];
+  const healthPills: Pill[] = [
     { key: "locked", label: "Locked", count: data?.locked_count },
     { key: "problems", label: "Problems", count: data?.problems_count },
     { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
     { key: "unplaylisted", label: "No playlist", count: data?.unplaylisted_count },
     { key: "deleted", label: "Deleted", count: data?.deleted_count },
   ];
+  // When the active filter is one of the hidden ones, the More button says so.
+  const hiddenActive = [...ratingPills, ...healthPills].find((p) => p.key === filter);
+
+  function pillButton(pl: Pill) {
+    return (
+      <button
+        key={pl.key}
+        className={"filter-pill" + (filter === pl.key ? " active" : "")}
+        aria-pressed={filter === pl.key}
+        onClick={() => { setFilter(pl.key); setMoreOpen(false); }}
+      >
+        {pl.label}
+        {pl.count != null && <span className="pill-count">{pl.count}</span>}
+      </button>
+    );
+  }
 
   const pages = data?.pages ?? 1;
   const pageNums: (number | "…")[] = [];
@@ -315,18 +350,37 @@ export default function Tracks() {
         }
       />
 
+      <TempoStrip
+        bpm={bpm}
+        tol={bpmTol}
+        cadence={cadence}
+        total={data?.total}
+        onApply={applyTempo}
+        onCadence={setCadence}
+      />
+
       <div className="lib-toolbar">
-        <div className="filter-pills">
-          {pills.map((pl) => (
-            <button
-              key={pl.key}
-              className={"filter-pill" + (filter === pl.key ? " active" : "")}
-              onClick={() => setFilter(pl.key)}
-            >
-              {pl.label}
-              {pl.count != null && <span className="pill-count">{pl.count}</span>}
-            </button>
-          ))}
+        <div className="lib-filter-row" ref={moreRef}>
+          <div className="filter-pills">{primaryPills.map(pillButton)}</div>
+          <button
+            type="button"
+            className={"filter-more-btn" + (hiddenActive ? " active" : "")}
+            aria-expanded={moreOpen}
+            aria-haspopup="true"
+            onClick={() => setMoreOpen((o) => !o)}
+          >
+            {hiddenActive ? hiddenActive.label : "More filters"}
+            {hiddenActive?.count != null && <span className="pill-count">{hiddenActive.count}</span>}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          {moreOpen && (
+            <div className="filter-more-panel" role="group" aria-label="More filters">
+              <div className="filter-more-title">Rating</div>
+              <div className="filter-more-chips">{ratingPills.map(pillButton)}</div>
+              <div className="filter-more-title">Library health</div>
+              <div className="filter-more-chips">{healthPills.map(pillButton)}</div>
+            </div>
+          )}
         </div>
 
         <div className="lib-search-row">
@@ -351,10 +405,10 @@ export default function Tracks() {
             className="btn btn-ghost btn-sm lib-filters-toggle"
             aria-expanded={filtersOpen}
             onClick={() => setFiltersOpen((o) => !o)}
-            title="Show BPM, cadence and display filters"
+            title="Show display options"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5 }}><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-            Filters{bpm && <span className="pill-count" style={{ marginLeft: 6 }}>1</span>}
+            Options
           </button>
         </div>
         <div className={"lib-adv-filters" + (filtersOpen ? " open" : "")}>
@@ -364,50 +418,12 @@ export default function Tracks() {
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 setSearchText("");
-                setBpmText("");
                 setParams(new URLSearchParams(), { replace: true });
               }}
             >
               Clear
             </button>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            <input
-              type="number"
-              placeholder="BPM"
-              min={1}
-              max={300}
-              step={1}
-              value={bpmText}
-              autoComplete="off"
-              style={{ width: 72, padding: "7px 10px", fontFamily: "var(--mono)", fontSize: 13, fontWeight: 600, textAlign: "center", fontVariantNumeric: "tabular-nums" }}
-              onChange={(e) => {
-                setBpmText(e.target.value);
-                scheduleApply({ bpm: e.target.value });
-              }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>±</span>
-            <input
-              type="number"
-              min={0}
-              max={50}
-              step={1}
-              value={tolText}
-              autoComplete="off"
-              style={{ width: 48, padding: "7px 8px", fontFamily: "var(--mono)", fontSize: 13, textAlign: "center", fontVariantNumeric: "tabular-nums" }}
-              onChange={(e) => {
-                setTolText(e.target.value);
-                scheduleApply({ tol: e.target.value });
-              }}
-            />
-            <label
-              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: cadence ? "var(--accent-2)" : "var(--muted)", cursor: bpm ? "pointer" : "default", opacity: bpm ? 1 : 0.5, whiteSpace: "nowrap" }}
-              title="Also match half- and double-time tracks (running cadence)"
-            >
-              <input type="checkbox" checked={cadence} disabled={!bpm} onChange={(e) => setCadence(e.target.checked)} />
-              cadence ½×/2×
-            </label>
-          </div>
           <select value={perPage} onChange={(e) => setPerPage(e.target.value)} style={{ fontSize: 12 }}>
             <option value="10">10/page</option>
             <option value="50">50/page</option>
@@ -421,7 +437,6 @@ export default function Tracks() {
           <span>Track</span>
           <span style={{ textAlign: "right" }}>BPM</span>
           <span>Conf.</span>
-          <span>Detector</span>
           <button
             type="button"
             className="tracks-sort-btn"
@@ -474,22 +489,6 @@ export default function Tracks() {
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20" /></svg>
                     </button>
-                    <QueueButton track={meta} extraBtn />
-                    <button
-                      className="row-play row-extra-btn"
-                      aria-label="Play next"
-                      title="Play next"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        player.playNext(meta);
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
-                    </button>
-                    {/* Add-to-playlist: hidden on mobile (row-extra-btn) like the
-                        other secondary row actions, so the tight phone row stays clean. */}
-                    <AddToPlaylistMenu path={t.file_path} className="row-play row-extra-btn" title="Add to playlist" />
                     {showArt && (
                       <span className="row-cover">
                         <Cover path={t.file_path} size={38} />
@@ -504,7 +503,9 @@ export default function Tracks() {
                           {subtitle}
                         </div>
                       )}
-                      {folder && (
+                      {/* The folder only earns a line when there's no artist/album
+                          to show instead (untagged files). */}
+                      {folder && !subtitle && (
                         <div className="track-folder" style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
                           <FolderIcon />
                           <span style={{ fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -522,8 +523,9 @@ export default function Tracks() {
                   <div className="col-conf">
                     <ConfBar value={t.bpm_confidence} />
                   </div>
-                  <div className="col-detector" style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {t.detector || "—"}
+                  {/* Same order as the header: Plays, then Rating. */}
+                  <div className="col-plays" style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 13, color: t.play_count ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                    {t.play_count ? t.play_count : "–"}
                   </div>
                   <div
                     className="col-rating"
@@ -533,15 +535,27 @@ export default function Tracks() {
                     <RatingStars value={t.rating ?? null} onChange={(v) => setRating(t.file_path, v)} compact size={13} label={title} />
                     <DislikeButton on={!!t.disliked} onToggle={() => toggleDislike(t.file_path, !!t.disliked)} size={13} />
                   </div>
-                  <div className="col-plays" style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 13, color: t.play_count ? "var(--text)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
-                    {t.play_count ?? 0}
-                  </div>
                   <div className="col-status" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <StatusBadge track={t} />
+                    <StatusBadge track={t} quietOk />
                     <DecodeWarningBadge track={t} />
                   </div>
-                  <div className="col-arrow" style={{ textAlign: "right", color: "var(--muted)" }}>
-                    <ArrowIcon />
+                  {/* Secondary actions appear on hover/focus; the whole row is
+                      already a link to the track page. */}
+                  <div className="col-actions">
+                    <QueueButton track={meta} extraBtn />
+                    <button
+                      className="row-play row-extra-btn"
+                      aria-label="Play next"
+                      title="Play next"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        player.playNext(meta);
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 13,12 5,20" /><rect x="14" y="4" width="2.5" height="16" rx="1" /></svg>
+                    </button>
+                    <AddToPlaylistMenu path={t.file_path} className="row-play row-extra-btn" title="Add to playlist" />
                   </div>
                 </Link>
               );

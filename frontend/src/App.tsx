@@ -7,6 +7,7 @@ import PlayerBar from "./components/PlayerBar";
 import InstallPingCard from "./components/InstallPingCard";
 import WhatsNew from "./components/WhatsNew";
 import Login from "./pages/Login";
+import Home from "./pages/Home";
 import Tracks from "./pages/Tracks";
 import TrackDetail from "./pages/TrackDetail";
 import TrackCompare from "./pages/TrackCompare";
@@ -21,6 +22,7 @@ import PlaylistDiff from "./pages/PlaylistDiff";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
 import Listen from "./pages/Listen";
+import Player from "./pages/Player";
 import Cadence from "./pages/Cadence";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -139,15 +141,16 @@ export default function App() {
   if (role === "player") return <PlayerLayout />;
 
   // Authenticated: /login redirects into the app.
-  if (location.pathname === "/login") return <Navigate to="/tracks" replace />;
+  if (location.pathname === "/login") return <Navigate to="/home" replace />;
 
   return (
     <Layout>
       <BootRestore />
       <Routes>
         {/* Bare-origin entry: reopen the last page this browser had open (a
-            bogus saved value just falls through the catch-all to /tracks). */}
-        <Route path="/" element={<Navigate to={lastPage() ?? "/tracks"} replace />} />
+            bogus saved value just falls through the catch-all to /home). */}
+        <Route path="/" element={<Navigate to={lastPage() ?? "/home"} replace />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
         <Route path="/compare" element={<TrackCompare />} />
@@ -162,8 +165,8 @@ export default function App() {
             default-deny player allowlist), so this lives here only. */}
         <Route path="/playlist-diff" element={<PlaylistDiff />} />
         <Route path="/review" element={<Review />} />
-        <Route path="/run" element={<Run />} />
-        <Route path="/listen" element={<Listen />} />
+        <Route path="/run" element={<Player mode="run" />} />
+        <Route path="/listen" element={<Player mode="listen" />} />
         {/* Cadence is admin-side only: it lives outside the player Routes block
             above (which bounces everything to /run), matching the default-deny
             allowlist that blocks its endpoints server-side. */}
@@ -171,7 +174,7 @@ export default function App() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/about" element={<About />} />
-        <Route path="*" element={<Navigate to="/tracks" replace />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </Layout>
   );

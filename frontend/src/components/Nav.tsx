@@ -19,6 +19,9 @@ const IconPlaylists = () => (
 const IconReview = () => (
   <svg {...ic}><path d="M22 12h-4l-3 8L9 4l-3 8H2" /></svg>
 );
+const IconHome = () => (
+  <svg {...ic}><path d="M3 11l9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
+);
 const IconRun = () => (
   <svg {...ic}><circle cx="12" cy="14" r="7" /><path d="M12 14v-4M9 2h6M12 2v3" /></svg>
 );
@@ -78,34 +81,43 @@ function ThemeToggle({ mobile }: { mobile?: boolean }) {
 interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" }
 interface NavSection { label: string; items: NavItem[] }
 
-/** Grouped navigation: library, tagging and app chrome each get a section. */
-function buildSections(): NavSection[] {
-  const library: NavItem[] = [
-    { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
-    { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
-    { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
-    { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
-  ];
-
-  const sections: NavSection[] = [
-    { label: "Library", items: library },
+/** Grouped navigation by intent: Play (the runner's side), Library (browse and
+ *  organise), Maintain (the tagger's side) and System (app chrome). */
+export function buildSections(): NavSection[] {
+  return [
     {
-      label: "Tagging",
+      label: "Play",
+      items: [
+        { to: "/home", label: "Home", icon: IconHome, match: ["/home"] },
+        // One entry for the player: Run and Listen are one page with a switch, so
+        // it stays lit in both modes (Home's run cards and the PWA start page
+        // still open /run directly).
+        { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen", "/run"] },
+      ],
+    },
+    {
+      label: "Library",
+      items: [
+        { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
+        { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
+      ],
+    },
+    {
+      label: "Maintain",
       items: [
         { to: "/review", label: "BPM Review", icon: IconReview, match: ["/review"], badge: "review" },
         { to: "/duplicates", label: "Duplicates", icon: IconDuplicates, match: ["/duplicates", "/compare"] },
+        { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
+        { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
       ],
     },
   ];
-  sections.push({
-    label: "System",
-    items: [
-      { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
-      { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
-      { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
-    ],
-  });
-  return sections;
 }
 
 function isActivePath(pathname: string, match: string[]): boolean {
@@ -233,7 +245,7 @@ function SidebarScan({ state, act, progress }: { state: ScanState; act: (a: "sta
   );
 }
 
-function Logo({ to = "/tracks", sub = "for navidrome" }: { to?: string; sub?: string }) {
+function Logo({ to = "/home", sub = "for navidrome" }: { to?: string; sub?: string }) {
   return (
     <NavLink to={to} className="nav-logo">
       <div className="nav-logo-tile">

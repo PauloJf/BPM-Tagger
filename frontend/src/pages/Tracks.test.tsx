@@ -76,10 +76,13 @@ beforeEach(() => {
   h.data = undefined;
 });
 
+const openMore = () => fireEvent.click(screen.getByRole("button", { name: /More filters/ }));
+
 describe("Tracks — Problems filter pill", () => {
   it("renders after Locked with the server-reported count", () => {
     h.data = page([], { problems_count: 3 });
     render(<Tracks />);
+    openMore();
     const buttons = screen.getAllByRole("button").map((b) => b.textContent || "");
     const lockedIdx = buttons.findIndex((t) => t.startsWith("Locked"));
     const problemsIdx = buttons.findIndex((t) => t.startsWith("Problems"));
@@ -91,11 +94,69 @@ describe("Tracks — Problems filter pill", () => {
   it("sets filter=problems in the URL params when clicked", () => {
     h.data = page([], { problems_count: 2 });
     render(<Tracks />);
+    openMore();
     fireEvent.click(screen.getByRole("button", { name: "Problems 2" }));
     expect(h.setParams).toHaveBeenCalled();
     const updater = h.setParams.mock.calls[0][0] as (p: URLSearchParams) => URLSearchParams;
     const next = updater(new URLSearchParams());
     expect(next.get("filter")).toBe("problems");
+  });
+});
+
+describe("Tracks — filter row", () => {
+  it("keeps four filters on the toolbar and the rest behind More filters", () => {
+    h.data = page([], { locked_count: 3, review_count: 6, starred_count: 4 });
+    render(<Tracks />);
+    for (const name of ["All 0", "Starred 4", "Unrated", "Review 6"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+    expect(screen.queryByRole("button", { name: "Locked 3" })).toBeNull();
+    openMore();
+    expect(screen.getByRole("button", { name: "Locked 3" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "★3+" })).toBeTruthy();
+  });
+
+  it("closes the popover once a filter is picked", () => {
+    h.data = page([], { locked_count: 3 });
+    render(<Tracks />);
+    openMore();
+    fireEvent.click(screen.getByRole("button", { name: "Locked 3" }));
+    expect(screen.queryByRole("group", { name: "More filters" })).toBeNull();
+  });
+
+  it("names the active filter on the More button when it is a hidden one", () => {
+    h.params = new URLSearchParams("filter=locked");
+    h.data = page([], { locked_count: 3 });
+    render(<Tracks />);
+    expect(screen.queryByRole("button", { name: /More filters/ })).toBeNull();
+    const btn = screen.getByRole("button", { name: "Locked 3" });
+    expect(btn.className).toContain("filter-more-btn");
+  });
+});
+
+describe("Tracks — calmer rows", () => {
+  it("leaves out the detector column", () => {
+    h.data = page([track({ detector: "librosa" })]);
+    render(<Tracks />);
+    expect(screen.queryByText("Detector")).toBeNull();
+    expect(screen.queryByText("librosa")).toBeNull();
+  });
+
+  it("says nothing for a track that is simply fine, and speaks up for one that isn't", () => {
+    h.data = page([
+      track({ file_path: "/music/fine.mp3", title: "Fine One" }),
+      track({ file_path: "/music/odd.mp3", title: "Odd One", needs_review: 1 }),
+    ]);
+    render(<Tracks />);
+    expect(screen.queryByText("ok")).toBeNull();
+    expect(screen.getByText("review")).toBeTruthy();
+  });
+
+  it("shows a dash instead of a zero play count", () => {
+    h.data = page([track({ play_count: 0 }), track({ file_path: "/music/b.mp3", play_count: 7 })]);
+    render(<Tracks />);
+    expect(screen.getAllByText("–").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("7")).toBeTruthy();
   });
 });
 

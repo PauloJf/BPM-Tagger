@@ -14,28 +14,38 @@ import { updateState } from "../lib/version";
 
 type Saved = "" | "saving" | "ok" | "err";
 
-const SIDEBAR = [
-  ["sec-appearance", "Appearance"],
-  ["sec-library", "Library"],
-  ["sec-password", "Admin sign-in"],
-  ["sec-2fa", "Two-factor"],
-  ["sec-login-protection", "Login protection"],
-  ["sec-run-access", "Player access"],
-  ["sec-ntfy", "Notifications"],
-  ["sec-scan", "Scan Behavior"],
-  ["sec-mode", "Operating Mode"],
-  ["sec-navidrome", "Navidrome"],
-  ["sec-ratings", "Ratings & picking"],
-  ["sec-subsonic", "Subsonic API"],
-  ["sec-playback", "Playback"],
-  ["sec-run", "Run Mode"],
-  ["sec-artwork", "Artwork"],
-  ["sec-lyrics", "Lyrics"],
-  ["sec-isrc", "ISRC"],
-  ["sec-trash", "Trash"],
-  ["sec-deleted", "Deleted Tracks"],
-  ["sec-version", "Version"],
-  ["sec-restart", "Restart"],
+const SIDEBAR: { id: string; label: string; items: [string, string][] }[] = [
+  { id: "grp-run", label: "Run & Player", items: [
+    ["sec-playback", "Playback"],
+    ["sec-run", "Run Mode"],
+    ["sec-ratings", "Ratings & picking"],
+    ["sec-run-access", "Player access"],
+  ] },
+  { id: "grp-library", label: "Library & integrations", items: [
+    ["sec-library", "Library"],
+    ["sec-navidrome", "Navidrome"],
+    ["sec-subsonic", "Subsonic API"],
+    ["sec-ntfy", "Notifications"],
+    ["sec-artwork", "Artwork"],
+    ["sec-lyrics", "Lyrics"],
+    ["sec-isrc", "ISRC"],
+  ] },
+  { id: "grp-security", label: "Security", items: [
+    ["sec-password", "Admin sign-in"],
+    ["sec-2fa", "Two-factor"],
+    ["sec-login-protection", "Login protection"],
+  ] },
+  { id: "grp-maintenance", label: "Maintenance", items: [
+    ["sec-scan", "Scan Behavior"],
+    ["sec-mode", "Operating Mode"],
+    ["sec-trash", "Trash"],
+    ["sec-deleted", "Deleted Tracks"],
+    ["sec-version", "Version"],
+    ["sec-restart", "Restart"],
+  ] },
+  { id: "grp-appearance", label: "Appearance", items: [
+    ["sec-appearance", "Appearance"],
+  ] },
 ];
 
 interface IsrcCand { source: string; isrc: string; title: string; artist: string; url: string }
@@ -661,69 +671,415 @@ export default function Settings() {
 
       <div className="settings-layout">
         <div className="settings-sidebar">
-          {SIDEBAR.map(([id, label]) => (
-            <a key={id} href={`#${id}`}>
-              {label}
-            </a>
+          {SIDEBAR.map((g) => (
+            <div key={g.id} className="settings-sidebar-group">
+              <a href={`#${g.id}`} className="settings-sidebar-title">{g.label}</a>
+              {g.items.map(([id, label]) => (
+                <a key={id} href={`#${id}`}>
+                  {label}
+                </a>
+              ))}
+            </div>
           ))}
         </div>
 
         <div>
-          {/* Appearance */}
-          <div id="sec-appearance" className="settings-card card">
+          <div id="grp-run" className="settings-group-title" role="heading" aria-level={2}>Run & Player</div>
+
+          {/* Playback */}
+          <div id="sec-playback" className="settings-card card">
             <div className="settings-card-header">
-              <h2>Appearance</h2>
-              <p>Accent color used across the interface — logo, buttons, focus rings, progress bars, and the login screen. Saved to your account, so it follows you across browsers and devices.</p>
+              <h2>Playback</h2>
+              <p>Audio buffering and volume levelling for the built-in player.</p>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
-              {ACCENT_PRESETS.map((p) => {
-                const active = Math.round(accentHue) === p.hue;
-                return (
-                  <button
-                    key={p.hue}
-                    type="button"
-                    onClick={() => setAccent(p.hue)}
-                    title={p.name}
-                    aria-label={p.name}
-                    aria-pressed={active}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 10,
-                      cursor: "pointer",
-                      background: accentSwatch(p.hue),
-                      border: "2px solid transparent",
-                      boxShadow: active ? "0 0 0 2px var(--surface), 0 0 0 4px var(--text)" : "none",
-                    }}
-                  />
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 440 }}>
-              <div className="slider-wrap" style={{ flex: 1 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  step={1}
-                  value={Math.round(accentHue)}
-                  onChange={(e) => setAccent(+e.target.value)}
-                  aria-label="Accent hue"
-                />
-                <span className="slider-val">{Math.round(accentHue)}°</span>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback, normalize_playback: loud.normalize, loudness_target_lufs: loud.target, measure_loudness: loud.measure, preload_ahead: preload.ahead, preload_cache_mb: preload.cacheMb }, setPlaySaved); }}>
+              <div className="field-row">
+                {fieldLabel("Buffer before play", "Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0} max={30} step={0.5} value={playback} onChange={(e) => setPlayback(+e.target.value)} style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>s</span>
+                </div>
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAccent(DEFAULT_ACCENT_HUE)}>
-                Reset
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
-              <button type="button" className="btn btn-primary btn-sm" style={{ pointerEvents: "none" }}>
-                Primary
-              </button>
-              <span className="badge badge--accent">Accent</span>
-              <div style={{ flex: 1, maxWidth: 120, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--accent), var(--accent-2))" }} />
+              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                {fieldLabel("Level volume between tracks", "Bring every track to a consistent loudness so a hot master doesn't jump out mid-run. Tracks louder than the target are turned down; quieter ones play as-is (the player can only attenuate). Tracks with no measurement play untouched.")}
+                <Toggle on={loud.normalize} onChange={(v) => setLoud({ ...loud, normalize: v })} label="Level volume" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Target loudness", "The level tracks are brought down to, in LUFS. -14 matches what streaming services use. Lower means quieter and more tracks get attenuated; higher leaves more alone.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={-30} max={-5} step={0.5} value={loud.target}
+                    disabled={!loud.normalize}
+                    onChange={(e) => setLoud({ ...loud, target: Math.max(-30, Math.min(-5, +e.target.value)) })}
+                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
+                  />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>LUFS</span>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Measure during scans", "Measure each track's loudness while it's being analyzed for BPM. Files that already carry a ReplayGain tag are read instead of measured, so most tagged libraries cost nothing extra.")}
+                <Toggle on={loud.measure} onChange={(v) => setLoud({ ...loud, measure: v })} label="Measure loudness" />
+              </div>
+              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                {fieldLabel("Preload ahead", "How many upcoming queue tracks the player downloads in full while playing, so short network drops don't stop the music. 0 turns the look-ahead off. Preloading needs HTTPS (or localhost) — over plain HTTP the player just streams.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0} max={20} step={1} value={preload.ahead}
+                         onChange={(e) => setPreload({ ...preload, ahead: Math.max(0, Math.min(20, Math.round(+e.target.value))) })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>tracks</span>
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Offline cache cap", "How much audio each device may keep for offline playback (look-ahead plus the Run page's Prepare-offline downloads). Past the cap, the tracks untouched longest are dropped first.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={50} max={5000} step={50} value={preload.cacheMb}
+                         onChange={(e) => setPreload({ ...preload, cacheMb: Math.max(50, Math.min(5000, Math.round(+e.target.value))) })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>MB</span>
+                </div>
+              </div>
+              {offlineSupported() && (
+                <div className="field-row">
+                  {fieldLabel("This device's cache", "What's currently stored on this device. The cache is per-device — clearing it here doesn't touch your other devices.")}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                      {offlineUse.tracks} track{offlineUse.tracks === 1 ? "" : "s"} · {fmtBytes(offlineUse.bytes)}
+                    </span>
+                    <button className="btn btn-ghost btn-sm" type="button"
+                            disabled={offlineUse.tracks === 0}
+                            onClick={() => { void clearOffline().then(() => setOfflineUse(cacheStats())); }}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={playSaved} label="Save Playback Settings" />
+              </div>
+            </form>
+            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
+                Tracks scanned before levelling existed have no measurement yet. This measures them
+                in the background — one file at a time, so it won't starve a running scan. Existing
+                ReplayGain tags are reused where present.
+              </p>
+              {(() => {
+                const f = loudnessFillQ.data;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button"
+                            disabled={f?.running || f?.remaining === 0} onClick={startLoudnessFill}>
+                      {f?.running ? "Measuring…" : "Measure missing loudness"}
+                    </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLoudnessFill}>Cancel</button>
+                    )}
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} done · {f.measured} measured · {f.tagged} from tags · {f.failed} failed
+                      </span>
+                    )}
+                    {f && !f.running && (
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                        {f.remaining === 0 ? "Every track is measured." : `${f.remaining} track${f.remaining === 1 ? "" : "s"} still unmeasured.`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
+
+          {/* Run mode */}
+          <div id="sec-run" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Run Mode</h2>
+              <p>
+                Tempo-locked playback for cadence running — configure the <code>/run</code> page's presets
+                and how the queue is matched. Which tracks get picked (ratings, new-song weight) now lives
+                in <a href="#sec-ratings">Ratings &amp; picking</a> below.
+              </p>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              saveSection("/api/settings/run", {
+                run_presets: run.presets,
+                run_octave_fold: run.octave,
+                run_queue_size: run.queueSize,
+                run_stretch_limit_pct: run.stretchLimit,
+                run_preload_tracks: run.preloadTracks,
+              }, setRunSaved);
+            }}>
+              <div className="field-row">
+                {fieldLabel("BPM presets", "Four named one-tap cadence targets shown on the Run page — e.g. your warmup, easy, steady and tempo cadences.")}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {run.presets.map((p, i) => (
+                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <input type="text" maxLength={20} value={p.name} placeholder="Name" aria-label={`Preset ${i + 1} name`}
+                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+                             style={{ width: 86, fontSize: 12, textAlign: "center" }} />
+                      <input type="number" min={30} max={300} step={1} value={p.bpm} aria-label={`Preset ${i + 1} BPM`}
+                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, bpm: +e.target.value } : x)) })}
+                             style={{ width: 86, fontFamily: "var(--mono)", textAlign: "center" }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("Octave matching", "Count half- and double-time tracks as matches: at a 150 cadence a 75 BPM song plays at native speed and you step on every beat. Off = only tracks whose actual BPM is near the target.")}
+                <Toggle on={run.octave} onChange={(v) => setRun({ ...run, octave: v })} label="Octave matching" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Queue size", "How many tracks a run queue preloads.")}
+                <input type="number" min={1} max={200} step={1} value={run.queueSize}
+                       onChange={(e) => setRun({ ...run, queueSize: +e.target.value })}
+                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Prepare offline size", "How many tracks a per-preset Prepare-offline download grabs on the Run page — enough cadence-matched music to cross the places where the network dies.")}
+                <input type="number" min={1} max={50} step={1} value={run.preloadTracks}
+                       onChange={(e) => setRun({ ...run, preloadTracks: +e.target.value })}
+                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Max stretch", "How far (in %) a track may be sped up or slowed down to reach your cadence. Tracks that can't get there within this limit aren't queued. Browser time-stretching starts to sound artificial past ~15%.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={1} max={50} step={1} value={run.stretchLimit}
+                         onChange={(e) => setRun({ ...run, stretchLimit: +e.target.value })}
+                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={runSaved} label="Save Run Settings" />
+              </div>
+            </form>
+          </div>
+
+          {/* Ratings & picking */}
+          <div id="sec-ratings" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Ratings &amp; picking</h2>
+              <p>
+                How 1-5 star ratings weight the odds a track gets picked by Run, Listen shuffle/radio and
+                similar. Ratings are per account; these weights are global. "New" means unrated and never
+                played by that account. Dislikes are always excluded, and the Run stretch limit is still a
+                hard rule — this only weights what's already eligible.
+              </p>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              saveSection("/api/settings/ratings", {
+                pick_use_ratings: ratings.useRatings,
+                pick_weights: ratings.weights,
+                pick_new_factor: ratings.newFactor,
+              }, setRatingsSaved);
+            }}>
+              <div className="field-row">
+                {fieldLabel("Use ratings", "Off = every non-disliked track weighs the same (a uniform draw) — the new-songs weight below is ignored too.")}
+                <Toggle on={ratings.useRatings} onChange={(v) => setRatingsCfg({ ...ratings, useRatings: v })} label="Use ratings" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Weights", "How much more (or less) likely a level is to be picked than an unrated track (1×). 0 means that level is picked only once nothing else is left.")}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                  {(["1★", "2★", "3★", "Unrated", "4★", "5★"] as const).map((lbl, i) => (
+                    <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 4, width: 96 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>{lbl}</span>
+                      <input
+                        type="number" min={0} max={100} step={0.1}
+                        value={ratings.weights[i]}
+                        aria-label={`${lbl} weight`}
+                        disabled={!ratings.useRatings}
+                        onChange={(e) => {
+                          const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                          const next = [...ratings.weights] as PickWeights;
+                          next[i] = v;
+                          setRatingsCfg({ ...ratings, weights: next });
+                        }}
+                        style={{ width: "100%", fontFamily: "var(--mono)", textAlign: "center" }}
+                      />
+                      <div className="slider-wrap">
+                        <input
+                          type="range" min={0} max={20} step={0.1}
+                          value={Math.min(20, ratings.weights[i])}
+                          aria-label={`${lbl} weight slider`}
+                          disabled={!ratings.useRatings}
+                          onChange={(e) => {
+                            const next = [...ratings.weights] as PickWeights;
+                            next[i] = Number(e.target.value);
+                            setRatingsCfg({ ...ratings, weights: next });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="field-row">
+                {fieldLabel("New songs", "Extra weight (multiplied onto the unrated weight) for tracks that account has never played and never rated.")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div className="segmented">
+                    {[["Never", 0], ["Less", 0.5], ["Neutral", 1], ["More", 2], ["Much more", 4]].map(([lbl, v]) => (
+                      <button
+                        key={lbl as string}
+                        type="button"
+                        className={"segmented-btn" + (ratings.newFactor === v ? " active" : "")}
+                        disabled={!ratings.useRatings}
+                        onClick={() => setRatingsCfg({ ...ratings, newFactor: v as number })}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number" min={0} max={20} step={0.1}
+                    value={ratings.newFactor}
+                    aria-label="Custom new-songs weight"
+                    disabled={!ratings.useRatings}
+                    onChange={(e) => setRatingsCfg({ ...ratings, newFactor: Math.max(0, Number(e.target.value) || 0) })}
+                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
+                  />
+                </div>
+              </div>
+              {ratingsPreview && (
+                <div className="field-row">
+                  {fieldLabel("Expected share of picks", "A live preview under the values above (not yet saved) — the share each level would get, and how many tracks currently sit at that level.")}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
+                    {(["5", "4", "3", "2", "1", "unrated", "new"] as const).map((k) => {
+                      const share = ratingsPreview.share[k] ?? 0;
+                      const count = ratingsPreview.counts[k] ?? 0;
+                      return (
+                        <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 52, fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>
+                            {k === "unrated" ? "Unrated" : k === "new" ? "New" : `${k}★`}
+                          </span>
+                          <div style={{ flex: 1, height: 8, background: "var(--border)", borderRadius: 6, overflow: "hidden" }}>
+                            <div style={{ width: `${Math.round(share * 100)}%`, height: "100%", background: "var(--accent)" }} />
+                          </div>
+                          <span style={{ width: 84, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)" }}>
+                            {(share * 100).toFixed(1)}% · {count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <SaveButton state={ratingsSaved} label="Save Ratings Settings" />
+                <button
+                  type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => setRatingsCfg(RATING_DEFAULTS)}
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Player access — the shared Guest login + named Player users */}
+          {(() => {
+            const runEnabled = cfg?.run_password_hash === "********" || cfg?.run_password === "********";
+            return (
+              <div id="sec-run-access" className="settings-card card">
+                <div className="settings-card-header">
+                  <h2>Player access</h2>
+                  <p>
+                    Two ways to let someone into the locked-down mode that shows <strong>only the Run page</strong> —
+                    the tempo player, nothing else. The shared <strong>Guest login</strong> is one password with the
+                    whole library; <strong>Player users</strong> are named accounts scoped to specific playlists.
+                    Neither can reach your settings or downloads. Leave both off to keep the single admin login.
+                  </p>
+                </div>
+                <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Guest login</h3>
+                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                  One shared password with full-library access — hand a phone or tablet to someone for a run without
+                  creating an account.
+                </p>
+                <div className="settings-fields">
+                  <div style={{ fontSize: 12, color: runEnabled ? "var(--ok-fg)" : "var(--muted)", fontFamily: "var(--mono)" }}>
+                    {runEnabled ? "● Guest login is enabled" : "○ Guest login is off"}
+                  </div>
+                </div>
+                <form onSubmit={setRunPassword} style={{ marginTop: 12 }}>
+                  <div className="settings-fields">
+                    <div className="field-row">
+                      {fieldLabel(runEnabled ? "New guest password" : "Guest password")}
+                      <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                    </div>
+                    <div className="field-row">
+                      {fieldLabel("Confirm password")}
+                      <input type="password" required autoComplete="new-password" value={runPw.confirm} onChange={(e) => setRunPw({ ...runPw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                    </div>
+                    {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <SaveButton state={runPwSaved} label={runEnabled ? "Change guest password" : "Enable guest login"} />
+                      {runEnabled && (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
+                          Disable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </form>
+                {runEnabled && (
+                  <form onSubmit={saveRunSession} style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                    <div className="settings-fields">
+                      <div className="field-row">
+                        {fieldLabel("Stay signed in for", "days — the run kiosk rarely re-asks (sliding; each use extends it)")}
+                        <input
+                          type="number" min={1} max={365} value={runSessionDays}
+                          onChange={(e) => setRunSessionDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                          style={{ maxWidth: 120, width: "100%" }}
+                        />
+                      </div>
+                      <div>
+                        <SaveButton state={runSessSaved} label="Save session length" ghost />
+                      </div>
+                    </div>
+                  </form>
+                )}
+                {/* Kiosk Listen mode: what player-role logins get besides Run.
+                    This is the default for the Guest login and every Player user;
+                    a Player user can override it on its own row below. The backend
+                    gates /api/listen/queue on the same resolved value. */}
+                <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                  <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Music player (Listen)</h3>
+                  <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                    Give player logins a regular music player next to the tempo-locked Run page — their
+                    playlists, played at native speed. Your own login always has the Listen page. This is
+                    the default for every player login; each Player user below can override it.
+                  </p>
+                  <div className="settings-fields">
+                    <div className="field-row">
+                      {fieldLabel("Player logins get")}
+                      <select
+                        value={listenModeCfg}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setListenModeCfg(v);
+                          saveSection("/api/settings/listen-mode", { player_listen_mode: v }, setListenModeSaved);
+                        }}
+                        aria-label="Kiosk listen mode"
+                        style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 340 }}
+                      >
+                        <option value="off">Run only (no music player)</option>
+                        <option value="on">Run + Listen — lands on Run</option>
+                        <option value="default">Run + Listen — lands on Listen</option>
+                        <option value="only">Listen only (pure jukebox, no Run)</option>
+                      </select>
+                    </div>
+                    <div style={{ minHeight: 16, fontSize: 12, color: listenModeSaved === "err" ? "var(--err-fg)" : "var(--ok-fg)" }}>
+                      {listenModeSaved === "saving" ? "Saving…" : listenModeSaved === "ok" ? "Saved — applies on the kiosk's next page load." : listenModeSaved === "err" ? "Could not save." : ""}
+                    </div>
+                  </div>
+                </div>
+                <PlayerUsers globalListenMode={listenModeCfg} />
+              </div>
+            );
+          })()}
+
+          <div id="grp-library" className="settings-group-title" role="heading" aria-level={2}>Library & integrations</div>
 
           {/* Library */}
           <div id="sec-library" className="settings-card card">
@@ -765,6 +1121,256 @@ export default function Settings() {
               </div>
             </div>
           </div>
+
+          {/* Navidrome */}
+          <div id="sec-navidrome" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Navidrome Integration</h2>
+              <p>Trigger a library rescan after every scan pass, keep stars in sync both ways, scrobble plays, and pull play counts.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync, navidrome_scrobble: nav.scrobble, navidrome_sync_ratings: nav.ratingSync }, setNavSaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("Navidrome URL")}
+                  <input type="text" value={nav.url} onChange={(e) => setNav({ ...nav, url: e.target.value })} placeholder="http://navidrome:4533" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Username")}
+                  <input type="text" value={nav.user} onChange={(e) => setNav({ ...nav, user: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Password")}
+                  <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Two-way star sync", nav.ratingSync
+                    ? "Rating sync is on, so this just mirrors the admin's derived star (rating ≥ 4) out to Navidrome — push-only while rating sync is enabled. Manual for now: save, then use Sync stars now."
+                    : "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
+                  <Toggle on={nav.starSync} onChange={(v) => setNav({ ...nav, starSync: v })} label="Enable star sync" />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Two-way rating sync", "Reconcile the admin's 1-5 star ratings with Navidrome's own rating in both directions. Admin ratings only — player ratings never sync. Manual for now: save, then use Sync ratings now.")}
+                  <Toggle on={nav.ratingSync} onChange={(v) => setNav({ ...nav, ratingSync: v })} label="Enable rating sync" />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Scrobble plays", "Report tracks played in the built-in player (Run mode included) to Navidrome once they pass the halfway mark — play counts and 'last played' stay accurate, and Navidrome forwards to Last.fm/ListenBrainz if you've connected them there.")}
+                  <Toggle on={nav.scrobble} onChange={(v) => setNav({ ...nav, scrobble: v })} label="Scrobble plays" />
+                </div>
+                <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  {fieldLabel("Background sync", "Minutes between automatic sync passes for Navidrome playlists, stars, and play counts. 0 = off (use the manual buttons only). Applies on the next restart; runs only in watch mode.")}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="number" min={0} max={1440} step={5} value={syncInterval}
+                      onChange={(e) => setSyncInterval(Math.max(0, Math.min(1440, Number(e.target.value) || 0)))}
+                      style={{ width: 90, fontFamily: "var(--mono)", textAlign: "center" }}
+                    />
+                    <span style={{ color: "var(--muted)", fontSize: 13 }}>min</span>
+                    <button
+                      type="button" className="btn btn-ghost btn-sm"
+                      onClick={() => saveSection("/api/settings/sync-interval", { sync_interval_minutes: syncInterval }, setSyncIntSaved)}
+                    >
+                      {syncIntSaved === "saving" ? "Saving…" : syncIntSaved === "ok" ? "Saved ✓" : syncIntSaved === "err" ? "Error" : "Save interval"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <SaveButton state={navSaved} label="Save Navidrome Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
+                  {testMsg.nav && <span style={{ fontSize: 12, color: testMsg.nav.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.nav.text}</span>}
+                  {nav.starSync && (
+                    <button type="button" className="btn btn-soft btn-sm" disabled={starSyncing || !nav.url || !nav.user} onClick={syncStars}>
+                      {starSyncing ? "Syncing…" : "Sync stars now"}
+                    </button>
+                  )}
+                  {starSyncMsg && <span style={{ fontSize: 12, color: starSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{starSyncMsg.text}</span>}
+                  {nav.ratingSync && (
+                    <button type="button" className="btn btn-soft btn-sm" disabled={ratingSyncing || !nav.url || !nav.user} onClick={syncRatings}>
+                      {ratingSyncing ? "Syncing…" : "Sync ratings now"}
+                    </button>
+                  )}
+                  {ratingSyncMsg && <span style={{ fontSize: 12, color: ratingSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{ratingSyncMsg.text}</span>}
+                  <button type="button" className="btn btn-soft btn-sm" disabled={playPulling || !nav.url || !nav.user} onClick={pullPlayCounts}>
+                    {playPulling ? "Pulling…" : "Pull play counts"}
+                  </button>
+                  {playPullMsg && <span style={{ fontSize: 12, color: playPullMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{playPullMsg.text}</span>}
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Subsonic API (optional) */}
+          <div id="sec-subsonic" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Subsonic API</h2>
+              <p>Optional. Lets Subsonic apps browse, stream, star and scrobble your library straight from BPM Tagger, with detected BPM included. Uses its own credentials, never your web password.</p>
+            </div>
+            <SubsonicSettings />
+          </div>
+
+          {/* Notifications */}
+          <div id="sec-ntfy" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Notifications (ntfy)</h2>
+              <p>Push notifications for scan progress and review counts.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic, ntfy_batch_size: ntfy.batch, ntfy_min_interval: ntfy.interval, ntfy_notify_review: ntfy.notifyReview }, setNtfySaved); }}>
+              <div className="settings-fields">
+                <div className="field-row">
+                  {fieldLabel("ntfy server URL")}
+                  <input type="text" value={ntfy.url} onChange={(e) => setNtfy({ ...ntfy, url: e.target.value })} placeholder="https://ntfy.sh" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("ntfy topic")}
+                  <input type="text" value={ntfy.topic} onChange={(e) => setNtfy({ ...ntfy, topic: e.target.value })} placeholder="my-bpm-alerts" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Batch size", "tracks per notification")}
+                  <input type="number" min={1} max={100} value={ntfy.batch} onChange={(e) => setNtfy({ ...ntfy, batch: +e.target.value })} style={{ width: 90 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Min interval (s)", "between batch notifications")}
+                  <input type="number" min={10} max={86400} value={ntfy.interval} onChange={(e) => setNtfy({ ...ntfy, interval: +e.target.value })} style={{ width: 100 }} />
+                </div>
+                <div className="field-row">
+                  {fieldLabel("Notify on review", 'include "N need review" in scan summary')}
+                  <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} label="Notify on review" />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <SaveButton state={ntfySaved} label="Save Notification Settings" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("ntfy", "/api/settings/test-ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic })}>Test</button>
+                  {testMsg.ntfy && <span style={{ fontSize: 12, color: testMsg.ntfy.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.ntfy.text}</span>}
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Artwork */}
+          <div id="sec-artwork" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Artwork</h2>
+              <p>Artist images come from an <code>artist.jpg</code> next to the artist's files when present. Optionally fetch missing ones online.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/artwork", { fetch_artist_images: fetchArtistImages, artist_images_to_library: artistImagesToLibrary }, setArtworkSaved); }}>
+              <div className="field-row">
+                {fieldLabel("Fetch artist images online", "Look up artists without a local artist.jpg on Deezer's public API (no account needed) and cache the image on disk — each artist is fetched at most once a day, and lookups are rate-limited well under Deezer's quota. Sends artist names to Deezer, so it's off by default.")}
+                <Toggle on={fetchArtistImages} onChange={setFetchArtistImages} label="Fetch artist images online" />
+              </div>
+              <div className="field-row">
+                {fieldLabel("Save artist images into the library", "Write fetched or hand-picked artist images as artist.jpg in the artist's own folder, so Navidrome and other players see them too. Only folders that exclusively contain that artist's tracks are written to — flat or shared layouts keep using the app cache.")}
+                <Toggle on={artistImagesToLibrary} onChange={setArtistImagesToLibrary} label="Save artist images into the library" />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={artworkSaved} label="Save Artwork Settings" />
+              </div>
+            </form>
+          </div>
+
+          {/* Lyrics */}
+          <div id="sec-lyrics" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Lyrics</h2>
+              <p>Lyrics come from <a href="https://lrclib.net" target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>LRCLIB</a> — a free, community-run lyrics database (no account needed). Synced (LRC) lyrics are preferred when available; Navidrome and most players pick them up.</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/lyrics", { lyrics_mode: lyricsCfg.mode }, setLyricsSaved); }}>
+              <div className="field-row">
+                {fieldLabel("Storage", "Embed writes the lyrics into the file's tag (travels with the file). Sidecar writes a .lrc text file next to the audio file instead — the file itself is untouched.")}
+                <select value={lyricsCfg.mode} onChange={(e) => setLyricsCfg({ ...lyricsCfg, mode: e.target.value })}>
+                  <option value="embed">Embed in the file tag</option>
+                  <option value="sidecar">.lrc sidecar file</option>
+                </select>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <SaveButton state={lyricsSaved} label="Save Lyrics Settings" />
+              </div>
+            </form>
+            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
+                Fetch lyrics for every library track that doesn't have any yet (needs title + artist tags). Tracks already carrying embedded lyrics or a .lrc sidecar are indexed, not re-fetched.
+              </p>
+              {(() => {
+                const f = lyricsFillQ.data;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startLyricsFill}>
+                      {f?.running ? "Fetching…" : "Fetch missing lyrics"}
+                    </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLyricsFill}>Cancel</button>
+                    )}
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={lyricsRetryNotFound} onChange={(e) => setLyricsRetryNotFound(e.target.checked)} disabled={f?.running} />
+                      Retry tracks previously not found
+                    </label>
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} checked · {f.filled} filled · {f.not_found} not found
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* ISRC bulk fill */}
+          <div id="sec-isrc" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Fill missing ISRCs</h2>
+              <p>Look up the ISRC for every library track that's missing one (Deezer / MusicBrainz) and write it to the tag. A confident, duration-matched single result is filled automatically; anything uncertain or not found is listed below for you to choose.</p>
+            </div>
+            {(() => {
+              const f = fillQ.data;
+              const unresolved = (f?.unresolved ?? []).filter((u) => !applied[u.file_path]);
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startFill}>
+                      {f?.running ? "Filling…" : "Fill missing ISRCs"}
+                    </button>
+                    {f?.running && (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelFill}>Cancel</button>
+                    )}
+                    {f && (f.running || f.total > 0) && (
+                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {f.done}/{f.total} checked · {f.filled} filled · {(f?.unresolved ?? []).length} to review
+                      </span>
+                    )}
+                  </div>
+                  {unresolved.length > 0 && (
+                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                      {unresolved.map((u) => (
+                        <div key={u.file_path} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+                          <div style={{ fontSize: 12, marginBottom: 6 }}>
+                            <span style={{ fontWeight: 500 }}>{u.title || u.file_path}</span>
+                            <span style={{ color: "var(--muted)" }}> · {u.artist}</span>
+                          </div>
+                          {u.candidates.length === 0 ? (
+                            <span style={{ fontSize: 11, color: "var(--muted)" }}>No candidates found — edit the track's title/artist and retry, or leave it.</span>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {u.candidates.map((c) => (
+                                <div key={c.source + c.isrc} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11 }}>
+                                  <span className="chip chip--neutral">{c.source}</span>
+                                  <button className="btn btn-bare btn-sm" style={{ fontFamily: "var(--mono)" }} disabled={applyIsrc.isPending}
+                                    onClick={() => applyIsrc.mutate({ file_path: u.file_path, isrc: c.isrc })}>
+                                    {c.isrc}
+                                  </button>
+                                  <span style={{ color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.artist} – {c.title}</span>
+                                  {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)", marginLeft: "auto", flexShrink: 0 }}>open ↗</a>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          <div id="grp-security" className="settings-group-title" role="heading" aria-level={2}>Security</div>
 
           {/* Admin sign-in: optional username + password */}
           <div id="sec-password" className="settings-card card">
@@ -950,144 +1556,7 @@ export default function Settings() {
             );
           })()}
 
-          {/* Player access — the shared Guest login + named Player users */}
-          {(() => {
-            const runEnabled = cfg?.run_password_hash === "********" || cfg?.run_password === "********";
-            return (
-              <div id="sec-run-access" className="settings-card card">
-                <div className="settings-card-header">
-                  <h2>Player access</h2>
-                  <p>
-                    Two ways to let someone into the locked-down mode that shows <strong>only the Run page</strong> —
-                    the tempo player, nothing else. The shared <strong>Guest login</strong> is one password with the
-                    whole library; <strong>Player users</strong> are named accounts scoped to specific playlists.
-                    Neither can reach your settings or downloads. Leave both off to keep the single admin login.
-                  </p>
-                </div>
-                <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Guest login</h3>
-                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                  One shared password with full-library access — hand a phone or tablet to someone for a run without
-                  creating an account.
-                </p>
-                <div className="settings-fields">
-                  <div style={{ fontSize: 12, color: runEnabled ? "var(--ok-fg)" : "var(--muted)", fontFamily: "var(--mono)" }}>
-                    {runEnabled ? "● Guest login is enabled" : "○ Guest login is off"}
-                  </div>
-                </div>
-                <form onSubmit={setRunPassword} style={{ marginTop: 12 }}>
-                  <div className="settings-fields">
-                    <div className="field-row">
-                      {fieldLabel(runEnabled ? "New guest password" : "Guest password")}
-                      <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
-                    </div>
-                    <div className="field-row">
-                      {fieldLabel("Confirm password")}
-                      <input type="password" required autoComplete="new-password" value={runPw.confirm} onChange={(e) => setRunPw({ ...runPw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
-                    </div>
-                    {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <SaveButton state={runPwSaved} label={runEnabled ? "Change guest password" : "Enable guest login"} />
-                      {runEnabled && (
-                        <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
-                          Disable
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </form>
-                {runEnabled && (
-                  <form onSubmit={saveRunSession} style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                    <div className="settings-fields">
-                      <div className="field-row">
-                        {fieldLabel("Stay signed in for", "days — the run kiosk rarely re-asks (sliding; each use extends it)")}
-                        <input
-                          type="number" min={1} max={365} value={runSessionDays}
-                          onChange={(e) => setRunSessionDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
-                          style={{ maxWidth: 120, width: "100%" }}
-                        />
-                      </div>
-                      <div>
-                        <SaveButton state={runSessSaved} label="Save session length" ghost />
-                      </div>
-                    </div>
-                  </form>
-                )}
-                {/* Kiosk Listen mode: what player-role logins get besides Run.
-                    This is the default for the Guest login and every Player user;
-                    a Player user can override it on its own row below. The backend
-                    gates /api/listen/queue on the same resolved value. */}
-                <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                  <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Music player (Listen)</h3>
-                  <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                    Give player logins a regular music player next to the tempo-locked Run page — their
-                    playlists, played at native speed. Your own login always has the Listen page. This is
-                    the default for every player login; each Player user below can override it.
-                  </p>
-                  <div className="settings-fields">
-                    <div className="field-row">
-                      {fieldLabel("Player logins get")}
-                      <select
-                        value={listenModeCfg}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setListenModeCfg(v);
-                          saveSection("/api/settings/listen-mode", { player_listen_mode: v }, setListenModeSaved);
-                        }}
-                        aria-label="Kiosk listen mode"
-                        style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", maxWidth: 340 }}
-                      >
-                        <option value="off">Run only (no music player)</option>
-                        <option value="on">Run + Listen — lands on Run</option>
-                        <option value="default">Run + Listen — lands on Listen</option>
-                        <option value="only">Listen only (pure jukebox, no Run)</option>
-                      </select>
-                    </div>
-                    <div style={{ minHeight: 16, fontSize: 12, color: listenModeSaved === "err" ? "var(--err-fg)" : "var(--ok-fg)" }}>
-                      {listenModeSaved === "saving" ? "Saving…" : listenModeSaved === "ok" ? "Saved — applies on the kiosk's next page load." : listenModeSaved === "err" ? "Could not save." : ""}
-                    </div>
-                  </div>
-                </div>
-                <PlayerUsers globalListenMode={listenModeCfg} />
-              </div>
-            );
-          })()}
-
-          {/* Notifications */}
-          <div id="sec-ntfy" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Notifications (ntfy)</h2>
-              <p>Push notifications for scan progress and review counts.</p>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic, ntfy_batch_size: ntfy.batch, ntfy_min_interval: ntfy.interval, ntfy_notify_review: ntfy.notifyReview }, setNtfySaved); }}>
-              <div className="settings-fields">
-                <div className="field-row">
-                  {fieldLabel("ntfy server URL")}
-                  <input type="text" value={ntfy.url} onChange={(e) => setNtfy({ ...ntfy, url: e.target.value })} placeholder="https://ntfy.sh" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("ntfy topic")}
-                  <input type="text" value={ntfy.topic} onChange={(e) => setNtfy({ ...ntfy, topic: e.target.value })} placeholder="my-bpm-alerts" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Batch size", "tracks per notification")}
-                  <input type="number" min={1} max={100} value={ntfy.batch} onChange={(e) => setNtfy({ ...ntfy, batch: +e.target.value })} style={{ width: 90 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Min interval (s)", "between batch notifications")}
-                  <input type="number" min={10} max={86400} value={ntfy.interval} onChange={(e) => setNtfy({ ...ntfy, interval: +e.target.value })} style={{ width: 100 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Notify on review", 'include "N need review" in scan summary')}
-                  <Toggle on={ntfy.notifyReview} onChange={(v) => setNtfy({ ...ntfy, notifyReview: v })} label="Notify on review" />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <SaveButton state={ntfySaved} label="Save Notification Settings" />
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("ntfy", "/api/settings/test-ntfy", { ntfy_url: ntfy.url, ntfy_topic: ntfy.topic })}>Test</button>
-                  {testMsg.ntfy && <span style={{ fontSize: 12, color: testMsg.ntfy.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.ntfy.text}</span>}
-                </div>
-              </div>
-            </form>
-          </div>
+          <div id="grp-maintenance" className="settings-group-title" role="heading" aria-level={2}>Maintenance</div>
 
           {/* Scan Behavior */}
           <div id="sec-scan" className="settings-card card">
@@ -1243,508 +1712,6 @@ export default function Settings() {
             </form>
           </div>
 
-          {/* Navidrome */}
-          <div id="sec-navidrome" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Navidrome Integration</h2>
-              <p>Trigger a library rescan after every scan pass, keep stars in sync both ways, scrobble plays, and pull play counts.</p>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass, navidrome_star_sync: nav.starSync, navidrome_scrobble: nav.scrobble, navidrome_sync_ratings: nav.ratingSync }, setNavSaved); }}>
-              <div className="settings-fields">
-                <div className="field-row">
-                  {fieldLabel("Navidrome URL")}
-                  <input type="text" value={nav.url} onChange={(e) => setNav({ ...nav, url: e.target.value })} placeholder="http://navidrome:4533" style={{ maxWidth: 340, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Username")}
-                  <input type="text" value={nav.user} onChange={(e) => setNav({ ...nav, user: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%", fontFamily: "var(--mono)", fontSize: 12 }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Password")}
-                  <input type="password" value={nav.pass} onChange={(e) => setNav({ ...nav, pass: e.target.value })} autoComplete="off" style={{ maxWidth: 280, width: "100%" }} />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Two-way star sync", nav.ratingSync
-                    ? "Rating sync is on, so this just mirrors the admin's derived star (rating ≥ 4) out to Navidrome — push-only while rating sync is enabled. Manual for now: save, then use Sync stars now."
-                    : "Reconcile the app's starred tracks with Navidrome's favourites in both directions — stars set here push out, stars set in Navidrome pull in. Manual for now: save, then use Sync stars now.")}
-                  <Toggle on={nav.starSync} onChange={(v) => setNav({ ...nav, starSync: v })} label="Enable star sync" />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Two-way rating sync", "Reconcile the admin's 1-5 star ratings with Navidrome's own rating in both directions. Admin ratings only — player ratings never sync. Manual for now: save, then use Sync ratings now.")}
-                  <Toggle on={nav.ratingSync} onChange={(v) => setNav({ ...nav, ratingSync: v })} label="Enable rating sync" />
-                </div>
-                <div className="field-row">
-                  {fieldLabel("Scrobble plays", "Report tracks played in the built-in player (Run mode included) to Navidrome once they pass the halfway mark — play counts and 'last played' stay accurate, and Navidrome forwards to Last.fm/ListenBrainz if you've connected them there.")}
-                  <Toggle on={nav.scrobble} onChange={(v) => setNav({ ...nav, scrobble: v })} label="Scrobble plays" />
-                </div>
-                <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  {fieldLabel("Background sync", "Minutes between automatic sync passes for Navidrome playlists, stars, and play counts. 0 = off (use the manual buttons only). Applies on the next restart; runs only in watch mode.")}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="number" min={0} max={1440} step={5} value={syncInterval}
-                      onChange={(e) => setSyncInterval(Math.max(0, Math.min(1440, Number(e.target.value) || 0)))}
-                      style={{ width: 90, fontFamily: "var(--mono)", textAlign: "center" }}
-                    />
-                    <span style={{ color: "var(--muted)", fontSize: 13 }}>min</span>
-                    <button
-                      type="button" className="btn btn-ghost btn-sm"
-                      onClick={() => saveSection("/api/settings/sync-interval", { sync_interval_minutes: syncInterval }, setSyncIntSaved)}
-                    >
-                      {syncIntSaved === "saving" ? "Saving…" : syncIntSaved === "ok" ? "Saved ✓" : syncIntSaved === "err" ? "Error" : "Save interval"}
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <SaveButton state={navSaved} label="Save Navidrome Settings" />
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => testConn("nav", "/api/settings/test-navidrome", { navidrome_url: nav.url, navidrome_user: nav.user, navidrome_pass: nav.pass })}>Test</button>
-                  {testMsg.nav && <span style={{ fontSize: 12, color: testMsg.nav.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{testMsg.nav.text}</span>}
-                  {nav.starSync && (
-                    <button type="button" className="btn btn-soft btn-sm" disabled={starSyncing || !nav.url || !nav.user} onClick={syncStars}>
-                      {starSyncing ? "Syncing…" : "Sync stars now"}
-                    </button>
-                  )}
-                  {starSyncMsg && <span style={{ fontSize: 12, color: starSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{starSyncMsg.text}</span>}
-                  {nav.ratingSync && (
-                    <button type="button" className="btn btn-soft btn-sm" disabled={ratingSyncing || !nav.url || !nav.user} onClick={syncRatings}>
-                      {ratingSyncing ? "Syncing…" : "Sync ratings now"}
-                    </button>
-                  )}
-                  {ratingSyncMsg && <span style={{ fontSize: 12, color: ratingSyncMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{ratingSyncMsg.text}</span>}
-                  <button type="button" className="btn btn-soft btn-sm" disabled={playPulling || !nav.url || !nav.user} onClick={pullPlayCounts}>
-                    {playPulling ? "Pulling…" : "Pull play counts"}
-                  </button>
-                  {playPullMsg && <span style={{ fontSize: 12, color: playPullMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{playPullMsg.text}</span>}
-                </div>
-              </div>
-            </form>
-          </div>
-
-          {/* Ratings & picking */}
-          <div id="sec-ratings" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Ratings &amp; picking</h2>
-              <p>
-                How 1-5 star ratings weight the odds a track gets picked by Run, Listen shuffle/radio and
-                similar. Ratings are per account; these weights are global. "New" means unrated and never
-                played by that account. Dislikes are always excluded, and the Run stretch limit is still a
-                hard rule — this only weights what's already eligible.
-              </p>
-            </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              saveSection("/api/settings/ratings", {
-                pick_use_ratings: ratings.useRatings,
-                pick_weights: ratings.weights,
-                pick_new_factor: ratings.newFactor,
-              }, setRatingsSaved);
-            }}>
-              <div className="field-row">
-                {fieldLabel("Use ratings", "Off = every non-disliked track weighs the same (a uniform draw) — the new-songs weight below is ignored too.")}
-                <Toggle on={ratings.useRatings} onChange={(v) => setRatingsCfg({ ...ratings, useRatings: v })} label="Use ratings" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Weights", "How much more (or less) likely a level is to be picked than an unrated track (1×). 0 means that level is picked only once nothing else is left.")}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-                  {(["1★", "2★", "3★", "Unrated", "4★", "5★"] as const).map((lbl, i) => (
-                    <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 4, width: 96 }}>
-                      <span style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>{lbl}</span>
-                      <input
-                        type="number" min={0} max={100} step={0.1}
-                        value={ratings.weights[i]}
-                        aria-label={`${lbl} weight`}
-                        disabled={!ratings.useRatings}
-                        onChange={(e) => {
-                          const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                          const next = [...ratings.weights] as PickWeights;
-                          next[i] = v;
-                          setRatingsCfg({ ...ratings, weights: next });
-                        }}
-                        style={{ width: "100%", fontFamily: "var(--mono)", textAlign: "center" }}
-                      />
-                      <div className="slider-wrap">
-                        <input
-                          type="range" min={0} max={20} step={0.1}
-                          value={Math.min(20, ratings.weights[i])}
-                          aria-label={`${lbl} weight slider`}
-                          disabled={!ratings.useRatings}
-                          onChange={(e) => {
-                            const next = [...ratings.weights] as PickWeights;
-                            next[i] = Number(e.target.value);
-                            setRatingsCfg({ ...ratings, weights: next });
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("New songs", "Extra weight (multiplied onto the unrated weight) for tracks that account has never played and never rated.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div className="segmented">
-                    {[["Never", 0], ["Less", 0.5], ["Neutral", 1], ["More", 2], ["Much more", 4]].map(([lbl, v]) => (
-                      <button
-                        key={lbl as string}
-                        type="button"
-                        className={"segmented-btn" + (ratings.newFactor === v ? " active" : "")}
-                        disabled={!ratings.useRatings}
-                        onClick={() => setRatingsCfg({ ...ratings, newFactor: v as number })}
-                      >
-                        {lbl}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number" min={0} max={20} step={0.1}
-                    value={ratings.newFactor}
-                    aria-label="Custom new-songs weight"
-                    disabled={!ratings.useRatings}
-                    onChange={(e) => setRatingsCfg({ ...ratings, newFactor: Math.max(0, Number(e.target.value) || 0) })}
-                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
-                  />
-                </div>
-              </div>
-              {ratingsPreview && (
-                <div className="field-row">
-                  {fieldLabel("Expected share of picks", "A live preview under the values above (not yet saved) — the share each level would get, and how many tracks currently sit at that level.")}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
-                    {(["5", "4", "3", "2", "1", "unrated", "new"] as const).map((k) => {
-                      const share = ratingsPreview.share[k] ?? 0;
-                      const count = ratingsPreview.counts[k] ?? 0;
-                      return (
-                        <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ width: 52, fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>
-                            {k === "unrated" ? "Unrated" : k === "new" ? "New" : `${k}★`}
-                          </span>
-                          <div style={{ flex: 1, height: 8, background: "var(--border)", borderRadius: 6, overflow: "hidden" }}>
-                            <div style={{ width: `${Math.round(share * 100)}%`, height: "100%", background: "var(--accent)" }} />
-                          </div>
-                          <span style={{ width: 84, textAlign: "right", fontSize: 11, fontFamily: "var(--mono)" }}>
-                            {(share * 100).toFixed(1)}% · {count}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <SaveButton state={ratingsSaved} label="Save Ratings Settings" />
-                <button
-                  type="button" className="btn btn-ghost btn-sm"
-                  onClick={() => setRatingsCfg(RATING_DEFAULTS)}
-                >
-                  Reset to defaults
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Subsonic API (optional) */}
-          <div id="sec-subsonic" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Subsonic API</h2>
-              <p>Optional. Lets Subsonic apps browse, stream, star and scrobble your library straight from BPM Tagger, with detected BPM included. Uses its own credentials, never your web password.</p>
-            </div>
-            <SubsonicSettings />
-          </div>
-
-          {/* Playback */}
-          <div id="sec-playback" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Playback</h2>
-              <p>Audio buffering and volume levelling for the built-in player.</p>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/playback", { playback_buffer: playback, normalize_playback: loud.normalize, loudness_target_lufs: loud.target, measure_loudness: loud.measure, preload_ahead: preload.ahead, preload_cache_mb: preload.cacheMb }, setPlaySaved); }}>
-              <div className="field-row">
-                {fieldLabel("Buffer before play", "Seconds of audio to buffer before starting playback. Set to 0 to play immediately. Increase if you hear stuttering on slow storage (NAS).")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={0} max={30} step={0.5} value={playback} onChange={(e) => setPlayback(+e.target.value)} style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>s</span>
-                </div>
-              </div>
-              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                {fieldLabel("Level volume between tracks", "Bring every track to a consistent loudness so a hot master doesn't jump out mid-run. Tracks louder than the target are turned down; quieter ones play as-is (the player can only attenuate). Tracks with no measurement play untouched.")}
-                <Toggle on={loud.normalize} onChange={(v) => setLoud({ ...loud, normalize: v })} label="Level volume" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Target loudness", "The level tracks are brought down to, in LUFS. -14 matches what streaming services use. Lower means quieter and more tracks get attenuated; higher leaves more alone.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="number" min={-30} max={-5} step={0.5} value={loud.target}
-                    disabled={!loud.normalize}
-                    onChange={(e) => setLoud({ ...loud, target: Math.max(-30, Math.min(-5, +e.target.value)) })}
-                    style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }}
-                  />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>LUFS</span>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Measure during scans", "Measure each track's loudness while it's being analyzed for BPM. Files that already carry a ReplayGain tag are read instead of measured, so most tagged libraries cost nothing extra.")}
-                <Toggle on={loud.measure} onChange={(v) => setLoud({ ...loud, measure: v })} label="Measure loudness" />
-              </div>
-              <div className="field-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                {fieldLabel("Preload ahead", "How many upcoming queue tracks the player downloads in full while playing, so short network drops don't stop the music. 0 turns the look-ahead off. Preloading needs HTTPS (or localhost) — over plain HTTP the player just streams.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={0} max={20} step={1} value={preload.ahead}
-                         onChange={(e) => setPreload({ ...preload, ahead: Math.max(0, Math.min(20, Math.round(+e.target.value))) })}
-                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>tracks</span>
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Offline cache cap", "How much audio each device may keep for offline playback (look-ahead plus the Run page's Prepare-offline downloads). Past the cap, the tracks untouched longest are dropped first.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={50} max={5000} step={50} value={preload.cacheMb}
-                         onChange={(e) => setPreload({ ...preload, cacheMb: Math.max(50, Math.min(5000, Math.round(+e.target.value))) })}
-                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>MB</span>
-                </div>
-              </div>
-              {offlineSupported() && (
-                <div className="field-row">
-                  {fieldLabel("This device's cache", "What's currently stored on this device. The cache is per-device — clearing it here doesn't touch your other devices.")}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                      {offlineUse.tracks} track{offlineUse.tracks === 1 ? "" : "s"} · {fmtBytes(offlineUse.bytes)}
-                    </span>
-                    <button className="btn btn-ghost btn-sm" type="button"
-                            disabled={offlineUse.tracks === 0}
-                            onClick={() => { void clearOffline().then(() => setOfflineUse(cacheStats())); }}>
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 14 }}>
-                <SaveButton state={playSaved} label="Save Playback Settings" />
-              </div>
-            </form>
-            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
-              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
-                Tracks scanned before levelling existed have no measurement yet. This measures them
-                in the background — one file at a time, so it won't starve a running scan. Existing
-                ReplayGain tags are reused where present.
-              </p>
-              {(() => {
-                const f = loudnessFillQ.data;
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <button className="btn btn-primary btn-sm" type="button"
-                            disabled={f?.running || f?.remaining === 0} onClick={startLoudnessFill}>
-                      {f?.running ? "Measuring…" : "Measure missing loudness"}
-                    </button>
-                    {f?.running && (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLoudnessFill}>Cancel</button>
-                    )}
-                    {f && (f.running || f.total > 0) && (
-                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                        {f.done}/{f.total} done · {f.measured} measured · {f.tagged} from tags · {f.failed} failed
-                      </span>
-                    )}
-                    {f && !f.running && (
-                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                        {f.remaining === 0 ? "Every track is measured." : `${f.remaining} track${f.remaining === 1 ? "" : "s"} still unmeasured.`}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Run mode */}
-          <div id="sec-run" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Run Mode</h2>
-              <p>
-                Tempo-locked playback for cadence running — configure the <code>/run</code> page's presets
-                and how the queue is matched. Which tracks get picked (ratings, new-song weight) now lives
-                in <a href="#sec-ratings">Ratings &amp; picking</a> below.
-              </p>
-            </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              saveSection("/api/settings/run", {
-                run_presets: run.presets,
-                run_octave_fold: run.octave,
-                run_queue_size: run.queueSize,
-                run_stretch_limit_pct: run.stretchLimit,
-                run_preload_tracks: run.preloadTracks,
-              }, setRunSaved);
-            }}>
-              <div className="field-row">
-                {fieldLabel("BPM presets", "Four named one-tap cadence targets shown on the Run page — e.g. your warmup, easy, steady and tempo cadences.")}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {run.presets.map((p, i) => (
-                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <input type="text" maxLength={20} value={p.name} placeholder="Name" aria-label={`Preset ${i + 1} name`}
-                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
-                             style={{ width: 86, fontSize: 12, textAlign: "center" }} />
-                      <input type="number" min={30} max={300} step={1} value={p.bpm} aria-label={`Preset ${i + 1} BPM`}
-                             onChange={(e) => setRun({ ...run, presets: run.presets.map((x, j) => (j === i ? { ...x, bpm: +e.target.value } : x)) })}
-                             style={{ width: 86, fontFamily: "var(--mono)", textAlign: "center" }} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="field-row">
-                {fieldLabel("Octave matching", "Count half- and double-time tracks as matches: at a 150 cadence a 75 BPM song plays at native speed and you step on every beat. Off = only tracks whose actual BPM is near the target.")}
-                <Toggle on={run.octave} onChange={(v) => setRun({ ...run, octave: v })} label="Octave matching" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Queue size", "How many tracks a run queue preloads.")}
-                <input type="number" min={1} max={200} step={1} value={run.queueSize}
-                       onChange={(e) => setRun({ ...run, queueSize: +e.target.value })}
-                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Prepare offline size", "How many tracks a per-preset Prepare-offline download grabs on the Run page — enough cadence-matched music to cross the places where the network dies.")}
-                <input type="number" min={1} max={50} step={1} value={run.preloadTracks}
-                       onChange={(e) => setRun({ ...run, preloadTracks: +e.target.value })}
-                       style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Max stretch", "How far (in %) a track may be sped up or slowed down to reach your cadence. Tracks that can't get there within this limit aren't queued. Browser time-stretching starts to sound artificial past ~15%.")}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={1} max={50} step={1} value={run.stretchLimit}
-                         onChange={(e) => setRun({ ...run, stretchLimit: +e.target.value })}
-                         style={{ width: 78, fontFamily: "var(--mono)", textAlign: "center" }} />
-                  <span style={{ color: "var(--muted)", fontSize: 13 }}>%</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 14 }}>
-                <SaveButton state={runSaved} label="Save Run Settings" />
-              </div>
-            </form>
-          </div>
-
-          {/* Artwork */}
-          <div id="sec-artwork" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Artwork</h2>
-              <p>Artist images come from an <code>artist.jpg</code> next to the artist's files when present. Optionally fetch missing ones online.</p>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/artwork", { fetch_artist_images: fetchArtistImages, artist_images_to_library: artistImagesToLibrary }, setArtworkSaved); }}>
-              <div className="field-row">
-                {fieldLabel("Fetch artist images online", "Look up artists without a local artist.jpg on Deezer's public API (no account needed) and cache the image on disk — each artist is fetched at most once a day, and lookups are rate-limited well under Deezer's quota. Sends artist names to Deezer, so it's off by default.")}
-                <Toggle on={fetchArtistImages} onChange={setFetchArtistImages} label="Fetch artist images online" />
-              </div>
-              <div className="field-row">
-                {fieldLabel("Save artist images into the library", "Write fetched or hand-picked artist images as artist.jpg in the artist's own folder, so Navidrome and other players see them too. Only folders that exclusively contain that artist's tracks are written to — flat or shared layouts keep using the app cache.")}
-                <Toggle on={artistImagesToLibrary} onChange={setArtistImagesToLibrary} label="Save artist images into the library" />
-              </div>
-              <div style={{ marginTop: 14 }}>
-                <SaveButton state={artworkSaved} label="Save Artwork Settings" />
-              </div>
-            </form>
-          </div>
-
-          {/* Lyrics */}
-          <div id="sec-lyrics" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Lyrics</h2>
-              <p>Lyrics come from <a href="https://lrclib.net" target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)" }}>LRCLIB</a> — a free, community-run lyrics database (no account needed). Synced (LRC) lyrics are preferred when available; Navidrome and most players pick them up.</p>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); saveSection("/api/settings/lyrics", { lyrics_mode: lyricsCfg.mode }, setLyricsSaved); }}>
-              <div className="field-row">
-                {fieldLabel("Storage", "Embed writes the lyrics into the file's tag (travels with the file). Sidecar writes a .lrc text file next to the audio file instead — the file itself is untouched.")}
-                <select value={lyricsCfg.mode} onChange={(e) => setLyricsCfg({ ...lyricsCfg, mode: e.target.value })}>
-                  <option value="embed">Embed in the file tag</option>
-                  <option value="sidecar">.lrc sidecar file</option>
-                </select>
-              </div>
-              <div style={{ marginTop: 14 }}>
-                <SaveButton state={lyricsSaved} label="Save Lyrics Settings" />
-              </div>
-            </form>
-            <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
-              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, maxWidth: 500 }}>
-                Fetch lyrics for every library track that doesn't have any yet (needs title + artist tags). Tracks already carrying embedded lyrics or a .lrc sidecar are indexed, not re-fetched.
-              </p>
-              {(() => {
-                const f = lyricsFillQ.data;
-                return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startLyricsFill}>
-                      {f?.running ? "Fetching…" : "Fetch missing lyrics"}
-                    </button>
-                    {f?.running && (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelLyricsFill}>Cancel</button>
-                    )}
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
-                      <input type="checkbox" checked={lyricsRetryNotFound} onChange={(e) => setLyricsRetryNotFound(e.target.checked)} disabled={f?.running} />
-                      Retry tracks previously not found
-                    </label>
-                    {f && (f.running || f.total > 0) && (
-                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                        {f.done}/{f.total} checked · {f.filled} filled · {f.not_found} not found
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* ISRC bulk fill */}
-          <div id="sec-isrc" className="settings-card card">
-            <div className="settings-card-header">
-              <h2>Fill missing ISRCs</h2>
-              <p>Look up the ISRC for every library track that's missing one (Deezer / MusicBrainz) and write it to the tag. A confident, duration-matched single result is filled automatically; anything uncertain or not found is listed below for you to choose.</p>
-            </div>
-            {(() => {
-              const f = fillQ.data;
-              const unresolved = (f?.unresolved ?? []).filter((u) => !applied[u.file_path]);
-              return (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <button className="btn btn-primary btn-sm" type="button" disabled={f?.running} onClick={startFill}>
-                      {f?.running ? "Filling…" : "Fill missing ISRCs"}
-                    </button>
-                    {f?.running && (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={cancelFill}>Cancel</button>
-                    )}
-                    {f && (f.running || f.total > 0) && (
-                      <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                        {f.done}/{f.total} checked · {f.filled} filled · {(f?.unresolved ?? []).length} to review
-                      </span>
-                    )}
-                  </div>
-                  {unresolved.length > 0 && (
-                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                      {unresolved.map((u) => (
-                        <div key={u.file_path} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
-                          <div style={{ fontSize: 12, marginBottom: 6 }}>
-                            <span style={{ fontWeight: 500 }}>{u.title || u.file_path}</span>
-                            <span style={{ color: "var(--muted)" }}> · {u.artist}</span>
-                          </div>
-                          {u.candidates.length === 0 ? (
-                            <span style={{ fontSize: 11, color: "var(--muted)" }}>No candidates found — edit the track's title/artist and retry, or leave it.</span>
-                          ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              {u.candidates.map((c) => (
-                                <div key={c.source + c.isrc} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11 }}>
-                                  <span className="chip chip--neutral">{c.source}</span>
-                                  <button className="btn btn-bare btn-sm" style={{ fontFamily: "var(--mono)" }} disabled={applyIsrc.isPending}
-                                    onClick={() => applyIsrc.mutate({ file_path: u.file_path, isrc: c.isrc })}>
-                                    {c.isrc}
-                                  </button>
-                                  <span style={{ color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.artist} – {c.title}</span>
-                                  {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-2)", marginLeft: "auto", flexShrink: 0 }}>open ↗</a>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-
           {/* Trash */}
           <div id="sec-trash" className="settings-card card">
             <div className="settings-card-header">
@@ -1822,6 +1789,64 @@ export default function Settings() {
                 Restart Application
               </button>
               {restartMsg && <span style={{ fontSize: 13, color: restartMsg.color }}>{restartMsg.text}</span>}
+            </div>
+          </div>
+
+          <div id="grp-appearance" className="settings-group-title" role="heading" aria-level={2}>Appearance</div>
+
+          {/* Appearance */}
+          <div id="sec-appearance" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Appearance</h2>
+              <p>Accent color used across the interface — logo, buttons, focus rings, progress bars, and the login screen. Saved to your account, so it follows you across browsers and devices.</p>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
+              {ACCENT_PRESETS.map((p) => {
+                const active = Math.round(accentHue) === p.hue;
+                return (
+                  <button
+                    key={p.hue}
+                    type="button"
+                    onClick={() => setAccent(p.hue)}
+                    title={p.name}
+                    aria-label={p.name}
+                    aria-pressed={active}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      background: accentSwatch(p.hue),
+                      border: "2px solid transparent",
+                      boxShadow: active ? "0 0 0 2px var(--surface), 0 0 0 4px var(--text)" : "none",
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 440 }}>
+              <div className="slider-wrap" style={{ flex: 1 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={Math.round(accentHue)}
+                  onChange={(e) => setAccent(+e.target.value)}
+                  aria-label="Accent hue"
+                />
+                <span className="slider-val">{Math.round(accentHue)}°</span>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAccent(DEFAULT_ACCENT_HUE)}>
+                Reset
+              </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
+              <button type="button" className="btn btn-primary btn-sm" style={{ pointerEvents: "none" }}>
+                Primary
+              </button>
+              <span className="badge badge--accent">Accent</span>
+              <div style={{ flex: 1, maxWidth: 120, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--accent), var(--accent-2))" }} />
             </div>
           </div>
         </div>

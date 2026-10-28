@@ -16,6 +16,7 @@ from flask import Blueprint, Response, abort, jsonify, request, send_file
 from ...bpm.tags import get_file_hash, read_audio_quality, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
 from ...db import TRACK_SORTS
+from ...db.constants import MIX_HI, MIX_LO
 from ...matching import normalize_artist, normalize_title
 from ...path_template import render, unique_path
 from ...tagging import embed_cover, read_cover, resize_cover, write_track_tags
@@ -321,15 +322,28 @@ def api_track():
 @tracks_bp.route("/api/artists")
 @login_required
 def api_artists():
-    """Artist index for the library browse view."""
-    return jsonify(artists=state().db.list_artists())
+    """Artist index for the library browse view.
+
+    Each artist carries a ``mix`` (track counts per tempo bin across
+    ``mix_range``). With the library's tempo filter (``bpm``, ``bpm_tol``,
+    ``bpm_cadence``) every artist also gets ``fit``, the tracks that match it."""
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
+    artists = state().db.list_artists_tempo(bpm_target, bpm_tol, cadence)
+    return jsonify(artists=artists, mix_range=[MIX_LO, MIX_HI])
 
 
 @tracks_bp.route("/api/albums")
 @login_required
 def api_albums():
-    """Album index for the library browse view."""
-    return jsonify(albums=state().db.list_albums())
+    """Album index for the library browse view.
+
+    With the library's tempo filter (``bpm``, ``bpm_tol``, ``bpm_cadence``) each
+    album also carries ``fit`` and ``fit_folded``: the tracks that match, and how
+    many of those only match at half/double time."""
+    bpm_target, bpm_tol = _parse_bpm_filter(request.args)
+    cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
+    return jsonify(albums=state().db.list_albums_tempo(bpm_target, bpm_tol, cadence))
 
 
 @tracks_bp.route("/api/artist")

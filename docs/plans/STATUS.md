@@ -19,6 +19,9 @@ branches, release gated on the separate project reaching 1.0.0).
 | Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | ✅ Phases 1–3 done (Unreleased); genres open |
 | 1–5 star ratings + rating-weighted picking | [ratings-weighted-picking.md](ratings-weighted-picking.md) | ✅ Built (Unreleased, `feat/ratings`) |
 | Detach the music grabber | [grabber-detach.md](grabber-detach.md) | 🔶 Built on branches (not released); schema step + release open |
+| UI revamp — information architecture + Home | [ui-revamp.md](ui-revamp.md) | 🔶 Steps 1–5, plus a Library tempo strip and the Artists and Albums views, built on `feature/ui-revamp-nav` (PR #22, beta `v2.20.0-beta.N`); step 6 (merge Run and Listen) open |
+| One Player for Run and Listen (UI revamp step 6) | [run-listen-merge.md](run-listen-merge.md) | ✅ Built (2026-10-28) on `feature/ui-revamp-nav` (PR #22), unreleased: shared shell, Run | Listen switch, Listen → Run dialog, radio and offline loose ends; README screenshots still to re-shoot |
+| Libraries, user permissions and per-account 2FA | [users-and-libraries.md](users-and-libraries.md) | 📝 Proposal (2026-10-26); nothing built |
 
 ---
 

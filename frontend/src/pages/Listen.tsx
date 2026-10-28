@@ -1,22 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlayer, type ListenSource, type PlayerTrack } from "../lib/player";
+import { cacheStats, fmtBytes, offlineSupported } from "../lib/offline";
 import type { ListenQueueResponse, RunPlaylistOption, TrackDetailResponse } from "../lib/types";
-import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
-import { useWaveform } from "../hooks/useWaveform";
+import { usePlaybackSurface } from "../hooks/usePlaybackSurface";
 import { useTitle } from "../hooks/useTitle";
-import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { ArtistLinks } from "../components/ArtistLinks";
-import { LyricsPanel } from "../components/LyricsPanel";
+import { ctlButtonStyle, GlowLayer, LyricsDrawer, QueueCard, TransportButtons, WaveformStrip } from "../components/PlayerShell";
 import { BpmDisplay } from "../components/BpmDisplay";
 import PlayerCover from "../components/PlayerCover";
 import QueueList from "../components/QueueList";
 import PageHeader from "../components/PageHeader";
+import type { ModeSwitchSlot } from "../components/ModeSwitch";
 import { RatingStars, DislikeButton } from "../components/RatingStars";
 
 const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
@@ -45,7 +44,7 @@ const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
  * reach and so the two players read differently at a glance — swaps the cover
  * for the queue (where the source picker lives mid-playback, as on Run).
  */
-export default function Listen() {
+export default function Listen({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } = {}) {
   useTitle("Listen");
   const { role, fullAccess, listenMode, isGuest } = useAuth();
   const playerMode = role === "player";
@@ -53,11 +52,19 @@ export default function Listen() {
   const { current, playing, audioRef, radio, setRadio, radioMode, setRadioMode, listenSource, tempoLock } = player;
   // Similar radio needs no Listen source: it seeds from whatever is playing.
   const radioReady = radioMode === "similar" || listenSource != null;
-  const { time, dur } = useAudioTime(audioRef);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Offline chips are per-cadence downloads, so they live in Run. Here, one quiet
+  // line, only when the look-ahead or a Run download has actually cached something.
+  // Re-read as tracks change: the look-ahead fills the cache while you listen.
+  const offline = useMemo(() => (offlineSupported() ? cacheStats() : { tracks: 0, bytes: 0 }), [current?.path]);
   const isPreview = !!current?.ephemeral;
-  useWaveform(canvasRef, audioRef, current?.path || "", !!current && !isPreview, !!current && !isPreview);
-  const glow = useCoverGlow(current && !isPreview ? current.path : null);
+  // While a preview clip ducks the queue, `current` is the clip, but the queue's
+  // own position never moves: that track is what you will be back on. The cover
+  // stays on it (so the page keeps its shape and the player's state stays visible)
+  // and the title block says what is previewing and offers the way back.
+  const queueTrack = isPreview ? player.orderedQueue[player.orderPos] ?? null : null;
+  const { time, dur, canvasRef, glow } = usePlaybackSurface(audioRef, {
+    path: current?.path || "", waveform: !!current && !isPreview, glowPath: current && !isPreview ? current.path : null,
+  });
   const mobile = useIsMobile(900);
   const [view, setView] = useState<"playing" | "queue">("playing");
   const [lyricsOpen, setLyricsOpen] = useState(false);
@@ -168,11 +175,7 @@ export default function Listen() {
     if (next) player.next();
   }
 
-  const ctlBtn: React.CSSProperties = {
-    width: 52, height: 52, borderRadius: 999, display: "inline-flex", alignItems: "center",
-    justifyContent: "center", background: "var(--surface)", border: "1px solid var(--border)",
-    color: "var(--text)", cursor: "pointer",
-  };
+  const ctlBtn = ctlButtonStyle(52);
   const smallCtl = (active: boolean): React.CSSProperties => ({
     ...ctlBtn, width: 40, height: 40,
     color: active ? "var(--accent-2)" : "var(--muted)",
@@ -180,13 +183,8 @@ export default function Listen() {
     background: active ? "var(--accent-soft)" : "var(--surface)",
   });
 
-  // Ambient glow tinted from the cover, exactly as on Run (portaled to <body>
-  // because .container briefly carries a transform during its page-enter
-  // animation, which would re-anchor a fixed-position child).
-  const glowLayer = createPortal(
-    <div aria-hidden style={{ position: "fixed", inset: 0, zIndex: -1, pointerEvents: "none", transition: "opacity 0.45s ease", background: glow.background, opacity: glow.opacity }} />,
-    document.body,
-  );
+  // Ambient glow tinted from the cover, exactly as on Run.
+  const glowLayer = <GlowLayer glow={glow} />;
 
   // One status note at a time, highest priority first (matches Run's ordering).
   const statusNote: { color: string; body: React.ReactNode } | null =
@@ -279,6 +277,23 @@ export default function Listen() {
           </div>
         )
       )}
+      {isPreview && (
+        <div data-testid="preview-note" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent-2)", border: "1px solid var(--accent-border)", borderRadius: 999, padding: "2px 8px" }}>
+            Preview
+          </span>
+          {queueTrack && player.previewing && (
+            <button
+              className="btn btn-bare btn-sm"
+              onClick={player.endPreview}
+              title="Stop the preview and go back to the queue"
+              style={{ fontSize: 12, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              Back to {queueTrack.title}
+            </button>
+          )}
+        </div>
+      )}
       {tempoLockChip}
     </div>
   );
@@ -296,33 +311,16 @@ export default function Listen() {
           </div>
         )}
       </div>
-      <canvas ref={canvasRef} style={{ width: "100%", height: 44, display: "block", cursor: "pointer" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-        <span>{fmtTime(time)}</span>
-        <span>-{fmtTime(Math.max(0, dur - time))}</span>
-      </div>
+      <WaveformStrip canvasRef={canvasRef} time={time} dur={dur} />
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 18, marginTop: 10 }}>
-        {!isGuest && (
+        {!isGuest && !isPreview && (
           <RatingStars value={currentRating} onChange={setRating} compact label={current?.title} />
         )}
-        <button style={ctlBtn} onClick={player.prev} aria-label="Previous" title="Previous">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14h2V5H6zm3 7l11 7V5l-11 7z" /></svg>
-        </button>
-        <button
-          style={{ ...ctlBtn, width: mobile ? 64 : 72, height: mobile ? 64 : 72, background: "var(--accent)", border: "none", boxShadow: "0 12px 40px -10px var(--accent)" }}
-          onClick={player.toggle}
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? (
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-          ) : (
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="white" style={{ marginLeft: 3 }}><polygon points="6,4 20,12 6,20" /></svg>
-          )}
-        </button>
-        <button style={ctlBtn} onClick={player.next} aria-label="Next" title="Next">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5v14h2V5h-2zM4 19l11-7L4 5v14z" /></svg>
-        </button>
-        {!isGuest && <DislikeButton on={currentDisliked} onToggle={toggleDislike} size={16} />}
+        <TransportButtons
+          playing={playing} onPrev={player.prev} onToggle={player.toggle} onNext={player.next}
+          sideSize={52} playSize={mobile ? 64 : 72} iconSize={26}
+        />
+        {!isGuest && !isPreview && <DislikeButton on={currentDisliked} onToggle={toggleDislike} size={16} />}
       </div>
     </div>
   );
@@ -371,6 +369,22 @@ export default function Listen() {
         </svg>
         <span style={{ fontSize: 12, fontWeight: 600 }}>Radio</span>
       </button>
+      {/* Lyrics sits before the Source | Similar pill: on a phone the pill wraps to
+          its own row, and the button should stay up with the rest of the controls. */}
+      {!playerMode && !isPreview && (
+        <button
+          style={smallCtl(lyricsOpen)}
+          onClick={() => setLyricsOpen((o) => !o)}
+          aria-label="Show lyrics"
+          aria-expanded={lyricsOpen}
+          title="Lyrics"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+          </svg>
+        </button>
+      )}
       {radio && (
         <span data-testid="radio-mode" role="radiogroup" aria-label="Radio refills from"
               style={{ display: "inline-flex", border: "1px solid var(--accent-border)", borderRadius: 999, overflow: "hidden" }}>
@@ -386,20 +400,6 @@ export default function Listen() {
               </button>
             ))}
         </span>
-      )}
-      {!playerMode && !isPreview && (
-        <button
-          style={smallCtl(lyricsOpen)}
-          onClick={() => setLyricsOpen((o) => !o)}
-          aria-label="Show lyrics"
-          aria-expanded={lyricsOpen}
-          title="Lyrics"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
-          </svg>
-        </button>
       )}
       {!mobile && (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title={`Volume ${Math.round(player.volume * 100)}%`}>
@@ -441,35 +441,42 @@ export default function Listen() {
   // lines up with the transport. The source picker lives in the panel in both,
   // reachable mid-playback without covering the artwork.
   const queuePanel = (variant: "fill" | "column") => (
-    <div className="card" style={variant === "fill"
-      ? { padding: 0, display: "flex", flexDirection: "column", minHeight: 0, flexShrink: 1, marginBottom: 10 }
-      : { padding: 0, margin: 0, position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: 13 }}>Queue · {player.orderedQueue.length}</span>
-        {radio && radioReady && (
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>
-            {radioMode === "similar" ? "radio adds similar tracks" : "radio keeps this topped up"}
-          </span>
-        )}
-        <button className="btn btn-bare btn-sm" style={{ marginLeft: "auto" }} onClick={player.stop} title="Stop and clear the queue">Clear</button>
-      </div>
-      {sourcePicker && (
-        <div data-testid="queue-source" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          {sourcePicker}
+    <QueueCard
+      column={variant === "column"}
+      bottomGap={10}
+      header={
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Queue · {player.orderedQueue.length}</span>
+          {radio && radioReady && (
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              {tempoLock ? "radio tops up with tracks that fit the pace"
+                : radioMode === "similar" ? "radio adds similar tracks" : "radio keeps this topped up"}
+            </span>
+          )}
+          <button className="btn btn-bare btn-sm" style={{ marginLeft: "auto" }} onClick={player.stop} title="Stop and clear the queue">Clear</button>
         </div>
+      }
+      between={(sourcePicker || offline.tracks > 0) && (
+        <>
+          {sourcePicker && (
+            <div data-testid="queue-source" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              {sourcePicker}
+            </div>
+          )}
+          {offline.tracks > 0 && (
+            <div data-testid="offline-note" style={{ padding: "6px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0, fontSize: 11, color: "var(--muted)" }}>
+              {offline.tracks} track{offline.tracks === 1 ? "" : "s"} saved offline · {fmtBytes(offline.bytes)}
+            </div>
+          )}
+        </>
       )}
-      <div style={variant === "column"
-        ? { flex: 1, minHeight: 0, overflowY: "auto" }
-        : { minHeight: 0, overflowY: "auto" }}>
-        <QueueList />
-      </div>
-    </div>
+    >
+      <QueueList />
+    </QueueCard>
   );
 
   const lyricsDrawer = lyricsOpen && current && (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 61 }}>
-      <LyricsPanel path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
-    </div>
+    <LyricsDrawer path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
   );
 
   if (!mobile) {
@@ -487,6 +494,7 @@ export default function Listen() {
         <PageHeader
           title="Listen"
           subtitle="Regular player — your music at native tempo, no cadence lock."
+          tabs={modeSwitch?.(false)}
         />
         {!current && (
           // Pre-playback there's no queue worth a column — keep the picker and
@@ -500,11 +508,9 @@ export default function Listen() {
           <div className="run-desktop-body">
             <div className="run-player-col">
               <div className="listen-cockpit">
-                {!isPreview && (
-                  <div style={{ marginBottom: 18 }}>
-                    <PlayerCover path={current.path} coverSize={desktopCoverSize} />
-                  </div>
-                )}
+                <div style={{ marginBottom: 18 }}>
+                  <PlayerCover path={queueTrack?.path ?? current.path} coverSize={desktopCoverSize} />
+                </div>
                 {titleBlock}
               </div>
               {transportBlock}
@@ -541,6 +547,7 @@ export default function Listen() {
     <div className={"run-mobile-fill listen-fill" + (view === "queue" && current ? " run-queue-open" : "")}>
       {glowLayer}
       <div className="run-mobile-body">
+        {modeSwitch?.(true)}
         {!current && (
           <>
             {sourcePicker}
@@ -549,11 +556,9 @@ export default function Listen() {
         )}
         {current && view === "playing" && (
           <>
-            {!isPreview && (
-              <div className="run-cover-slot" data-testid="cover-slot">
-                <PlayerCover path={current.path} fillHeight />
-              </div>
-            )}
+            <div className="run-cover-slot" data-testid="cover-slot">
+              <PlayerCover path={queueTrack?.path ?? current.path} fillHeight />
+            </div>
             <div style={{ marginTop: 10 }}>{titleBlock}</div>
             {modeRow}
           </>

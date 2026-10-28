@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
@@ -8,33 +7,24 @@ import { usePlayer, lockRate, type BufferInfo } from "../lib/player";
 import { useMiniPlayer } from "../lib/miniPlayer";
 import type { AudioQuality, RunPlaylistOption, RunQueueResponse, SettingsMap, TrackDetailResponse } from "../lib/types";
 import { useTapTempo } from "../hooks/useTapTempo";
-import { LyricsPanel } from "../components/LyricsPanel";
+import { readyCount, useRunReadiness } from "../hooks/useRunReadiness";
+import { ctlButtonStyle, GlowLayer, LyricsDrawer, QueueCard, TransportButtons, WaveformStrip } from "../components/PlayerShell";
 import QueueSimilar from "../components/QueueSimilar";
 import AddToPlaylistMenu from "../components/AddToPlaylistMenu";
-import { fmtTime, useAudioTime } from "../hooks/useAudioTime";
-import { useWaveform } from "../hooks/useWaveform";
+import { fmtTime } from "../hooks/useAudioTime";
+import { usePlaybackSurface } from "../hooks/usePlaybackSurface";
 import { useTitle } from "../hooks/useTitle";
-import { useCoverGlow } from "../hooks/useCoverGlow";
 import { useIsMobile } from "../hooks/useIsMobile";
 import PageHeader from "../components/PageHeader";
+import type { ModeSwitchSlot } from "../components/ModeSwitch";
 import { EqBars } from "../components/EqBars";
 import PlayerCover from "../components/PlayerCover";
 import PrepareOffline from "../components/PrepareOffline";
 import { pinnedRunQueue } from "../lib/offline";
+import { TARGET_KEY, SOURCE_KEY, clampTarget, parseRunPresets, runOctave, runStretchLimitPct } from "../lib/runSettings";
 import { RatingStars, DislikeButton } from "../components/RatingStars";
 
-const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
-const SOURCE_KEY = "bpm.run.source";   // "library" | "pl:<id>"
-
-const PRESET_DEFAULTS = [
-  { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
-  { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 },
-];
-
-function clampTarget(v: number): number {
-  return Math.max(30, Math.min(300, Math.round(v)));
-}
 
 /** The octave candidate (×½ / ×1 / ×2) closest to the target. */
 function fold(bpm: number, target: number, octave: boolean): number {
@@ -201,20 +191,23 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
   );
 }
 
-export default function Run() {
+export default function Run({ modeSwitch }: { modeSwitch?: ModeSwitchSlot } = {}) {
   useTitle("Run");
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
   // the same limits; this just keeps the UI honest.
   const { role, fullAccess, isGuest } = useAuth();
   const playerMode = role === "player";
+  // How many tracks are runnable at each preset. The server refuses this to named
+  // player accounts (their pages are a locked-down subset), so only ask when it
+  // will answer; without it the buttons simply show no count.
+  const readinessQ = useRunReadiness({ enabled: role === "admin" || isGuest });
   const player = usePlayer();
   const mini = useMiniPlayer();
   const { current, playing, audioRef } = player;
-  const { time, dur } = useAudioTime(audioRef);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useWaveform(canvasRef, audioRef, current?.path || "", !!current, !!current);
-  const glow = useCoverGlow(current?.path ?? null);
+  const { time, dur, canvasRef, glow } = usePlaybackSurface(audioRef, {
+    path: current?.path || "", waveform: !!current, glowPath: current?.path ?? null,
+  });
   // Desktop gets a two-column layout: the player on the left, the run queue
   // living permanently in a full-height panel on the right (no Queue tab, no
   // hiding the cover). Below this width we keep the single-column phone layout.
@@ -226,17 +219,9 @@ export default function Run() {
   });
   const cfg = settingsQ.data?.settings;
   // Presets accept both shapes: {name,bpm} dicts and the legacy number list.
-  const presets = [0, 1, 2, 3].map((i) => {
-    const raw = Array.isArray(cfg?.run_presets) ? (cfg!.run_presets as unknown[])[i] : undefined;
-    if (raw && typeof raw === "object") {
-      const p = raw as { name?: unknown; bpm?: unknown };
-      return { name: String(p.name ?? PRESET_DEFAULTS[i].name), bpm: Number(p.bpm ?? PRESET_DEFAULTS[i].bpm) };
-    }
-    if (typeof raw === "number") return { name: PRESET_DEFAULTS[i].name, bpm: raw };
-    return PRESET_DEFAULTS[i];
-  });
-  const octave = cfg?.run_octave_fold == null ? true : Boolean(cfg.run_octave_fold);
-  const stretchLimitPct = cfg?.run_stretch_limit_pct == null ? 15 : Number(cfg.run_stretch_limit_pct);
+  const presets = parseRunPresets(cfg);
+  const octave = runOctave(cfg);
+  const stretchLimitPct = runStretchLimitPct(cfg);
   const queueSize = cfg?.run_queue_size == null ? 20 : Number(cfg.run_queue_size);
   const preloadTracks = cfg?.run_preload_tracks == null ? 10 : Number(cfg.run_preload_tracks);
 
@@ -529,11 +514,7 @@ export default function Run() {
   const stepBtn: React.CSSProperties = {
     minWidth: 60, minHeight: 40, fontFamily: "var(--mono)", fontSize: 15, fontWeight: 600,
   };
-  const ctlBtn: React.CSSProperties = {
-    width: 54, height: 54, borderRadius: 999, display: "inline-flex", alignItems: "center",
-    justifyContent: "center", background: "var(--surface)", border: "1px solid var(--border)",
-    color: "var(--text)", cursor: "pointer",
-  };
+  const ctlBtn = ctlButtonStyle(54);
 
   // Desktop cover: height-aware — derived from the viewport height minus the
   // fixed cockpit chrome (page header + title/details/toggle + transport) so
@@ -552,24 +533,9 @@ export default function Run() {
   // gives way to the sticky app-nav bar that eats viewport height; 0 above.
   const coverSize = "clamp(120px, calc(100dvh - 540px - var(--run-topbar, 0px)), 300px)";
 
-  // Ambient glow tinted from the cover art, sitting behind the nav/content
-  // (z-index -1 paints above the plain body background, below everything with
-  // default stacking). Crossfades between tracks via useCoverGlow. Portaled
-  // straight to <body> — `.container` briefly carries a transform during its
-  // page-enter animation, and any transformed ancestor becomes the containing
-  // block for a `position: fixed` descendant, which would misplace this
-  // relative to `.container` instead of the viewport.
-  const glowLayer = createPortal(
-    <div
-      aria-hidden
-      style={{
-        position: "fixed", inset: 0, zIndex: -1, pointerEvents: "none",
-        transition: "opacity 0.45s ease",
-        background: glow.background, opacity: glow.opacity,
-      }}
-    />,
-    document.body,
-  );
+  // Ambient glow tinted from the cover art; crossfades between tracks via
+  // useCoverGlow (see GlowLayer for why it is portaled to <body>).
+  const glowLayer = <GlowLayer glow={glow} />;
 
   // Uniform page header — mono eyebrow + title on the left, the primary action
   // (Start / Rebuild) and End pinned top-right, matching the header + primary
@@ -593,6 +559,7 @@ export default function Run() {
     <PageHeader
       title="Run"
       subtitle="Tempo-matched player — lock every track onto your cadence."
+      tabs={modeSwitch?.(false)}
       actions={startRebuildButton}
     />
   );
@@ -803,11 +770,15 @@ export default function Run() {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
       {presets.map((p, i) => {
         const active = target === p.bpm;
+        // For the source the run will draw from. The pooled "all my music" source
+        // is a scoped-player thing the readiness numbers don't cover: no count.
+        const ready = pooled ? null : readyCount(readinessQ.data, p.bpm, selectedPlaylistId);
         return (
           <button
             key={i}
             onClick={() => setTarget(p.bpm)}
             aria-pressed={active}
+            aria-label={ready == null ? undefined : `${p.name}, ${p.bpm} BPM, ${ready} ${ready === 1 ? "track" : "tracks"} ready`}
             style={{
               padding: "9px 14px", borderRadius: 12, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
@@ -816,7 +787,15 @@ export default function Run() {
               color: "var(--text)",
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, marginRight: "auto" }}>{p.name}</span>
+            {ready != null && (
+              <span
+                title={`${ready} ${ready === 1 ? "track" : "tracks"} runnable at ${p.bpm} BPM from this source`}
+                style={{ fontSize: 11, flexShrink: 0, whiteSpace: "nowrap", color: ready === 0 ? "var(--warn-fg)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}
+              >
+                {ready.toLocaleString()} ready
+              </span>
+            )}
             <span style={{ fontFamily: "var(--mono)", fontSize: 12, flexShrink: 0, color: active ? "var(--accent-2)" : "var(--muted)" }}>{p.bpm}</span>
           </button>
         );
@@ -924,11 +903,7 @@ export default function Run() {
           </div>
         )}
       </div>
-      <canvas ref={canvasRef} style={{ width: "100%", height: 44, display: "block", cursor: "pointer" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-        <span>{fmtTime(time)}</span>
-        <span>-{fmtTime(Math.max(0, dur - time))}</span>
-      </div>
+      <WaveformStrip canvasRef={canvasRef} time={time} dur={dur} />
       <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center", gap: 22, marginTop: 12 }}>
         {!isGuest && (
           <div style={{ position: "absolute", left: 0 }}>
@@ -939,23 +914,10 @@ export default function Run() {
             />
           </div>
         )}
-        <button style={ctlBtn} onClick={player.prev} aria-label="Previous" title="Previous">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14h2V5H6zm3 7l11 7V5l-11 7z" /></svg>
-        </button>
-        <button
-          style={{ ...ctlBtn, width: desktop ? 78 : 68, height: desktop ? 78 : 68, background: "var(--accent)", border: "none", boxShadow: "0 12px 40px -10px var(--accent)" }}
-          onClick={player.toggle}
-          aria-label={playing ? "Pause" : "Play"}
-        >
-          {playing ? (
-            <svg width={desktop ? 30 : 26} height={desktop ? 30 : 26} viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-          ) : (
-            <svg width={desktop ? 30 : 26} height={desktop ? 30 : 26} viewBox="0 0 24 24" fill="white" style={{ marginLeft: 3 }}><polygon points="6,4 20,12 6,20" /></svg>
-          )}
-        </button>
-        <button style={ctlBtn} onClick={player.next} aria-label="Next" title="Next">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5v14h2V5h-2zM4 19l11-7L4 5v14z" /></svg>
-        </button>
+        <TransportButtons
+          playing={playing} onPrev={player.prev} onToggle={player.toggle} onNext={player.next}
+          sideSize={54} playSize={desktop ? 78 : 68} iconSize={desktop ? 30 : 26}
+        />
         {!playerMode && (
           <button
             style={{
@@ -981,36 +943,19 @@ export default function Run() {
   // Lyrics drawer: anchored to a zero-height strip at the bottom of the
   // viewport, since the run page has no player bar to hang it off.
   const lyricsDrawer = lyricsOpen && current && (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 61 }}>
-      <LyricsPanel path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
-    </div>
+    <LyricsDrawer path={current.path} audioRef={audioRef} onClose={() => setLyricsOpen(false)} />
   );
 
   // The run queue panel. `fill` makes it stretch to its container's full height
   // (the desktop side column); otherwise it sizes to its content but shrinks
   // to whatever the fixed-height mobile column has left (the Queue tab).
-  const renderQueuePanel = (fill: boolean) => {
-    const cardStyle: React.CSSProperties = fill
-      ? {
-          // Absolutely fill the side column (position:relative on .run-queue-col)
-          // so the queue never contributes to the row height: the player column
-          // alone sets it, the queue's bottom always lines up with the transport,
-          // and a long queue scrolls inside the panel instead of the page.
-          padding: 0, margin: 0, position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column",
-        }
-      // Mobile Queue tab: a short queue sizes to its content; a long one
-      // shrinks (flexShrink, bounded by minHeight:0) to the space the mobile
-      // fill column has left and the list scrolls inside. The shrink only
-      // bites because the Queue tab hard-caps the column height (the
-      // run-queue-open class on .run-mobile-fill) — under min-height alone
-      // there's no negative free space and the page would scroll instead.
-      : { padding: 0, marginBottom: 12, display: "flex", flexDirection: "column", minHeight: 0, flexShrink: 1 };
-    const listStyle: React.CSSProperties = fill
-      ? { flex: 1, minHeight: 0, overflowY: "auto" }
-      : { minHeight: 0, overflowY: "auto" };
-    return (
-      <div className="card" style={cardStyle}>
+  const renderQueuePanel = (fill: boolean) => (
+    <QueueCard
+      column={fill}
+      bottomGap={12}
+      listRef={queueListRef}
+      listTestId="queue-list"
+      header={
         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>Run queue · {player.orderedQueue.length}</span>
           {queueInfo && (
@@ -1048,93 +993,96 @@ export default function Run() {
             )}
           </span>
         </div>
-        {/* Run-source picker — mobile only (desktop keeps it in the controls
-            column). Lives here so it's reachable mid-run without covering the
-            artwork. Falsy (renders nothing) when the library has no playlists. */}
-        {!fill && sourcePicker && (
-          <div data-testid="queue-source" style={{ padding: "10px 14px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-            {sourcePicker}
-          </div>
-        )}
-        {similarOpen && queueTrack?.artist && (
-          <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-            <QueueSimilar artist={queueTrack.artist} path={queueTrack.path} onClose={() => setSimilarOpen(false)} />
-          </div>
-        )}
-        <div data-testid="queue-list" ref={queueListRef} style={listStyle}>
-          {player.orderedQueue.length === 0 && (
-            <div style={{ padding: 16, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
-              No queue yet — set a target and hit Start run.
+      }
+      between={
+        <>
+          {/* Run-source picker — mobile only (desktop keeps it in the controls
+              column). Lives here so it's reachable mid-run without covering the
+              artwork. Falsy (renders nothing) when the library has no playlists. */}
+          {!fill && sourcePicker && (
+            <div data-testid="queue-source" style={{ padding: "10px 14px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              {sourcePicker}
             </div>
           )}
-          {player.orderedQueue.map((t, i) => {
-            const rating = t.rating ?? null;
-            const disliked = dislikedPaths.has(t.path) || !!t.disliked;
-            const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
-            const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
-            // Capped: the stretch limit keeps this track from reaching the target.
-            // A freshly built queue can't contain one — selection drops anything
-            // out of reach — but a queue drifts out of spec afterwards when the
-            // target slider moves without a rebuild, or Max stretch is lowered
-            // under a persisted queue. The clamp keeps playback sane; this marks it.
-            const idealRate = tFolded ? target / tFolded : 1;
-            const capped = lockOn && tFolded != null && Math.abs(idealRate - tRate) > 0.001;
-            const isCurrentRow = i === player.orderPos;
-            // In a single-playlist run, tracks added to fill the queue from the
-            // library (not in the playlist itself) are dimmed + italic so they read
-            // as clearly secondary to the playlist's own tracks. A pooled ("mine")
-            // or whole-library run has no such distinction, so nothing is dimmed.
-            // The playing row is kept full-opacity so "now playing" is never faded.
-            const fromLibrary = player.runSource != null && player.runSource !== "mine" && t.fromPlaylist === false;
-            return (
-              <div key={`${t.path}-${i}`} ref={isCurrentRow ? playingRowRef : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
-                {!isGuest && (
-                  <>
-                    <RatingStars value={rating} onChange={(v) => setRating(t.path, v)} compact size={14} label={t.title} />
-                    <DislikeButton on={disliked} onToggle={() => toggleDislike(t.path, disliked)} size={14} />
-                  </>
-                )}
-                <button
-                  style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }}
-                  onClick={() => player.jumpTo(i)}
-                  title={fromLibrary ? `Play ${t.title} — added from your library` : `Play ${t.title}`}
-                >
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 500, fontStyle: fromLibrary ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {isCurrentRow && (
-                      // Playing → equalizer bars paced to what you hear (the
-                      // stretched cadence when locked); paused → the ▶ marker.
-                      // Fixed-width slot so pausing never shifts the title.
-                      <span style={{ display: "inline-flex", width: 17, flexShrink: 0, marginRight: 4, color: "var(--accent-2)", verticalAlign: "baseline" }}>
-                        {playing
-                          ? <EqBars playing beatMs={lockOn && tFolded != null ? Math.round(60000 / (tFolded * tRate)) : t.bpm ? Math.round(60000 / t.bpm) : undefined} size={11} color="var(--accent-2)" />
-                          : <span>▶</span>}
-                      </span>
-                    )}
-                    {t.title}
-                  </span>
-                  {t.artist && <span style={{ display: "block", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{t.artist}</span>}
-                </button>
-                {t.bpm != null && tFolded != null && (
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", flexShrink: 0, textAlign: "right" }} title="native BPM · octave · stretch → what you hear">
-                    {capped && (
-                      <span
-                        aria-label="Stretch cap reached"
-                        title={`Out of reach — this track was queued for a different target and tops out at ${Math.round(tFolded * tRate)} BPM, not ${target} (±${stretchLimitPct}% limit). Rebuild the queue for a fresh match.`}
-                        style={{ color: "var(--warn-fg)", marginRight: 6, cursor: "help" }}
-                      >⚠</span>
-                    )}
-                    {Math.round(t.bpm)} {foldLabel(t.bpm, tFolded)}
-                    {lockOn && <span> {tRate.toFixed(2)}×</span>}
-                    <span> → <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>{Math.round(tFolded * tRate)}</span></span>
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          {similarOpen && queueTrack?.artist && (
+            <div style={{ display: "flex", flexDirection: "column", maxHeight: 280, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              <QueueSimilar artist={queueTrack.artist} path={queueTrack.path} onClose={() => setSimilarOpen(false)} />
+            </div>
+          )}
+        </>
+      }
+    >
+      {player.orderedQueue.length === 0 && (
+        <div style={{ padding: 16, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+          No queue yet — set a target and hit Start run.
         </div>
-      </div>
-    );
-  };
+      )}
+      {player.orderedQueue.map((t, i) => {
+        const rating = t.rating ?? null;
+        const disliked = dislikedPaths.has(t.path) || !!t.disliked;
+        const tFolded = t.bpm ? fold(t.bpm, target, octave) : null;
+        const tRate = t.bpm && lockOn ? lockRate(t.bpm, liveLock) : 1;
+        // Capped: the stretch limit keeps this track from reaching the target.
+        // A freshly built queue can't contain one — selection drops anything
+        // out of reach — but a queue drifts out of spec afterwards when the
+        // target slider moves without a rebuild, or Max stretch is lowered
+        // under a persisted queue. The clamp keeps playback sane; this marks it.
+        const idealRate = tFolded ? target / tFolded : 1;
+        const capped = lockOn && tFolded != null && Math.abs(idealRate - tRate) > 0.001;
+        const isCurrentRow = i === player.orderPos;
+        // In a single-playlist run, tracks added to fill the queue from the
+        // library (not in the playlist itself) are dimmed + italic so they read
+        // as clearly secondary to the playlist's own tracks. A pooled ("mine")
+        // or whole-library run has no such distinction, so nothing is dimmed.
+        // The playing row is kept full-opacity so "now playing" is never faded.
+        const fromLibrary = player.runSource != null && player.runSource !== "mine" && t.fromPlaylist === false;
+        return (
+          <div key={`${t.path}-${i}`} ref={isCurrentRow ? playingRowRef : undefined} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--border)", background: isCurrentRow ? "var(--row-hover)" : "transparent", opacity: fromLibrary && !isCurrentRow ? 0.5 : 1 }}>
+            {!isGuest && (
+              <>
+                <RatingStars value={rating} onChange={(v) => setRating(t.path, v)} compact size={14} label={t.title} />
+                <DislikeButton on={disliked} onToggle={() => toggleDislike(t.path, disliked)} size={14} />
+              </>
+            )}
+            <button
+              style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }}
+              onClick={() => player.jumpTo(i)}
+              title={fromLibrary ? `Play ${t.title} — added from your library` : `Play ${t.title}`}
+            >
+              <span style={{ display: "block", fontSize: 13, fontWeight: 500, fontStyle: fromLibrary ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {isCurrentRow && (
+                  // Playing → equalizer bars paced to what you hear (the
+                  // stretched cadence when locked); paused → the ▶ marker.
+                  // Fixed-width slot so pausing never shifts the title.
+                  <span style={{ display: "inline-flex", width: 17, flexShrink: 0, marginRight: 4, color: "var(--accent-2)", verticalAlign: "baseline" }}>
+                    {playing
+                      ? <EqBars playing beatMs={lockOn && tFolded != null ? Math.round(60000 / (tFolded * tRate)) : t.bpm ? Math.round(60000 / t.bpm) : undefined} size={11} color="var(--accent-2)" />
+                      : <span>▶</span>}
+                  </span>
+                )}
+                {t.title}
+              </span>
+              {t.artist && <span style={{ display: "block", fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{t.artist}</span>}
+            </button>
+            {t.bpm != null && tFolded != null && (
+              <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)", flexShrink: 0, textAlign: "right" }} title="native BPM · octave · stretch → what you hear">
+                {capped && (
+                  <span
+                    aria-label="Stretch cap reached"
+                    title={`Out of reach — this track was queued for a different target and tops out at ${Math.round(tFolded * tRate)} BPM, not ${target} (±${stretchLimitPct}% limit). Rebuild the queue for a fresh match.`}
+                    style={{ color: "var(--warn-fg)", marginRight: 6, cursor: "help" }}
+                  >⚠</span>
+                )}
+                {Math.round(t.bpm)} {foldLabel(t.bpm, tFolded)}
+                {lockOn && <span> {tRate.toFixed(2)}×</span>}
+                <span> → <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>{Math.round(tFolded * tRate)}</span></span>
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </QueueCard>
+  );
 
   // Mode toggle: mobile folds the queue + tap-tempo in as tabs (no room for a
   // side panel or a persistent tap pad); desktop drops the queue tab (the queue
@@ -1320,6 +1268,7 @@ export default function Run() {
     <div className={mode === "queue" ? "run-mobile-fill run-queue-open" : "run-mobile-fill"}>
       {glowLayer}
       <div className="run-mobile-body">
+        {modeSwitch?.(true)}
         {mode !== "queue" && nowPlayingMobile}
         {/* Tap needs the whole tap pad on screen at once; the target readout (its
             big number + native pill + the build/lock buttons) is dead weight while

@@ -5,6 +5,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 // isolation and we can drive `role`, `current`, the queue, and the playlist
 // list per test via this hoisted, mutable holder.
 const h = vi.hoisted(() => ({
+  mobile: true,                                    // useIsMobile (the one-screen phone layout)
   role: "admin" as string | null,
   fullAccess: true as boolean,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
@@ -24,6 +25,7 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   lockSet: undefined as undefined | null | { target: number; octave: boolean; stretchLimitPct: number },
   sourceSet: "unset" as unknown,
+  readiness: undefined as unknown,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -34,8 +36,9 @@ vi.mock("react-router-dom", () => ({
 vi.mock("@tanstack/react-query", () => ({
   keepPreviousData: undefined,
   useQueryClient: () => ({ setQueryData: () => {} }),
-  useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+  useQuery: ({ queryKey, enabled }: { queryKey: unknown[]; enabled?: boolean }) => {
     const k = queryKey[0];
+    if (k === "run-readiness") return { data: enabled === false ? undefined : h.readiness };
     if (k === "settings")
       return { data: { settings: {
         run_presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
@@ -78,8 +81,10 @@ vi.mock("../hooks/useWaveform", () => ({ useWaveform: () => ({ loading: false })
 vi.mock("../hooks/useAudioTime", () => ({ useAudioTime: () => ({ time: 0, dur: 0 }), fmtTime: () => "0:00" }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../hooks/useCoverGlow", () => ({ useCoverGlow: () => ({ background: "transparent", opacity: 0 }) }));
-vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => true }));   // force the mobile layout
-vi.mock("../components/PageHeader", () => ({ default: () => null }));
+vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => h.mobile }));   // phone layout unless a test turns it off
+vi.mock("../components/PageHeader", () => ({
+  default: ({ tabs }: { tabs?: React.ReactNode }) => <div data-testid="header-tabs">{tabs}</div>,
+}));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/QueueSimilar", () => ({ default: () => null }));
 // Stand-in that surfaces the props Run passes, so the queue-panel wiring can be
@@ -98,6 +103,7 @@ const TARGET_KEY = "bpm.run.target";
 const SOURCE_KEY = "bpm.run.source";
 
 beforeEach(() => {
+  h.mobile = true;
   cleanup();
   localStorage.clear();
   h.role = "admin";
@@ -116,6 +122,7 @@ beforeEach(() => {
   h.calls = [];
   h.lockSet = undefined;
   h.sourceSet = "unset";
+  h.readiness = undefined;
   // A deliberately long name — the sort that used to spill across the cover art.
   h.playlists = [{ id: 1, name: "Long Playlist Name That Covered The Art", source: "spotify", available: 5, total: 10, image_url: null }];
 });
@@ -631,5 +638,83 @@ describe("Run — ?bpm= deep link from the Cadence page", () => {
     withSearch("?bpm=9999");
     render(<Run />);
     expect(screen.getByTestId("run-target").textContent).toBe("120");
+  });
+});
+
+describe("Run — preset buttons show how many tracks are ready", () => {
+  const READY = {
+    presets: [{ name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 }, { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 }],
+    stretch_limit_pct: 15,
+    library: { "120": 40, "155": 214, "165": 1, "175": 0 },
+    playlists: [{ id: 7, name: "Long Runs", counts: { "120": 3, "155": 9, "165": 0, "175": 0 } }],
+  };
+  const preset = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}, `) });
+
+  beforeEach(() => {
+    localStorage.setItem(MODE_KEY, "presets");
+    h.readiness = READY;
+  });
+
+  it("counts the whole library by default", () => {
+    render(<Run />);
+    expect(preset("Easy").textContent).toContain("214 ready");
+    expect(preset("Warmup").textContent).toContain("40 ready");
+  });
+
+  it("describes the count to assistive tech, with the right plural", () => {
+    render(<Run />);
+    expect(preset("Easy").getAttribute("aria-label")).toBe("Easy, 155 BPM, 214 tracks ready");
+    expect(preset("Steady").getAttribute("aria-label")).toBe("Steady, 165 BPM, 1 track ready");
+  });
+
+  it("says 0 ready rather than hiding a preset with nothing to run", () => {
+    render(<Run />);
+    expect(preset("Tempo").textContent).toContain("0 ready");
+  });
+
+  it("counts the selected playlist instead when one is the source", () => {
+    h.playlists = [{ id: 7, name: "Long Runs", source: "local", available: 9, total: 9, image_url: null }];
+    localStorage.setItem(SOURCE_KEY, "pl:7");
+    render(<Run />);
+    expect(preset("Easy").textContent).toContain("9 ready");
+    expect(preset("Steady").textContent).toContain("0 ready");
+  });
+
+  it("shows no count while the numbers haven't arrived", () => {
+    h.readiness = undefined;
+    render(<Run />);
+    expect(screen.getByRole("button", { name: /^Easy/ }).textContent).not.toContain("ready");
+  });
+
+  it("does not ask for counts as a named player account, which the server refuses", () => {
+    h.role = "player";
+    h.fullAccess = false;
+    render(<Run />);
+    expect(screen.getByRole("button", { name: /^Easy/ }).textContent).not.toContain("ready");
+  });
+});
+
+describe("Run — the Run | Listen switch slot", () => {
+  const slot = (fill: boolean) => <div data-testid="slot" data-fill={String(fill)} />;
+
+  it("sits in the page header on desktop, drawn inline", () => {
+    h.mobile = false;
+    render(<Run modeSwitch={slot} />);
+    const el = screen.getByTestId("header-tabs").querySelector("[data-testid='slot']")!;
+    expect(el.getAttribute("data-fill")).toBe("false");
+  });
+
+  it("is the first row of the one-screen column on a phone, drawn full width", () => {
+    h.mobile = true;
+    render(<Run modeSwitch={slot} />);
+    const body = document.querySelector(".run-mobile-body")!;
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("slot");
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-fill")).toBe("true");
+  });
+
+  it("is simply absent when the page is mounted without it (the kiosk)", () => {
+    h.mobile = true;
+    render(<Run />);
+    expect(screen.queryByTestId("slot")).toBeNull();
   });
 });

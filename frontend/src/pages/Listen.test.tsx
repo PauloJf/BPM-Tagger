@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 // Listen is a thin view over the player context; mock the context/hooks so the
@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   online: true,
   buffering: false,
   radio: false,
+  previewing: false,
+  endedPreview: 0,
   radioMode: "source" as "source" | "similar",
   radioModeSet: null as null | string,
   listenSource: null as number | "mine" | "library" | null,
@@ -53,6 +55,7 @@ vi.mock("../lib/player", () => ({
     current: h.current, playing: h.playing, audioRef: { current: null },
     error: null, buffering: h.buffering, bufferedPct: 0, online: h.online,
     orderedQueue: h.orderedQueue, orderPos: 0, tempoLock: h.tempoLock,
+    previewing: h.previewing, endPreview() { h.endedPreview += 1; },
     shuffle: false, repeat: "off", volume: 1, setVolume() {},
     radio: h.radio, setRadio(on: boolean) { h.radioSet = on; },
     radioMode: h.radioMode, setRadioMode(m: string) { h.radioModeSet = m; },
@@ -70,10 +73,12 @@ vi.mock("../hooks/useAudioTime", () => ({ useAudioTime: () => ({ time: 0, dur: 0
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../hooks/useCoverGlow", () => ({ useCoverGlow: () => ({ background: "transparent", opacity: 0 }) }));
 vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => h.mobile }));
-vi.mock("../components/PageHeader", () => ({ default: () => null }));
+vi.mock("../components/PageHeader", () => ({
+  default: ({ tabs }: { tabs?: React.ReactNode }) => <div data-testid="header-tabs">{tabs}</div>,
+}));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/BpmDisplay", () => ({ BpmDisplay: () => null }));
-vi.mock("../components/PlayerCover", () => ({ default: () => <div data-testid="cover" /> }));
+vi.mock("../components/PlayerCover", () => ({ default: ({ path }: { path: string }) => <div data-testid="cover" data-path={path} /> }));
 vi.mock("../components/QueueList", () => ({ default: () => <div data-testid="queue-list" /> }));
 
 // Import after the mocks are registered.
@@ -96,6 +101,8 @@ beforeEach(() => {
   h.online = true;
   h.buffering = false;
   h.radio = false;
+  h.previewing = false;
+  h.endedPreview = 0;
   h.listenSource = null;
   h.calls = [];
   h.queued = null;
@@ -223,6 +230,16 @@ describe("Listen — radio toggle", () => {
 });
 
 describe("Listen — radio mode", () => {
+  it("puts the lyrics button before the Source | Similar pill, which wraps on a phone", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.radio = true;
+    h.mobile = true;
+    render(<Listen />);
+    const lyrics = screen.getByLabelText("Show lyrics");
+    const pill = screen.getByTestId("radio-mode");
+    expect(lyrics.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("offers Source / Similar only while radio is on", () => {
     h.current = { path: "/a.mp3", title: "A", bpm: 120 };
     render(<Listen />);
@@ -242,6 +259,91 @@ describe("Listen — radio mode", () => {
     render(<Listen />);
     expect(screen.getByText("radio adds similar tracks")).toBeTruthy();
     expect(screen.getByTestId("radio-toggle").getAttribute("title")).toContain("similar tracks from your library");
+  });
+});
+
+describe("Listen — radio under a tempo lock", () => {
+  it("says it tops up with tracks that fit the pace", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    h.radio = true;
+    h.listenSource = 7;
+    h.tempoLock = { target: 165, octave: true, stretchLimitPct: 15 };
+    render(<Listen />);
+    expect(screen.getByText("radio tops up with tracks that fit the pace")).toBeTruthy();
+    expect(screen.queryByText("radio keeps this topped up")).toBeNull();
+  });
+});
+
+describe("Listen — the offline note", () => {
+  const seed = (entries: Record<string, { size: number }>) =>
+    localStorage.setItem("bpm.offline.index", JSON.stringify(entries));
+  beforeEach(() => { vi.stubGlobal("caches", {}); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("appears only when something is cached", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    render(<Listen />);
+    expect(screen.queryByTestId("offline-note")).toBeNull();
+    cleanup();
+    seed({ "/x.mp3": { size: 8 * 1024 * 1024 }, "/y.mp3": { size: 4 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.getByTestId("offline-note").textContent).toBe("2 tracks saved offline · 12.0 MB");
+  });
+
+  it("says track, not tracks, for one", () => {
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    seed({ "/x.mp3": { size: 3 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.getByTestId("offline-note").textContent).toBe("1 track saved offline · 3.0 MB");
+  });
+
+  it("stays away where the browser has no offline cache (plain http)", () => {
+    vi.unstubAllGlobals();
+    h.current = { path: "/a.mp3", title: "A", bpm: 120 };
+    seed({ "/x.mp3": { size: 3 * 1024 * 1024 } });
+    render(<Listen />);
+    expect(screen.queryByTestId("offline-note")).toBeNull();
+  });
+});
+
+describe("Listen — while a preview clip ducks the queue", () => {
+  const clip = { path: "preview:dz:9", title: "Clip", artist: "Someone", bpm: null, ephemeral: true };
+  beforeEach(() => {
+    h.current = clip;
+    h.previewing = true;
+    h.orderedQueue = [{ path: "/q.mp3", title: "Queue Song" }];
+  });
+
+  it("keeps the cover on the queue's track, so the page keeps its shape", () => {
+    render(<Listen />);
+    expect(screen.getByTestId("cover").getAttribute("data-path")).toBe("/q.mp3");
+  });
+
+  it("keeps the phone's cover slot too", () => {
+    h.mobile = true;
+    render(<Listen />);
+    expect(screen.getByTestId("cover-slot")).toBeTruthy();
+    expect(screen.getByTestId("cover").getAttribute("data-path")).toBe("/q.mp3");
+  });
+
+  it("says it is a preview and offers the way back to the queue's track", () => {
+    render(<Listen />);
+    expect(screen.getByTestId("preview-note").textContent).toContain("Preview");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Queue Song" }));
+    expect(h.endedPreview).toBe(1);
+  });
+
+  it("does not offer to rate or dislike the clip", () => {
+    render(<Listen />);
+    expect(screen.queryByLabelText(/dislike/i)).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /rating/i })).toBeNull();
+  });
+
+  it("shows none of that for an ordinary track", () => {
+    h.current = { path: "/q.mp3", title: "Queue Song", bpm: 120 };
+    h.previewing = false;
+    render(<Listen />);
+    expect(screen.queryByTestId("preview-note")).toBeNull();
   });
 });
 
@@ -402,5 +504,30 @@ describe("Listen — mobile one-screen layout (bottom tabs)", () => {
     render(<Listen />);
     expect(screen.getByLabelText("Source to play")).toBeTruthy();
     expect(screen.queryByTestId("listen-tabs")).toBeNull();
+  });
+});
+
+describe("Listen — the Run | Listen switch slot", () => {
+  const slot = (fill: boolean) => <div data-testid="slot" data-fill={String(fill)} />;
+
+  it("sits in the page header on desktop, drawn inline", () => {
+    h.mobile = false;
+    render(<Listen modeSwitch={slot} />);
+    const el = screen.getByTestId("header-tabs").querySelector("[data-testid='slot']")!;
+    expect(el.getAttribute("data-fill")).toBe("false");
+  });
+
+  it("is the first row of the one-screen column on a phone, drawn full width", () => {
+    h.mobile = true;
+    render(<Listen modeSwitch={slot} />);
+    const body = document.querySelector(".run-mobile-body")!;
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("slot");
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-fill")).toBe("true");
+  });
+
+  it("is simply absent when the page is mounted without it (the kiosk)", () => {
+    h.mobile = true;
+    render(<Listen />);
+    expect(screen.queryByTestId("slot")).toBeNull();
   });
 });
