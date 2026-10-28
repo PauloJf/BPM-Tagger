@@ -112,8 +112,20 @@ Each step ships on its own and leaves both pages working.
    components under one wrapper, not one component with two decks; that collapse
    waits for step 5, so each page's tests and layout rules stayed untouched.
    Deferred to step 4: Listen's radio refill under a lock, and the offline note.
-3. **The switch dialog**, with the lock-and-stretch counts computed from the
-   queue already in memory (the same `lockRate` the player uses).
+3. **The switch dialog.** *Done (2026-10-28).* Listen → Run with a queue playing
+   and no lock opens `components/SwitchToRunDialog.tsx`: pace chips (the four
+   presets, plus the remembered pace if it isn't one), then **Build a queue for
+   this pace** (the playing song stays first, the rest comes from
+   `/api/run/queue`, starred first, with the preset's "N ready" shown) or **Keep
+   this queue and stretch it** (the counts come from the queue in memory through
+   `lockFits`, the yes/no twin of `lockRate`). The last answer is pre-selected and
+   remembered; it never skips. With an empty queue or a lock already on there is
+   nothing to ask and it just opens Run. Stretching points the run's refill at the
+   source the queue came from. One correction to the design text above: tracks
+   that can't reach the pace do not play at native speed; `lockRate` clamps them
+   to the stretch limit, and Run already marks them ⚠, so the dialog says that.
+   The Run page's presets, source and stretch settings moved to `lib/runSettings.ts`
+   so the dialog and the page read them the same way.
 4. **Navigation and Home**: the single Player item, Home's Resume card linking to
    the right mode, the remembered mode.
 5. **Remove the duplicated pages and CSS**; update README and screenshots.

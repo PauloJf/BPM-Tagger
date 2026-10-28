@@ -57,6 +57,18 @@ export function lockRate(trackBpm: number | null | undefined, lock: TempoLock | 
   return Math.min(1 + lim, Math.max(1 - lim, lock.target / folded));
 }
 
+/** Can this track actually reach the lock's target? `lockRate` clamps to the
+ *  stretch limit, so a track that is further off than the limit still plays — just
+ *  short of the target. False for those, and for tracks with no BPM (which play at
+ *  native speed whatever the lock says). */
+export function lockFits(trackBpm: number | null | undefined, lock: TempoLock): boolean {
+  if (!trackBpm) return false;
+  const cands = lock.octave ? [trackBpm, trackBpm / 2, trackBpm * 2] : [trackBpm];
+  const folded = cands.reduce((a, b) =>
+    Math.abs(lock.target / b - 1) < Math.abs(lock.target / a - 1) ? b : a);
+  return Math.abs(lock.target / folded - 1) <= lock.stretchLimitPct / 100 + 1e-9;
+}
+
 export type RepeatMode = "off" | "all" | "one";
 /** The Listen queue's source scope: a playlist id, the pooled "mine", the
  *  whole "library", or null when the queue wasn't started from Listen. */

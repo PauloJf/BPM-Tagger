@@ -7,12 +7,18 @@ const h = vi.hoisted(() => ({
   role: "admin" as string | null,
   lock: null as null | { target: number },
   setLock: vi.fn(),
+  queue: [] as Array<{ path: string }>,
   navigated: [] as string[],
 }));
 
 vi.mock("react-router-dom", () => ({ useNavigate: () => (to: string) => { h.navigated.push(to); } }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
-vi.mock("../lib/player", () => ({ usePlayer: () => ({ tempoLock: h.lock, setTempoLock: h.setLock }) }));
+vi.mock("../lib/player", () => ({ usePlayer: () => ({ tempoLock: h.lock, setTempoLock: h.setLock, orderedQueue: h.queue }) }));
+// The dialog has its own tests; here it only has to appear, and report back.
+vi.mock("../components/SwitchToRunDialog", () => ({
+  default: ({ onCancel, onStarted }: { onCancel: () => void; onStarted: () => void }) =>
+    <div data-testid="dialog"><button onClick={onCancel}>cancel</button><button onClick={onStarted}>started</button></div>,
+}));
 vi.mock("./Run", () => ({
   default: ({ modeSwitch }: { modeSwitch?: (fill: boolean) => React.ReactNode }) =>
     <div data-testid="run-page">{modeSwitch?.(false)}<div data-testid="run-mobile">{modeSwitch?.(true)}</div></div>,
@@ -30,6 +36,7 @@ beforeEach(() => {
   cleanup();
   h.role = "admin";
   h.lock = null;
+  h.queue = [];
   h.setLock.mockClear();
   h.navigated = [];
 });
@@ -76,12 +83,55 @@ describe("Player — Run to Listen", () => {
 });
 
 describe("Player — Listen to Run", () => {
-  it("just moves to Run and leaves the lock and queue alone", () => {
-    h.lock = { target: 155 };
+  it("asks first when a queue is playing, and does not navigate yet", () => {
+    h.queue = [{ path: "a.mp3" }];
     render(<Player mode="listen" />);
     fireEvent.click(tab("Run"));
+    expect(screen.getByTestId("dialog")).toBeTruthy();
+    expect(h.navigated).toEqual([]);
+    expect(h.setLock).not.toHaveBeenCalled();
+  });
+
+  it("stays in Listen when the question is cancelled", () => {
+    h.queue = [{ path: "a.mp3" }];
+    render(<Player mode="listen" />);
+    fireEvent.click(tab("Run"));
+    fireEvent.click(screen.getByText("cancel"));
+    expect(screen.queryByTestId("dialog")).toBeNull();
+    expect(h.navigated).toEqual([]);
+  });
+
+  it("opens Run once the run has started", () => {
+    h.queue = [{ path: "a.mp3" }];
+    render(<Player mode="listen" />);
+    fireEvent.click(tab("Run"));
+    fireEvent.click(screen.getByText("started"));
+    expect(screen.queryByTestId("dialog")).toBeNull();
+    expect(h.navigated).toEqual(["/run"]);
+  });
+
+  it("has nothing to ask about with an empty queue, so it just opens Run", () => {
+    render(<Player mode="listen" />);
+    fireEvent.click(tab("Run"));
+    expect(screen.queryByTestId("dialog")).toBeNull();
+    expect(h.navigated).toEqual(["/run"]);
+  });
+
+  it("does not ask when a lock is already on", () => {
+    h.lock = { target: 155 };
+    h.queue = [{ path: "a.mp3" }];
+    render(<Player mode="listen" />);
+    fireEvent.click(tab("Run"));
+    expect(screen.queryByTestId("dialog")).toBeNull();
     expect(h.navigated).toEqual(["/run"]);
     expect(h.setLock).not.toHaveBeenCalled();
+  });
+
+  it("never asks on the way to Listen", () => {
+    h.queue = [{ path: "a.mp3" }];
+    render(<Player mode="run" />);
+    fireEvent.click(tab("Listen"));
+    expect(screen.queryByTestId("dialog")).toBeNull();
   });
 });
 

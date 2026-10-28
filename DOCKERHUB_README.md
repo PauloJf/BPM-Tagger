@@ -133,7 +133,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Run mode** — a full-screen tempo-run player that fits one phone screen: big target-BPM readout with the tempo-lock toggle and a `native · stretch × octave → result` breakdown, four named presets, source picker (whole library or a playlist), and a queue that auto-refills before the last track ends. Picks are weighted by your ratings, your disliked tracks never come up, and every song is stretched onto your cadence with pitch preserved. Save a run queue as a playlist; the **Cadence** page answers "what can I run at 165?" by the same rule.
 
-**Listen** — the regular non-cadence player: play any playlist in order or shuffled at native speed (no BPM required), with a **radio** that keeps refilling from the same playlist, or with similar tracks from your library. A **Run | Listen** switch on the page flips between the two without losing your queue.
+**Listen** — the regular non-cadence player: play any playlist in order or shuffled at native speed (no BPM required), with a **radio** that keeps refilling from the same playlist, or with similar tracks from your library. A **Run | Listen** switch on the page flips between the two, asking whether to rebuild or stretch your queue when you go from Listen to Run.
 
 **Player** — the persistent player bar carries a drag-to-reorder queue, waveform scrubbing, tap-tempo, keyboard shortcuts, and a reload-persistent queue that **follows your account across devices**. Pop it out as a **floating mini player** (Document Picture-in-Picture), or open the **lyrics drawer** for synced LRC lyrics that follow along — click a line to seek.
 

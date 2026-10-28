@@ -20,20 +20,10 @@ import { EqBars } from "../components/EqBars";
 import PlayerCover from "../components/PlayerCover";
 import PrepareOffline from "../components/PrepareOffline";
 import { pinnedRunQueue } from "../lib/offline";
+import { TARGET_KEY, SOURCE_KEY, clampTarget, parseRunPresets, runOctave, runStretchLimitPct } from "../lib/runSettings";
 import { RatingStars, DislikeButton } from "../components/RatingStars";
 
-const TARGET_KEY = "bpm.run.target";
 const MODE_KEY = "bpm.run.mode";
-const SOURCE_KEY = "bpm.run.source";   // "library" | "pl:<id>"
-
-const PRESET_DEFAULTS = [
-  { name: "Warmup", bpm: 120 }, { name: "Easy", bpm: 155 },
-  { name: "Steady", bpm: 165 }, { name: "Tempo", bpm: 175 },
-];
-
-function clampTarget(v: number): number {
-  return Math.max(30, Math.min(300, Math.round(v)));
-}
 
 /** The octave candidate (×½ / ×1 / ×2) closest to the target. */
 function fold(bpm: number, target: number, octave: boolean): number {
@@ -233,17 +223,9 @@ export default function Run({ modeSwitch }: { modeSwitch?: RunModeSwitchSlot } =
   });
   const cfg = settingsQ.data?.settings;
   // Presets accept both shapes: {name,bpm} dicts and the legacy number list.
-  const presets = [0, 1, 2, 3].map((i) => {
-    const raw = Array.isArray(cfg?.run_presets) ? (cfg!.run_presets as unknown[])[i] : undefined;
-    if (raw && typeof raw === "object") {
-      const p = raw as { name?: unknown; bpm?: unknown };
-      return { name: String(p.name ?? PRESET_DEFAULTS[i].name), bpm: Number(p.bpm ?? PRESET_DEFAULTS[i].bpm) };
-    }
-    if (typeof raw === "number") return { name: PRESET_DEFAULTS[i].name, bpm: raw };
-    return PRESET_DEFAULTS[i];
-  });
-  const octave = cfg?.run_octave_fold == null ? true : Boolean(cfg.run_octave_fold);
-  const stretchLimitPct = cfg?.run_stretch_limit_pct == null ? 15 : Number(cfg.run_stretch_limit_pct);
+  const presets = parseRunPresets(cfg);
+  const octave = runOctave(cfg);
+  const stretchLimitPct = runStretchLimitPct(cfg);
   const queueSize = cfg?.run_queue_size == null ? 20 : Number(cfg.run_queue_size);
   const preloadTracks = cfg?.run_preload_tracks == null ? 10 : Number(cfg.run_preload_tracks);
 
