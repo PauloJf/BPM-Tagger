@@ -200,7 +200,12 @@ function TapTempoControl({ locked, nativeBpm, onSave }: {
   );
 }
 
-export default function Run() {
+/** What the Player page hands down: the Run | Listen switch, drawn inline for the
+ *  desktop header (`fill` false) or as a full-width row on a phone (`fill` true).
+ *  Absent when the page is mounted without it (the kiosk shell). */
+export type RunModeSwitchSlot = (fill: boolean) => React.ReactNode;
+
+export default function Run({ modeSwitch }: { modeSwitch?: RunModeSwitchSlot } = {}) {
   useTitle("Run");
   // Run-only role: no tap-tempo (writes tags), no "similar" (reaches Deezer /
   // grab), no links out to pages the player can't open. The backend enforces
@@ -576,6 +581,7 @@ export default function Run() {
     <PageHeader
       title="Run"
       subtitle="Tempo-matched player — lock every track onto your cadence."
+      tabs={modeSwitch?.(false)}
       actions={startRebuildButton}
     />
   );
@@ -1284,6 +1290,7 @@ export default function Run() {
     <div className={mode === "queue" ? "run-mobile-fill run-queue-open" : "run-mobile-fill"}>
       {glowLayer}
       <div className="run-mobile-body">
+        {modeSwitch?.(true)}
         {mode !== "queue" && nowPlayingMobile}
         {/* Tap needs the whole tap pad on screen at once; the target readout (its
             big number + native pill + the build/lock buttons) is dead weight while

@@ -70,7 +70,9 @@ vi.mock("../hooks/useAudioTime", () => ({ useAudioTime: () => ({ time: 0, dur: 0
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../hooks/useCoverGlow", () => ({ useCoverGlow: () => ({ background: "transparent", opacity: 0 }) }));
 vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => h.mobile }));
-vi.mock("../components/PageHeader", () => ({ default: () => null }));
+vi.mock("../components/PageHeader", () => ({
+  default: ({ tabs }: { tabs?: React.ReactNode }) => <div data-testid="header-tabs">{tabs}</div>,
+}));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/BpmDisplay", () => ({ BpmDisplay: () => null }));
 vi.mock("../components/PlayerCover", () => ({ default: () => <div data-testid="cover" /> }));
@@ -402,5 +404,30 @@ describe("Listen — mobile one-screen layout (bottom tabs)", () => {
     render(<Listen />);
     expect(screen.getByLabelText("Source to play")).toBeTruthy();
     expect(screen.queryByTestId("listen-tabs")).toBeNull();
+  });
+});
+
+describe("Listen — the Run | Listen switch slot", () => {
+  const slot = (fill: boolean) => <div data-testid="slot" data-fill={String(fill)} />;
+
+  it("sits in the page header on desktop, drawn inline", () => {
+    h.mobile = false;
+    render(<Listen modeSwitch={slot} />);
+    const el = screen.getByTestId("header-tabs").querySelector("[data-testid='slot']")!;
+    expect(el.getAttribute("data-fill")).toBe("false");
+  });
+
+  it("is the first row of the one-screen column on a phone, drawn full width", () => {
+    h.mobile = true;
+    render(<Listen modeSwitch={slot} />);
+    const body = document.querySelector(".run-mobile-body")!;
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("slot");
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-fill")).toBe("true");
+  });
+
+  it("is simply absent when the page is mounted without it (the kiosk)", () => {
+    h.mobile = true;
+    render(<Listen />);
+    expect(screen.queryByTestId("slot")).toBeNull();
   });
 });

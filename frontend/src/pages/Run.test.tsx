@@ -5,6 +5,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 // isolation and we can drive `role`, `current`, the queue, and the playlist
 // list per test via this hoisted, mutable holder.
 const h = vi.hoisted(() => ({
+  mobile: true,                                    // useIsMobile (the one-screen phone layout)
   role: "admin" as string | null,
   fullAccess: true as boolean,
   current: null as null | { path: string; title: string; artist?: string; bpm?: number | null },
@@ -80,8 +81,10 @@ vi.mock("../hooks/useWaveform", () => ({ useWaveform: () => ({ loading: false })
 vi.mock("../hooks/useAudioTime", () => ({ useAudioTime: () => ({ time: 0, dur: 0 }), fmtTime: () => "0:00" }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../hooks/useCoverGlow", () => ({ useCoverGlow: () => ({ background: "transparent", opacity: 0 }) }));
-vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => true }));   // force the mobile layout
-vi.mock("../components/PageHeader", () => ({ default: () => null }));
+vi.mock("../hooks/useIsMobile", () => ({ useIsMobile: () => h.mobile }));   // phone layout unless a test turns it off
+vi.mock("../components/PageHeader", () => ({
+  default: ({ tabs }: { tabs?: React.ReactNode }) => <div data-testid="header-tabs">{tabs}</div>,
+}));
 vi.mock("../components/LyricsPanel", () => ({ LyricsPanel: () => null }));
 vi.mock("../components/QueueSimilar", () => ({ default: () => null }));
 // Stand-in that surfaces the props Run passes, so the queue-panel wiring can be
@@ -100,6 +103,7 @@ const TARGET_KEY = "bpm.run.target";
 const SOURCE_KEY = "bpm.run.source";
 
 beforeEach(() => {
+  h.mobile = true;
   cleanup();
   localStorage.clear();
   h.role = "admin";
@@ -687,5 +691,30 @@ describe("Run — preset buttons show how many tracks are ready", () => {
     h.fullAccess = false;
     render(<Run />);
     expect(screen.getByRole("button", { name: /^Easy/ }).textContent).not.toContain("ready");
+  });
+});
+
+describe("Run — the Run | Listen switch slot", () => {
+  const slot = (fill: boolean) => <div data-testid="slot" data-fill={String(fill)} />;
+
+  it("sits in the page header on desktop, drawn inline", () => {
+    h.mobile = false;
+    render(<Run modeSwitch={slot} />);
+    const el = screen.getByTestId("header-tabs").querySelector("[data-testid='slot']")!;
+    expect(el.getAttribute("data-fill")).toBe("false");
+  });
+
+  it("is the first row of the one-screen column on a phone, drawn full width", () => {
+    h.mobile = true;
+    render(<Run modeSwitch={slot} />);
+    const body = document.querySelector(".run-mobile-body")!;
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("slot");
+    expect((body.firstElementChild as HTMLElement).getAttribute("data-fill")).toBe("true");
+  });
+
+  it("is simply absent when the page is mounted without it (the kiosk)", () => {
+    h.mobile = true;
+    render(<Run />);
+    expect(screen.queryByTestId("slot")).toBeNull();
   });
 });

@@ -101,7 +101,7 @@ Each step ships alone and leaves the app working.
    Login protection) · Maintenance (Scan Behavior, Operating Mode, Trash, Deleted
    Tracks, Version, Restart) · Appearance last. No section content changes.
 6. **Merge Run and Listen into one player.** Own design doc first:
-   [run-listen-merge.md](run-listen-merge.md) (design agreed; build step 1 done, 2–5 open).
+   [run-listen-merge.md](run-listen-merge.md) (design agreed; build steps 1–2 done, 3–5 open).
 
 ## 4. Verification (every step)
 

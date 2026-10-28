@@ -101,8 +101,17 @@ Each step ships on its own and leaves both pages working.
    the status notes (the two pills differ), the rating and dislike handlers (Listen
    keeps local optimistic state), and the rows inside each queue. Those differ in
    behaviour, so unifying them belongs with the mode switch, not before it.
-2. **Add the mode switch** by rendering one page with two decks, behind the
-   same routes. `/run` and `/listen` both mount it.
+2. **Add the mode switch.** *Done (2026-10-28).* `pages/Player.tsx` mounts the
+   existing Run or Listen page for the route and draws a `Run | Listen` switch
+   (`components/ModeSwitch.tsx`) through a slot both pages accept: beside the title
+   on desktop, a full-width first row on a phone (no extra height; the cover
+   absorbs it). The mode is the route, so `/run` and `/listen` stay valid deep links.
+   Run → Listen releases the tempo lock and keeps the queue playing; Listen → Run
+   changes nothing yet (the dialog is step 3). The kiosk is left alone: it has its
+   own Run / Listen tabs in the nav and gets no switch. The two pages are still two
+   components under one wrapper, not one component with two decks; that collapse
+   waits for step 5, so each page's tests and layout rules stayed untouched.
+   Deferred to step 4: Listen's radio refill under a lock, and the offline note.
 3. **The switch dialog**, with the lock-and-stretch counts computed from the
    queue already in memory (the same `lockRate` the player uses).
 4. **Navigation and Home**: the single Player item, Home's Resume card linking to

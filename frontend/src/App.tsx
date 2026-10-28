@@ -22,6 +22,7 @@ import PlaylistDiff from "./pages/PlaylistDiff";
 import Review from "./pages/Review";
 import Run from "./pages/Run";
 import Listen from "./pages/Listen";
+import Player from "./pages/Player";
 import Cadence from "./pages/Cadence";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -164,8 +165,8 @@ export default function App() {
             default-deny player allowlist), so this lives here only. */}
         <Route path="/playlist-diff" element={<PlaylistDiff />} />
         <Route path="/review" element={<Review />} />
-        <Route path="/run" element={<Run />} />
-        <Route path="/listen" element={<Listen />} />
+        <Route path="/run" element={<Player mode="run" />} />
+        <Route path="/listen" element={<Player mode="listen" />} />
         {/* Cadence is admin-side only: it lives outside the player Routes block
             above (which bounces everything to /run), matching the default-deny
             allowlist that blocks its endpoints server-side. */}

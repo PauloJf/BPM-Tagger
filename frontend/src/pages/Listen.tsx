@@ -42,7 +42,12 @@ const SOURCE_KEY = "bpm.listen.source";   // "library" | "mine" | "pl:<id>"
  * reach and so the two players read differently at a glance — swaps the cover
  * for the queue (where the source picker lives mid-playback, as on Run).
  */
-export default function Listen() {
+/** What the Player page hands down: the Run | Listen switch, drawn inline for the
+ *  desktop header (`fill` false) or as a full-width row on a phone (`fill` true).
+ *  Absent when the page is mounted without it (the kiosk shell). */
+export type ListenModeSwitchSlot = (fill: boolean) => React.ReactNode;
+
+export default function Listen({ modeSwitch }: { modeSwitch?: ListenModeSwitchSlot } = {}) {
   useTitle("Listen");
   const { role, fullAccess, listenMode, isGuest } = useAuth();
   const playerMode = role === "player";
@@ -454,6 +459,7 @@ export default function Listen() {
         <PageHeader
           title="Listen"
           subtitle="Regular player — your music at native tempo, no cadence lock."
+          tabs={modeSwitch?.(false)}
         />
         {!current && (
           // Pre-playback there's no queue worth a column — keep the picker and
@@ -508,6 +514,7 @@ export default function Listen() {
     <div className={"run-mobile-fill listen-fill" + (view === "queue" && current ? " run-queue-open" : "")}>
       {glowLayer}
       <div className="run-mobile-body">
+        {modeSwitch?.(true)}
         {!current && (
           <>
             {sourcePicker}
