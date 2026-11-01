@@ -10,3 +10,5 @@ waitress>=3.0
 rapidfuzz>=3.9.0
 # Cover-art handling — tag/cover editing, playlist covers
 pillow>=10.0.0,<11
+# Europe/Lisbon calendar windows for GET /api/stats/summary (the slim image has no tz database)
+tzdata>=2024.1

@@ -112,6 +112,7 @@ docker compose up -d && docker compose logs -f
 | `NAVIDROME_SYNC_RATINGS` | `false` | Two-way sync of the admin's 1–5 star ratings with Navidrome (Settings → Navidrome) |
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
+| `STATS_API_TOKEN` | _(empty)_ | Turns on the read-only dashboard feed `GET /api/stats/summary` (own bearer token; empty = 404) |
 | `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 

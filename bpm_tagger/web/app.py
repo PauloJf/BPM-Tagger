@@ -36,6 +36,7 @@ from .api.related import related_bp
 from .api.run import run_bp
 from .api.settings import settings_bp
 from .api.stats import stats_bp
+from .api.stats_summary import stats_summary_bp
 from .api.subsonic_admin import subsonic_admin_bp
 from .api.tracks import tracks_bp
 from .auth import _csrf_token, password_stamp
@@ -53,7 +54,7 @@ _FRONTEND_DIST = _ROOT / "frontend" / "dist"
 # The SPA obtains its token from /api/me, so /api/login and the static shell are
 # exempt.
 _CSRF_EXEMPT_ENDPOINTS = (None, "static", "media.healthz", "api_auth.api_login",
-                          "spa", "spa_assets")
+                          "spa", "spa_assets", "api_stats_summary.api_stats_summary")
 
 # Path prefixes owned by the backend — never served the SPA shell.
 # "rest/" is the optional Subsonic API: listed even when it's disabled, so /rest/*
@@ -219,7 +220,7 @@ def create_app(config: dict) -> Flask:
                 "https origin (or UI_FORCE_SECURE_COOKIE=true) so the cookie is "
                 "never sent over plain http")
 
-    for bp in (api_auth_bp, activity_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
+    for bp in (api_auth_bp, activity_bp, tracks_bp, scan_bp, stats_bp, stats_summary_bp, settings_bp, media_bp,
                playlists_bp, lyrics_bp, images_bp,
                run_bp, related_bp, players_bp, player_state_bp, loudness_bp,
                listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
