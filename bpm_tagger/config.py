@@ -349,6 +349,9 @@ def build_config() -> dict:
         "lyrics_mode":                os.environ.get("LYRICS_MODE", "embed"),  # embed | sidecar
         "ui_port":                    int(os.environ.get("UI_PORT", "5000")),
         "ui_password":                os.environ.get("UI_PASSWORD", ""),
+        # Read-only dashboard feed (GET /api/stats/summary): its own bearer token, env only.
+        # Empty = the route answers 404. Never written to settings.json.
+        "stats_api_token":            os.environ.get("STATS_API_TOKEN", "").strip(),
         # Set (in settings.json) the first time the password is changed from the
         # UI; once present it is authoritative and ui_password is ignored.
         "ui_password_hash":           "",

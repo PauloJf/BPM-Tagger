@@ -30,7 +30,7 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9._@-]+$")
 _SECRET_KEYS = {"ui_password", "ui_password_hash", "ui_secret_key",
                 "run_password", "run_password_hash",
                 "totp_secret", "totp_recovery_hashes",
-                "navidrome_pass"}
+                "navidrome_pass", "stats_api_token"}
 
 # Keys a player-role session is allowed to read from /api/settings — just what
 # the Run page needs to render (presets, tolerances, playback buffer, offline
