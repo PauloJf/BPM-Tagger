@@ -191,6 +191,9 @@ services:
       UI_PASSWORD: ""               # REQUIRED — set a strong password before exposing port 5000
       UI_SECRET_KEY: ""           # auto-generated each restart if empty; set explicitly to persist sessions
       UI_SESSION_HOURS: "24"
+      # Optional read-only dashboard feed (GET /api/stats/summary, e.g. for Glance). Its own bearer token;
+      # empty = the route returns 404. Needs ENABLE_UI. Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      STATS_API_TOKEN: ""
 
       # Brute-force login protection
       UI_MAX_LOGIN_ATTEMPTS: "5"  # failed attempts before lockout (per IP, per 60 s)

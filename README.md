@@ -402,12 +402,40 @@ Album lists come from a precomputed album index that's kept up to date while the
 | `INDEX_TAGS` | `true` | Read file tags into the DB for library matching, the Subsonic API and the Related panel. Leave on. |
 | `PATH_TEMPLATE` | `{AlbumArtist}/{Album}/{TrackNo:02d} - {Title}.{ext}` | Layout used when editing a track's tags renames its file. |
 
-### Web UI
+#### Stats feed for dashboards
+
+Set `STATS_API_TOKEN` and `GET /api/stats/summary` returns the library and listening numbers a dashboard such as
+[Glance](https://github.com/glanceapp/glance) (`custom-api` widget) wants, as flat JSON. It takes
+`Authorization: Bearer <STATS_API_TOKEN>` and nothing else: a login session does not open it, and the token opens no other
+route. Unset, the route answers 404. Ten wrong tokens in a minute from one address lock it out for a minute (429).
+
+Calendar windows use Europe/Lisbon (`week` starts on Monday), durations are minutes, sizes are bytes, timestamps are UTC.
+Listening comes from the per-play journal (`play_events`, the halfway scrobble) summed over **all accounts**; each play
+counts the length the player reported, else the track's own length.
+
+| Key | Meaning |
+|---|---|
+| `library_tracks`, `library_artists`, `library_albums` | library totals (deleted tracks excluded) |
+| `library_size_bytes`, `library_minutes` | total file size (from the scan's `size:mtime`, no disk walk) and total playing time |
+| `tracks_analysed`, `tracks_pending`, `tracks_errors`, `tracks_needs_review` | tagging state |
+| `plays_week`, `plays_month`, `plays_year`, `plays_all` | tracks played |
+| `minutes_week`, `minutes_month`, `minutes_year`, `minutes_all` | minutes listened (one decimal) |
+| `artists_week`, `artists_month`, `artists_year`, `artists_all` | distinct artists listened to (plays of files no longer in the library have none) |
+| `top_artist_month`, `top_artist_month_plays` | most-played artist this month (`""` / 0 when none) |
+| `top_track_month`, `top_track_month_artist`, `top_track_month_plays` | most-played track this month |
+| `generated_at`, `timezone` | when computed (UTC) and the window time zone |
+
+Query parameters: `owner=admin|guest|player:<id>` limits the listening numbers to one account (adds `owner`);
+`by_owner=1` adds `owners`, one row per account with a play: `name`, `plays_<window>`, `minutes_<window>`,
+`artists_<window>`.
+
+## Web UI
 
 | Variable | Default | Description |
 |---|---|---|
 | `ENABLE_UI` | `false` | Set to `true` to start the web interface. Runs as a thread inside the same container alongside the scanner/watcher. |
 | `UI_PORT` | `5000` | Port the web UI listens on inside the container |
+| `STATS_API_TOKEN` | _(empty)_ | Turns on the read-only dashboard feed `GET /api/stats/summary` ([Stats feed](#stats-feed-for-dashboards)). Its own bearer token, env only; empty = the route answers 404. Needs `ENABLE_UI=true` |
 | `UI_PASSWORD` | _(empty)_ | **Required** — password for the web UI login page. The UI will not start if this is blank. |
 | `UI_USERNAME` | _(empty)_ | Optional **username for the admin login**. Empty keeps the historical password-only sign-in (leave the login form's username field blank). Set one and you can sign in with username + password — which is what password managers expect. A blank username **always keeps working** for the admin, so this can never lock you out. Also settable at runtime in **Settings → Admin sign-in**. |
 | `UI_SECRET_KEY` | _(empty)_ | Flask session secret key. Auto-generates a random key if empty — sessions are invalidated on each container restart. Set explicitly to persist sessions across restarts. Generate one with: `python -c "import secrets; print(secrets.token_hex(32))"` |
