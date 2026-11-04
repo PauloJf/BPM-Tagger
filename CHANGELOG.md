@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Members see only the listening filters in the library** (All, ratings, Starred, Disliked). Review, Locked, Problems, No ISRC, No playlist and Deleted are admin tools; the server ignores them for other accounts too.
+
 ## v2.20.0 — 2026-11-04
 
 **Request missing tracks from Music Grabber, member accounts, and a reorganised sidebar and Settings.** No breaking changes; the players table gains a `role` column on first start.

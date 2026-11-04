@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from flask import Blueprint, Response, abort, jsonify, request, send_file
+from flask import Blueprint, Response, abort, jsonify, request, send_file, session
 
 from ...bpm.tags import get_file_hash, read_audio_quality, write_bpm_tag
 from ...bpm.waveform import compute_waveform_peaks
@@ -28,6 +28,9 @@ from ..auth import _check_csrf, login_required, session_owner
 from ..state import _assert_in_music_dir, state
 
 log = logging.getLogger(__name__)
+
+# Library filters only the admin sees (the Tracks page hides them for members too).
+ADMIN_TRACK_FILTERS = frozenset({"review", "locked", "problems", "no_isrc", "unplaylisted", "deleted"})
 
 tracks_bp = Blueprint("api_tracks", __name__)
 
@@ -884,6 +887,10 @@ def api_tracks():
     except (ValueError, TypeError):
         per_page = 50
     filter_by = request.args.get("filter", "")
+    # Curation filters (tagging review, locks, scan problems, ISRCs, deleted rows)
+    # are admin tools; other roles get the plain library.
+    if session.get("role") != "admin" and filter_by in ADMIN_TRACK_FILTERS:
+        filter_by = ""
     sort = _parse_sort(request.args)
     bpm_target, bpm_tol = _parse_bpm_filter(request.args)
     cadence = request.args.get("bpm_cadence") in ("1", "true", "yes")
