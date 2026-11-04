@@ -9,7 +9,9 @@ const h = vi.hoisted(() => ({
   data: undefined as TracksPage | undefined,
   params: new URLSearchParams(),
   setParams: vi.fn(),
+  role: "admin" as string,
 }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: h.role }) }));
 
 vi.mock("react-router-dom", () => ({
   Link: ({ to, children, ...rest }: { to: unknown; children?: unknown }) =>
@@ -74,6 +76,7 @@ beforeEach(() => {
   h.params = new URLSearchParams();
   h.setParams.mockReset();
   h.data = undefined;
+  h.role = "admin";
 });
 
 describe("Tracks — Problems filter pill", () => {
@@ -115,5 +118,17 @@ describe("Tracks — decode warning row badge", () => {
     h.data = page([track({ file_path: "/music/clean.mp3", decode_warnings: [] })]);
     render(<Tracks />);
     expect(screen.queryByText("decode")).toBeNull();
+  });
+});
+
+describe("Tracks — filters per role", () => {
+  it("shows a member only the listening filters", () => {
+    h.role = "member";
+    h.data = page([], { problems_count: 2 });
+    render(<Tracks />);
+    for (const label of ["All", "Unrated", "Starred", "Disliked"]) expect(screen.getByText(label)).toBeTruthy();
+    for (const label of ["Review", "Locked", "Problems", "No ISRC", "No playlist", "Deleted"]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
   });
 });

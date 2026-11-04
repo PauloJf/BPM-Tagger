@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { basename, parentName } from "../lib/paths";
 import type { Progress, TracksPage } from "../lib/types";
@@ -71,6 +72,7 @@ export default function Tracks() {
   const [showArt, toggleArt] = useArtwork();
 
   const q = params.get("q") || "";
+  const isAdmin = useAuth().role === "admin";
   const filter = params.get("filter") || "";
   const bpm = params.get("bpm") || "";
   const bpmTol = params.get("bpm_tol") || "5";
@@ -272,6 +274,8 @@ export default function Tracks() {
     return `/track?${sp.toString()}`;
   }
 
+  // Curation filters are admin tools (the server ignores them for other roles).
+  const ADMIN_ONLY = new Set(["review", "locked", "problems", "no_isrc", "unplaylisted", "deleted"]);
   const pills = [
     { key: "", label: "All", count: data?.all_count },
     { key: "unrated", label: "Unrated" },
@@ -288,7 +292,7 @@ export default function Tracks() {
     { key: "no_isrc", label: "No ISRC", count: data?.no_isrc_count },
     { key: "unplaylisted", label: "No playlist", count: data?.unplaylisted_count },
     { key: "deleted", label: "Deleted", count: data?.deleted_count },
-  ];
+  ].filter((pl) => isAdmin || !ADMIN_ONLY.has(pl.key));
 
   const pages = data?.pages ?? 1;
   const pageNums: (number | "…")[] = [];
