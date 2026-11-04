@@ -15,6 +15,8 @@ vi.mock("react-router-dom", () => ({
     const params = new URLSearchParams();
     return [params, () => {}] as const;
   },
+  useLocation: () => ({ pathname: "/settings", search: "?tab=playback", hash: "" }),
+  useNavigate: () => () => {},
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -60,6 +62,7 @@ vi.mock("../components/Toggle", () => ({
 }));
 vi.mock("../components/PlayerUsers", () => ({ default: () => null }));
 vi.mock("../components/SubsonicSettings", () => ({ default: () => null }));
+vi.mock("../components/MusicGrabberSettings", () => ({ default: () => null }));
 vi.mock("../hooks/useTitle", () => ({ useTitle: () => {} }));
 vi.mock("../components/PageHeader", () => ({ default: () => null }));
 vi.mock("../lib/accent", () => ({
@@ -77,7 +80,7 @@ vi.mock("../lib/offline", () => ({
 }));
 vi.mock("../lib/version", () => ({ updateState: () => "up-to-date" }));
 
-import Settings from "./Settings";
+import Settings, { SETTINGS_GROUPS, settingsTabFor } from "./Settings";
 import { api } from "../lib/api";
 
 beforeEach(() => {
@@ -126,5 +129,34 @@ describe("Settings — Ratings & picking", () => {
     fireEvent.change(screen.getByLabelText("5★ weight"), { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
     expect((screen.getByLabelText("5★ weight") as HTMLInputElement).value).toBe("6");
+  });
+});
+
+describe("Settings — tabs", () => {
+  it("every card belongs to exactly one tab", () => {
+    const ids = SETTINGS_GROUPS.flatMap((g) => g.sections.map(([id]) => id));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual([
+      "General", "People & security", "Library & scanning", "Playback & Run", "Integrations", "Maintenance",
+    ]);
+  });
+
+  it("opens the tab named in ?tab=, else the one holding a #sec- anchor, else General", () => {
+    expect(settingsTabFor("?tab=integrations", "")).toBe("integrations");
+    expect(settingsTabFor("", "#sec-run")).toBe("playback");
+    expect(settingsTabFor("?tab=nope", "#sec-grabber")).toBe("integrations");
+    expect(settingsTabFor("", "")).toBe("general");
+  });
+
+  it("shows only the active tab's cards and lists its sections", async () => {
+    const { container } = render(<Settings />);
+    await screen.findByRole("heading", { name: "Ratings & picking" });
+    const css = container.querySelector(".settings-body > style")!.textContent!;
+    expect(css).toContain("#sec-ratings");
+    expect(css).not.toContain("#sec-navidrome");
+    expect(screen.getByRole("button", { name: "Playback & Run" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Run Mode" }).getAttribute("href")).toBe("#sec-run");
+    fireEvent.click(screen.getByRole("button", { name: "Integrations" }));
+    expect(container.querySelector(".settings-body > style")!.textContent).toContain("#sec-grabber");
   });
 });
