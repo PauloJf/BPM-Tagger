@@ -160,3 +160,23 @@ describe("Settings — tabs", () => {
     expect(container.querySelector(".settings-body > style")!.textContent).toContain("#sec-grabber");
   });
 });
+
+describe("Settings — retiring the guest login", () => {
+  it("shows no guest controls when there is no guest login", async () => {
+    render(<Settings />);
+    await screen.findByRole("heading", { name: "Ratings & picking" });
+    expect(screen.queryByRole("button", { name: "Convert to a named player", hidden: true })).toBeNull();
+    expect(screen.queryByText("Change guest password")).toBeNull();
+    expect(screen.getByText("Save session length")).toBeTruthy();       // applies to every player
+  });
+
+  it("offers to convert an existing guest login to a named player", async () => {
+    h.settings = { run_password_hash: "********" };
+    render(<Settings />);
+    fireEvent.change(await screen.findByLabelText("Username for the converted guest"), { target: { value: "family" } });
+    // The People card sits on another tab here (hidden, still mounted).
+    fireEvent.click(screen.getByRole("button", { name: "Convert to a named player", hidden: true }));
+    await waitFor(() => expect(h.posts.some((p) => p.path === "/api/settings/run-password/convert")).toBe(true));
+    expect(h.posts.find((p) => p.path === "/api/settings/run-password/convert")!.body).toEqual({ username: "family" });
+  });
+});

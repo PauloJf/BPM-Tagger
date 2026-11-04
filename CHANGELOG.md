@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **The shared guest login (`RUN_PASSWORD`) is being retired.** It is one nameless password, so everyone using it shares one bucket of ratings and runs, and named players can now have the whole library too. An existing guest login keeps working in this release, but a new one can't be switched on, and startup logs a warning while `RUN_PASSWORD` is set. **Settings → People & security → Convert to a named player** creates a whole-library player (default name `guest`) with the **same password** and turns the guest login off; people then sign in with that username. Remove `RUN_PASSWORD` from your environment afterwards. "Players stay signed in for" now shows whether or not a guest login exists, since it applies to every player.
+
 ## v2.20.0 — 2026-11-04
 
 **Request missing tracks from Music Grabber, member accounts, and a reorganised sidebar and Settings.** No breaking changes; the players table gains a `role` column on first start.

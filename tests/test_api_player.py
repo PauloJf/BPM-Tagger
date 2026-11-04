@@ -171,25 +171,62 @@ def test_player_settings_is_filtered_to_run_keys(base_config):
 
 # ── admin management of the run password ─────────────────────────────────────────
 
-def test_admin_sets_and_disables_run_password(base_config):
+def test_a_new_guest_login_cannot_be_switched_on(base_config):
+    """The shared Guest login is being retired: with none set, it can't be enabled."""
     app = _app(base_config)  # starts with no run password
     client = _client(app)
     _, csrf = _login(client, "s3cret")
-
-    # Set it → a second client can then log in as a player.
     r = client.post("/api/settings/run-password",
                     json={"new_password": "runner99", "confirm_password": "runner99"},
                     headers=csrf)
-    assert r.status_code == 200 and r.get_json()["enabled"] is True
-    p = _client(app)
-    resp, _ = _login(p, "runner99")
-    assert resp.status_code == 200 and resp.get_json()["role"] == "player"
+    assert r.status_code == 400 and "retired" in r.get_json()["error"]
+    assert _login(_client(app), "runner99")[0].status_code == 401
 
-    # Disable it → the run password no longer logs anyone in.
+
+def test_an_existing_guest_login_can_be_changed_and_disabled(base_config):
+    app = _app(base_config, run_password="runner99")
+    client = _client(app)
+    _, csrf = _login(client, "s3cret")
+    r = client.post("/api/settings/run-password",
+                    json={"new_password": "runner77", "confirm_password": "runner77"},
+                    headers=csrf)
+    assert r.status_code == 200 and r.get_json()["enabled"] is True
+    resp, _ = _login(_client(app), "runner77")
+    assert resp.status_code == 200 and resp.get_json()["role"] == "player"
     assert client.post("/api/settings/run-password", json={"disable": True},
                        headers=csrf).status_code == 200
-    resp2, _ = _login(_client(app), "runner99")
-    assert resp2.status_code == 401
+    assert _login(_client(app), "runner77")[0].status_code == 401
+
+
+def test_convert_guest_to_named_player_keeps_the_password(base_config):
+    app = _app(base_config, run_password="runner99")
+    guest = _client(app)
+    assert _login(guest, "runner99")[0].status_code == 200
+    admin = _client(app)
+    _, csrf = _login(admin, "s3cret")
+    r = admin.post("/api/settings/run-password/convert", json={"username": "Family"}, headers=csrf)
+    assert r.status_code == 200 and r.get_json()["username"] == "family"
+    # The guest login is gone (and its open session ends) ...
+    assert _login(_client(app), "runner99")[0].status_code == 401
+    assert guest.get("/api/run/playlists").status_code == 401
+    # ... and the same password signs in as a named, whole-library player.
+    p = _client(app)
+    resp = p.post("/api/login", json={"username": "family", "password": "runner99"})
+    assert resp.status_code == 200 and resp.get_json()["role"] == "player"
+    me = p.get("/api/me").get_json()
+    assert me["username"] == "family" and me["full_access"] is True
+    # Nothing left to convert; and the name must be free.
+    assert admin.post("/api/settings/run-password/convert", json={}, headers=csrf).status_code == 400
+
+
+def test_convert_refuses_a_taken_username(base_config):
+    app = _app(base_config, run_password="runner99")
+    admin = _client(app)
+    _, csrf = _login(admin, "s3cret")
+    admin.post("/api/players", json={"username": "guest", "password": "longpass1"}, headers=csrf)
+    r = admin.post("/api/settings/run-password/convert", json={}, headers=csrf)
+    assert r.status_code == 409
+    assert _login(_client(app), "runner99")[0].status_code == 200     # guest left as it was
 
 
 # ── session length ───────────────────────────────────────────────────────────
@@ -224,7 +261,7 @@ def test_player_cannot_change_session_length(base_config):
 
 
 def test_run_password_must_differ_from_admin(base_config):
-    client = _client(_app(base_config))
+    client = _client(_app(base_config, run_password="runner99"))
     _, csrf = _login(client, "s3cret")
     r = client.post("/api/settings/run-password",
                     json={"new_password": "s3cret", "confirm_password": "s3cret"},
