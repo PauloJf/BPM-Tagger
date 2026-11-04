@@ -16,7 +16,7 @@ import { updateState } from "../lib/version";
 
 type Saved = "" | "saving" | "ok" | "err";
 
-/** Settings grouped into tabs (General, People & security, Library & scanning,
+/** Settings grouped into tabs (sections listed in page order) (General, People & security, Library & scanning,
  *  Playback & Run, Integrations, Maintenance). Each card keeps its #sec- anchor;
  *  a link to a card opens the tab that holds it. */
 export const SETTINGS_GROUPS: { id: string; label: string; sections: [string, string][] }[] = [
@@ -24,18 +24,18 @@ export const SETTINGS_GROUPS: { id: string; label: string; sections: [string, st
     ["sec-appearance", "Appearance"], ["sec-artwork", "Artwork"], ["sec-lyrics", "Lyrics"],
   ] },
   { id: "people", label: "People & security", sections: [
-    ["sec-run-access", "People & player access"], ["sec-password", "Admin sign-in"],
-    ["sec-2fa", "Two-factor"], ["sec-login-protection", "Login protection"],
+    ["sec-password", "Admin sign-in"], ["sec-2fa", "Two-factor"],
+    ["sec-login-protection", "Login protection"], ["sec-run-access", "People & player access"],
   ] },
   { id: "library", label: "Library & scanning", sections: [
     ["sec-library", "Library"], ["sec-scan", "Scan Behavior"], ["sec-mode", "Operating Mode"], ["sec-isrc", "ISRC"],
   ] },
   { id: "playback", label: "Playback & Run", sections: [
-    ["sec-playback", "Playback"], ["sec-run", "Run Mode"], ["sec-ratings", "Ratings & picking"],
+    ["sec-ratings", "Ratings & picking"], ["sec-playback", "Playback"], ["sec-run", "Run Mode"],
   ] },
   { id: "integrations", label: "Integrations", sections: [
-    ["sec-navidrome", "Navidrome"], ["sec-grabber", "Music Grabber"], ["sec-subsonic", "Subsonic API"],
-    ["sec-ntfy", "Notifications"],
+    ["sec-ntfy", "Notifications"], ["sec-navidrome", "Navidrome"], ["sec-grabber", "Music Grabber"],
+    ["sec-subsonic", "Subsonic API"],
   ] },
   { id: "maintenance", label: "Maintenance", sections: [
     ["sec-trash", "Trash"], ["sec-deleted", "Deleted Tracks"], ["sec-version", "Version"], ["sec-restart", "Restart"],
