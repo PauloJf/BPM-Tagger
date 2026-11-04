@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v2.20.0 — 2026-11-04
+
+**Request missing tracks from Music Grabber, member accounts, and a reorganised sidebar and Settings.** No breaking changes; the players table gains a `role` column on first start.
+
 - **Request missing tracks from Music Grabber.** Connect a Music Grabber in **Settings → Music Grabber** (or `MUSIC_GRABBER_URL` + `MUSIC_GRABBER_API_KEY`; the key needs Music Grabber 1.6's `request` scope). A playlist's missing rows then get a **Request** button, and the page gets **Request N missing**. Related-panel tracks that aren't in your library get one too. Each row shows the request's state: *requested*, *downloading*, *needs a choice* (a link to Music Grabber's Inbox), *downloaded*, or *failed* with a Retry. The file arrives through the music folder as usual; once it's in the library, the playlist row turns *have* without waiting for a sync. The admin and members can request (`MUSIC_GRABBER_MEMBERS_REQUEST=false` keeps it to the admin), and requests show in Music Grabber's queue as "requested by BPM Tagger for <account>". Nothing changes until it's connected.
 
 - **Members: a new kind of account between the admin and the kiosk.** Settings → Player access → People can now create a **member**: the regular app without the admin tools. A member browses the library, artists, albums and playlists, plays, rates and dislikes (their own ratings, like a player), and sees the Related panel, but can't scan, edit tags, artwork or playlists, review BPMs, resolve duplicates, or open Stats and Settings. It's enforced server-side with the same default-deny list as the kiosk. Use it instead of sharing the admin login, which mixed everyone's ratings into one account. Changing an account's kind signs it out.

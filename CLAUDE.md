@@ -11,11 +11,11 @@ Before taking any action that could incur charges on the team plan — including
 | Field | Value |
 |---|---|
 | Name | BPM Tagger |
-| Version | v2.19.0 |
+| Version | v2.20.0 |
 | GitHub | https://github.com/PauloJf/BPM-Tagger (public since 2026-05-27) |
 | Docker Hub | `gatoserio/bpm-tagger:latest` (slim) · `gatoserio/bpm-tagger:full` (PyTorch/deeprhythm) |
 | Author | Paulo (paulo@gatoserio.dev) |
-| Git identity | Always use `paulo@gatoserio.dev` / `Paulo` for all commits on this project |
+| Git identity | `Paulo Fernandes <PauloJf@users.noreply.github.com>` (GitHub rejects pushes exposing the private address, GH007) |
 | Origin | Built by a runner who needed BPM-tagged music for cadence-synced running |
 
 ---
@@ -103,7 +103,7 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 ### Grabber (detached)
 
-`bpm_tagger/grabber/` is gone; see **What It Does** above. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are no longer created for new databases, and existing databases keep theirs untouched (never dropped, so a rollback or a re-run of the export keeps working) — nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
+`bpm_tagger/grabber/` is gone; see **What It Does** above. The only link left is HTTP: `integrations/music_grabber.py` + `web/api/grabber.py` send *requests* for missing tracks to a separate Music Grabber's `/api/v1` (API key with the `request` scope, server to server, inert until `MUSIC_GRABBER_URL` + key are set) and track their state in a `grabber_requests` table created on first use. No downloading here. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are no longer created for new databases, and existing databases keep theirs untouched (never dropped, so a rollback or a re-run of the export keeps working) — nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
 
 ### Database (`bpm_tagger/db/` → `BPMDatabase`)
 
@@ -118,6 +118,7 @@ Legacy grabber tables (not created for new DBs; left untouched in existing ones 
 - **Frontend** is a React SPA (`frontend/`, Vite + TypeScript + Tailwind) built to `frontend/dist`. Flask serves the hashed bundle, static shell, and an `index.html` catch-all for client routes; `web_ui.py` is a back-compat shim.
 - **Backend** is a Flask app factory (`web/app.py` → `create_app` / `start`), served by Waitress on `UI_PORT` (default 5000, 12 threads). JSON API split into blueprints under `web/api/`: `auth`, `tracks`, `scan`, `stats`, `settings`, `media`, `playlists`, `playlist_ops` (diff/merge/split), `lyrics`, `loudness`, `images`, `run`, `listen`, `player_state`, `players`, `related` (Related panel + Deezer browse), `waveform` (back-fill job), `activity` (the sidebar's background-activity feed), `subsonic_admin` (Subsonic toggle + credentials).
 - **Optional Subsonic API** (`web/subsonic/`, `SUBSONIC_ENABLED`): a stateless `/rest/*` blueprint registered only when enabled (CSRF-exempt, no session). Own credentials per account (`subsonic_credentials` table: hashed API key + generated password); player users are scoped to their playlists via a `scope` argument on every `db/subsonic.py` query. Album lists read `subsonic_album_index`, kept current by triggers on `tracks` that exist only while the API is enabled. Genres are in the core tag index (`tracks.genre` + `track_genres`). Queries in `db/subsonic.py`. Plan: `docs/plans/subsonic-api.md`.
+- **Roles:** `admin` (single, `UI_PASSWORD`), and named accounts in the `players` table with `role` = `player` (Run/Listen kiosk, `_PLAYER_ALLOWED`; playlist-scoped unless `full_access`) or `member` (regular SPA without admin tools, `_MEMBER_ALLOWED`; whole library). Both lists in `web/app.py` are default-deny; admin-only checks in handlers use `role != "admin"`, never `== "player"`. Plays/ratings attribute to `player:<id>` (`session_owner`).
 - Shared request state lives in `web/state.py` (`AppState`, on `app.extensions["state"]`) — holds `db`, `progress`, `tagger`, config, `settings_path`.
 - All state-changing routes require a per-session CSRF token (`web/auth.py`; SPA fetches it from `/api/me`). File paths are validated against `MUSIC_DIR`.
 - Security: `SameSite=Lax` + `HttpOnly` cookies (`Secure` when `UI_PUBLIC_URL` is https), CSP restricting to same-origin (Spotify/Deezer image CDNs allowed for cover art), standard hardening headers.
