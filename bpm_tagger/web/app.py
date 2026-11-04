@@ -21,6 +21,7 @@ from flask.sessions import SecureCookieSessionInterface
 from ..db import BPMDatabase
 from .api.activity import activity_bp
 from .api.auth import api_auth_bp
+from .api.grabber import grabber_bp
 from .api.images import images_bp
 from .api.listen import listen_bp
 from .api.loudness import loudness_bp
@@ -246,7 +247,7 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, activity_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                playlists_bp, lyrics_bp, images_bp,
                run_bp, related_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp):
+               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp, grabber_bp):
         app.register_blueprint(bp)
 
     # Optional Subsonic API: registered only when enabled, so a disabled install

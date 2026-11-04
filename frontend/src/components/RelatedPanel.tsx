@@ -4,10 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { RelatedArtist, RelatedTrack } from "../lib/types";
 import { PreviewButton } from "./trackBits";
+import { GrabberRequestControl, useGrabberRequests, useGrabberStatus, useRequestFromGrabber, type GrabberRequestState, type GrabberStatus } from "../lib/grabber";
 import ArtistModal from "./ArtistModal";
 
-/** A single similar/related track row. */
-function TrackRow({ t }: { t: RelatedTrack }) {
+/** A single similar/related track row. Out-of-library tracks can be requested
+ *  from Music Grabber (by exact Deezer id) when it is connected. */
+function TrackRow({ t, grabber, state, onRequest, busy }: {
+  t: RelatedTrack;
+  grabber?: GrabberStatus;
+  state?: GrabberRequestState;
+  onRequest?: () => void;
+  busy?: boolean;
+}) {
   return (
     <div className="pl-track-row" style={{ gridTemplateColumns: "1fr auto", gap: 8 }}>
       <div style={{ minWidth: 0 }}>
@@ -29,6 +37,8 @@ function TrackRow({ t }: { t: RelatedTrack }) {
           ) : (
             <span className="chip chip--have sugg-action">✓ in library</span>
           )
+        ) : grabber?.configured && t.dz_track_id && onRequest ? (
+          <GrabberRequestControl state={state} status={grabber} onRequest={onRequest} busy={busy} label={t.title} />
         ) : null}
       </div>
     </div>
@@ -94,6 +104,11 @@ export default function RelatedPanel({ artist }: { artist: string; context?: "ar
     enabled: open && !!name,
     staleTime: Infinity,
   });
+  const grabber = useGrabberStatus().data;
+  const outside = (tracksQ.data?.tracks ?? []).filter((t) => !t.in_library && t.dz_track_id);
+  const reqStates = useGrabberRequests(outside.map((t) => `dz:${t.dz_track_id}`), open && !!grabber?.configured)
+    .data?.requests ?? {};
+  const requestM = useRequestFromGrabber();
 
   if (!name) return null;
 
@@ -144,7 +159,9 @@ export default function RelatedPanel({ artist }: { artist: string; context?: "ar
                   <div style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 6 }}>Similar tracks</div>
                   <div className="tracks-table">
                     {tracks.map((t) => (
-                      <TrackRow key={t.dz_track_id} t={t} />
+                      <TrackRow key={t.dz_track_id} t={t} grabber={grabber} state={reqStates[`dz:${t.dz_track_id}`]}
+                        busy={requestM.isPending}
+                        onRequest={() => requestM.mutate({ dz_id: t.dz_track_id, title: t.title, artist: t.artist })} />
                     ))}
                   </div>
                 </div>

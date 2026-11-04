@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import type { PickPreviewResponse, PickWeights, SettingsMap } from "../lib/types";
 import { Toggle } from "../components/Toggle";
 import PlayerUsers from "../components/PlayerUsers";
+import MusicGrabberSettings from "../components/MusicGrabberSettings";
 import SubsonicSettings from "../components/SubsonicSettings";
 import { useTitle } from "../hooks/useTitle";
 import PageHeader from "../components/PageHeader";
@@ -25,6 +26,7 @@ const SIDEBAR = [
   ["sec-scan", "Scan Behavior"],
   ["sec-mode", "Operating Mode"],
   ["sec-navidrome", "Navidrome"],
+  ["sec-grabber", "Music Grabber"],
   ["sec-ratings", "Ratings & picking"],
   ["sec-subsonic", "Subsonic API"],
   ["sec-playback", "Playback"],
@@ -1438,6 +1440,15 @@ export default function Settings() {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Music Grabber link (optional) */}
+          <div id="sec-grabber" className="settings-card card">
+            <div className="settings-card-header">
+              <h2>Music Grabber</h2>
+              <p>Optional. Connect a Music Grabber (a separate app) to request missing tracks from a playlist's Missing rows and from the Related panel. New files arrive through the music folder like any other.</p>
+            </div>
+            <MusicGrabberSettings />
           </div>
 
           {/* Subsonic API (optional) */}

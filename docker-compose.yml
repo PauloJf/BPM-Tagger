@@ -135,6 +135,15 @@ services:
       NAVIDROME_USER: ""            # Navidrome admin username
       NAVIDROME_PASS: ""            # Navidrome admin password
 
+      # -----------------------------------------------------------------------
+      # Optional: request missing tracks from a Music Grabber (separate app)
+      # -----------------------------------------------------------------------
+      # An API key from Music Grabber (Account → API keys) with the "request" scope.
+      MUSIC_GRABBER_URL: ""         # e.g. http://music-grabber:8099
+      MUSIC_GRABBER_API_KEY: ""     # mgk_…
+      # MUSIC_GRABBER_PUBLIC_URL: ""        # link people open; defaults to MUSIC_GRABBER_URL
+      # MUSIC_GRABBER_MEMBERS_REQUEST: "true"
+
       # Public URL of this UI: marks the session cookie Secure over https and
       # builds the links in ntfy notifications
       UI_PUBLIC_URL: ""             # e.g. https://bpm.example.com

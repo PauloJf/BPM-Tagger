@@ -7,6 +7,7 @@ import { basename } from "../lib/paths";
 import type { PlayerTrack } from "../lib/player";
 import { useTitle } from "../hooks/useTitle";
 import { useAuth } from "../lib/auth";
+import { GrabberRequestControl, useGrabberRequests, useGrabberStatus, useRequestFromGrabber } from "../lib/grabber";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { QueueActions } from "../components/QueueActions";
 import PlaylistStats from "../components/PlaylistStats";
@@ -250,6 +251,20 @@ export default function PlaylistDetail() {
   useTitle(pl?.name || "Playlist");
   const allTracks = tracksQ.data?.tracks ?? [];
 
+  // Music Grabber link (optional): missing rows can be requested from it, and
+  // their request state shows on the row. Inert until an admin connects it.
+  const grabber = useGrabberStatus().data;
+  const grabberOn = !!grabber?.configured;
+  const missingIds = useMemo(
+    () => allTracks.filter((t) => t.derived_status === "missing").map((t) => t.id), [allTracks]);
+  const reqStates = useGrabberRequests(missingIds.map((i) => `pt:${i}`), grabberOn).data?.requests ?? {};
+  const [grabMsg, setGrabMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const requestM = useRequestFromGrabber((text, ok) => setGrabMsg({ text, ok }));
+  const unrequested = missingIds.filter((i) => {
+    const s = reqStates[`pt:${i}`];
+    return !s || ["failed", "skipped", "cancelled"].includes(s.status);
+  });
+
   // Duplicate clusters, over live rows only: the same library file listed twice,
   // or two rows sharing an ISRC. Informational on synced playlists (the source
   // owns membership); on a local one the per-row ✕ is the fix.
@@ -370,6 +385,13 @@ export default function PlaylistDetail() {
         {(pl?.have_count ?? 0) > 0 && (
           <a className="btn btn-ghost btn-sm" href={`/api/playlists/${id}/export.m3u`}>Export .m3u</a>
         )}
+        {grabber?.can_request && unrequested.length > 0 && (
+          <button className="btn btn-soft btn-sm" disabled={requestM.isPending}
+            title="Ask Music Grabber to fetch the missing tracks (at most 100 at a time)"
+            onClick={() => requestM.mutate({ playlist_track_ids: unrequested.slice(0, 100) })}>
+            {requestM.isPending ? "Requesting…" : `Request ${Math.min(unrequested.length, 100)} missing`}
+          </button>
+        )}
         {canSync && (
           <button className="btn btn-ghost btn-sm" disabled={sync.isPending} onClick={() => sync.mutate()}>
             {sync.isPending ? "Syncing…" : "Sync now"}
@@ -431,6 +453,11 @@ export default function PlaylistDetail() {
               <span className="chip chip--have">✓ {pl.have_count} have</span>
               <span className="chip chip--missing">✗ {pl.missing_count} missing</span>
               {pl.removed_count > 0 && <span className="chip chip--removed">− {pl.removed_count} removed</span>}
+              {grabMsg && (
+                <span className="chip chip--neutral" role="status" style={{ textTransform: "none", color: grabMsg.ok ? undefined : "var(--err-fg)" }}>
+                  {grabMsg.text}
+                </span>
+              )}
               <span className="chip chip--neutral">{pl.track_count} total</span>
               <span className="chip chip--neutral" style={{ textTransform: "none" }}>
                 {isLocal ? "local playlist" : syncedLabel(pl.last_synced_at)}
@@ -570,6 +597,10 @@ export default function PlaylistDetail() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                   <StatusChip s={t.derived_status} />
+                  {grabberOn && t.derived_status === "missing" && (
+                    <GrabberRequestControl state={reqStates[`pt:${t.id}`]} status={grabber} label={label}
+                      busy={requestM.isPending} onRequest={() => requestM.mutate({ playlist_track_ids: [t.id] })} />
+                  )}
                   {/* BPM · length · plays, in the row's existing quiet metadata
                       line. Plays only on a matched row (the count is the library
                       track's) and only once it's non-zero, so an unplayed library

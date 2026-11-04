@@ -427,7 +427,14 @@ def build_config() -> dict:
         # Floored to 5 min when non-zero. Runs only in the long-lived watch modes.
         "sync_interval_minutes":      int(os.environ.get("SYNC_INTERVAL_MINUTES", "0")),
 
-        # ── Grabber (M3+) ─────────────────────────────────────────────────────
+        # ── Optional Music Grabber link (request missing tracks) ──────────────
+        # A separate Music Grabber instance (its own project) does the fetching;
+        # BPM Tagger only sends requests to its /api/v1 with an API key that has
+        # the 'request' scope. Inert until both URL and key are set.
+        "music_grabber_url":          os.environ.get("MUSIC_GRABBER_URL", ""),
+        "music_grabber_public_url":   os.environ.get("MUSIC_GRABBER_PUBLIC_URL", ""),
+        "music_grabber_api_key":      os.environ.get("MUSIC_GRABBER_API_KEY", ""),
+        "music_grabber_members_request": os.environ.get("MUSIC_GRABBER_MEMBERS_REQUEST", "true").lower() == "true",
         # ── Optional Subsonic API (docs/plans/subsonic-api.md) ────────────────
         # Serves /rest/* to Subsonic clients. Needs ENABLE_UI; takes effect on
         # restart (the blueprint is registered at startup, or not at all).
