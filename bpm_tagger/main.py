@@ -58,6 +58,10 @@ def main():
     progress = ScanProgress()
     tagger = BPMTagger(config, progress)
 
+    if os.environ.get("RUN_PASSWORD"):
+        log.warning("RUN_PASSWORD (the shared guest login) is deprecated and will be removed in a "
+                    "future release. In Settings → People & security, convert it to a named player "
+                    "(same password, whole library), then remove RUN_PASSWORD from your environment.")
     if os.environ.get("GRABBER_ENABLED", "false").lower() == "true":
         log.warning("GRABBER_ENABLED=true has no effect: the music grabber now lives in its "
                     "own project (Music Grabber). See the README for how to move over.")

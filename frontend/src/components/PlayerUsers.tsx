@@ -19,9 +19,8 @@ function isListenMode(v: string): v is ListenMode {
 
 /** Settings → Player Access → Player users (Phase 5). Admin-only CRUD for the local
  *  player accounts that log into Run mode: create/delete, reset password, enable/disable,
- *  per-user playlist scoping, and a per-user Listen-mode override. Player users are
- *  always scoped to their assigned playlists — the shared Guest login above is the only
- *  full-library non-admin login.
+ *  per-user playlist scoping or whole-library access, the player/member kind, and a
+ *  per-user Listen-mode override.
  *
  *  `globalListenMode` is the section's live global setting, shown as the "inherit"
  *  option's current value so an admin can see what a user without an override gets. */

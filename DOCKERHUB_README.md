@@ -99,7 +99,7 @@ docker compose up -d && docker compose logs -f
 | `UI_PASSWORD` | _(empty)_ | Web UI password — **required** when UI is enabled |
 | `UI_USERNAME` | _(empty)_ | Optional admin username (for password managers); blank keeps password-only sign-in |
 | `UI_SESSION_HOURS` | `24` | Admin session length — signed out after this many idle hours (sliding) |
-| `RUN_PASSWORD` | _(empty)_ | Optional **shared Guest login** for locked-down player mode. For per-person accounts scoped to playlists, create **named player users** in Settings → Player access |
+| `RUN_PASSWORD` | _(empty)_ | **Deprecated.** The shared guest login to the player kiosk. Convert it to a named player (same password) in Settings → People & security, then remove the variable |
 | `RUN_SESSION_DAYS` | `30` | How long a player login stays signed in (days) |
 | `PLAYER_LISTEN_MODE` | `off` | What player logins get besides Run: `off` · `on` adds Listen · `default` lands on Listen · `only` pure jukebox. Named users can override |
 | `PICK_USE_RATINGS` | `true` | Weight Run / Listen shuffle & radio / similar / Subsonic picks by each account's 1–5 star ratings |
@@ -148,7 +148,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Related** — a panel on every artist/album/track page (similar artists and tracks from the keyless Deezer catalog) with 30-second previews and an artist catalog browser.
 
-**Player mode** — a locked-down view showing only Run (and optionally Listen), enforced server-side. Sign in with the shared **Guest login** (`RUN_PASSWORD`) or a **named player user** scoped to specific playlists or given the whole library. Ideal for a shared phone or a dedicated running device.
+**Player mode** — a locked-down view showing only Run (and optionally Listen), enforced server-side. Sign in as a **named player** scoped to specific playlists or given the whole library (the shared `RUN_PASSWORD` guest login is deprecated). Ideal for a shared phone or a dedicated running device.
 
 **Members** — named accounts that get the regular app without the admin tools: browse, play, rate and dislike with their own ratings, but no scanning, tag editing, review, duplicates, playlist editing or settings.
 

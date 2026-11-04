@@ -523,16 +523,16 @@ def api_settings_run_password():
     if data.get("disable"):
         # Persist an empty string (not a removal) so it overrides any RUN_PASSWORD
         # env fallback on the next start; drop the hash entirely.
-        current_app.config["RUN_PASSWORD"] = ""
-        current_app.config["RUN_PASSWORD_HASH"] = ""
-        current_app.config["RUN_PW_STAMP"] = None
-        st.config["run_password"] = ""
-        st.config["run_password_hash"] = ""
-        save_settings(st.settings_path, {"run_password": "", "run_password_hash": None})
+        _disable_guest(st)
         return jsonify(ok=True, enabled=False)
 
     new_pw = str(data.get("new_password", ""))
     confirm = str(data.get("confirm_password", ""))
+    # The shared Guest login is being phased out: an existing one can still be
+    # changed, disabled or converted, but a new one can't be switched on.
+    if not (current_app.config.get("RUN_PASSWORD_HASH") or current_app.config.get("RUN_PASSWORD")):
+        return jsonify(ok=False, error="The shared guest login is being retired. Add a named player "
+                                       "(Settings → People) instead; it can have the whole library."), 400
     if len(new_pw) < 8:
         return jsonify(ok=False, error="Run password must be at least 8 characters."), 400
     if new_pw != confirm:
@@ -549,6 +549,48 @@ def api_settings_run_password():
     st.config["run_password_hash"] = hashed
     save_settings(st.settings_path, {"run_password_hash": hashed, "run_password": ""})
     return jsonify(ok=True, enabled=True)
+
+
+def _disable_guest(st) -> None:
+    current_app.config["RUN_PASSWORD"] = ""
+    current_app.config["RUN_PASSWORD_HASH"] = ""
+    current_app.config["RUN_PW_STAMP"] = None
+    st.config["run_password"] = ""
+    st.config["run_password_hash"] = ""
+    save_settings(st.settings_path, {"run_password": "", "run_password_hash": None})
+
+
+@settings_bp.route("/api/settings/run-password/convert", methods=["POST"])
+@login_required
+def api_settings_run_password_convert():
+    """Admin-only: replace the shared Guest login with a named player.
+
+    Creates a player (default name ``guest``) with the whole library and the
+    guest's current password, so people sign in with that username and the same
+    password, then turns the Guest login off (its open sessions end)."""
+    _check_csrf()
+    if session.get("role") != "admin":
+        return jsonify(ok=False, error="Forbidden."), 403
+    st = state()
+    hashed = current_app.config.get("RUN_PASSWORD_HASH") or ""
+    plain = current_app.config.get("RUN_PASSWORD") or ""
+    if not (hashed or plain):
+        return jsonify(ok=False, error="The guest login is already off."), 400
+    if not hashed:
+        from werkzeug.security import generate_password_hash
+        hashed = generate_password_hash(plain)
+    data = _json_body()
+    username = str(data.get("username") or "guest").strip().lower()
+    from ..auth import is_admin_username
+    if not username or is_admin_username(username):
+        return jsonify(ok=False, error="Pick another username."), 400
+    import sqlite3
+    try:
+        pid = st.db.add_player(username, hashed, True, [], None, "player")
+    except sqlite3.IntegrityError:
+        return jsonify(ok=False, error="That username is already taken."), 409
+    _disable_guest(st)
+    return jsonify(ok=True, player_id=pid, username=username)
 
 
 @settings_bp.route("/api/settings/listen-mode", methods=["POST"])

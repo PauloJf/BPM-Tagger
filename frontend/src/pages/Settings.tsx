@@ -271,6 +271,8 @@ export default function Settings() {
   const [adminUserSaved, setAdminUserSaved] = useState<Saved>("");
   const [adminUserErr, setAdminUserErr] = useState("");
   const [runPw, setRunPw] = useState({ next: "", confirm: "" });
+  const [convertName, setConvertName] = useState("guest");
+  const [convertMsg, setConvertMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [runSessionDays, setRunSessionDays] = useState(30);
   const [listenModeCfg, setListenModeCfg] = useState("off");
   const [library, setLibrary] = useState({ publicUrl: "", pathTemplate: "" });
@@ -591,6 +593,19 @@ export default function Settings() {
       qc.invalidateQueries({ queryKey: ["settings"] });
     } catch (err) {
       setRunPwErr(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function convertGuest(e: React.FormEvent) {
+    e.preventDefault();
+    setConvertMsg(null);
+    try {
+      const r = await api.post<{ username: string }>("/api/settings/run-password/convert", { username: convertName });
+      setConvertMsg({ text: `Done: sign in as “${r.username}” with the old guest password.`, ok: true });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["players"] });
+    } catch (err) {
+      setConvertMsg({ text: err instanceof Error ? err.message : "Failed", ok: false });
     }
   }
 
@@ -996,62 +1011,64 @@ export default function Settings() {
             return (
               <div id="sec-run-access" className="settings-card card">
                 <div className="settings-card-header">
-                  <h2>Player access</h2>
+                  <h2>People &amp; player access</h2>
                   <p>
-                    Two ways to let someone into the locked-down mode that shows <strong>only the Run page</strong> —
-                    the tempo player, nothing else. The shared <strong>Guest login</strong> is one password with the
-                    whole library; <strong>Player users</strong> are named accounts scoped to specific playlists.
-                    Neither can reach your settings or downloads. Leave both off to keep the single admin login.
+                    Named accounts for everyone besides you: <strong>players</strong> get the locked-down Run/Listen
+                    kiosk, <strong>members</strong> get the app without the admin tools. Each has its own ratings and
+                    runs. Leave the list empty to keep the single admin login.
                   </p>
                 </div>
-                <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Guest login</h3>
-                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                  One shared password with full-library access — hand a phone or tablet to someone for a run without
-                  creating an account.
-                </p>
-                <div className="settings-fields">
-                  <div style={{ fontSize: 12, color: runEnabled ? "var(--ok-fg)" : "var(--muted)", fontFamily: "var(--mono)" }}>
-                    {runEnabled ? "● Guest login is enabled" : "○ Guest login is off"}
+                {runEnabled ? (
+                  <div style={{ border: "1px solid var(--warn-fg)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Shared guest login <span className="badge" style={{ fontSize: 10, padding: "1px 7px", color: "var(--warn-fg)" }}>retiring</span></h3>
+                    <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                      One password with no name, shared by everyone who uses it: their ratings and runs all land
+                      in one “guest” bucket. It will be removed in a future release. Convert it to a named player
+                      with the whole library: people then sign in with that username and the <strong>same
+                      password</strong>. (If it comes from <code>RUN_PASSWORD</code>, remove that variable afterwards.)
+                    </p>
+                    <form onSubmit={convertGuest} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <input type="text" value={convertName} onChange={(e) => setConvertName(e.target.value)}
+                        aria-label="Username for the converted guest" style={{ maxWidth: 200, fontSize: 13 }} />
+                      <button type="submit" className="btn btn-primary btn-sm">Convert to a named player</button>
+                      {convertMsg && <span role="status" style={{ fontSize: 12, color: convertMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{convertMsg.text}</span>}
+                    </form>
+                    <form onSubmit={setRunPassword} style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                      <div className="settings-fields">
+                        <div className="field-row">
+                          {fieldLabel("New guest password")}
+                          <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                        </div>
+                        <div className="field-row">
+                          {fieldLabel("Confirm password")}
+                          <input type="password" required autoComplete="new-password" value={runPw.confirm} onChange={(e) => setRunPw({ ...runPw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                        </div>
+                        {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <SaveButton state={runPwSaved} label="Change guest password" ghost />
+                          <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
+                            Turn the guest login off
+                          </button>
+                        </div>
+                      </div>
+                    </form>
                   </div>
-                </div>
-                <form onSubmit={setRunPassword} style={{ marginTop: 12 }}>
+                ) : null}
+                <form onSubmit={saveRunSession}>
                   <div className="settings-fields">
                     <div className="field-row">
-                      {fieldLabel(runEnabled ? "New guest password" : "Guest password")}
-                      <input type="password" required autoComplete="new-password" value={runPw.next} onChange={(e) => setRunPw({ ...runPw, next: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
+                      {fieldLabel("Players stay signed in for", "days — the run kiosk rarely re-asks (sliding; each use extends it)")}
+                      <input
+                        type="number" min={1} max={365} value={runSessionDays}
+                        onChange={(e) => setRunSessionDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                        style={{ maxWidth: 120, width: "100%" }}
+                      />
                     </div>
-                    <div className="field-row">
-                      {fieldLabel("Confirm password")}
-                      <input type="password" required autoComplete="new-password" value={runPw.confirm} onChange={(e) => setRunPw({ ...runPw, confirm: e.target.value })} style={{ maxWidth: 340, width: "100%" }} />
-                    </div>
-                    {runPwErr && <div style={{ color: "var(--err-fg)", fontSize: 12 }}>{runPwErr}</div>}
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <SaveButton state={runPwSaved} label={runEnabled ? "Change guest password" : "Enable guest login"} />
-                      {runEnabled && (
-                        <button type="button" className="btn btn-sm btn-ghost" onClick={disableRunPassword}>
-                          Disable
-                        </button>
-                      )}
+                    <div>
+                      <SaveButton state={runSessSaved} label="Save session length" ghost />
                     </div>
                   </div>
                 </form>
-                {runEnabled && (
-                  <form onSubmit={saveRunSession} style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                    <div className="settings-fields">
-                      <div className="field-row">
-                        {fieldLabel("Stay signed in for", "days — the run kiosk rarely re-asks (sliding; each use extends it)")}
-                        <input
-                          type="number" min={1} max={365} value={runSessionDays}
-                          onChange={(e) => setRunSessionDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
-                          style={{ maxWidth: 120, width: "100%" }}
-                        />
-                      </div>
-                      <div>
-                        <SaveButton state={runSessSaved} label="Save session length" ghost />
-                      </div>
-                    </div>
-                  </form>
-                )}
                 {/* Kiosk Listen mode: what player-role logins get besides Run.
                     This is the default for the Guest login and every Player user;
                     a Player user can override it on its own row below. The backend
