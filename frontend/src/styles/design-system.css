@@ -671,6 +671,16 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
   transition: color 0.15s, background 0.15s; display: block; cursor: pointer;
 }
 .settings-sidebar a:hover { color: var(--text); background: var(--surface); }
+/* Settings tabs: a group button, with its sections listed under it while open. */
+.settings-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-group-btn {
+  text-align: left; padding: 8px 12px; border-radius: 8px; border: none; background: none;
+  font: inherit; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.settings-group-btn:hover { color: var(--text); background: var(--surface); }
+.settings-group-btn.active { color: var(--text); background: var(--surface); box-shadow: inset 2px 0 0 var(--accent); }
+.settings-sidebar a.settings-sub { padding: 5px 12px 5px 24px; font-size: 12px; }
 .settings-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; padding: 20px 22px; margin-bottom: 18px;
@@ -705,6 +715,13 @@ select:focus, textarea:focus { border-color: var(--accent-border); }
     border: 1px solid var(--border); font-size: 12px; background: var(--chip-bg);
   }
   .settings-sidebar a:hover { background: var(--surface); color: var(--text); }
+  /* On a phone the strip shows the tabs only; the section links would crowd it. */
+  .settings-sidebar a.settings-sub { display: none; }
+  .settings-group-btn {
+    flex-shrink: 0; white-space: nowrap; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); font-size: 12px; background: var(--chip-bg);
+  }
+  .settings-group-btn.active { box-shadow: none; border-color: var(--accent); }
   .field-row { grid-template-columns: 1fr !important; gap: 8px !important; }
   .segmented { flex-wrap: wrap; width: 100%; }
   .segmented-btn { flex: 1; text-align: center; }
