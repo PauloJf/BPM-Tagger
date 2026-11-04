@@ -52,7 +52,7 @@ def api_settings_get():
     cfg = dict(st.config)
     # Players get only the run-relevant keys — never the full config (which
     # carries Navidrome hosts, paths, and masked secrets).
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         keys = _player_settings_keys(cfg)
         out = {k: (sorted(cfg[k]) if isinstance(cfg[k], (set, frozenset)) else cfg[k])
                for k in keys if k in cfg}
@@ -285,7 +285,7 @@ def api_settings_ratings():
     Moderate defaults on anything malformed, so this endpoint never 400s on a
     bad number — it just normalizes."""
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     data = _json_body()
@@ -312,7 +312,7 @@ def api_settings_pick_preview():
     card query) plus a "new" count so the new-songs multiplier's effect shows
     too — "new" is unrated + unplayed by that account, matching D9, and is
     carved out of "unrated" so the two don't double count."""
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     args = request.args
@@ -431,7 +431,7 @@ def api_sync_ratings():
     the same full-library search3 walk as the play-count pull; runs inline on
     this worker."""
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     from ...integrations.rating_sync import sync_ratings
@@ -463,7 +463,7 @@ def api_settings_sync_interval():
     0 disables the background scheduler; otherwise clamped to 5–1440. Takes effect on
     the next restart (the scheduler is started once, in the watch-mode entry point)."""
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     try:
@@ -515,7 +515,7 @@ def api_settings_run_password():
     ``{disable: true}`` to turn player access off. Changing it invalidates any
     existing player sessions; admin sessions are untouched."""
     _check_csrf()
-    if session.get("role") == "player":  # players can't reach settings anyway
+    if session.get("role") != "admin":  # players can't reach settings anyway
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     data = _json_body()
@@ -562,7 +562,7 @@ def api_settings_listen_mode():
     this governs player-role sessions only. Takes effect on the kiosk's next
     /api/me refresh (usually its next page load), no restart needed."""
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     mode = str(_json_body().get("player_listen_mode", "") or "").strip().lower()
@@ -578,7 +578,7 @@ def api_settings_listen_mode():
 def api_settings_run_session():
     """Admin-only: how many days a player login stays signed in (1–365)."""
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Forbidden."), 403
     st = state()
     try:
@@ -602,7 +602,7 @@ def api_settings_username():
     so setting one can't lock anybody out.
     """
     _check_csrf()
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Admins only."), 403
     st = state()
     name = str(_json_body().get("ui_username", "") or "").strip()
@@ -663,7 +663,7 @@ def api_settings_password():
 
 def _require_admin():
     """403 for a player session; None for admin. 2FA is an admin-only control."""
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(ok=False, error="Admins only."), 403
     return None
 

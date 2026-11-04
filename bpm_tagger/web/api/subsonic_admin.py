@@ -22,7 +22,7 @@ subsonic_admin_bp = Blueprint("api_subsonic_admin", __name__)
 
 
 def _forbidden():
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(error="forbidden"), 403
     return None
 

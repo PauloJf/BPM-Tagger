@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "../lib/auth";
 import { api, apiUpload } from "../lib/api";
 import type { Track } from "../lib/types";
 import { basename } from "../lib/paths";
@@ -23,6 +24,7 @@ export default function Artist() {
   const [params] = useSearchParams();
   const name = params.get("name") || "";
   useTitle(name || "Artist");
+  const isAdmin = useAuth().role === "admin";
   const player = usePlayer();
   const [showArt, toggleArt] = useArtwork();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -104,12 +106,14 @@ export default function Artist() {
             </svg>
             {dzQ.isFetching ? "Opening…" : dzNotFound ? "Not on Deezer" : "Browse Deezer"}
           </button>
+{isAdmin && (
           <button className="btn btn-ghost btn-sm" disabled={!name} onClick={() => setPickerOpen(true)} title="Change artist image">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
               <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </svg>
             Image
           </button>
+          )}
           <QueueActions tracks={tracks.map(toPT)} label=" all" disabledTitle="No tracks for this artist" />
         </div>
       </div>

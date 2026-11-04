@@ -108,6 +108,30 @@ _PLAYER_ALLOWED = {
 }
 
 
+# Member accounts (regular UI, no admin tools) reach everything a player can, plus
+# read-only browsing of the library and playlists, the Related panel's catalogue
+# lookups, lyrics, run readiness, the activity feed and Music Grabber requests.
+# Also DEFAULT-DENY: scanning, tagging, review, duplicates, trash, playlist editing,
+# settings writes and account admin stay admin-only.
+_MEMBER_ALLOWED = _PLAYER_ALLOWED | {
+    "api_tracks.api_tracks", "api_tracks.api_artists", "api_tracks.api_artist",
+    "api_tracks.api_artist_image", "api_tracks.api_albums", "api_tracks.api_album",
+    "api_lyrics.api_track_lyrics_get",
+    "api_playlists.list_playlists", "api_playlists.playlist_tracks",
+    "api_playlists.playlist_stats", "api_playlists.get_playlist_cover",
+    "api_playlists.export_m3u",
+    "api_related.related_artists", "api_related.related_tracks",
+    "api_related.related_description", "api_related.deezer_artist",
+    "api_related.deezer_album", "api_related.deezer_resolve",
+    "api_related.deezer_search_artists",
+    "api_run.api_run_readiness", "api_run.api_run_ready",
+    "api_stats.api_most_played",
+    "api_activity.api_activity", "media.api_progress", "media.api_changelog",
+    "api_grabber.grabber_status", "api_grabber.grabber_request",
+    "api_grabber.grabber_requests",
+}
+
+
 class _RoleSessionInterface(SecureCookieSessionInterface):
     """Give the player ("Run-only") role a longer cookie lifetime than the admin.
 
@@ -294,10 +318,12 @@ def create_app(config: dict) -> Flask:
         # Confine run-only sessions to the Run page's endpoints. SPA/static
         # routes still load (so the client router can redirect to /run); any
         # other API endpoint is refused. Admin sessions are unaffected.
-        if session.get("role") != "player":
+        role = session.get("role")
+        if role not in ("player", "member"):
             return
         ep = request.endpoint
-        if ep in _PLAYER_ALWAYS or ep in _PLAYER_ALLOWED:
+        allowed = _MEMBER_ALLOWED if role == "member" else _PLAYER_ALLOWED
+        if ep in _PLAYER_ALWAYS or ep in allowed:
             return
         return jsonify(error="forbidden"), 403
 

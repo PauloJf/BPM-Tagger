@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import type { Playlist } from "../lib/types";
 
 /** Per-track outcome counts, shared by both bulk modes. */
@@ -27,7 +28,14 @@ type Counts = { added: number; already_present: number; skipped_missing: number 
  *  The popover is portaled to <body> and fixed-positioned from the trigger's rect
  *  so it never clips inside a table row or a `<Link>`, and it clamps to the
  *  viewport so it stays on-screen on narrow phones. */
-export default function AddToPlaylistMenu({
+/** Playlist editing is admin-only (the server refuses it for every other role),
+ *  so the menu only renders for the admin. */
+export default function AddToPlaylistMenu(props: Parameters<typeof AddToPlaylistMenuInner>[0]) {
+  const { role } = useAuth();
+  return role === "admin" ? <AddToPlaylistMenuInner {...props} /> : null;
+}
+
+function AddToPlaylistMenuInner({
   path, paths, importFrom, heading = "Add to playlist", label,
   className, style, title = "Add to playlist", iconSize = 12,
 }: {

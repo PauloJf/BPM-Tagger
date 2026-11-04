@@ -182,20 +182,72 @@ def test_pooled_source_runs_union_of_players_playlists(client, app, base_config)
     assert names == {"a.mp3", "b.mp3"}      # both assigned playlists, never out.mp3
 
 
-def test_named_player_is_always_scoped_even_if_full_access_requested(client, app, base_config):
-    """`full_access` is no longer honored for named users — a full-library non-admin
-    login is the shared Guest login only, so requesting it on a player is ignored."""
+def test_named_player_with_full_access_sees_the_whole_library(client, app, base_config):
+    """An admin can give a named player the whole library (it used to be the shared Guest only)."""
     c, csrf = _admin(app)
-    _a = _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
-    _b = _seed_playlist(base_config["db_path"], base_config["music_dir"], "b")
-    # Even asking for full_access: True yields a scoped user with no playlists.
+    a = _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
     c.post("/api/players", json={"username": "full", "password": "fullpass1",
                                  "full_access": True}, headers=csrf)
     pc, _ = _login(app, username="full", password="fullpass1")
+    assert pc.get("/api/me").get_json()["full_access"] is True
+    assert {p["id"] for p in pc.get("/api/run/playlists").get_json()["playlists"]} == {a}
+    assert pc.get("/api/run/queue?bpm=150").status_code == 200
+
+
+def test_full_access_can_be_toggled_and_defaults_off(client, app, base_config):
+    c, csrf = _admin(app)
+    _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
+    pid = c.post("/api/players", json={"username": "scoped", "password": "scopedpw1"},
+                 headers=csrf).get_json()["player"]["id"]
+    pc, _ = _login(app, username="scoped", password="scopedpw1")
     assert pc.get("/api/me").get_json()["full_access"] is False
-    # No playlists assigned → sees none, and the whole-library pool is forbidden.
-    assert pc.get("/api/run/playlists").get_json()["playlists"] == []
     assert pc.get("/api/run/queue?bpm=150").status_code == 403
+    c.patch(f"/api/players/{pid}", json={"full_access": True}, headers=csrf)
+    assert pc.get("/api/run/queue?bpm=150").status_code == 200
+
+
+def test_member_role_browses_but_cannot_administer(client, app, base_config):
+    c, csrf = _admin(app)
+    _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
+    r = c.post("/api/players", json={"username": "ana", "password": "anapass12", "role": "member"},
+               headers=csrf)
+    assert r.get_json()["player"]["role"] == "member"
+    mc, lr = _login(app, username="ana", password="anapass12")
+    assert lr.get_json()["role"] == "member"
+    me = mc.get("/api/me").get_json()
+    assert me["role"] == "member" and me["username"] == "ana" and me["full_access"] is True
+    for path in ("/api/tracks", "/api/artists", "/api/albums", "/api/playlists",
+                 "/api/run/queue?bpm=150", "/api/settings"):
+        assert mc.get(path).status_code == 200, path
+    # Settings come back filtered (no Navidrome host, no secrets), like a player's.
+    assert "navidrome_url" not in mc.get("/api/settings").get_json()["settings"]
+    mtok = mc.get("/api/me").get_json()["csrf_token"]
+    for method, path in (("get", "/api/players"), ("get", "/api/review"), ("get", "/api/duplicates"),
+                         ("get", "/api/stats"), ("post", "/api/scan/start"),
+                         ("post", "/api/playlists"), ("post", "/api/settings/scan")):
+        resp = getattr(mc, method)(path, json={}, headers={"X-CSRF-Token": mtok})
+        assert resp.status_code == 403, path
+
+
+def test_member_ratings_are_their_own(client, app, base_config):
+    from bpm_tagger.web.auth import session_owner  # noqa: F401  (owner key is player:<id>)
+    c, csrf = _admin(app)
+    pid = c.post("/api/players", json={"username": "ana", "password": "anapass12", "role": "member"},
+                 headers=csrf).get_json()["player"]["id"]
+    mc, _ = _login(app, username="ana", password="anapass12")
+    with mc.session_transaction() as s:
+        assert s["role"] == "member" and s["player_id"] == pid
+
+
+def test_changing_role_logs_the_account_out(client, app):
+    c, csrf = _admin(app)
+    pid = c.post("/api/players", json={"username": "ana", "password": "anapass12"},
+                 headers=csrf).get_json()["player"]["id"]
+    pc, _ = _login(app, username="ana", password="anapass12")
+    assert pc.get("/api/run/playlists").status_code == 200
+    c.patch(f"/api/players/{pid}", json={"role": "member"}, headers=csrf)
+    assert pc.get("/api/run/playlists").status_code == 401
+    assert c.patch(f"/api/players/{pid}", json={"role": "boss"}, headers=csrf).status_code == 400
 
 
 def test_guest_is_full_access(app_with_guest, base_config):

@@ -193,6 +193,9 @@ class _DBBase:
             conn.execute("ALTER TABLE players ADD COLUMN accent_hue INTEGER")
         if "listen_mode" not in _player_cols:
             conn.execute("ALTER TABLE players ADD COLUMN listen_mode TEXT")
+        if "role" not in _player_cols:
+            # 'player' = the Run/Listen kiosk; 'member' = browse, play, rate and request
+            conn.execute("ALTER TABLE players ADD COLUMN role TEXT NOT NULL DEFAULT 'player'")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS player_playlists (
                 player_id   INTEGER NOT NULL,

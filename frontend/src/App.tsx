@@ -141,6 +141,10 @@ export default function App() {
   // Authenticated: /login redirects into the app.
   if (location.pathname === "/login") return <Navigate to="/tracks" replace />;
 
+  // Members get the regular shell without the admin pages (the server refuses
+  // their endpoints regardless); those paths fall through to the library.
+  const isAdmin = role === "admin";
+
   return (
     <Layout>
       <BootRestore />
@@ -150,8 +154,8 @@ export default function App() {
         <Route path="/" element={<Navigate to={lastPage() ?? "/tracks"} replace />} />
         <Route path="/tracks" element={<Tracks />} />
         <Route path="/track" element={<TrackDetail />} />
-        <Route path="/compare" element={<TrackCompare />} />
-        <Route path="/duplicates" element={<Duplicates />} />
+        {isAdmin && <Route path="/compare" element={<TrackCompare />} />}
+        {isAdmin && <Route path="/duplicates" element={<Duplicates />} />}
         <Route path="/artists" element={<Artists />} />
         <Route path="/artist" element={<Artist />} />
         <Route path="/albums" element={<Albums />} />
@@ -160,16 +164,16 @@ export default function App() {
         <Route path="/playlist" element={<PlaylistDetail />} />
         {/* Playlist operations are admin-side (the API is outside the
             default-deny player allowlist), so this lives here only. */}
-        <Route path="/playlist-diff" element={<PlaylistDiff />} />
-        <Route path="/review" element={<Review />} />
+        {isAdmin && <Route path="/playlist-diff" element={<PlaylistDiff />} />}
+        {isAdmin && <Route path="/review" element={<Review />} />}
         <Route path="/run" element={<Run />} />
         <Route path="/listen" element={<Listen />} />
         {/* Cadence is admin-side only: it lives outside the player Routes block
             above (which bounces everything to /run), matching the default-deny
             allowlist that blocks its endpoints server-side. */}
         <Route path="/cadence" element={<Cadence />} />
-        <Route path="/stats" element={<Stats />} />
-        <Route path="/settings" element={<Settings />} />
+        {isAdmin && <Route path="/stats" element={<Stats />} />}
+        {isAdmin && <Route path="/settings" element={<Settings />} />}
         <Route path="/about" element={<About />} />
         <Route path="*" element={<Navigate to="/tracks" replace />} />
       </Routes>

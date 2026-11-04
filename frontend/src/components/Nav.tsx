@@ -78,32 +78,50 @@ function ThemeToggle({ mobile }: { mobile?: boolean }) {
 interface NavItem { to: string; label: string; match: string[]; icon: () => JSX.Element; badge?: "review" }
 interface NavSection { label: string; items: NavItem[] }
 
-/** Grouped navigation: library, tagging and app chrome each get a section. */
-function buildSections(): NavSection[] {
-  const library: NavItem[] = [
-    { to: "/tracks", label: "Library", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
-    { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
-    { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
-    { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist"] },
-  ];
+const IconCadence = () => (
+  <svg {...ic}><path d="M3 12h3l3-7 4 14 3-7h5" /></svg>
+);
 
+/** Grouped navigation, in the app's pillar order: playing (Run, Listen), the
+ *  library (browse, playlists, cadences), the tagging engine, then app chrome.
+ *  A member account gets the first two plus About — no tagging or system pages. */
+export function buildSections(role: string | null = "admin"): NavSection[] {
+  const admin = role === "admin";
   const sections: NavSection[] = [
-    { label: "Library", items: library },
     {
+      label: "Play",
+      items: [
+        { to: "/run", label: "Run", icon: IconRun, match: ["/run"] },
+        { to: "/listen", label: "Listen", icon: IconListen, match: ["/listen"] },
+      ],
+    },
+    {
+      label: "Library",
+      items: [
+        { to: "/tracks", label: "Browse", icon: IconLibrary, match: ["/tracks", "/artists", "/albums", "/artist", "/album", "/track"] },
+        { to: "/playlists", label: "Playlists", icon: IconPlaylists, match: ["/playlists", "/playlist", "/playlist-diff"] },
+        { to: "/cadence", label: "Cadences", icon: IconCadence, match: ["/cadence"] },
+      ],
+    },
+  ];
+  if (admin) {
+    sections.push({
       label: "Tagging",
       items: [
         { to: "/review", label: "BPM Review", icon: IconReview, match: ["/review"], badge: "review" },
         { to: "/duplicates", label: "Duplicates", icon: IconDuplicates, match: ["/duplicates", "/compare"] },
       ],
-    },
-  ];
+    });
+  }
   sections.push({
     label: "System",
-    items: [
-      { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
-      { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
-      { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
-    ],
+    items: admin
+      ? [
+          { to: "/stats", label: "Stats", icon: IconStats, match: ["/stats"] },
+          { to: "/settings", label: "Settings", icon: IconSettings, match: ["/settings"] },
+          { to: "/about", label: "About", icon: IconAbout, match: ["/about"] },
+        ]
+      : [{ to: "/about", label: "About", icon: IconAbout, match: ["/about"] }],
   });
   return sections;
 }
@@ -351,7 +369,8 @@ export function PlayerMobileBar() {
 const COLLAPSE_KEY = "bpmtagger.sidebarCollapsed";
 
 export default function Nav() {
-  const { reviewCount, logout } = useAuth();
+  const { reviewCount, logout, role } = useAuth();
+  const isAdmin = role === "admin";
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
   const location = useLocation();
@@ -362,7 +381,7 @@ export default function Nav() {
   // Idle scan but background work running: the dot still says so.
   const dotColor = !dot.pulsing && activity.length > 0 ? "var(--accent)" : dot.color;
 
-  const sections = buildSections();
+  const sections = buildSections(role);
   const badgeCount = (item: NavItem) => (item.badge === "review" ? reviewCount : 0);
 
   // The collapsed state lives on <body> so .app-main and .player-bar (outside
@@ -427,7 +446,7 @@ export default function Nav() {
           )}
         </button>
         <div className="sidebar-footer">
-          <SidebarScan state={state} act={act} progress={progress} />
+          {isAdmin && <SidebarScan state={state} act={act} progress={progress} />}
           <ActivityList items={activity} />
           <a
             href="https://ko-fi.com/paulojf"
@@ -507,9 +526,11 @@ export default function Nav() {
             </div>
           ))}
           <div className="nav-mobile-sep" />
-          <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <ScanControls state={state} act={act} mobile />
-          </div>
+          {isAdmin && (
+            <div style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <ScanControls state={state} act={act} mobile />
+            </div>
+          )}
           <div style={{ padding: "0 10px 6px" }}><ActivityList items={activity} /></div>
           <div className="nav-mobile-sep" />
           <ThemeToggle mobile />

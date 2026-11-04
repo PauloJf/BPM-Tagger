@@ -145,7 +145,9 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **Related** — a panel on every artist/album/track page (similar artists and tracks from the keyless Deezer catalog) with 30-second previews and an artist catalog browser.
 
-**Player mode** — a locked-down view showing only Run (and optionally Listen), enforced server-side. Sign in with the shared **Guest login** (`RUN_PASSWORD`) or a **named player user** scoped to specific playlists. Ideal for a shared phone or a dedicated running device.
+**Player mode** — a locked-down view showing only Run (and optionally Listen), enforced server-side. Sign in with the shared **Guest login** (`RUN_PASSWORD`) or a **named player user** scoped to specific playlists or given the whole library. Ideal for a shared phone or a dedicated running device.
+
+**Members** — named accounts that get the regular app without the admin tools: browse, play, rate and dislike with their own ratings, but no scanning, tag editing, review, duplicates, playlist editing or settings.
 
 **PWA & offline** — installable to your home screen, or as a desktop app from Chrome/Edge (needs HTTPS), with lock-screen and media-key controls. The player preloads the next few queue tracks into a capped per-device cache, and per-preset **Prepare offline** chips download whole cadence queues in advance — so a run survives network dead zones.
 
