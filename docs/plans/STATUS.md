@@ -2,8 +2,7 @@
 
 One page tracking every plan in `docs/plans/`: what shipped, what's open, and loose
 follow-ups that never got their own plan doc. **Update this file whenever a plan phase
-ships or a new plan lands.** Last updated: 2026-10-23 (grabber detach: steps 1–3 and 5 built on
-branches, release gated on the separate project reaching 1.0.0).
+ships or a new plan lands.** Last updated: 2026-11-04 (Music Grabber link, members, sidebar and Settings regrouping).
 
 ## Overview
 
@@ -18,7 +17,9 @@ branches, release gated on the separate project reaching 1.0.0).
 | Core decoupling (waveform toggle, import isolation, core requirements) | [core-decoupling.md](core-decoupling.md) | ✅ Done (Unreleased) |
 | Optional Subsonic / OpenSubsonic API | [subsonic-api.md](subsonic-api.md) | ✅ Phases 1–3 done (Unreleased); genres open |
 | 1–5 star ratings + rating-weighted picking | [ratings-weighted-picking.md](ratings-weighted-picking.md) | ✅ Built (Unreleased, `feat/ratings`) |
-| Detach the music grabber | [grabber-detach.md](grabber-detach.md) | 🔶 Built on branches (not released); schema step + release open |
+| Detach the music grabber | [grabber-detach.md](grabber-detach.md) | ✅ Released in v2.19.0 |
+| Music Grabber link (request missing tracks) | Music Grabber's `docs/plans/integration-and-suggestions.md`, step 4 | ✅ Built (Unreleased) |
+| Members + whole-library players | — | ✅ Built (Unreleased) |
 
 ---
 
@@ -160,9 +161,11 @@ separate project; this repo drops it.
 - ✅ **Step 4 — schema** (`refactor/legacy-tables`): `grab_*` / `oauth_tokens` / `suggestions`
   are no longer created for new DBs and are never dropped from existing ones; the dead DB
   mixins are deleted and playlists no longer derive a `queued` status.
-- 🔶 **Release:** `v2.19.0-beta.1`–`3` published; the 2.19.0 release PR is prepared and unmerged. Beta first; the final `VERSION` bump waits for the separate project to be
-  stable (≥ 1.0.0, import tool verified on a real migrated DB, intake verified end to end),
-  because that bump publishes `:latest`.
+- ✅ **Release:** v2.19.0 (2026-10-25).
+- ✅ **Follow-up — request button:** `integrations/music_grabber.py` + `web/api/grabber.py`. Missing
+  playlist rows and Related tracks can be requested from a connected Music Grabber (`/api/v1`, key
+  with the `request` scope); states are polled in one batch call, and a finished file is linked to
+  its playlist row. Server to server only; the key is masked and never sent to a browser.
 
 ---
 

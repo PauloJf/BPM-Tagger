@@ -346,6 +346,17 @@ No BPM Tagger feature at all — just a consequence of the tags it writes. Navid
 
 Save it as e.g. `cadence-170-180.nsp`, let Navidrome rescan, done. The second range mimics Run mode's octave folding — an 85 BPM track steps at 170 with a foot on every beat; drop that block if you only want true-tempo matches. (Unlike Run mode, a smart playlist can't tempo-lock: tracks play at native speed.)
 
+### Music Grabber link (optional)
+
+Connect a [Music Grabber](https://hub.docker.com/r/gatoserio/music-grabber) to ask it for the tracks a playlist is missing, or for a track in the Related panel. A **Request** button then appears on a playlist's missing rows (plus **Request N missing** at the top) and on Related tracks that aren't in your library, followed by the request's state (*requested*, *downloading*, *needs a choice*, which links to Music Grabber's Inbox, *downloaded*, *failed* with a Retry). The track arrives through the music folder like any new file; once it's in the library, the playlist row turns *have*. The admin and members can request (Settings → Music Grabber can limit it to the admin); players can't. BPM Tagger's server makes every call, so the key never reaches a browser.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MUSIC_GRABBER_URL` | _(empty)_ | How this server reaches Music Grabber, e.g. `http://music-grabber:8099`. Also in **Settings → Music Grabber** |
+| `MUSIC_GRABBER_API_KEY` | _(empty)_ | A Music Grabber API key with the `request` scope (create it in Music Grabber: Account → API keys). Masked in Settings |
+| `MUSIC_GRABBER_PUBLIC_URL` | _(empty)_ | The address people open (links to its Inbox); defaults to `MUSIC_GRABBER_URL` |
+| `MUSIC_GRABBER_MEMBERS_REQUEST` | `true` | Let member accounts request tracks too (off: the admin only) |
+
 ### Subsonic API (optional)
 
 | Variable | Default | Description |
