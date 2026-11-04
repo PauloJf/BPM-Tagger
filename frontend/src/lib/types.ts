@@ -173,7 +173,7 @@ export interface ReviewPage {
   per_page: number;
 }
 
-export type Role = "admin" | "player";
+export type Role = "admin" | "member" | "player";
 
 export interface Me {
   authenticated: boolean;
@@ -246,6 +246,8 @@ export interface PlayerUser {
   // setting. /api/me already reports the resolved (effective) mode, so nothing
   // but this admin editor needs to know the difference.
   listen_mode: ListenMode | null;
+  // 'player' = the Run/Listen kiosk; 'member' = the regular UI without admin tools.
+  role: "player" | "member";
 }
 
 export interface Waveform {

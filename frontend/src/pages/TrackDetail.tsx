@@ -26,6 +26,7 @@ export default function TrackDetail() {
   const path = params.get("path") || "";
   const qc = useQueryClient();
   const { isGuest, role } = useAuth();
+  const isAdmin = role === "admin";
 
   const detailQ = useQuery({
     queryKey: ["track", path],
@@ -464,9 +465,11 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
         {showArt && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
             <Cover path={track.file_path} size={88} v={coverV} />
+            {isAdmin && (
             <button className="btn btn-bare btn-sm" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => setCoverPickerOpen(true)}>
               Edit cover
             </button>
+            )}
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -523,12 +526,14 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
               />
             </>
           )}
+          {isAdmin && (
           <AddToPlaylistMenu
             path={track.file_path}
             className="btn btn-bare btn-sm"
             style={{ padding: "2px 6px", color: "var(--muted)" }}
             iconSize={14}
           />
+          )}
           <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>
             {track.analyzed_at ? track.analyzed_at.slice(0, 16).replace("T", " ") + " UTC" : ""}
           </span>
@@ -656,6 +661,7 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
           </div>
 
           {/* Override */}
+          {isAdmin && (
           <div className="card">
             <div className="section-label">
               <span>Override</span>
@@ -737,8 +743,10 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
             </div>
             {deleteMsg && <div style={{ fontSize: 12, color: deleteMsg.ok ? "var(--ok-fg)" : "var(--err-fg)", marginTop: 8 }}>{deleteMsg.text}</div>}
           </div>
+          )}
 
           {/* Metadata editor */}
+          {isAdmin && (
           <div className="card">
             <div className="section-label"><span>Metadata</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -835,6 +843,7 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
               <button className="btn btn-primary btn-md" onClick={saveMeta}>Save metadata</button>
             </div>
           </div>
+          )}
 
           {/* Lyrics */}
           <div className="card">
@@ -876,6 +885,7 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
                     {lyricsQ.isLoading ? "Loading…" : "No lyrics on this track yet. Fetch them from LRCLIB (free, community-run) or add them manually."}
                   </p>
                 )}
+                {isAdmin && (
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button className="btn btn-ghost btn-sm" disabled={lyricsBusy} onClick={fetchLyrics}>
                     {lyricsBusy ? "Fetching…" : "Fetch from LRCLIB"}
@@ -893,12 +903,14 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
                   <div style={{ flex: 1 }} />
                   {lyricsMsg && <span style={{ fontSize: 12, color: lyricsMsg.ok ? "var(--ok-fg)" : "var(--err-fg)" }}>{lyricsMsg.text}</span>}
                 </div>
+                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Right column: tap tempo */}
+        {/* Right column: tap tempo (admin: it writes the BPM) */}
+        {isAdmin && (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="card" style={{ position: "sticky", top: 16 }}>
             <div className="section-label">
@@ -938,6 +950,7 @@ The file leaves your library (Navidrome drops it on its next rescan) but is kept
             <div style={{ marginTop: 12, fontSize: 10, color: "var(--muted)", textAlign: "center", lineHeight: 1.5 }}>Resets after 3s of silence</div>
           </div>
         </div>
+        )}
       </div>
 
       {track.artist && <RelatedPanel artist={track.artist} context="track" />}

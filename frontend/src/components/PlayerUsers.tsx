@@ -38,14 +38,16 @@ export default function PlayerUsers({ globalListenMode = "off" }: { globalListen
   const [nu, setNu] = useState("");
   const [np, setNp] = useState("");
   const [nIds, setNIds] = useState<number[]>([]);
+  const [nRole, setNRole] = useState<"player" | "member">("player");
+  const [nFull, setNFull] = useState(false);
   const [createErr, setCreateErr] = useState("");
 
   const createMut = useMutation({
     mutationFn: () => api.post("/api/players", {
-      username: nu, password: np, playlist_ids: nIds,
+      username: nu, password: np, playlist_ids: nIds, role: nRole, full_access: nFull,
     }),
     onSuccess: () => {
-      setNu(""); setNp(""); setNIds([]); setCreateErr("");
+      setNu(""); setNp(""); setNIds([]); setNRole("player"); setNFull(false); setCreateErr("");
       invalidate();
     },
     onError: (e) => setCreateErr(e instanceof ApiError ? e.message : "Failed to create user"),
@@ -57,11 +59,13 @@ export default function PlayerUsers({ globalListenMode = "off" }: { globalListen
 
   return (
     <div style={{ marginTop: 18, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-      <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>Player users</h3>
+      <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>People</h3>
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.5 }}>
-        Named accounts that sign in with a username + password and can only run the playlists
-        you check for them — never the whole library. (For a full-library login, use the shared
-        Guest login above.)
+        Named accounts, each with its own ratings, stars, plays and runs.{" "}
+        <b>Player</b>: the Run/Listen kiosk, limited to the playlists you check unless you give it
+        the whole library. <b>Member</b>: the regular app without admin tools: browse the library and
+        playlists, play, rate, and request missing songs from Music Grabber (when connected), but no
+        scanning, tag editing, review, duplicates or settings.
       </p>
 
       {/* existing users */}
@@ -78,7 +82,7 @@ export default function PlayerUsers({ globalListenMode = "off" }: { globalListen
         onSubmit={(e) => { e.preventDefault(); createMut.mutate(); }}
         style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, background: "var(--surface)" }}
       >
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Add a player user</div>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Add a person</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input
             type="text" value={nu} onChange={(e) => setNu(e.target.value)} placeholder="username"
@@ -91,7 +95,19 @@ export default function PlayerUsers({ globalListenMode = "off" }: { globalListen
             style={{ flex: "1 1 160px", minWidth: 140, fontSize: 13 }}
           />
         </div>
-        <PlaylistChecks playlists={playlists} selected={nIds} onToggle={(id) => setNIds((s) => toggleId(s, id))} />
+        <div className="field-row" style={{ marginBottom: 10 }}>
+          <span style={{ fontSize: 13 }}>Kind</span>
+          <RolePicker value={nRole} onChange={setNRole} label="New user kind" />
+        </div>
+        {nRole === "player" && (
+          <>
+            <div className="field-row" style={{ marginBottom: 10 }}>
+              <span style={{ fontSize: 13 }}>Whole library</span>
+              <Toggle on={nFull} onChange={setNFull} label="Whole library" />
+            </div>
+            {!nFull && <PlaylistChecks playlists={playlists} selected={nIds} onToggle={(id) => setNIds((s) => toggleId(s, id))} />}
+          </>
+        )}
         {createErr && <div style={{ color: "var(--err-fg)", fontSize: 12, marginTop: 8 }}>{createErr}</div>}
         <div style={{ marginTop: 12 }}>
           <button type="submit" className="btn btn-sm btn-primary" disabled={createMut.isPending}>
@@ -132,7 +148,9 @@ function UserRow({ user, playlists, globalListenMode, onChanged }: {
           className="badge"
           style={{ fontSize: 10, padding: "1px 7px", background: "var(--bg)", color: "var(--muted)" }}
         >
-          {`${user.playlist_ids.length} playlist${user.playlist_ids.length === 1 ? "" : "s"}`}
+          {user.role === "member" ? "member"
+            : user.full_access ? "player · whole library"
+            : `player · ${user.playlist_ids.length} playlist${user.playlist_ids.length === 1 ? "" : "s"}`}
         </span>
         {user.listen_mode && (
           <span
@@ -149,7 +167,7 @@ function UserRow({ user, playlists, globalListenMode, onChanged }: {
           </button>
           <button
             className="btn btn-bare btn-sm" style={{ fontSize: 12, color: "var(--err-fg)" }}
-            onClick={() => { if (confirm(`Delete player user "${user.username}"?`)) delMut.mutate(); }}
+            onClick={() => { if (confirm(`Delete user "${user.username}"?`)) delMut.mutate(); }}
           >Delete</button>
         </span>
       </div>
@@ -160,7 +178,17 @@ function UserRow({ user, playlists, globalListenMode, onChanged }: {
             <span style={{ fontSize: 13 }}>Enabled</span>
             <Toggle on={user.enabled} onChange={(v) => patch.mutate({ enabled: v })} label="Enabled" />
           </div>
-          <PlaylistChecks
+          <div className="field-row">
+            <span style={{ fontSize: 13 }}>Kind <span style={{ color: "var(--muted)", fontSize: 11 }}>(changing it signs them out)</span></span>
+            <RolePicker value={user.role} onChange={(v) => patch.mutate({ role: v })} label={`Kind for ${user.username}`} />
+          </div>
+          {user.role === "player" && (
+            <div className="field-row">
+              <span style={{ fontSize: 13 }}>Whole library</span>
+              <Toggle on={user.full_access} onChange={(v) => patch.mutate({ full_access: v })} label="Whole library" />
+            </div>
+          )}
+          {user.role === "player" && !user.full_access && <PlaylistChecks
             playlists={playlists}
             selected={user.playlist_ids}
             onToggle={(id) => patch.mutate({
@@ -168,7 +196,7 @@ function UserRow({ user, playlists, globalListenMode, onChanged }: {
                 ? user.playlist_ids.filter((x) => x !== id)
                 : [...user.playlist_ids, id],
             })}
-          />
+          />}
           {/* Per-user Listen mode. Unset (inherit) is the default — the global
               picker above then decides what this user gets. */}
           <div className="field-row">
@@ -206,6 +234,19 @@ function UserRow({ user, playlists, globalListenMode, onChanged }: {
         </div>
       )}
     </div>
+  );
+}
+
+function RolePicker({ value, onChange, label }: {
+  value: "player" | "member"; onChange: (v: "player" | "member") => void; label: string;
+}) {
+  return (
+    <select value={value} aria-label={label}
+      onChange={(e) => onChange(e.target.value === "member" ? "member" : "player")}
+      style={{ fontSize: 13, padding: "6px 10px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}>
+      <option value="player">Player (Run/Listen kiosk)</option>
+      <option value="member">Member (browse, play, rate, request)</option>
+    </select>
   );
 }
 

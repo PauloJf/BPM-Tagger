@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   navigated: [] as string[],
 }));
 
+const authRole = vi.hoisted(() => ({ current: "admin" as string }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: authRole.current }) }));
 vi.mock("react-router-dom", () => ({
   Link: ({ to, children, ...rest }: { to: unknown; children?: unknown }) =>
     <a href={typeof to === "string" ? to : "#"} {...rest}>{children as never}</a>,
@@ -58,6 +60,7 @@ beforeEach(() => {
   h.playlists = [];
   h.readiness = undefined;
   h.navigated = [];
+  authRole.current = "admin";
 });
 
 const READINESS = {
@@ -219,5 +222,17 @@ describe("Playlists — sources", () => {
     // A leftover Spotify playlist is listed (still playable) but never syncs.
     expect(screen.getByText("Old Spotify mix")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sync" })).toBeNull();
+  });
+});
+
+describe("Playlists — member role", () => {
+  it("lists playlists without the add card, merge or per-card edit controls", () => {
+    authRole.current = "member";
+    h.playlists = [pl({ id: 7, name: "Long Runs" }), pl({ id: 8, name: "Other" })];
+    render(<Playlists />);
+    expect(screen.getByText("Long Runs")).toBeTruthy();
+    expect(screen.queryByText("Add a playlist")).toBeNull();
+    expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pin/i })).toBeNull();
   });
 });

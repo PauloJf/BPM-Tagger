@@ -80,8 +80,9 @@ def principal_for(db, owner: str) -> Optional[Principal]:
     if owner.startswith("player:") and owner[7:].isdigit():
         row = db.get_player(int(owner[7:]))
         if row and row.get("enabled"):
+            full = row.get("full_access") or row.get("role") == "member"
             return Principal(owner, row["username"],
-                             sorted(db.playlist_ids_for_player(row["id"])))
+                             None if full else sorted(db.playlist_ids_for_player(row["id"])))
     return None
 
 

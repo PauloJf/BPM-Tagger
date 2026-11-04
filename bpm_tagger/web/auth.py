@@ -141,12 +141,16 @@ def login_required(f):
         # live row instead: a missing/disabled user or a reset password (stamp
         # mismatch) is rejected immediately, so delete/disable/reset all log the user
         # out. The fresh row is stashed on g for the run-scope helper (§3).
-        if session.get("role") == "player" and session.get("player_id") is not None:
+        if session.get("role") in ("player", "member") and session.get("player_id") is not None:
             from .state import state
             row = state().db.get_player(session["player_id"])
             if not row or not row.get("enabled"):
                 return jsonify(error="unauthorized"), 401
             if session.get("pw") != password_stamp(row["password_hash"], ""):
+                return jsonify(error="unauthorized"), 401
+            # An admin switching the account's role logs it out, so the session's
+            # role always matches the row (and so the scope the app enforces).
+            if row.get("role", "player") != session.get("role"):
                 return jsonify(error="unauthorized"), 401
             g.player = row
             return f(*args, **kwargs)
@@ -170,10 +174,21 @@ def session_owner() -> str:
     account row and therefore pools every Guest device into one bucket.
     Callers that need a *storable account* (player_state, accent) treat
     ``'guest'`` as "no account"; attribution deliberately keeps it."""
-    if session.get("role") == "player":
+    if session.get("role") in ("player", "member"):
         pid = session.get("player_id")
         return f"player:{pid}" if pid is not None else "guest"
     return "admin"
+
+
+def is_admin() -> bool:
+    """True only for the admin session. Use this (not ``not is_player()``) for
+    admin-only checks, so every non-admin role is refused by default."""
+    return session.get("role") == "admin"
+
+
+def is_member() -> bool:
+    """True for a member account (regular UI, no admin tools)."""
+    return session.get("role") == "member"
 
 
 def is_player() -> bool:

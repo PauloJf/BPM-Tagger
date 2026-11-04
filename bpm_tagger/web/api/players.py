@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, request, session
 
 from ..auth import (_check_csrf, is_admin_username, login_required,
                     verify_ui_password)
+from ...db.players import PLAYER_ROLES
 from ..state import state
 from .listen import _LISTEN_MODES
 
@@ -30,7 +31,7 @@ MIN_PASSWORD = 8
 
 def _admin_only():
     """None if the caller is an admin, else a (json, status) 403 tuple."""
-    if session.get("role") == "player":
+    if session.get("role") != "admin":
         return jsonify(error="forbidden"), 403
     return None
 
@@ -47,6 +48,14 @@ def _validate_password(pw: str):
     if verify_ui_password(pw):
         return jsonify(error="Password must differ from the admin password."), 400
     return None
+
+
+def _clean_role(raw):
+    """('player' | 'member', None) or (None, a 400 response)."""
+    role = str(raw or "player").strip().lower()
+    if role not in PLAYER_ROLES:
+        return None, (jsonify(error="role must be player or member."), 400)
+    return role, None
 
 
 def _clean_listen_mode(raw):
@@ -111,12 +120,15 @@ def create_player():
     mode, bad = _clean_listen_mode(data.get("listen_mode"))
     if bad:
         return bad
+    role, bad = _clean_role(data.get("role", "player"))
+    if bad:
+        return bad
     db = state().db
     try:
-        # Player users are always playlist-scoped; a full-library non-admin login
-        # is the shared Guest login (RUN_PASSWORD) only.
-        pid = db.add_player(username, _hash(password), False,
-                            _clean_ids(data.get("playlist_ids")), mode)
+        # A kiosk player is scoped to its playlists unless given full library
+        # access; a member always sees the whole library.
+        pid = db.add_player(username, _hash(password), bool(data.get("full_access")),
+                            _clean_ids(data.get("playlist_ids")), mode, role)
     except sqlite3.IntegrityError:
         return jsonify(error="That username is already taken."), 409
     user = db.get_player(pid)
@@ -137,7 +149,13 @@ def patch_player(pid):
         return jsonify(error="not_found"), 404
     data = request.get_json(force=True, silent=True) or {}
     kwargs = {}
-    # `full_access` is intentionally ignored: player users are always playlist-scoped.
+    if "full_access" in data:
+        kwargs["full_access"] = bool(data["full_access"])
+    if "role" in data:
+        role, bad = _clean_role(data["role"])
+        if bad:
+            return bad
+        kwargs["role"] = role
     if "enabled" in data:
         kwargs["enabled"] = bool(data["enabled"])
     if "playlist_ids" in data:

@@ -61,7 +61,7 @@ def api_login():
             if username and not admin_named:
                 player = verify_player(username, password)
                 if player:
-                    role = "player"
+                    role = player.get("role") or "player"      # 'player' (kiosk) or 'member'
                     player_id = player["id"]
                     stamp = password_stamp(player["password_hash"], "")
             elif verify_ui_password(password):
@@ -169,11 +169,17 @@ def api_me():
         if pid is not None and st.db is not None:
             prow = st.db.get_player(pid)
             resp["username"] = prow["username"] if prow else None
-            resp["full_access"] = False      # named player users are always scoped
+            resp["full_access"] = bool(prow and prow.get("full_access"))
             resp["accent_hue"] = prow.get("accent_hue") if prow else None
         else:
             resp["username"] = None          # shared Guest login (RUN_PASSWORD)
             resp["full_access"] = True        # accent stays per-browser (no account row)
+    elif role == "member":
+        pid = session.get("player_id")
+        prow = st.db.get_player(pid) if (pid is not None and st.db is not None) else None
+        resp["username"] = prow["username"] if prow else None
+        resp["full_access"] = True
+        resp["accent_hue"] = prow.get("accent_hue") if prow else None
     elif is_admin:
         # The configured admin username (None when the login is password-only),
         # so the UI can show who is signed in.
@@ -241,7 +247,7 @@ def api_accent():
 
     role = session.get("role")
     persisted = False
-    if role == "player" and session.get("player_id") is not None:
+    if role in ("player", "member") and session.get("player_id") is not None:
         if st.db is not None:
             st.db.set_player_accent(session["player_id"], hue)
             persisted = True

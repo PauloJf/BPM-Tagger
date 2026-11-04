@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   post: vi.fn(),
 }));
 
+const authRole = vi.hoisted(() => ({ current: "admin" as string }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ role: authRole.current }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: () => {} }),
   useQuery: () => ({ data: { playlists: h.playlists }, isLoading: false }),
@@ -108,5 +110,14 @@ describe("AddToPlaylistMenu — single-track mode", () => {
 
     await waitFor(() => expect(screen.getByText("Added to Alpha")).toBeTruthy());
     expect(h.post).toHaveBeenCalledWith("/api/playlists/1/tracks", { path: "/music/a.mp3" });
+  });
+});
+
+describe("AddToPlaylistMenu — roles", () => {
+  it("renders nothing for a member (playlist editing is admin-only)", () => {
+    authRole.current = "member";
+    const { container } = render(<AddToPlaylistMenu path="/music/a.mp3" />);
+    expect(container.innerHTML).toBe("");
+    authRole.current = "admin";
   });
 });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../lib/auth";
 import { api, ApiError } from "../lib/api";
 import type { NavidromePlaylist, Playlist, PlaylistSource } from "../lib/types";
 import { useTitle } from "../hooks/useTitle";
@@ -227,6 +228,7 @@ export default function Playlists() {
   const [addErr, setAddErr] = useState("");
   const [browsing, setBrowsing] = useState<null | "navidrome">(null);
   const [op, setOp] = useState<null | "compare" | "merge">(null);
+  const isAdmin = useAuth().role === "admin";      // members browse and play; editing is admin-only
 
   const playlistsQ = useQuery({
     queryKey: ["playlists"],
@@ -303,7 +305,7 @@ export default function Playlists() {
             ? <><span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{playlists.length}</span> playlist{playlists.length === 1 ? "" : "s"} compared against your library</>
             : "Navidrome and local playlists compared against your library."
         }
-        actions={playlists.length >= 2 ? (
+        actions={isAdmin && playlists.length >= 2 ? (
           <>
             <button className="btn btn-ghost btn-sm" aria-pressed={op === "compare"}
               onClick={() => setOp((o) => o === "compare" ? null : "compare")}>
@@ -329,6 +331,7 @@ export default function Playlists() {
         </div>
       )}
 
+      {isAdmin && (
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="section-label"><span>Add a playlist</span></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -385,6 +388,7 @@ export default function Playlists() {
           </BrowseList>
         )}
       </div>
+      )}
 
       {/* Cadence strip: one card per run preset with the library-wide runnable
           count. Absent (not a placeholder) while loading, so the grid below
@@ -447,6 +451,7 @@ export default function Playlists() {
                   )}
                 </div>
               </Link>
+              {isAdmin && (
               <div className="pl-card-actions">
                 <button
                   className="btn btn-bare btn-sm"
@@ -468,6 +473,7 @@ export default function Playlists() {
                   Remove
                 </button>
               </div>
+              )}
             </div>
           ))
         )}

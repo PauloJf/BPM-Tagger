@@ -7,6 +7,10 @@ from typing import Optional
 # explicit None (which is a meaningful value for listen_mode — inherit global).
 _UNSET = object()
 
+# Non-admin account kinds: 'player' is the Run/Listen kiosk, 'member' gets the regular UI
+# minus admin tools (browse, play, rate, request). Members always see the whole library.
+PLAYER_ROLES = ("player", "member")
+
 
 class PlayersMixin:
 
@@ -19,6 +23,7 @@ class PlayersMixin:
         # listen_mode is one of off/on/default/only, or None = inherit the global
         # player_listen_mode setting.
         d["listen_mode"] = d.get("listen_mode") or None
+        d["role"] = d.get("role") if d.get("role") in PLAYER_ROLES else "player"
         return d
 
     def list_players(self) -> list[dict]:
@@ -47,7 +52,7 @@ class PlayersMixin:
 
     def add_player(self, username: str, password_hash: str, full_access: bool = False,
                    playlist_ids: Optional[list] = None,
-                   listen_mode: Optional[str] = None) -> int:
+                   listen_mode: Optional[str] = None, role: str = "player") -> int:
         """Create a player user. Raises sqlite3.IntegrityError on a duplicate username
         (usernames are stored lowercased). Associates the given playlist ids.
         ``listen_mode`` None = inherit the global player_listen_mode setting."""
@@ -55,9 +60,9 @@ class PlayersMixin:
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT INTO players (username, password_hash, full_access, enabled, created_at, "
-                "listen_mode) VALUES (?, ?, ?, 1, ?, ?)",
+                "listen_mode, role) VALUES (?, ?, ?, 1, ?, ?, ?)",
                 (str(username).strip().lower(), password_hash, int(bool(full_access)), now,
-                 listen_mode or None))
+                 listen_mode or None, role if role in PLAYER_ROLES else "player"))
             pid = cur.lastrowid
             self._set_player_playlists(conn, pid, playlist_ids or [])
             conn.commit()
@@ -66,7 +71,7 @@ class PlayersMixin:
     def update_player(self, player_id: int, *, full_access: Optional[bool] = None,
                       enabled: Optional[bool] = None,
                       playlist_ids: Optional[list] = None,
-                      listen_mode=_UNSET) -> None:
+                      listen_mode=_UNSET, role: Optional[str] = None) -> None:
         """Patch a player user. Every keyword is "leave alone" when omitted; note
         that ``listen_mode`` uses a sentinel rather than None for that, since None
         is itself a value there (inherit the global setting)."""
@@ -76,6 +81,8 @@ class PlayersMixin:
                 sets.append("full_access = ?"); vals.append(int(bool(full_access)))
             if enabled is not None:
                 sets.append("enabled = ?"); vals.append(int(bool(enabled)))
+            if role in PLAYER_ROLES:
+                sets.append("role = ?"); vals.append(role)
             if listen_mode is not _UNSET:
                 sets.append("listen_mode = ?"); vals.append(listen_mode or None)
             if sets:
