@@ -290,3 +290,18 @@ def app_with_guest(base_config):
     cfg = dict(base_config)
     cfg["run_password"] = "guestpass"
     return create_app(cfg)
+
+
+def test_member_cannot_use_curation_filters(client, app, base_config):
+    c, csrf = _admin(app)
+    _seed_playlist(base_config["db_path"], base_config["music_dir"], "a")
+    conn = sqlite3.connect(base_config["db_path"])
+    conn.execute("INSERT INTO tracks (file_path, title, artist, status) VALUES ('/x/gone.mp3', 'gone', 'A', 'deleted')")
+    conn.commit()
+    conn.close()
+    c.post("/api/players", json={"username": "ana", "password": "anapass12", "role": "member"}, headers=csrf)
+    mc, _ = _login(app, username="ana", password="anapass12")
+    admin_deleted = c.get("/api/tracks?filter=deleted").get_json()
+    member_deleted = mc.get("/api/tracks?filter=deleted").get_json()
+    assert [t["file_path"] for t in admin_deleted["tracks"]] == ["/x/gone.mp3"]
+    assert "/x/gone.mp3" not in [t["file_path"] for t in member_deleted["tracks"]]
