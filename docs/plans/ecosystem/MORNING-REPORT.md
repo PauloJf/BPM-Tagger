@@ -1,6 +1,7 @@
 # Morning report
 
-Unattended build started 2026-11-10 after "go reordered". Branch
+**Paused by the owner after slice 2 (2026-11-10); work continues in stages.** Build started
+2026-11-10 after "go reordered". Branch
 `claude/music-ecosystem-consolidation-egd174` in both repos. Authority: [decisions.md](decisions.md).
 
 ## TL;DR
@@ -15,8 +16,8 @@ Unattended build started 2026-11-10 after "go reordered". Branch
 | # | Slice | Status | Commits | Repo |
 |---|---|---|---|---|
 | 1 | Skeleton | **done** (Docker run not verified) | BT `99b35fd`, MG `4e9eaa9` | both |
-| 2 | Identity | in progress | | both |
-| 3 | Event flow | not started | | both |
+| 2 | Identity | BPM Tagger side **done**; Music Grabber side **in review, not committed yet** | BT `2901c12` | both |
+| 3 | Event flow | not started (**resume here**) | | both |
 | 6 | Subsonic completeness + Navidrome optional | not started | | BPM Tagger |
 | 7 | Analysis quality | not started | | BPM Tagger |
 | 4 | UI shell | not started | | both |
@@ -36,7 +37,14 @@ Unattended build started 2026-11-10 after "go reordered". Branch
    `ecosystem/data/music-grabber/`, start the bundle. Rollback: stop the bundle, start the old
    compose files; nothing was migrated. Without `UI_BASE_PATH` Music Grabber serves at `/` as before.
 
-(later slices are added as they land)
+### Slice 2: single sign-on (BPM Tagger side)
+
+1. Set the same `ECOSYSTEM_SECRET` (32+ characters, e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"`)
+   on BPM Tagger and Music Grabber. In the bundle: one line in `ecosystem/.env`.
+2. Sign in to BPM Tagger as the admin or a member, then open
+   `/api/ecosystem/token?aud=music-grabber`: you should get `{"token": "v1...", "expires_in": 60}`.
+   A kiosk player gets 403; without the secret the route is 404.
+3. Rollback: unset `ECOSYSTEM_SECRET`. No schema change on the BPM Tagger side.
 
 ## Gate results
 
@@ -46,6 +54,7 @@ Unattended build started 2026-11-10 after "go reordered". Branch
 | Music Grabber (baseline) | clean | 750 passed | | | |
 | BPM Tagger after slice 1 | clean | 1059 passed | not run (frontend untouched) | not run | not run |
 | Music Grabber after slice 1 | clean | 777 passed | clean | 81 passed (12 files) | built |
+| BPM Tagger after slice 2 | clean | 1071 passed (core-only subset: 100) | clean (baseline, frontend untouched) | 402 passed (40 files, baseline) | built (baseline) |
 
 ## Decisions I made without you
 
@@ -55,6 +64,8 @@ Unattended build started 2026-11-10 after "go reordered". Branch
 | The bundle uses `LIBRARY_INDEX=filesystem` for Music Grabber | `opensubsonic` against BPM Tagger (needs an API key created by hand first) | change the variable in `ecosystem/docker-compose.yml` |
 | Health checks **pass** when the UI / API is off, instead of reporting unhealthy | Fail when nothing listens | edit the `HEALTHCHECK` line in each Dockerfile |
 | `UI_BASE_PATH` is handled by rewriting the served page and manifest, with the gateway stripping the prefix; Music Grabber's routes stay at the root | Mount every route below the prefix | n/a (unset = unchanged) |
+| `ECOSYSTEM_SECRET` is **env only** in BPM Tagger (ignored if present in `settings.json`, not editable in Settings) | Editable in Settings like the Music Grabber key | remove it from `ENV_ONLY_SETTINGS` in `bpm_tagger/config.py` |
+| The token module is one stdlib file copied byte-identical into both apps and pinned by hash | A shared package | n/a |
 | The requests contract is one JSON file copied into both repos and pinned by digest in both test suites | A shared package or submodule | n/a |
 
 ## Blocked / not done / not verified
@@ -68,8 +79,16 @@ Unattended build started 2026-11-10 after "go reordered". Branch
 
 ## Needs you
 
+- Review the sign-on code before merging (`bpm_tagger/web/ecosystem_token.py`, `web/api/ecosystem.py`,
+  and Music Grabber's exchange): it is a new way into both apps and no paid review was run.
 - Run the bundle once under Docker and confirm the three containers turn healthy and both UIs load.
 
 ## Suggested next session
 
-(filled in at the end)
+> Continue the ecosystem build from `BPM-Tagger/docs/plans/ecosystem/` (`decisions.md` is the
+> authority, `roadmap.md` the plan, this report the state). Slices 1 and 2 are done on
+> `claude/music-ecosystem-consolidation-egd174` in both repos. Build order for the rest:
+> **3 (event flow), 6 (Subsonic completeness), 7 (analysis quality), 4 (UI shell), 5 (discovery),
+> 8 (native spike doc)**. Same rules as before: one slice at a time, gates green, commit and push
+> per slice, update this report, stop after each slice and tell me. First re-run the baseline
+> gates, and check the "not verified" list above (the Docker run of the bundle).
