@@ -20,6 +20,7 @@ ships or a new plan lands.** Last updated: 2026-11-04 (Music Grabber link, membe
 | Detach the music grabber | [grabber-detach.md](grabber-detach.md) | ✅ Released in v2.19.0 |
 | Music Grabber link (request missing tracks) | Music Grabber's `docs/plans/integration-and-suggestions.md`, step 4 | ✅ Built (Unreleased) |
 | Members + whole-library players | — | ✅ Built (Unreleased) |
+| Ecosystem consolidation (single origin, sign-on, events, Subsonic completeness, analysis quality) | [ecosystem/](ecosystem/README.md) | 🔶 Slices 1–2 of 8 built on `claude/music-ecosystem-consolidation-egd174` (Unreleased); state in [ecosystem/MORNING-REPORT.md](ecosystem/MORNING-REPORT.md) |
 
 ---
 

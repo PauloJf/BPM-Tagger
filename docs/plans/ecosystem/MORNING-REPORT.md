@@ -10,13 +10,17 @@
   (fill in `MUSIC_PATH`, `BPM_UI_PASSWORD`, `BPM_UI_SECRET_KEY`, `MG_API_TOKEN`), then
   `docker compose up -d --build`. BPM Tagger: <http://127.0.0.1:8080/>, Music Grabber:
   <http://127.0.0.1:8080/grabber/>. **Not run under Docker here** (no daemon in the build container).
+- **Single sign-on** (slice 2): add one `ECOSYSTEM_SECRET=<32+ characters>` line to `ecosystem/.env`,
+  `docker compose up -d`, sign in to BPM Tagger, open `/grabber/`: you are signed in. Admin → admin,
+  member → user, kiosk players have no access. Off unless the secret is set.
+- Stopped here at the owner's request. Next: slice 3 (see "Suggested next session").
 
 ## Slices
 
 | # | Slice | Status | Commits | Repo |
 |---|---|---|---|---|
 | 1 | Skeleton | **done** (Docker run not verified) | BT `99b35fd`, MG `4e9eaa9` | both |
-| 2 | Identity | BPM Tagger side **done**; Music Grabber side **in review, not committed yet** | BT `2901c12` | both |
+| 2 | Identity | **done** (Docker run not verified) | BT `2901c12`, MG `044d414` | both |
 | 3 | Event flow | not started (**resume here**) | | both |
 | 6 | Subsonic completeness + Navidrome optional | not started | | BPM Tagger |
 | 7 | Analysis quality | not started | | BPM Tagger |
@@ -37,14 +41,20 @@
    `ecosystem/data/music-grabber/`, start the bundle. Rollback: stop the bundle, start the old
    compose files; nothing was migrated. Without `UI_BASE_PATH` Music Grabber serves at `/` as before.
 
-### Slice 2: single sign-on (BPM Tagger side)
+### Slice 2: single sign-on
 
 1. Set the same `ECOSYSTEM_SECRET` (32+ characters, e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"`)
    on BPM Tagger and Music Grabber. In the bundle: one line in `ecosystem/.env`.
 2. Sign in to BPM Tagger as the admin or a member, then open
    `/api/ecosystem/token?aud=music-grabber`: you should get `{"token": "v1...", "expires_in": 60}`.
    A kiosk player gets 403; without the secret the route is 404.
-3. Rollback: unset `ECOSYSTEM_SECRET`. No schema change on the BPM Tagger side.
+3. Open `/grabber/`: Music Grabber shows the app, signed in, with no login form. The session
+   lasts one hour, then the page signs on again by itself on the next load.
+4. Migration: Music Grabber adds three nullable columns on first start (`users.external_sub`,
+   `users.sso_managed`, `sessions.sso`) after writing its usual `.bak-<version>` copy of the DB.
+   BPM Tagger: no schema change.
+5. Rollback: unset `ECOSYSTEM_SECRET`; local logins never stopped working and the new columns
+   are ignored. An older Music Grabber image runs fine on the migrated DB (columns are additive).
 
 ## Gate results
 
@@ -54,6 +64,7 @@
 | Music Grabber (baseline) | clean | 750 passed | | | |
 | BPM Tagger after slice 1 | clean | 1059 passed | not run (frontend untouched) | not run | not run |
 | Music Grabber after slice 1 | clean | 777 passed | clean | 81 passed (12 files) | built |
+| Music Grabber after slice 2 | clean | 818 passed | clean | 86 passed (12 files) | built |
 | BPM Tagger after slice 2 | clean | 1071 passed (core-only subset: 100) | clean (baseline, frontend untouched) | 402 passed (40 files, baseline) | built (baseline) |
 
 ## Decisions I made without you
@@ -65,6 +76,9 @@
 | Health checks **pass** when the UI / API is off, instead of reporting unhealthy | Fail when nothing listens | edit the `HEALTHCHECK` line in each Dockerfile |
 | `UI_BASE_PATH` is handled by rewriting the served page and manifest, with the gateway stripping the prefix; Music Grabber's routes stay at the root | Mount every route below the prefix | n/a (unset = unchanged) |
 | `ECOSYSTEM_SECRET` is **env only** in BPM Tagger (ignored if present in `settings.json`, not editable in Settings) | Editable in Settings like the Music Grabber key | remove it from `ENV_ONLY_SETTINGS` in `bpm_tagger/config.py` |
+| A member is **never** linked by username into a local Music Grabber **administrator**; a new user is created instead | Link by username regardless of role (the literal reading of D12) | remove the role check in `Ops.sso_login` |
+| Linked pre-existing users keep their stored Music Grabber role; only accounts sign-on created follow BPM Tagger's role | Always overwrite the role from the token | `Ops.sso_login` |
+| Sign-on sessions last 1 hour and do not slide | Normal 14-day sliding sessions | `SSO_SESSION_HOURS` in `music_grabber/ops.py` |
 | The token module is one stdlib file copied byte-identical into both apps and pinned by hash | A shared package | n/a |
 | The requests contract is one JSON file copied into both repos and pinned by digest in both test suites | A shared package or submodule | n/a |
 
@@ -76,6 +90,14 @@
   session's permission rules. What *was* verified in a real browser (Chromium): Music Grabber
   running with `UI_BASE_PATH=/grabber` behind a stand-in proxy that strips the prefix; a deep link
   (`/grabber/queue`) loads, assets and `/grabber/api/...` calls return 200, no page errors.
+- **Sign-on was verified in a real browser, but not under Docker**: both apps running as plain
+  processes with the same secret behind the stand-in proxy. Signed out of BPM Tagger, Music Grabber
+  shows its own form; after signing in to BPM Tagger, `/grabber/` fetches the token, exchanges it
+  and shows the app as `admin`. The secret appears in neither app's log. Not exercised by hand: a
+  member account, the one-hour expiry, and TOTP-enabled admins (all covered by automated tests only).
+- **No independent security review** of the sign-on code (paid review tools were excluded).
+- Music Grabber: an SSO-created account's role sync has no "last admin" guard (only BPM Tagger's
+  admin maps to admin, and `API_TOKEN` always works, so nobody can be locked out).
 
 ## Needs you
 
