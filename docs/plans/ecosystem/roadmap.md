@@ -1,6 +1,7 @@
 # Ecosystem roadmap
 
 Status: **accepted** (2026-11-10); order confirmed in [decisions.md](decisions.md).
+**Build order: 1, 2, 3, 6, 7, 4, 5, 8** (slice numbers are stable ids, not the order).
 Every slice is additive, off unless configured, and leaves both repos shippable. BT = BPM Tagger,
 MG = Music Grabber. Sizes: S < half a day, M ~ a day, L several days of focused work.
 

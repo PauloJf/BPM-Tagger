@@ -12,7 +12,7 @@ option and is logged in `MORNING-REPORT.md` under "Decisions I made without you"
 | D4 | ADR-004 frontend | **Gateway, BPM Tagger's look wins.** Caddy: `/` → BPM Tagger, `/grabber/` → Music Grabber. Same navigation groups, deep links both ways. Music Grabber gets an ecosystem theme mapping its tokens onto BPM Tagger's colours; its standalone look stays. | 2026-11-10 |
 | D5 | ADR-005 native apps | **No native app. Written spike only**, plus device-free PWA hardening where possible. | 2026-11-10 |
 | D6 | Event flow | **Pull feed with a cursor** (`GET /api/v1/events?after=…`, long-poll) on both services, plus a "scan these paths now" hint to BPM Tagger. No webhooks, no broker. Existing polling stays as the fallback. | 2026-11-10 |
-| D7 | Roadmap order, drops | **1, 2, 3, 4, 5, 6, 7, 8 as in `roadmap.md`.** Nothing dropped; slice 8 is the spike document only. | 2026-11-10 |
+| D7 | Roadmap order, drops | **1, 2, 3, 6, 7, 4, 5, 8** ("go reordered": first answer was 1-8 in order; changed after review so the two BPM-Tagger-only slices run before the UI shell and discovery). Nothing dropped; slice 8 is the spike document only. | 2026-11-10 |
 | D8 | Draft PRs | **Yes**: one draft PR per repo as the last step, never merged. | 2026-11-10 |
 | D9 | Branch | `claude/music-ecosystem-consolidation-egd174` in both repos (the session's branch; the brief's `…-89lh5l` is not used). | 2026-11-10 |
 | D10 | BPM evaluation set | **Synthetic audio with known tempo** (incl. half / double-time traps and tempo ramps) for the overnight numbers, **plus a harness mode that scores against reviewed / locked tracks in an existing `bpm_tagger.db`** for the owner to run on the real library. No dataset downloads. | 2026-11-10 |
@@ -21,6 +21,8 @@ option and is logged in `MORNING-REPORT.md` under "Decisions I made without you"
 | D13 | Names, paths, ports | Caddy on host port **8080**; BPM Tagger at `/`, Music Grabber at `/grabber/`; env vars `ECOSYSTEM_SECRET` (both), `UI_BASE_PATH` and `SSO_ADMIN_USERNAME` (Music Grabber), `ECOSYSTEM_EVENTS`; bundle in `Music-Grabber/ecosystem/`, compose project `music`; Navidrome as an optional compose profile. Anything else follows each repo's conventions. | 2026-11-10 |
 | D14 | Repos in scope | **Only BPM-Tagger and Music-Grabber.** No third repo, no new repo, no visibility change. | 2026-11-10 |
 | D15 | Defaults for new behaviour | **Sensible defaults on** for low-risk improvements (Subsonic gap fixes, per-user album / artist stars, `HEALTHCHECK`s, empty-list stubs). **Opt-in, default off** for anything that writes tags, changes detection, or changes login. | 2026-11-10 |
+| D16 | Subagents | Opus or Sonnet subagents may be used when needed, sparingly, with narrow briefs; the lead reviews their work (diff + gates) before it is committed. | 2026-11-10 |
+| D17 | Review shape | One clearly separated commit series per slice so the draft PRs can be split later. | 2026-11-10 |
 
 ## Standing rules (from the brief; not up for decision overnight)
 
