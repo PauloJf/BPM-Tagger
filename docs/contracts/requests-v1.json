@@ -1,0 +1,85 @@
+{
+  "title": "Track requests between companion apps",
+  "version": "1.0.0",
+  "description": "POST /api/v1/requests, GET /api/v1/requests/<id>, GET /api/v1/requests?ids=. Bearer API key with the 'request' scope, server to server. Additions are additive: consumers ignore fields they do not know.",
+  "definitions": {
+    "RequestBody": {
+      "type": "object",
+      "description": "Identify the track by catalogue id, or ISRC, or title + artist.",
+      "properties": {
+        "dz_id": {"type": "string", "description": "catalogue track id"},
+        "isrc": {"type": "string"},
+        "title": {"type": "string"},
+        "artist": {"type": "string"},
+        "album": {"type": "string"},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "source_ref": {"type": "string", "maxLength": 200, "description": "the caller's own reference; makes the request idempotent"},
+        "requested_for": {"type": "string", "maxLength": 80, "description": "the person in the calling app who asked"},
+        "force": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "RequestAnswer": {
+      "type": "object",
+      "required": ["ok", "result"],
+      "properties": {
+        "ok": {"type": "boolean", "enum": [true]},
+        "result": {"type": "string", "enum": ["queued", "in_library", "already_queued", "already_requested"]},
+        "id": {"type": "integer"},
+        "status": {"type": "string"}
+      }
+    },
+    "RequestView": {
+      "type": "object",
+      "required": ["id", "status", "needs_choice", "path"],
+      "properties": {
+        "id": {"type": "integer"},
+        "status": {"type": "string", "enum": ["pending", "searching", "awaiting_user", "downloading", "transcoding", "tagging", "placing", "done", "failed", "skipped"]},
+        "progress": {"type": ["number", "null"]},
+        "title": {"type": ["string", "null"]},
+        "artist": {"type": ["string", "null"]},
+        "album": {"type": ["string", "null"]},
+        "error": {"type": ["string", "null"]},
+        "source_ref": {"type": ["string", "null"]},
+        "requested_by": {"type": ["string", "null"]},
+        "requested_for": {"type": ["string", "null"]},
+        "created_at": {"type": ["string", "null"]},
+        "updated_at": {"type": ["string", "null"]},
+        "needs_choice": {"type": "boolean"},
+        "path": {"type": ["string", "null"], "description": "once done: the file, relative to the music folder"}
+      }
+    },
+    "RequestList": {
+      "type": "object",
+      "required": ["requests"],
+      "properties": {"requests": {"type": "array", "items": {"$ref": "RequestView"}}}
+    },
+    "Error": {
+      "type": "object",
+      "required": ["error", "message"],
+      "properties": {"error": {"type": "string"}, "message": {"type": "string"}}
+    }
+  },
+  "examples": {
+    "RequestBody": [
+      {"title": "Levitating", "artist": "Dua Lipa", "album": "Future Nostalgia", "duration_ms": 203000, "isrc": "GBAHT2000001", "source_ref": "pt:42", "requested_for": "ana"},
+      {"dz_id": "101", "source_ref": "related:101"}
+    ],
+    "RequestAnswer": [
+      {"ok": true, "result": "queued", "id": 7, "status": "pending"},
+      {"ok": true, "result": "in_library"},
+      {"ok": true, "result": "already_queued", "id": 7, "status": "downloading"},
+      {"ok": true, "result": "already_requested", "id": 7, "status": "done"}
+    ],
+    "RequestView": [
+      {"id": 7, "status": "done", "progress": 1.0, "title": "Levitating", "artist": "Dua Lipa", "album": "Future Nostalgia", "error": null, "source_ref": "pt:42", "requested_by": "BPM Tagger", "requested_for": "ana", "created_at": "2026-11-10T20:00:00+00:00", "updated_at": "2026-11-10T20:01:00+00:00", "needs_choice": false, "path": "Music-raw/Dua Lipa/Future Nostalgia/05 - Levitating.mp3"},
+      {"id": 8, "status": "awaiting_user", "progress": null, "title": "X", "artist": "Y", "album": null, "error": null, "source_ref": null, "requested_by": "BPM Tagger", "requested_for": null, "created_at": null, "updated_at": null, "needs_choice": true, "path": null}
+    ],
+    "RequestList": [
+      {"requests": []}
+    ],
+    "Error": [
+      {"error": "no_ids", "message": "send ids"}
+    ]
+  }
+}

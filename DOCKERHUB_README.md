@@ -156,7 +156,7 @@ The UI password is stored as a salted hash once changed in **Settings** (never p
 
 **PWA & offline** — installable to your home screen, or as a desktop app from Chrome/Edge (needs HTTPS), with lock-screen and media-key controls. The player preloads the next few queue tracks into a capped per-device cache, and per-preset **Prepare offline** chips download whole cadence queues in advance — so a run survives network dead zones.
 
-**Also** — BPM review queue, per-track re-analyze, save & lock, Stats page (BPM histogram, detector breakdown, run totals, library sources), light/dark toggle with a custom accent colour saved to your account, live settings changes without restart, and a `/healthz` endpoint.
+**Also** — BPM review queue, per-track re-analyze, save & lock, Stats page (BPM histogram, detector breakdown, run totals, library sources), light/dark toggle with a custom accent colour saved to your account, live settings changes without restart, and a `/healthz` endpoint with a built-in Docker health check.
 
 Full feature detail: [README on GitHub](https://github.com/PauloJf/BPM-Tagger#readme).
 

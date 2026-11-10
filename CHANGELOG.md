@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Docker health check.** The image now carries a `HEALTHCHECK` on `/healthz`, so `docker ps` and compose `depends_on: condition: service_healthy` know when the web UI is up. With the UI off (`ENABLE_UI=false`, the default) the check passes as long as the process runs.
+- **A written contract for track requests.** `docs/contracts/requests-v1.json` describes the request API BPM Tagger calls on a connected Music Grabber, and `tests/test_companion_contract.py` holds the client to it against a loopback server. No behaviour change.
+
 ## v2.21.0 — 2026-11-04
 
 **The shared guest login starts its retirement, and members get a cleaner library.** No breaking changes: an existing `RUN_PASSWORD` keeps working this release. The Settings page is now built from one component per section (no visible change).

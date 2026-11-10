@@ -55,4 +55,9 @@ COPY VERSION CHANGELOG.md ./
 
 RUN mkdir -p /data
 
+# Healthy = the web UI answers /healthz. With the UI off (the default) there is nothing to ask,
+# so the check passes as long as the process is up.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import os,sys,urllib.request as u; os.environ.get('ENABLE_UI','false').lower()=='true' or sys.exit(0); u.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('UI_PORT','5000'), timeout=4)" || exit 1
+
 CMD ["python", "-m", "bpm_tagger"]

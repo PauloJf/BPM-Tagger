@@ -128,7 +128,7 @@ Everything around the music itself — useful daily, running or not. It works on
 
 - **Login brute-force protection** — layered rate limiting locks out repeated failed logins **per IP, per account, and globally**, so a distributed attack (many IPs) can't slip under the per-IP cap
 - **Admin two-factor (TOTP)** — optionally require a 6-digit authenticator-app code on top of the admin password (Settings → Two-factor), with one-time recovery codes and a `MODE=disable_2fa` escape hatch
-- **Health check endpoint** — `/healthz` returns DB statistics as JSON; no login required, suitable for Docker/k8s probes
+- **Health check endpoint** — `/healthz` returns DB statistics as JSON; no login required, suitable for Docker/k8s probes. The image ships a Docker `HEALTHCHECK` on it (it passes without asking when the web UI is off)
 - **ntfy notifications** — batched and rate-limited; scan summaries include a "N need review" count
 - **Slim and full Docker images** — the default `:latest` image (~400 MB, no PyTorch) uses essentia + librosa; the `:full` image (~1.8 GB) adds deeprhythm CNN for maximum accuracy
 - **Fully Docker-native** — all settings via environment variables in `docker-compose.yml`
