@@ -1,0 +1,197 @@
+{
+  "title": "Ecosystem identity token",
+  "version": "1.0.0",
+  "description": "A short-lived token one app mints and another verifies with the shared ECOSYSTEM_SECRET (at least 32 characters, env only). Used for browser single sign-on (BPM Tagger is the identity provider) and for server-to-server calls. Wire format: 'v1.' + base64url(payload JSON, no padding) + '.' + base64url(HMAC-SHA256(secret, 'v1.' + payload part), no padding). The verifier checks the signature in constant time over the bytes it received (it never re-serializes), then aud, then exp > now and iat <= now + 60, then that the lifetime exp - iat is at most 120 seconds, then that jti was not seen before (single use, remembered until exp).",
+  "endpoints": {
+    "issue": "GET /api/ecosystem/token?aud=<audience> on BPM Tagger, signed-in browser session; answers {token, expires_in}. 404 when ECOSYSTEM_SECRET is unset.",
+    "exchange": "POST /api/auth/sso {token} on the consuming app; answers its normal login response. 404 when ECOSYSTEM_SECRET is unset.",
+    "service": "Authorization: Bearer <token> with sub 'service:<name>' on /api/v1 routes that say so."
+  },
+  "roles": {
+    "admin": "administrator",
+    "member": "regular account",
+    "player": "kiosk account: never issued a token for another app",
+    "service": "another app, not a person"
+  },
+  "definitions": {
+    "Payload": {
+      "type": "object",
+      "required": [
+        "iss",
+        "aud",
+        "sub",
+        "username",
+        "role",
+        "iat",
+        "exp",
+        "jti"
+      ],
+      "properties": {
+        "iss": {
+          "type": "string",
+          "enum": [
+            "bpm-tagger",
+            "music-grabber"
+          ]
+        },
+        "aud": {
+          "type": "string",
+          "enum": [
+            "bpm-tagger",
+            "music-grabber"
+          ]
+        },
+        "sub": {
+          "type": "string",
+          "description": "'admin', 'player:<id>' or 'service:<name>'; stable for the life of the account"
+        },
+        "username": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "member",
+            "service"
+          ]
+        },
+        "iat": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jti": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "Issued": {
+      "type": "object",
+      "required": [
+        "token",
+        "expires_in"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expires_in": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": {
+    "Payload": [
+      {
+        "aud": "music-grabber",
+        "exp": 1794000060,
+        "iat": 1794000000,
+        "iss": "bpm-tagger",
+        "jti": "3f1c9a52d0e74b6f",
+        "role": "member",
+        "sub": "player:7",
+        "username": "ana"
+      },
+      {
+        "aud": "music-grabber",
+        "exp": 1794000060,
+        "iat": 1794000000,
+        "iss": "bpm-tagger",
+        "jti": "a0b1c2d3e4f50617",
+        "role": "admin",
+        "sub": "admin",
+        "username": "admin"
+      },
+      {
+        "aud": "bpm-tagger",
+        "exp": 1794000060,
+        "iat": 1794000000,
+        "iss": "music-grabber",
+        "jti": "0011223344556677",
+        "role": "service",
+        "sub": "service:music-grabber",
+        "username": "music-grabber"
+      }
+    ],
+    "Issued": [
+      {
+        "token": "v1.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiIzZjFjOWE1MmQwZTc0YjZmIiwicm9sZSI6Im1lbWJlciIsInN1YiI6InBsYXllcjo3IiwidXNlcm5hbWUiOiJhbmEifQ.rvq1MyMx1hPbRjG7TN4-Ws_uAVhJibmJ4-ek2C-ec8M",
+        "expires_in": 60
+      }
+    ]
+  },
+  "vectors": {
+    "secret": "test-vector-secret-not-a-real-one-0123456789",
+    "valid": [
+      {
+        "payload": {
+          "aud": "music-grabber",
+          "exp": 1794000060,
+          "iat": 1794000000,
+          "iss": "bpm-tagger",
+          "jti": "3f1c9a52d0e74b6f",
+          "role": "member",
+          "sub": "player:7",
+          "username": "ana"
+        },
+        "token": "v1.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiIzZjFjOWE1MmQwZTc0YjZmIiwicm9sZSI6Im1lbWJlciIsInN1YiI6InBsYXllcjo3IiwidXNlcm5hbWUiOiJhbmEifQ.rvq1MyMx1hPbRjG7TN4-Ws_uAVhJibmJ4-ek2C-ec8M"
+      },
+      {
+        "payload": {
+          "aud": "music-grabber",
+          "exp": 1794000060,
+          "iat": 1794000000,
+          "iss": "bpm-tagger",
+          "jti": "a0b1c2d3e4f50617",
+          "role": "admin",
+          "sub": "admin",
+          "username": "admin"
+        },
+        "token": "v1.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiJhMGIxYzJkM2U0ZjUwNjE3Iiwicm9sZSI6ImFkbWluIiwic3ViIjoiYWRtaW4iLCJ1c2VybmFtZSI6ImFkbWluIn0.41aaEBuOvIFLapQ49_Em-0QEJohf95IpRheQGyA6yP0"
+      },
+      {
+        "payload": {
+          "aud": "bpm-tagger",
+          "exp": 1794000060,
+          "iat": 1794000000,
+          "iss": "music-grabber",
+          "jti": "0011223344556677",
+          "role": "service",
+          "sub": "service:music-grabber",
+          "username": "music-grabber"
+        },
+        "token": "v1.eyJhdWQiOiJicG0tdGFnZ2VyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6Im11c2ljLWdyYWJiZXIiLCJqdGkiOiIwMDExMjIzMzQ0NTU2Njc3Iiwicm9sZSI6InNlcnZpY2UiLCJzdWIiOiJzZXJ2aWNlOm11c2ljLWdyYWJiZXIiLCJ1c2VybmFtZSI6Im11c2ljLWdyYWJiZXIifQ.7M40x1ReTxvsAaeoLD_ZDS4VU99Is7Os4wSKUT26OZk"
+      }
+    ],
+    "invalid": [
+      {
+        "why": "signature from another secret",
+        "token": "v1.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiIzZjFjOWE1MmQwZTc0YjZmIiwicm9sZSI6Im1lbWJlciIsInN1YiI6InBsYXllcjo3IiwidXNlcm5hbWUiOiJhbmEifQ.rvq1MyMx1hPbRjG7TN4-Ws_uAVhJibmJ4-ek2C-AAAA"
+      },
+      {
+        "why": "payload changed after signing",
+        "token": "v1.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiIzZjFjOWE1MmQwZTc0YjZmIiwicm9sZSI6ImFkbWluIiwic3ViIjoicGxheWVyOjciLCJ1c2VybmFtZSI6ImFuYSJ9.rvq1MyMx1hPbRjG7TN4-Ws_uAVhJibmJ4-ek2C-ec8M"
+      },
+      {
+        "why": "unknown version",
+        "token": "v2.eyJhdWQiOiJtdXNpYy1ncmFiYmVyIiwiZXhwIjoxNzk0MDAwMDYwLCJpYXQiOjE3OTQwMDAwMDAsImlzcyI6ImJwbS10YWdnZXIiLCJqdGkiOiIzZjFjOWE1MmQwZTc0YjZmIiwicm9sZSI6Im1lbWJlciIsInN1YiI6InBsYXllcjo3IiwidXNlcm5hbWUiOiJhbmEifQ.rvq1MyMx1hPbRjG7TN4-Ws_uAVhJibmJ4-ek2C-ec8M"
+      },
+      {
+        "why": "not three parts",
+        "token": "v1.abc"
+      },
+      {
+        "why": "empty",
+        "token": ""
+      }
+    ]
+  }
+}

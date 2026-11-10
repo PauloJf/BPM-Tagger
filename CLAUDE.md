@@ -105,6 +105,10 @@ Detectors live in `bpm/detectors.py`; `bpm/pipeline.py` orchestrates per-file de
 
 `bpm_tagger/grabber/` is gone; see **What It Does** above. The only link left is HTTP: `integrations/music_grabber.py` + `web/api/grabber.py` send *requests* for missing tracks to a separate Music Grabber's `/api/v1` (API key with the `request` scope, server to server, inert until `MUSIC_GRABBER_URL` + key are set) and track their state in a `grabber_requests` table created on first use. No downloading here. What remains of it here: the legacy `grab_*`, `oauth_tokens` and `suggestions` tables are no longer created for new databases, and existing databases keep theirs untouched (never dropped, so a rollback or a re-run of the export keeps working) — nothing reads or writes them; `PeriodicSync` syncs Navidrome playlists, stars and play counts only; `GRABBER_ENABLED=true` only logs a startup warning.
 
+### Ecosystem link (optional)
+
+Plans, ADRs and the owner's decisions: `docs/plans/ecosystem/` (`decisions.md` is the authority). BPM Tagger is the identity provider for companion apps behind one gateway: `web/api/ecosystem.py` mints 60-second single-use HMAC tokens (`web/ecosystem_token.py`, stdlib only, kept byte-identical in the companion and pinned by hash) when `ECOSYSTEM_SECRET` (env only, 32+ chars) is set; every route 404s without it. Cross-app APIs have written contracts in `docs/contracts/*.json`, pinned by digest in the tests on both sides. Still no shared DB and no Python imports between the apps.
+
 ### Database (`bpm_tagger/db/` → `BPMDatabase`)
 
 SQLite, WAL mode. Schema migrations are additive `ALTER TABLE ADD COLUMN` in `_migrate()` — safe on existing DBs.

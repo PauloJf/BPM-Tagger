@@ -117,6 +117,7 @@ docker compose up -d && docker compose logs -f
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
 | `MUSIC_GRABBER_URL` / `MUSIC_GRABBER_API_KEY` | _(empty)_ | Optional link to a Music Grabber: request a playlist's missing tracks (key needs the `request` scope); also in Settings → Music Grabber |
+| `ECOSYSTEM_SECRET` | _(empty)_ | Optional single sign-on into a companion app behind the same gateway: the same 32+ character value on both apps. Env only |
 | `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 

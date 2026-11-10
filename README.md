@@ -356,6 +356,7 @@ Connect a [Music Grabber](https://hub.docker.com/r/gatoserio/music-grabber) to a
 | `MUSIC_GRABBER_API_KEY` | _(empty)_ | A Music Grabber API key with the `request` scope (create it in Music Grabber: Account → API keys). Masked in Settings |
 | `MUSIC_GRABBER_PUBLIC_URL` | _(empty)_ | The address people open (links to its Inbox); defaults to `MUSIC_GRABBER_URL` |
 | `MUSIC_GRABBER_MEMBERS_REQUEST` | `true` | Let member accounts request tracks too (off: the admin only) |
+| `ECOSYSTEM_SECRET` | _(empty)_ | Optional single sign-on into a companion app served behind the same gateway (e.g. Music Grabber at `/grabber/`). Set the **same** value (32+ characters) on both apps: a signed-in admin or member is then recognised there without a second login; kiosk players are not. Environment only, never stored in `settings.json` or shown in the UI. Empty = off |
 
 ### Subsonic API (optional)
 

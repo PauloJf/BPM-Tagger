@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Optional single sign-on for companion apps (`ECOSYSTEM_SECRET`).** Off unless set. With the same 32+ character secret on BPM Tagger and a companion app served behind the same gateway, a signed-in admin or member can be recognised there without a second login: `GET /api/ecosystem/token` mints a 60-second, single-use signed token (`docs/contracts/identity-token-v1.json`). Kiosk players and the shared guest never get one. The secret is read from the environment only, is never written to `settings.json`, and is masked in Settings. No schema change; unset it to switch the feature off.
 - **Docker health check.** The image now carries a `HEALTHCHECK` on `/healthz`, so `docker ps` and compose `depends_on: condition: service_healthy` know when the web UI is up. With the UI off (`ENABLE_UI=false`, the default) the check passes as long as the process runs.
 - **A written contract for track requests.** `docs/contracts/requests-v1.json` describes the request API BPM Tagger calls on a connected Music Grabber, and `tests/test_companion_contract.py` holds the client to it against a loopback server. No behaviour change.
 

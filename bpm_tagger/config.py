@@ -196,6 +196,10 @@ def settings_file_path(db_path: str) -> str:
     return str(Path(db_path).parent / "settings.json")
 
 
+# Read from the environment only: a value for one of these in settings.json is ignored.
+ENV_ONLY_SETTINGS = ("ecosystem_secret",)
+
+
 def load_settings_override(config: dict) -> dict:
     """Merge persisted settings.json overrides into config (overwrites env-var values)."""
     path = settings_file_path(config["db_path"])
@@ -205,6 +209,8 @@ def load_settings_override(config: dict) -> dict:
                 data = json.load(f)
             # Env-locked keys stay authoritative from the environment.
             for key in env_locked_keys():
+                data.pop(key, None)
+            for key in ENV_ONLY_SETTINGS:
                 data.pop(key, None)
             _migrate_pick_settings(data)
             for key in _DEAD_SETTINGS:
@@ -435,6 +441,13 @@ def build_config() -> dict:
         "music_grabber_public_url":   os.environ.get("MUSIC_GRABBER_PUBLIC_URL", ""),
         "music_grabber_api_key":      os.environ.get("MUSIC_GRABBER_API_KEY", ""),
         "music_grabber_members_request": os.environ.get("MUSIC_GRABBER_MEMBERS_REQUEST", "true").lower() == "true",
+        # ── Optional ecosystem link (docs/plans/ecosystem/ADR-002-identity.md) ──
+        # One secret shared with companion apps behind the same gateway. Lets a
+        # signed-in admin or member be recognised there without a second login
+        # (this app mints short-lived signed tokens) and authenticates
+        # server-to-server calls. Env only: never read from or written to
+        # settings.json. Off unless set (at least 32 characters).
+        "ecosystem_secret":           os.environ.get("ECOSYSTEM_SECRET", ""),
         # ── Optional Subsonic API (docs/plans/subsonic-api.md) ────────────────
         # Serves /rest/* to Subsonic clients. Needs ENABLE_UI; takes effect on
         # restart (the blueprint is registered at startup, or not at all).

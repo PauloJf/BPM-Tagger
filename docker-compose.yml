@@ -143,6 +143,8 @@ services:
       MUSIC_GRABBER_API_KEY: ""     # mgk_…
       # MUSIC_GRABBER_PUBLIC_URL: ""        # link people open; defaults to MUSIC_GRABBER_URL
       # MUSIC_GRABBER_MEMBERS_REQUEST: "true"
+      # Single sign-on into a companion app behind the same gateway (same value on both, 32+ chars):
+      # ECOSYSTEM_SECRET: ""
 
       # Public URL of this UI: marks the session cookie Secure over https and
       # builds the links in ntfy notifications

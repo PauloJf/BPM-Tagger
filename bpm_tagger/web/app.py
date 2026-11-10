@@ -21,6 +21,7 @@ from flask.sessions import SecureCookieSessionInterface
 from ..db import BPMDatabase
 from .api.activity import activity_bp
 from .api.auth import api_auth_bp
+from .api.ecosystem import ecosystem_bp
 from .api.grabber import grabber_bp
 from .api.images import images_bp
 from .api.listen import listen_bp
@@ -130,6 +131,9 @@ _MEMBER_ALLOWED = _PLAYER_ALLOWED | {
     "api_activity.api_activity", "media.api_progress", "media.api_changelog",
     "api_grabber.grabber_status", "api_grabber.grabber_request",
     "api_grabber.grabber_requests",
+    # Single sign-on into a companion app (admin + members only: kiosk players
+    # never get a token; the handler also refuses them).
+    "api_ecosystem.ecosystem_token_route",
 }
 
 
@@ -247,7 +251,8 @@ def create_app(config: dict) -> Flask:
     for bp in (api_auth_bp, activity_bp, tracks_bp, scan_bp, stats_bp, settings_bp, media_bp,
                playlists_bp, lyrics_bp, images_bp,
                run_bp, related_bp, players_bp, player_state_bp, loudness_bp,
-               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp, grabber_bp):
+               listen_bp, playlist_ops_bp, waveform_bp, subsonic_admin_bp, grabber_bp,
+               ecosystem_bp):
         app.register_blueprint(bp)
 
     # Optional Subsonic API: registered only when enabled, so a disabled install
