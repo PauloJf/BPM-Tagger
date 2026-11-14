@@ -10,7 +10,7 @@ One container, three jobs:
 - **Run — the cadence player** — pick a step cadence and run to your own music: octave-folded queue building weighted by your 1–5 star ratings, a pitch-preserving tempo lock, offline preloading for network dead zones, and a locked-down player/kiosk login; **Listen** is the regular non-cadence player
 - **The library companion** — playlists (Navidrome / Local) with compare / merge / split operations and per-playlist stats, lyrics, cover & artist art, duplicate resolution, ISRCs, and two-way star and rating sync + scrobbling back to Navidrome
 
-**New in v2.21:** the shared `RUN_PASSWORD` guest login is deprecated (Settings converts it to a named player with the same password), and members see only the listening filters in the library.
+**New in v2.21:** a read-only stats feed for dashboards (`GET /api/stats/summary`, v2.21.1), the shared `RUN_PASSWORD` guest login is deprecated (Settings converts it to a named player with the same password), and members see only the listening filters in the library.
 
 **New in v2.20:** request a playlist's missing tracks from a connected [Music Grabber](https://hub.docker.com/r/gatoserio/music-grabber), **member** accounts (the regular app without admin tools), named players with whole-library access, and a regrouped sidebar and tabbed Settings.
 
@@ -117,6 +117,7 @@ docker compose up -d && docker compose logs -f
 | `NAVIDROME_SCROBBLE` | `false` | Scrobble built-in-player plays to Navidrome (Settings → Navidrome) |
 | `SUBSONIC_ENABLED` | `false` | Serve the Subsonic API at `/rest` for Subsonic apps; own credentials in Settings → Subsonic API |
 | `MUSIC_GRABBER_URL` / `MUSIC_GRABBER_API_KEY` | _(empty)_ | Optional link to a Music Grabber: request a playlist's missing tracks (key needs the `request` scope); also in Settings → Music Grabber |
+| `STATS_API_TOKEN` | _(empty)_ | Turns on the read-only dashboard feed `GET /api/stats/summary` (own bearer token; empty = 404) |
 | `SUBSONIC_TRANSCODE` | `false` | Let Subsonic apps request Opus/MP3 at a lower bitrate (ffmpeg, on the fly) |
 | `LYRICS_MODE` | `embed` | Store lyrics in the file tag (`embed`) or as a `.lrc` sidecar (`sidecar`) |
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v2.21.1 — 2026-11-14
+
+**The dashboard stats feed reaches the stable image.** It shipped only in v2.20.0-beta.6, so stable users (and Glance widgets pointed at it) got a 404. No other changes.
+
+- **A read-only stats feed for dashboards.** Set `STATS_API_TOKEN` and `GET /api/stats/summary` returns flat JSON for a Glance-style `custom-api` widget: library totals (tracks, artists, albums, size in bytes, minutes), tagging state (analysed, pending, errors, needs review), and listening from the play journal across all accounts: plays, minutes and distinct artists for this week, month, year and all time (Europe/Lisbon calendar, weeks from Monday), plus the month's top artist and track. `?owner=` limits it to one account and `?by_owner=1` adds a per-account breakdown. It has its own bearer token (a login session does not open it and the token opens nothing else), answers 404 while the variable is empty, and locks an address out after ten wrong tokens in a minute. See the README's "Stats feed for dashboards".
+
 ## v2.21.0 — 2026-11-04
 
 **The shared guest login starts its retirement, and members get a cleaner library.** No breaking changes: an existing `RUN_PASSWORD` keeps working this release. The Settings page is now built from one component per section (no visible change).
